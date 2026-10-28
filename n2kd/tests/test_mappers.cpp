@@ -81,3 +81,30 @@ TEST_CASE("AIS class B position 129039 creates a class B target") {
     REQUIRE(*t->sog == Catch::Approx(2.50)); REQUIRE(*t->cog == Catch::Approx(1.2345));
     REQUIRE_FALSE(t->heading);
 }
+
+TEST_CASE("AIS position report with lat/lon not available clears the old position and keeps posSeen") {
+    n2k::VesselState vs; n2k::AisTargets ais; n2k::PgnDecoder dec(db()); n2k::StateMappers mp;
+    std::vector<uint8_t> p = {0x01, 0xFA,0xDB,0xE1,0x15, 0x00,0x3E,0x0B,0xB7, 0x40,0x71,0x6E,0x1C, 0x00, 0xE6,0x91, 0x49,0x01, 0x00,0x00,0x00, 0x83,0x8F, 0xFF,0x7F, 0xF0, 0xFF, 0xFF};
+    mp.apply(*dec.decode(msg(0x11F80E30, p, 50)), vs, ais);
+    REQUIRE(ais.find(367123450)->posSeen == 50);
+    putLe(p, 5, 0x7FFFFFFF, 4); putLe(p, 9, 0x7FFFFFFF, 4);   // lon, lat not available
+    putLe(p, 14, 0xFFFF, 2); putLe(p, 16, 0xFFFF, 2);        // cog, sog not available
+    mp.apply(*dec.decode(msg(0x11F80E30, p, 80)), vs, ais);
+    auto* t = ais.find(367123450); REQUIRE(t);
+    REQUIRE_FALSE(t->lat); REQUIRE_FALSE(t->lon); REQUIRE_FALSE(t->sog); REQUIRE_FALSE(t->cog);
+    REQUIRE(t->lastSeen == 80); REQUIRE(t->posSeen == 50);
+}
+TEST_CASE("AIS static data does not touch posSeen") {
+    n2k::VesselState vs; n2k::AisTargets ais; n2k::PgnDecoder dec(db()); n2k::StateMappers mp;
+    std::vector<uint8_t> pos = {0x01, 0xFA,0xDB,0xE1,0x15, 0x00,0x3E,0x0B,0xB7, 0x40,0x71,0x6E,0x1C, 0x00, 0xE6,0x91, 0x49,0x01, 0x00,0x00,0x00, 0x83,0x8F, 0xFF,0x7F, 0xF0, 0xFF, 0xFF};
+    mp.apply(*dec.decode(msg(0x11F80E30, pos, 50)), vs, ais);
+    std::vector<uint8_t> p(76, 0xFF);
+    p[0] = 0x05; putLe(p, 1, 367123450, 4);
+    putStr(p, 9, "WDE1234"); putStr(p, 16, "ARGOSY");
+    mp.apply(*dec.decode(msg(n2k::makeCanId(7, 129794, 0x30), p, 60)), vs, ais);
+    auto* t = ais.find(367123450); REQUIRE(t);
+    REQUIRE(t->lastSeen == 60); REQUIRE(t->posSeen == 50); REQUIRE(*t->lat == Catch::Approx(47.70));
+    mp.apply(*dec.decode(msg(n2k::makeCanId(7, 129794, 0x32), [] {
+        std::vector<uint8_t> q(76, 0xFF); q[0] = 0x05; putLe(q, 1, 316000001, 4); return q; }(), 61)), vs, ais);
+    REQUIRE(ais.find(316000001)->posSeen == 0);
+}

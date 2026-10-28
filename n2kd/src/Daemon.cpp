@@ -43,10 +43,13 @@ int msUntil(Steady::time_point t) {
     return static_cast<int>(std::clamp<long long>(ms, 0, kMaxPollMs));
 }
 
-// AIS snapshot with the clock-dependent keys removed, for change detection.
+// AIS snapshot with the clock-dependent keys (t, age, posAge) removed, for change detection.
 nlohmann::json aisContent(nlohmann::json j) {
     j.erase("t");
-    for (auto& t : j["targets"]) t.erase("age");
+    for (auto& t : j["targets"]) {
+        t.erase("age");
+        t.erase("posAge");
+    }
     return j;
 }
 
@@ -83,7 +86,7 @@ public:
     }
 
     // AIS rule: send the snapshot when targets exist and their content (without `t`
-    // and per-target `age`) differs from the last one sent, or a client connected
+    // and per-target `age` and `posAge`) differs from the last one sent, or a client connected
     // since then (resendAis_, set in accept()). Send one empty-targets snapshot when
     // the set becomes empty so clients drop stale targets. Otherwise send nothing.
     void tick(double now) {

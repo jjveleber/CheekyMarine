@@ -45,12 +45,14 @@ AisTarget* aisTarget(const DecodedMessage& m, AisTargets& ais, char cls) {
     t.aisClass = cls;
     return &t;
 }
+// A position report is authoritative: a field it marks not available clears the old value.
 void aisKinematics(const DecodedMessage& m, AisTarget& t) {
-    assignIf(t.lon, getD(m, "longitude"));
-    assignIf(t.lat, getD(m, "latitude"));
-    assignIf(t.sog, getD(m, "sog"));
-    assignIf(t.cog, getD(m, "cog"));
-    assignIf(t.heading, getD(m, "heading"));
+    t.lon = getD(m, "longitude");
+    t.lat = getD(m, "latitude");
+    t.sog = getD(m, "sog");
+    t.cog = getD(m, "cog");
+    t.heading = getD(m, "heading");
+    if (t.lat && t.lon) t.posSeen = m.timestamp;
 }
 
 }  // namespace
@@ -99,7 +101,7 @@ void StateMappers::apply(const DecodedMessage& m, VesselState& vs, AisTargets& a
     case 129038:
         if (auto* t = aisTarget(m, ais, 'A')) {
             aisKinematics(m, *t);
-            assignIf(t->navStatus, getI(m, "navStatus"));
+            t->navStatus = getI(m, "navStatus");
         }
         break;
     case 129039:

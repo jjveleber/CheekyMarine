@@ -34,13 +34,34 @@ build/n2kd/n2kd --replay n2kd/tests/fixtures/garmin-airmar.log --speed 5 --stdou
 
 Behavior:
 
-- Snapshots go out at `--hz`: a `vessel` snapshot every tick, and an `ais` snapshot when targets exist and either their content (ignoring `t` and per-target `age`) changed since the last one sent or a new client connected, plus one empty-targets `ais` snapshot when the last target expires. Socket clients first receive a `hello` line; `--stdout` prints snapshots only, one JSON object per line.
+- Snapshots go out at `--hz`: a `vessel` snapshot every tick, and an `ais` snapshot when targets exist and either their content (ignoring `t` and per-target `age` and `posAge`) changed since the last one sent or a new client connected, plus one empty-targets `ais` snapshot when the last target expires. Socket clients first receive a `hello` line; `--stdout` prints snapshots only, one JSON object per line.
 - Live ticks are scheduled on the monotonic clock, so wall clock steps do not pause publishing; snapshots carry wall time. In replay mode the clock is the timestamp of the last frame read, so freshness and ticks follow the log, not the wall clock. A final snapshot is printed at end of file, then n2kd exits 0.
 - With `--can`, if the interface cannot be opened n2kd logs once and retries every 5 s while still serving clients. After opening it sends one ISO address claim (PGN 60928, fixed unique number) unless `--no-claim`; it never sends anything else.
 - If the socket's parent directory is missing it is created.
 - Exit codes: 0 clean stop (SIGTERM/SIGINT) or end of replay; 1 bad options, unopenable replay file or socket; 2 unreadable or unparsable `canboat.json`.
 
 `cmake --install build` installs the binary, `canboat.json` and `lib/systemd/system/n2kd.service`.
+
+## JSON messages
+
+Each message is one JSON object per line. Socket clients first receive `{"type":"hello","schema":1,"version":"X.Y.Z"}`.
+
+Vessel snapshot (every tick):
+
+```json
+{"type":"vessel","t":1700000000.5,
+ "pos":{"lat":47.6062,"lon":-122.3321},"sog":3.29,"cog":3.735,"hdg":3.6739,"hdgRef":"Magnetic",
+ "depth":14.42,"depthOffset":-0.3,"stw":null,"waterTemp":287.65,"gnssTime":null,"sats":null,"rpm":null}
+```
+
+AIS snapshot:
+
+```json
+{"type":"ais","t":1700000000.5,"targets":[{"mmsi":367123450,"class":"A","lat":47.7,"lon":-122.4,"sog":3.29,
+ "cog":3.735,"hdg":3.6739,"name":null,"callsign":null,"shipType":null,"navStatus":0,"age":2.5,"posAge":2.5}]}
+```
+
+Units are the NMEA 2000 SI units canboat reports: `t` and `gnssTime` epoch seconds, `lat`/`lon` degrees, `sog` and `stw` m/s, `cog` (true) and `hdg` radians, `depth` and `depthOffset` meters (`depthOffset` positive to the waterline, negative to the keel), `waterTemp` kelvin, `rpm` revolutions per minute, `sats` a count. `hdgRef` is `"True"` or `"Magnetic"`. Stale or unknown vessel values are `null`. In AIS targets, `class` is `"A"` or `"B"`, `shipType` and `navStatus` are the AIS codes, `age` is seconds since any message from the target, and `posAge` is seconds since the last position report with a valid latitude and longitude (`null` if none yet). A position report that marks a field not available clears it (`null`), so `lat`/`lon` never show an old position as current.
 
 ## Cutting a release
 

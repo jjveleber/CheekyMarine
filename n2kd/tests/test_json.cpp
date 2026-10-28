@@ -24,3 +24,11 @@ TEST_CASE("hello carries schema and version") {
     auto j = n2k::helloMessage(); REQUIRE(j["schema"] == 1);
     REQUIRE(j["version"].get<std::string>() == std::string(n2k::version()));
 }
+TEST_CASE("ais snapshot reports posAge from the last valid position, null when none") {
+    n2k::AisTargets a;
+    auto& t = a.upsert(367123450, 100); t.lat = 47.7; t.lon = -122.4; t.posSeen = 90;
+    a.upsert(316000001, 101);
+    auto j = n2k::aisSnapshot(a, 102.5);
+    REQUIRE(j["targets"][1]["posAge"] == Catch::Approx(12.5));
+    REQUIRE(j["targets"][0].contains("posAge")); REQUIRE(j["targets"][0]["posAge"].is_null());
+}

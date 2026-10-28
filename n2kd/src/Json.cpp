@@ -63,6 +63,7 @@ nlohmann::json aisSnapshot(const AisTargets& ais, double now) {
             {"shipType", optValue(t->shipType)},
             {"navStatus", optValue(t->navStatus)},
             {"age", now - t->lastSeen},
+            {"posAge", t->posSeen == 0 ? nlohmann::json(nullptr) : nlohmann::json(now - t->posSeen)},
         });
     }
     return {{"type", "ais"}, {"t", now}, {"targets", targets}};

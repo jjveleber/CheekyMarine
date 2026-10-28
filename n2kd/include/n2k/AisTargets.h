@@ -14,7 +14,8 @@ struct AisTarget {
     std::optional<double> lat, lon, sog, cog, heading;
     std::optional<std::string> name, callsign;
     std::optional<int64_t> shipType, navStatus;
-    double lastSeen = 0;
+    double lastSeen = 0;  // any message
+    double posSeen = 0;   // last position report with a valid lat and lon; 0 = never
 };
 
 class AisTargets {
