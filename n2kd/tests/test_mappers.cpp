@@ -168,6 +168,25 @@ TEST_CASE("a locked sounder stuck on not-available depth loses the lock after kD
     mp.apply(*dec.decode(depthMsg(36, 300, 0x7FFF, 9)), vs, ais);  // valid 3.0 m at t = 9
     REQUIRE(*vs.depth.value == Catch::Approx(3.0)); REQUIRE(vs.depth.updatedAt == 9);
 }
+TEST_CASE("n/a depth with a valid offset (DST800 behavior) does not refresh the depth lock") {
+    n2k::VesselState vs; n2k::AisTargets ais; n2k::PgnDecoder dec(db()); n2k::StateMappers mp;
+    mp.apply(*dec.decode(depthMsg(35, 1000, 500, 0)), vs, ais);  // valid 10.0 m, offset +0.5
+    for (int t = 1; t <= 8; ++t) {
+        mp.apply(*dec.decode(depthMsg(35, 0xFFFFFFFF, 0, t)), vs, ais);  // depth n/a, offset 0.0
+    }
+    REQUIRE(*vs.depthOffset.value == Catch::Approx(0.0));  // still applied from the locked source
+    mp.apply(*dec.decode(depthMsg(36, 300, 0x7FFF, 9)), vs, ais);
+    REQUIRE(*vs.depth.value == Catch::Approx(3.0)); REQUIRE(vs.depth.updatedAt == 9);
+}
+TEST_CASE("127250 with n/a heading but a valid variation does not refresh the heading lock") {
+    n2k::VesselState vs; n2k::AisTargets ais; n2k::PgnDecoder dec(db()); n2k::StateMappers mp;
+    mp.apply(*dec.decode(msg(n2k::makeCanId(2, 127250, 0x23), {0x00,0x83,0x8F,0xFF,0x7F,0x3A,0x0A,0xFD}, 0)), vs, ais);
+    for (int t = 1; t <= 8; ++t) {  // heading n/a, variation valid
+        mp.apply(*dec.decode(msg(n2k::makeCanId(2, 127250, 0x23), {0x00,0xFF,0xFF,0xFF,0x7F,0x3A,0x0A,0xFD}, t)), vs, ais);
+    }
+    mp.apply(*dec.decode(msg(n2k::makeCanId(2, 127250, 0x24), {0x00,0x10,0x27,0xFF,0x7F,0xFF,0x7F,0xFC}, 9)), vs, ais);
+    REQUIRE(*vs.heading.value == Catch::Approx(1.0)); REQUIRE(*vs.headingReference.value == "True");
+}
 TEST_CASE("a valid value from the locked source refreshes the lock") {
     n2k::VesselState vs; n2k::AisTargets ais; n2k::PgnDecoder dec(db()); n2k::StateMappers mp;
     for (int t = 0; t <= 8; ++t) mp.apply(*dec.decode(depthMsg(35, 1000, 0x7FFF, t)), vs, ais);

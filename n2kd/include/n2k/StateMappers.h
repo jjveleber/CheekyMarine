@@ -19,7 +19,7 @@ constexpr double kEnvMaxAge = 30.0;   // s: waterTemp
 // locked to the first source address seen; other sources are ignored until the
 // locked one has been silent for longer than the group's max age, after which the
 // next message from any source takes the lock. Silent means no message with an
-// available value among the group's fields: all-"not available" messages do not count.
+// available primary value (depth only for depth, heading only for heading).
 class StateMappers {
 public:
     void apply(const DecodedMessage& m, VesselState& vs, AisTargets& ais);
@@ -34,7 +34,7 @@ private:
         double lastSeen = 0;
     };
     // True if m may update group g. Only a message with at least one available value
-    // among `fields` (the group's mapped fields) takes or refreshes the lock.
+    // among `fields` (the group's primary values) takes or refreshes the lock.
     bool accept(Group g, const DecodedMessage& m, double maxAge, std::initializer_list<const char*> fields);
 
     std::array<SourceLock, kGroupCount> locks_{};

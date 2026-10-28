@@ -80,9 +80,10 @@ bool StateMappers::accept(Group g, const DecodedMessage& m, double maxAge, std::
     // the future, after a clock step back, also counts as silent).
     const bool silent = !l.source || now - l.lastSeen > maxAge || now < l.lastSeen - 1.0;
     if (l.source != m.source && !silent) return false;
-    // A message with all of the group's fields not available neither takes nor refreshes
-    // the lock; from the locked source it is still applied (it may clear values).
-    if (!anyAvailable(m, fields)) return l.source == m.source;
+    // A message without an available primary value neither takes nor refreshes the lock.
+    // It is still applied (it may set or clear secondary values such as depthOffset) when
+    // it comes from the locked source or when no source holds a live lock.
+    if (!anyAvailable(m, fields)) return true;
     l.source = m.source;
     l.lastSeen = now;
     return true;
@@ -111,7 +112,7 @@ void StateMappers::apply(const DecodedMessage& m, VesselState& vs, AisTargets& a
         break;
     case 127250:
     {
-        if (!accept(kHeading, m, kNavMaxAge, {"heading", "variation"})) break;
+        if (!accept(kHeading, m, kNavMaxAge, {"heading"})) break;
         // Only True (0) or Magnetic (1) headings are usable; Error or n/a clears both.
         const auto ref = getI(m, "reference");
         if (ref == 0 || ref == 1) {
@@ -133,7 +134,7 @@ void StateMappers::apply(const DecodedMessage& m, VesselState& vs, AisTargets& a
     case 128267:
         // Depth and offset come from the same message: an offset marked not available
         // clears the previous one rather than pairing it with this depth.
-        if (!accept(kDepth, m, kDepthMaxAge, {"depth", "offset"})) break;
+        if (!accept(kDepth, m, kDepthMaxAge, {"depth"})) break;
         setIf(vs.depth, getD(m, "depth"), now);
         if (auto o = getD(m, "offset")) {
             vs.depthOffset.set(*o, now);
