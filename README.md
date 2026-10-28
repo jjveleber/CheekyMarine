@@ -1,5 +1,9 @@
 # CheekyMarine
 
+<p align="center"><img src="docs/assets/CheekyMarine-logo.jpg" alt="CheekyMarine: DIY chartplotter" width="704"></p>
+
+A DIY second helm display for a small boat: an NMEA 2000 daemon, chart packs and a Qt chart plotter on a Raspberry Pi 5. Design: `docs/superpowers/specs/2026-10-28-cheekymarine-design.md`.
+
 `n2kd` is a C++ NMEA 2000 daemon.
 
 ## Build and test
