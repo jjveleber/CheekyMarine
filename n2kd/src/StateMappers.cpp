@@ -38,7 +38,11 @@ template <class T> void assignIf(std::optional<T>& dst, const std::optional<T>& 
     if (v) dst = v;
 }
 
+// Reports of our own transponder (transceiver information 2 or 3: own VDL transmission,
+// 4: own information not broadcast) are not targets: nullptr, nothing touched.
 AisTarget* aisTarget(const DecodedMessage& m, AisTargets& ais, char cls) {
+    auto xcvr = getI(m, "aisTransceiverInformation");
+    if (xcvr && *xcvr >= 2 && *xcvr <= 4) return nullptr;
     auto id = getI(m, "userId");
     if (!id) return nullptr;
     AisTarget& t = ais.upsert(static_cast<uint32_t>(*id), m.timestamp);

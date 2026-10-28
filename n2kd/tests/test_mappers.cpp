@@ -82,6 +82,30 @@ TEST_CASE("AIS class B position 129039 creates a class B target") {
     REQUIRE_FALSE(t->heading);
 }
 
+TEST_CASE("own-ship AIS reports (transceiver information 2, 3 or 4) do not create or touch targets") {
+    n2k::VesselState vs; n2k::AisTargets ais; n2k::PgnDecoder dec(db()); n2k::StateMappers mp;
+    // 129039 with aisTransceiverInformation (bits 163-167) = 2, Channel A VDL transmission.
+    std::vector<uint8_t> b(27, 0xFF);
+    b[0] = 0x12; putLe(b, 1, 338000009, 4); putLe(b, 5, static_cast<uint32_t>(-1224000000), 4); putLe(b, 9, 477000000, 4);
+    b[20] = static_cast<uint8_t>((b[20] & 0x07) | (2 << 3));
+    mp.apply(*dec.decode(msg(n2k::makeCanId(7, 129039, 0x31), b, 70)), vs, ais);
+    REQUIRE_FALSE(ais.find(338000009));
+    // 129794 with transceiver information (bits 592-596) = 4, own information not broadcast.
+    std::vector<uint8_t> s(76, 0xFF);
+    s[0] = 0x05; putLe(s, 1, 338000009, 4); putStr(s, 16, "OWNSHIP");
+    s[74] = static_cast<uint8_t>((s[74] & 0xE0) | 4);
+    mp.apply(*dec.decode(msg(n2k::makeCanId(7, 129794, 0x31), s, 71)), vs, ais);
+    REQUIRE_FALSE(ais.find(338000009));
+    // An existing target is not touched by a 129038 own report (transceiver 3) with its MMSI.
+    std::vector<uint8_t> a = {0x01, 0xFA,0xDB,0xE1,0x15, 0x00,0x3E,0x0B,0xB7, 0x40,0x71,0x6E,0x1C, 0x00, 0xE6,0x91, 0x49,0x01, 0x00,0x00,0x00, 0x83,0x8F, 0xFF,0x7F, 0xF0, 0xFF, 0xFF};
+    mp.apply(*dec.decode(msg(0x11F80E30, a, 50)), vs, ais);
+    REQUIRE(ais.find(367123450));
+    a[20] = static_cast<uint8_t>((a[20] & 0x07) | (3 << 3));
+    putLe(a, 9, 400000000, 4);  // lat 40.0
+    mp.apply(*dec.decode(msg(0x11F80E30, a, 60)), vs, ais);
+    auto* t = ais.find(367123450); REQUIRE(t);
+    REQUIRE(*t->lat == Catch::Approx(47.70)); REQUIRE(t->lastSeen == 50);
+}
 TEST_CASE("AIS position report with lat/lon not available clears the old position and keeps posSeen") {
     n2k::VesselState vs; n2k::AisTargets ais; n2k::PgnDecoder dec(db()); n2k::StateMappers mp;
     std::vector<uint8_t> p = {0x01, 0xFA,0xDB,0xE1,0x15, 0x00,0x3E,0x0B,0xB7, 0x40,0x71,0x6E,0x1C, 0x00, 0xE6,0x91, 0x49,0x01, 0x00,0x00,0x00, 0x83,0x8F, 0xFF,0x7F, 0xF0, 0xFF, 0xFF};
