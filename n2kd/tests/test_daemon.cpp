@@ -157,7 +157,7 @@ nlohmann::json lastJsonLineOfType(const std::string& out, const std::string& typ
 }  // namespace
 
 TEST_CASE("replay of Garmin/Airmar log yields a populated vessel snapshot on stdout") {
-    auto out = runDaemon({"--replay", FIXTURE("garmin-airmar.log"), "--speed", "0", "--stdout", "--no-claim"});
+    auto out = runDaemon({"--replay", FIXTURE("garmin-airmar.log"), "--speed", "0", "--stdout", "--no-claim", "--pgns", N2K_CANBOAT_JSON});
     REQUIRE(out.exitCode == 0);
     auto last = lastJsonLineOfType(out.stdout, "vessel");
     REQUIRE(last["pos"]["lat"].is_number());
@@ -166,13 +166,16 @@ TEST_CASE("replay of Garmin/Airmar log yields a populated vessel snapshot on std
     REQUIRE(last["depthOffset"].is_number());
     REQUIRE(last["sog"].is_number());
     REQUIRE(last["waterTemp"].is_number());
+    REQUIRE(last["gnssTime"].is_number());
+    REQUIRE(last["sats"].is_number());
+    REQUIRE(last["stw"].is_number());
 }
 
 TEST_CASE("replay serves clients over the socket") {
     auto path = tmpSock();
     // Speed 1: the 12 s replay must outlast the client connect and three lines.
     auto proc = startDaemon({"--replay", FIXTURE("garmin-airmar.log"), "--speed", "1", "--socket", path.string(),
-                             "--no-claim"});
+                             "--no-claim", "--pgns", N2K_CANBOAT_JSON});
     int c = connectUnixRetry(path, 5.0);
     REQUIRE(c >= 0);
     auto lines = readLines(c, 3, 5.0);
@@ -184,14 +187,14 @@ TEST_CASE("replay serves clients over the socket") {
 }
 
 TEST_CASE("bad options exit 1, missing pgns file exits 2") {
-    REQUIRE(runDaemon({"--bogus"}).exitCode == 1);
-    REQUIRE(runDaemon({"--replay", FIXTURE("mixed.log"), "--stdout", "--max-ais", "0"}).exitCode == 1);
-    REQUIRE(runDaemon({"--replay", FIXTURE("mixed.log"), "--stdout", "--max-ais", "2.5"}).exitCode == 1);
+    REQUIRE(runDaemon({"--bogus", "--pgns", N2K_CANBOAT_JSON}).exitCode == 1);
+    REQUIRE(runDaemon({"--replay", FIXTURE("mixed.log"), "--stdout", "--max-ais", "0", "--pgns", N2K_CANBOAT_JSON}).exitCode == 1);
+    REQUIRE(runDaemon({"--replay", FIXTURE("mixed.log"), "--stdout", "--max-ais", "2.5", "--pgns", N2K_CANBOAT_JSON}).exitCode == 1);
     REQUIRE(runDaemon({"--replay", FIXTURE("mixed.log"), "--pgns", "/nonexistent.json", "--stdout"}).exitCode == 2);
 }
 
 TEST_CASE("garbage lines in replay do not stop the daemon") {
-    REQUIRE(runDaemon({"--replay", FIXTURE("mixed.log"), "--speed", "0", "--stdout", "--no-claim"}).exitCode == 0);
+    REQUIRE(runDaemon({"--replay", FIXTURE("mixed.log"), "--speed", "0", "--stdout", "--no-claim", "--pgns", N2K_CANBOAT_JSON}).exitCode == 0);
 }
 
 TEST_CASE("tick schedule fires on period and after a backward clock step") {
@@ -222,13 +225,13 @@ TEST_CASE("replay pacing caps each gap at kMaxReplaySleepSeconds of wall time") 
 }
 
 TEST_CASE("speed below 0.001 is rejected") {
-    REQUIRE(runDaemon({"--replay", FIXTURE("mixed.log"), "--speed", "0.0005", "--stdout"}).exitCode == 1);
+    REQUIRE(runDaemon({"--replay", FIXTURE("mixed.log"), "--speed", "0.0005", "--stdout", "--pgns", N2K_CANBOAT_JSON}).exitCode == 1);
 }
 
 TEST_CASE("late socket client receives current AIS targets even when unchanged") {
     auto path = tmpSock();
     auto proc = startDaemon({"--replay", FIXTURE("ais-static.log"), "--speed", "2", "--socket", path.string(),
-                             "--no-claim"});
+                             "--no-claim", "--pgns", N2K_CANBOAT_JSON});
     auto isTarget = [](const std::string& line) {
         auto j = nlohmann::json::parse(line);
         return j["type"] == "ais" && j["targets"].size() == 1 && j["targets"][0]["mmsi"] == 338123456;
@@ -256,7 +259,7 @@ TEST_CASE("late socket client receives current AIS targets even when unchanged")
 }
 
 TEST_CASE("an empty ais message is sent when the last target expires") {
-    auto out = runDaemon({"--replay", FIXTURE("ais-static.log"), "--speed", "0", "--stdout", "--no-claim"});
+    auto out = runDaemon({"--replay", FIXTURE("ais-static.log"), "--speed", "0", "--stdout", "--no-claim", "--pgns", N2K_CANBOAT_JSON});
     REQUIRE(out.exitCode == 0);
     std::vector<nlohmann::json> ais;
     std::istringstream in(out.stdout);
@@ -280,7 +283,7 @@ TEST_CASE("address claiming is off by default and enabled only by --claim") {
     REQUIRE(n2k::applyFlagOption(o, "--stdout"));
     REQUIRE(o.stdoutJson);
     REQUIRE_FALSE(n2k::applyFlagOption(o, "--can"));
-    REQUIRE(runDaemon({"--replay", FIXTURE("mixed.log"), "--speed", "0", "--stdout", "--claim"}).exitCode == 0);
+    REQUIRE(runDaemon({"--replay", FIXTURE("mixed.log"), "--speed", "0", "--stdout", "--claim", "--pgns", N2K_CANBOAT_JSON}).exitCode == 0);
 }
 
 TEST_CASE("an unchanged AIS target is re-sent at least every kAisRefreshSeconds") {
@@ -295,4 +298,10 @@ TEST_CASE("an unchanged AIS target is re-sent at least every kAisRefreshSeconds"
     REQUIRE(ais.size() >= 3);
     REQUIRE(ais.back()["targets"].size() == 1);
     REQUIRE(ais.back()["targets"][0]["age"].get<double>() > n2k::kAisRefreshSeconds);
+}
+
+TEST_CASE("n2kd --version prints exactly the project version") {
+    auto out = runDaemon({"--version", "--pgns", N2K_CANBOAT_JSON});
+    REQUIRE(out.exitCode == 0);
+    REQUIRE(out.stdout == std::string("n2kd ") + N2K_EXPECTED_VERSION + "\n");
 }

@@ -204,3 +204,44 @@ TEST_CASE("two GPS sources: position stays on the first source") {
     REQUIRE(vs.position.value->first == Catch::Approx(47.6062));
     REQUIRE(vs.position.updatedAt == 10);
 }
+
+TEST_CASE("127488 engine speed only from instance 0") {
+    n2k::VesselState vs; n2k::AisTargets ais; n2k::PgnDecoder dec(db()); n2k::StateMappers mp;
+    mp.apply(*dec.decode(msg(n2k::makeCanId(2, 127488, 0x40), {0x01,0x40,0x1F,0xFF,0xFF,0x7F,0xFF,0xFF}, 10)), vs, ais);
+    REQUIRE_FALSE(vs.engineRpm.value);  // instance 1 ignored
+    mp.apply(*dec.decode(msg(n2k::makeCanId(2, 127488, 0x40), {0x00,0x40,0x1F,0xFF,0xFF,0x7F,0xFF,0xFF}, 11)), vs, ais);
+    REQUIRE(*vs.engineRpm.value == Catch::Approx(2000.0)); REQUIRE(vs.engineRpm.updatedAt == 11);
+}
+TEST_CASE("130310 water temperature") {
+    n2k::VesselState vs; n2k::AisTargets ais; n2k::PgnDecoder dec(db()); n2k::StateMappers mp;
+    mp.apply(*dec.decode(msg(n2k::makeCanId(5, 130310, 0x23), {0x00,0x5D,0x70,0xFF,0xFF,0xFF,0xFF,0xFF}, 10)), vs, ais);
+    REQUIRE(*vs.waterTemp.value == Catch::Approx(287.65));
+}
+TEST_CASE("130316 temperature only from source 0 (sea temperature)") {
+    n2k::VesselState vs; n2k::AisTargets ais; n2k::PgnDecoder dec(db()); n2k::StateMappers mp;
+    // 288.150 K; source 1 (outside temperature) is ignored and does not take the lock.
+    mp.apply(*dec.decode(msg(n2k::makeCanId(5, 130316, 0x23), {0x00,0x00,0x01,0x96,0x65,0x04,0xFF,0xFF}, 10)), vs, ais);
+    REQUIRE_FALSE(vs.waterTemp.value);
+    mp.apply(*dec.decode(msg(n2k::makeCanId(5, 130316, 0x24), {0x00,0x00,0x00,0x96,0x65,0x04,0xFF,0xFF}, 11)), vs, ais);
+    REQUIRE(*vs.waterTemp.value == Catch::Approx(288.15));
+}
+TEST_CASE("AIS class B static data 129810 sets callsign and shipType") {
+    n2k::VesselState vs; n2k::AisTargets ais; n2k::PgnDecoder dec(db()); n2k::StateMappers mp;
+    std::vector<uint8_t> p(35, 0xFF);
+    p[0] = 0x18; putLe(p, 1, 338123456, 4);
+    p[5] = 37;                   // typeOfShip: pleasure craft
+    putStr(p, 13, "WDF5678");    // callsign, bytes 13-19
+    mp.apply(*dec.decode(msg(n2k::makeCanId(6, 129810, 0x31), p, 80)), vs, ais);
+    auto* t = ais.find(338123456); REQUIRE(t);
+    REQUIRE(t->aisClass == 'B');
+    REQUIRE(*t->callsign == "WDF5678"); REQUIRE(*t->shipType == 37); REQUIRE(t->lastSeen == 80);
+}
+TEST_CASE("126992 system time sets gnssTime") {
+    n2k::VesselState vs; n2k::AisTargets ais; n2k::PgnDecoder dec(db()); n2k::StateMappers mp;
+    std::vector<uint8_t> p(8, 0xFF);
+    p[0] = 0x00; p[1] = 0xF0;    // sid, source GPS
+    putLe(p, 2, 19700, 2);       // days since 1970-01-01
+    putLe(p, 4, 36005000, 4);    // 3600.5 s, 0.0001 s units
+    mp.apply(*dec.decode(msg(n2k::makeCanId(3, 126992, 0x00), p, 12)), vs, ais);
+    REQUIRE(*vs.gnssTime.value == Catch::Approx(19700.0 * 86400 + 3600.5)); REQUIRE(vs.gnssTime.updatedAt == 12);
+}
