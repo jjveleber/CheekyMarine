@@ -45,7 +45,7 @@ std::optional<DecodedMessage> PgnDecoder::decode(const N2kMessage& m) const {
     const int totalBits = static_cast<int>(m.payload.size()) * 8;
 
     for (const FieldDef& f : def->fields) {
-        if (f.id.empty() || f.bitLength <= 0 || f.bitLength > 64) continue;
+        if (f.id.empty() || f.bitLength <= 0) continue;
         if (f.bitOffset + f.bitLength > totalBits) continue;
 
         const bool numeric = isNumeric(f.fieldType);
@@ -56,7 +56,7 @@ std::optional<DecodedMessage> PgnDecoder::decode(const N2kMessage& m) const {
             out.fields.emplace(f.id, trimString(m.payload, f.bitOffset / 8, f.bitLength / 8));
             continue;
         }
-        if (!numeric && !lookup) continue;
+        if ((!numeric && !lookup) || f.bitLength > 64) continue;
 
         const uint64_t raw = readBits(m.payload, f.bitOffset, f.bitLength);
         const int64_t sval = f.isSigned ? signExtend(raw, f.bitLength) : static_cast<int64_t>(raw);

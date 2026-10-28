@@ -82,3 +82,27 @@ TEST_CASE("decodes AIS class A position report from 28-byte payload") {
     REQUIRE(std::get<double>(d->fields.at("heading")) == Catch::Approx(3.6739));
     REQUIRE(std::get<int64_t>(d->fields.at("navStatus")) == 0);
 }
+
+TEST_CASE("decodes 160-bit STRING_FIX name with padding trimmed") {
+    for (uint8_t pad : {uint8_t{'@'}, uint8_t{0xFF}, uint8_t{' '}}) {
+        std::vector<uint8_t> p = {0x12, 0xFA, 0xDB, 0xE1, 0x15};  // messageId/repeat, MMSI 367123450
+        std::vector<uint8_t> name(20, pad);
+        const char* n = "ARGOSY";
+        for (int i = 0; i < 6; ++i) name[i] = static_cast<uint8_t>(n[i]);
+        p.insert(p.end(), name.begin(), name.end());
+        p.push_back(0xFF);  // transceiver/reserved
+        p.push_back(0x07);  // sequenceId
+        REQUIRE(p.size() == 27);
+        auto d = n2k::PgnDecoder(db()).decode(msg(n2k::makeCanId(7, 129809, 0x30), p));
+        REQUIRE(d);
+        REQUIRE(std::get<std::string>(d->fields.at("name")) == "ARGOSY");
+        REQUIRE(std::get<int64_t>(d->fields.at("userId")) == 367123450);
+    }
+}
+
+TEST_CASE("fields without BitOffset are skipped, not decoded from bit 0") {
+    auto d = n2k::PgnDecoder(db()).decode(msg(n2k::makeCanId(7, 129285, 0x30), std::vector<uint8_t>(20, 0x11)));
+    REQUIRE(d);
+    REQUIRE(d->fields.count("wpLatitude") == 0);
+    REQUIRE(d->fields.count("wpLongitude") == 0);
+}

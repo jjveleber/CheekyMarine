@@ -1,5 +1,6 @@
 #include "n2k/PgnDatabase.h"
 
+#include <cmath>
 #include <fstream>
 
 #include <nlohmann/json.hpp>
@@ -24,8 +25,15 @@ std::optional<double> numOpt(const json& j, const char* key) {
 FieldDef parseField(const json& f) {
     FieldDef d;
     d.id = strOr(f, "Id");
-    d.bitOffset = static_cast<int>(numOpt(f, "BitOffset").value_or(0));
-    d.bitLength = static_cast<int>(numOpt(f, "BitLength").value_or(0));
+    // Fields without BitOffset/BitLength, or with out-of-bounds values, keep bitLength 0 and are skipped by the decoder.
+    constexpr double kMaxBits = 8.0 * 1785;
+    auto off = numOpt(f, "BitOffset");
+    auto len = numOpt(f, "BitLength");
+    if (off && len && *off >= 0 && *len > 0 && *off == std::floor(*off) && *len == std::floor(*len) &&
+        *off + *len <= kMaxBits) {
+        d.bitOffset = static_cast<int>(*off);
+        d.bitLength = static_cast<int>(*len);
+    }
     d.resolution = numOpt(f, "Resolution").value_or(1.0);
     auto s = f.find("Signed");
     d.isSigned = s != f.end() && s->is_boolean() && s->get<bool>();
