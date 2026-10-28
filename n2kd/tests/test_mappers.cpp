@@ -159,6 +159,21 @@ TEST_CASE("two depth sounders: the first source is locked and its depth and offs
     mp.apply(*dec.decode(depthMsg(35, 1000, 500, 13 + n2k::kDepthMaxAge)), vs, ais);
     REQUIRE(*vs.depth.value == Catch::Approx(3.0));
 }
+TEST_CASE("a locked sounder stuck on not-available depth loses the lock after kDepthMaxAge") {
+    n2k::VesselState vs; n2k::AisTargets ais; n2k::PgnDecoder dec(db()); n2k::StateMappers mp;
+    mp.apply(*dec.decode(depthMsg(35, 1000, 0x7FFF, 0)), vs, ais);  // valid 10.0 m at t = 0
+    for (int t = 1; t <= 8; ++t) {
+        mp.apply(*dec.decode(depthMsg(35, 0xFFFFFFFF, 0x7FFF, t)), vs, ais);  // depth and offset n/a
+    }
+    mp.apply(*dec.decode(depthMsg(36, 300, 0x7FFF, 9)), vs, ais);  // valid 3.0 m at t = 9
+    REQUIRE(*vs.depth.value == Catch::Approx(3.0)); REQUIRE(vs.depth.updatedAt == 9);
+}
+TEST_CASE("a valid value from the locked source refreshes the lock") {
+    n2k::VesselState vs; n2k::AisTargets ais; n2k::PgnDecoder dec(db()); n2k::StateMappers mp;
+    for (int t = 0; t <= 8; ++t) mp.apply(*dec.decode(depthMsg(35, 1000, 0x7FFF, t)), vs, ais);
+    mp.apply(*dec.decode(depthMsg(36, 300, 0x7FFF, 9)), vs, ais);
+    REQUIRE(*vs.depth.value == Catch::Approx(10.0)); REQUIRE(vs.depth.updatedAt == 8);
+}
 TEST_CASE("depth offset not available in a 128267 clears the previous offset") {
     n2k::VesselState vs; n2k::AisTargets ais; n2k::PgnDecoder dec(db()); n2k::StateMappers mp;
     mp.apply(*dec.decode(depthMsg(35, 1000, 500, 10)), vs, ais);
