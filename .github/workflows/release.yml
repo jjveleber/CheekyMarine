@@ -39,9 +39,15 @@ jobs:
           -DCMAKE_TOOLCHAIN_FILE=cmake/toolchains/aarch64-linux-gnu.cmake
           -DCMAKE_BUILD_TYPE=Release
           -DN2K_BUILD_TESTS=OFF
-          -DCMAKE_EXE_LINKER_FLAGS="-static-libstdc++ -static-libgcc"
+          -DCMAKE_EXE_LINKER_FLAGS="-static"
       - name: Build aarch64 release
         run: cmake --build build-aarch64 --target n2kd
+      - name: Check aarch64 binary is static
+        run: |
+          info="$(file build-aarch64/n2kd/n2kd)"
+          echo "${info}"
+          if ! echo "${info}" | grep -q 'aarch64'; then echo "not aarch64"; exit 1; fi
+          if ! echo "${info}" | grep -q 'statically linked'; then echo "not statically linked"; exit 1; fi
       - name: Package
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
