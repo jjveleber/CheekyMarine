@@ -1,6 +1,7 @@
 #pragma once
 #include <algorithm>
 #include <atomic>
+#include <cstddef>
 #include <expected>
 #include <filesystem>
 #include <fstream>
@@ -25,6 +26,7 @@ struct DaemonOptions {
     double publishHz = 2.0;             // --hz
     bool stdoutJson = false;            // --stdout: print snapshots instead of serving a socket
     bool claimAddress = false;          // --claim (experimental; --no-claim is accepted and keeps it off)
+    size_t maxAisTargets = 500;         // --max-ais N: most recently seen targets published per AIS message
 };
 
 // Applies a value-less flag (--stdout, --claim, --no-claim) to o; false if a is not one.

@@ -32,3 +32,21 @@ TEST_CASE("ais snapshot reports posAge from the last valid position, null when n
     REQUIRE(j["targets"][1]["posAge"] == Catch::Approx(12.5));
     REQUIRE(j["targets"][0].contains("posAge")); REQUIRE(j["targets"][0]["posAge"].is_null());
 }
+TEST_CASE("ais snapshot cap publishes the most recently seen targets and flags truncation") {
+    n2k::AisTargets a;
+    a.upsert(300000003, 100);
+    a.upsert(300000001, 103);
+    a.upsert(300000002, 101);
+    a.upsert(300000004, 102);
+    auto j = n2k::aisSnapshot(a, 104, 2);
+    REQUIRE(j["targets"].size() == 2);
+    REQUIRE(j["targets"][0]["mmsi"] == 300000001);  // still sorted by mmsi
+    REQUIRE(j["targets"][1]["mmsi"] == 300000004);
+    REQUIRE(j["truncated"] == true);
+    REQUIRE(j["total"] == 4);
+    auto all = n2k::aisSnapshot(a, 104, 4);
+    REQUIRE(all["targets"].size() == 4);
+    REQUIRE_FALSE(all.contains("truncated"));
+    REQUIRE_FALSE(all.contains("total"));
+    REQUIRE(n2k::aisSnapshot(a, 104)["targets"].size() == 4);  // no cap by default
+}

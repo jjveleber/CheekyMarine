@@ -154,6 +154,8 @@ TEST_CASE("replay serves clients over the socket") {
 
 TEST_CASE("bad options exit 1, missing pgns file exits 2") {
     REQUIRE(runDaemon({"--bogus"}).exitCode == 1);
+    REQUIRE(runDaemon({"--replay", FIXTURE("mixed.log"), "--stdout", "--max-ais", "0"}).exitCode == 1);
+    REQUIRE(runDaemon({"--replay", FIXTURE("mixed.log"), "--stdout", "--max-ais", "2.5"}).exitCode == 1);
     REQUIRE(runDaemon({"--replay", FIXTURE("mixed.log"), "--pgns", "/nonexistent.json", "--stdout"}).exitCode == 2);
 }
 

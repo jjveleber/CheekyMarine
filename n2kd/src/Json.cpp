@@ -1,5 +1,6 @@
 #include "n2k/Json.h"
 
+#include <algorithm>
 #include <string>
 
 #include "n2k/StateMappers.h"
@@ -47,9 +48,20 @@ nlohmann::json vesselSnapshot(const VesselState& vs, double now) {
     };
 }
 
-nlohmann::json aisSnapshot(const AisTargets& ais, double now) {
+nlohmann::json aisSnapshot(const AisTargets& ais, double now, std::optional<size_t> maxTargets) {
+    std::vector<const AisTarget*> list = ais.all();
+    const size_t total = list.size();
+    const bool truncated = maxTargets && total > *maxTargets;
+    if (truncated) {
+        // Most recently seen first (ties by mmsi), keep maxTargets, then restore mmsi order.
+        std::sort(list.begin(), list.end(), [](const AisTarget* a, const AisTarget* b) {
+            return a->lastSeen != b->lastSeen ? a->lastSeen > b->lastSeen : a->mmsi < b->mmsi;
+        });
+        list.resize(*maxTargets);
+        std::sort(list.begin(), list.end(), [](const AisTarget* a, const AisTarget* b) { return a->mmsi < b->mmsi; });
+    }
     nlohmann::json targets = nlohmann::json::array();
-    for (const AisTarget* t : ais.all()) {
+    for (const AisTarget* t : list) {
         targets.push_back({
             {"mmsi", t->mmsi},
             {"class", std::string(1, t->aisClass)},
@@ -66,7 +78,12 @@ nlohmann::json aisSnapshot(const AisTargets& ais, double now) {
             {"posAge", t->posSeen == 0 ? nlohmann::json(nullptr) : nlohmann::json(now - t->posSeen)},
         });
     }
-    return {{"type", "ais"}, {"t", now}, {"targets", targets}};
+    nlohmann::json j = {{"type", "ais"}, {"t", now}, {"targets", targets}};
+    if (truncated) {
+        j["truncated"] = true;
+        j["total"] = total;
+    }
+    return j;
 }
 
 nlohmann::json helloMessage() {

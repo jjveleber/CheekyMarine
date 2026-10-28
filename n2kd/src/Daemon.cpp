@@ -59,7 +59,8 @@ public:
     Pipeline(const DaemonOptions& o, const PgnDatabase& db, Publisher* pub)
         : pub_(pub),
           assembler_([&db](uint32_t pgn) { return db.isFastPacket(pgn); }),
-          decoder_(db) {
+          decoder_(db),
+          maxAis_(o.maxAisTargets) {
         if (o.rawLogDir) rawlog_.emplace(*o.rawLogDir, o.canInterface.value_or("can0"));
     }
 
@@ -90,6 +91,7 @@ public:
     // since then (resendAis_, set in accept()). Send one empty-targets snapshot when
     // the set becomes empty so clients drop stale targets. Otherwise send nothing.
     void tick(double now) {
+        if (pub_) pub_->flushPending();
         assembler_.expire(now);
         ais_.expire(now);
         if (rawlog_) rawlog_->flush();
@@ -98,7 +100,7 @@ public:
         bool empty = ais_.all().empty();
         bool lastSentNonEmpty = lastAis_.is_object() && !lastAis_["targets"].empty();
         if (!empty || lastSentNonEmpty) {
-            auto j = aisSnapshot(ais_, now);
+            auto j = aisSnapshot(ais_, now, maxAis_);
             auto content = aisContent(j);
             if (resendAis_ || content != lastAis_) {
                 emit(j);
@@ -126,6 +128,7 @@ private:
     Publisher* pub_;
     FastPacketAssembler assembler_;
     PgnDecoder decoder_;
+    size_t maxAis_;
     StateMappers mappers_;
     VesselState vs_;
     AisTargets ais_;
@@ -136,12 +139,32 @@ private:
     size_t undecodable_ = 0;
 };
 
-// Polls the listening socket (if any) until deadline or stop, accepting clients.
+// Adds the publisher's listening socket (POLLIN) and its clients with pending
+// bytes (POLLOUT) to fds.
+void addPublisherFds(Publisher* pub, std::vector<pollfd>& fds) {
+    if (!pub) return;
+    fds.push_back({pub->fd(), POLLIN, 0});
+    for (int c : pub->clientFds()) fds.push_back({c, POLLOUT, 0});
+}
+
+// Handles publisher poll results: accepts on the listening socket, flushes on any
+// client event (POLLOUT, or an error the next send reports).
+void handlePublisherFd(const pollfd& p, Publisher* pub, Pipeline& pipe) {
+    if (!pub || p.revents == 0) return;
+    if (p.fd == pub->fd()) {
+        if (p.revents & POLLIN) pipe.accept();
+    } else {
+        pub->flushPending();
+    }
+}
+
+// Polls the publisher until deadline or stop, accepting clients and flushing queues.
 void waitUntil(Steady::time_point deadline, Publisher* pub, Pipeline& pipe, const std::atomic<bool>& stop) {
     while (!stop && Steady::now() < deadline) {
-        pollfd p{pub ? pub->fd() : -1, POLLIN, 0};
-        ::poll(&p, 1, std::max(1, msUntil(deadline)));
-        if (p.revents & POLLIN) pipe.accept();
+        std::vector<pollfd> fds;
+        addPublisherFds(pub, fds);
+        ::poll(fds.data(), fds.size(), std::max(1, msUntil(deadline)));
+        for (const auto& p : fds) handlePublisherFd(p, pub, pipe);
     }
 }
 
@@ -242,7 +265,7 @@ int Daemon::run(std::atomic<bool>& stop) {
         if (!can && Steady::now() >= nextRetry) tryOpen();
         std::vector<pollfd> fds;
         if (can) fds.push_back({can->fd(), POLLIN, 0});
-        if (pub) fds.push_back({pub->fd(), POLLIN, 0});
+        addPublisherFds(pub, fds);
         int timeout = static_cast<int>(std::clamp(schedule.secondsUntilDue(steadySeconds()) * 1000.0 + 1, 0.0, double{kMaxPollMs}));
         ::poll(fds.data(), fds.size(), timeout);
         for (const auto& p : fds) {
@@ -263,8 +286,8 @@ int Daemon::run(std::atomic<bool>& stop) {
                     nextRetry = Steady::now() + std::chrono::duration_cast<Steady::duration>(
                                                     std::chrono::duration<double>(kCanRetrySeconds));
                 }
-            } else if (pub && p.fd == pub->fd() && (p.revents & POLLIN)) {
-                pipe.accept();
+            } else {
+                handlePublisherFd(p, pub, pipe);
             }
         }
         // Ticks run on the steady clock so a wall clock step (NTP, GPS) cannot stall

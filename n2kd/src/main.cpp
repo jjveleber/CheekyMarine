@@ -29,6 +29,7 @@ constexpr const char* kUsage =
     "  --rawlog DIR    write raw frames to rotating candump -L files in DIR\n"
     "  --pgns PATH     canboat.json PGN database (default: installed copy, else source tree)\n"
     "  --hz N          publish rate in Hz (default 2)\n"
+    "  --max-ais N     publish at most N AIS targets, the most recently seen (default 500)\n"
     "  --claim         send an ISO address claim on the CAN bus (experimental, off by default)\n"
     "  --no-claim      do not send an address claim (the default; accepted for compatibility)\n"
     "  --help          show this help\n"
@@ -75,7 +76,7 @@ int main(int argc, char** argv) {
         } else if (n2k::applyFlagOption(opts, a)) {
             continue;
         } else if (a == "--can" || a == "--replay" || a == "--speed" || a == "--socket" || a == "--rawlog" ||
-                   a == "--pgns" || a == "--hz") {
+                   a == "--pgns" || a == "--hz" || a == "--max-ais") {
             auto v = value();
             if (!v) return badOption("missing value for " + std::string(a));
             if (a == "--can") {
@@ -91,7 +92,10 @@ int main(int argc, char** argv) {
                 pgnsGiven = true;
             } else {
                 auto n = parseNumber(*v);
-                if (a == "--speed") {
+                if (a == "--max-ais") {
+                    if (!n || *n < 1 || *n != std::floor(*n) || *n > 1e9) return badOption("--max-ais needs a whole number >= 1");
+                    opts.maxAisTargets = static_cast<size_t>(*n);
+                } else if (a == "--speed") {
                     if (!n || *n < 0 || (*n > 0 && *n < 0.001)) return badOption("--speed needs 0 or a number >= 0.001");
                     opts.replaySpeed = *n;
                 } else {
