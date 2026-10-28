@@ -34,6 +34,7 @@ private:
         std::vector<uint8_t> data;
         size_t total;
         uint8_t nextIndex;
+        uint8_t sequence;  // 3-bit sequence id of frame 0; continuations must match
         double startTime;
     };
 

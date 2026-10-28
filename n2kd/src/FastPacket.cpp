@@ -23,6 +23,7 @@ std::optional<N2kMessage> FastPacketAssembler::push(const CanFrame& frame) {
 
     const auto key = std::make_pair(h.source, h.pgn);
     const uint8_t index = frame.data[0] & 0x1F;
+    const uint8_t sequence = frame.data[0] >> 5;
     auto it = partials_.find(key);
 
     if (index == 0) {
@@ -34,13 +35,14 @@ std::optional<N2kMessage> FastPacketAssembler::push(const CanFrame& frame) {
         if (len < 2) return std::nullopt;
         const size_t total = frame.data[1];
         if (total == 0 || total > kMaxFastPacketLength) return std::nullopt;
-        Partial p{h, {}, total, 1, frame.timestamp};
+        Partial p{h, {}, total, 1, sequence, frame.timestamp};
         p.data.insert(p.data.end(), frame.data.begin() + 2, frame.data.begin() + len);
         partials_.emplace(key, std::move(p));
         it = partials_.find(key);
     } else {
         if (it == partials_.end()) return std::nullopt;  // no partial: ignore, not counted
-        if (index != it->second.nextIndex) {
+        // A wrong index or another message's sequence id means frames were lost.
+        if (index != it->second.nextIndex || sequence != it->second.sequence) {
             ++dropped_;
             partials_.erase(it);
             return std::nullopt;

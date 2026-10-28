@@ -70,3 +70,14 @@ TEST_CASE("partial started in the future expires") {
     fa.expire(5.0);                     // within one second: kept
     REQUIRE(fa.droppedIncomplete() == 1);
 }
+TEST_CASE("continuation frame with a different sequence id drops the partial and counts it") {
+    // Frame 0 of report A (seq 1) is followed by frames 1-3 of report B (seq 2):
+    // frame loss must not splice B's position onto A's MMSI.
+    std::vector<uint8_t> pa(27, 0xAA), pb(27, 0xBB);
+    auto fra = encodeFastPacket(0x1DF80F31, 1, pa);
+    auto frb = encodeFastPacket(0x1DF80F31, 2, pb);
+    n2k::FastPacketAssembler fa([](uint32_t) { return true; });
+    REQUIRE_FALSE(fa.push(fra[0]));
+    for (size_t i = 1; i < frb.size(); ++i) REQUIRE_FALSE(fa.push(frb[i]));
+    REQUIRE(fa.droppedIncomplete() == 1);
+}
