@@ -9,8 +9,9 @@
 namespace n2k {
 
 // Writes frames in candump -L format (replayable by LogFileSource) to
-// n2k-YYYYMMDD-HHMMSS-NNN.log files in dir, rotating by size and deleting the
-// oldest files beyond maxFiles. I/O failures never throw.
+// n2k-NNNNNN-YYYYMMDD-HHMMSS.log files in dir, rotating by size and deleting the
+// lowest-sequence files beyond maxFiles (never the open one). The sequence
+// continues from the highest one already in dir. I/O failures never throw.
 class RawLogger {
 public:
     RawLogger(std::filesystem::path dir, std::string ifname, uintmax_t maxBytesPerFile = 50 * 1024 * 1024,
@@ -29,6 +30,7 @@ private:
     unsigned seq_ = 0;
     uintmax_t written_ = 0;
     std::ofstream out_;
+    std::filesystem::path current_;
     bool warnedOpen_ = false;
     bool warnedWrite_ = false;
 };
