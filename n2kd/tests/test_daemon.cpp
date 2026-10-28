@@ -8,6 +8,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include <chrono>
 #include <filesystem>
+#include <fstream>
 #include <nlohmann/json.hpp>
 #include <sstream>
 #include <string>
@@ -20,6 +21,36 @@
 namespace {
 
 std::string FIXTURE(const std::string& name) { return std::string(N2K_FIXTURE_DIR) + "/" + name; }
+
+// Writes content to a fresh temporary log file and returns its path.
+std::string writeTempLog(const std::string& content) {
+    static int counter = 0;
+    auto p = std::filesystem::temp_directory_path() /
+             ("n2kd-test-" + std::to_string(::getpid()) + "-" + std::to_string(counter++) + ".log");
+    std::ofstream(p) << content;
+    return p.string();
+}
+
+// The 4-frame class B position report for MMSI 338123456 from ais-static.log, stamped t.
+std::string aisReportAt(double t) {
+    std::string out;
+    for (const char* data : {"201B12C05A271400", "213E0BB740716E1C", "22FF3930FA00FFFF", "23FFFFFFFFFFFFFF"}) {
+        out += "(" + std::to_string(t) + ") can0 1DF80F31#" + data + "\n";
+    }
+    return out;
+}
+
+// All JSON lines of the given type in out.
+std::vector<nlohmann::json> jsonLinesOfType(const std::string& out, const std::string& type) {
+    std::vector<nlohmann::json> lines;
+    std::istringstream in(out);
+    std::string line;
+    while (std::getline(in, line)) {
+        auto j = nlohmann::json::parse(line, nullptr, false);
+        if (j.is_object() && j.value("type", "") == type) lines.push_back(j);
+    }
+    return lines;
+}
 
 // Forks and execs the built daemon; stdout goes to stdoutFd if >= 0, else is inherited.
 pid_t spawnDaemon(const std::vector<std::string>& args, int stdoutFd) {
@@ -233,4 +264,18 @@ TEST_CASE("address claiming is off by default and enabled only by --claim") {
     REQUIRE(o.stdoutJson);
     REQUIRE_FALSE(n2k::applyFlagOption(o, "--can"));
     REQUIRE(runDaemon({"--replay", FIXTURE("mixed.log"), "--speed", "0", "--stdout", "--claim"}).exitCode == 0);
+}
+
+TEST_CASE("an unchanged AIS target is re-sent at least every kAisRefreshSeconds") {
+    // One report at t = 1, then 30 s of unrelated single frames (ISO requests) once a second.
+    std::string log = aisReportAt(1.0);
+    for (int t = 2; t <= 31; ++t) log += "(" + std::to_string(t) + ".000000) can0 18EAFF01#14F001\n";
+    auto path = writeTempLog(log);
+    auto out = runDaemon({"--replay", path, "--speed", "0", "--stdout", "--no-claim", "--pgns", N2K_CANBOAT_JSON});
+    std::filesystem::remove(path);
+    REQUIRE(out.exitCode == 0);
+    auto ais = jsonLinesOfType(out.stdout, "ais");
+    REQUIRE(ais.size() >= 3);
+    REQUIRE(ais.back()["targets"].size() == 1);
+    REQUIRE(ais.back()["targets"][0]["age"].get<double>() > n2k::kAisRefreshSeconds);
 }

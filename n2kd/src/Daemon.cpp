@@ -87,8 +87,9 @@ public:
     }
 
     // AIS rule: send the snapshot when targets exist and their content (without `t`
-    // and per-target `age` and `posAge`) differs from the last one sent, or a client connected
-    // since then (resendAis_, set in accept()). Send one empty-targets snapshot when
+    // and per-target `age` and `posAge`) differs from the last one sent, a client connected
+    // since then (resendAis_, set in accept()), or kAisRefreshSeconds have passed since the
+    // last send (or the clock went back past it). Send one empty-targets snapshot when
     // the set becomes empty so clients drop stale targets. Otherwise send nothing.
     void tick(double now) {
         if (pub_) pub_->flushPending();
@@ -102,9 +103,11 @@ public:
         if (!empty || lastSentNonEmpty) {
             auto j = aisSnapshot(ais_, now, maxAis_);
             auto content = aisContent(j);
-            if (resendAis_ || content != lastAis_) {
+            const bool refresh = !empty && (!lastAisAt_ || now - *lastAisAt_ >= kAisRefreshSeconds || now < *lastAisAt_);
+            if (resendAis_ || refresh || content != lastAis_) {
                 emit(j);
                 lastAis_ = std::move(content);
+                lastAisAt_ = now;
             }
         }
         resendAis_ = false;
@@ -134,6 +137,7 @@ private:
     AisTargets ais_;
     std::optional<RawLogger> rawlog_;
     nlohmann::json lastAis_;  // last AIS content sent; null = none yet
+    std::optional<double> lastAisAt_;  // time of the last AIS send
     bool resendAis_ = false;  // a client connected since the last tick
     size_t frames_ = 0;
     size_t undecodable_ = 0;

@@ -16,6 +16,10 @@
 
 namespace n2k {
 
+// A non-empty AIS target set is re-sent at least this often, even when unchanged,
+// so the published age and posAge stay current.
+constexpr double kAisRefreshSeconds = 10.0;
+
 struct DaemonOptions {
     std::optional<std::string> canInterface;                          // --can can0
     std::optional<std::filesystem::path> replayFile;                  // --replay FILE
