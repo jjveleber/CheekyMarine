@@ -18,7 +18,8 @@ namespace n2k {
 
 namespace {
 std::string errText(std::string_view ifname, const char* what) {
-    return std::string(what) + " " + std::string(ifname) + ": " + std::strerror(errno);
+    int e = errno;
+    return std::string(what) + " " + std::string(ifname) + ": " + std::strerror(e);
 }
 }  // namespace
 

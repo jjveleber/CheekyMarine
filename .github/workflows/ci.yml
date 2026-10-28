@@ -24,7 +24,6 @@ jobs:
         run: ctest --test-dir build --output-on-failure
       - name: Require vcan test to run (not skip)
         run: |
-          out=$(./build/n2kd/n2kd_tests "[vcan]")
-          echo "$out"
-          echo "$out" | grep -q "All tests passed"
-          ! echo "$out" | grep -qi "skipped"
+          ./build/n2kd/n2kd_tests "[vcan]" --reporter junit --out vcan.xml
+          if grep -q '<skipped' vcan.xml; then echo "vcan test skipped"; exit 1; fi
+          if grep -q 'tests="0"' vcan.xml; then echo "vcan test did not run"; exit 1; fi
