@@ -1,0 +1,16 @@
+configure_file(include/n2k/Version.h.in ${CMAKE_CURRENT_BINARY_DIR}/include/n2k/Version.h)
+
+add_library(n2kcore STATIC src/Version.cpp)
+target_include_directories(n2kcore PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_BINARY_DIR}/include)
+target_link_libraries(n2kcore PUBLIC nlohmann_json::nlohmann_json)
+
+add_executable(n2kd src/main.cpp)
+target_link_libraries(n2kd PRIVATE n2kcore)
+
+add_executable(n2kd_tests tests/test_version.cpp)
+target_link_libraries(n2kd_tests PRIVATE n2kcore Catch2::Catch2WithMain)
+
+include(Catch)
+catch_discover_tests(n2kd_tests)

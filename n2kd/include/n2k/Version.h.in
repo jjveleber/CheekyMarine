@@ -1,0 +1,8 @@
+#pragma once
+#include <string_view>
+
+#define N2K_VERSION "@PROJECT_VERSION@"
+
+namespace n2k {
+std::string_view version();
+}
