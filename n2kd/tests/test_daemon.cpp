@@ -139,7 +139,8 @@ TEST_CASE("replay of Garmin/Airmar log yields a populated vessel snapshot on std
 
 TEST_CASE("replay serves clients over the socket") {
     auto path = tmpSock();
-    auto proc = startDaemon({"--replay", FIXTURE("garmin-airmar.log"), "--speed", "50", "--socket", path.string(),
+    // Speed 1: the 12 s replay must outlast the client connect and three lines.
+    auto proc = startDaemon({"--replay", FIXTURE("garmin-airmar.log"), "--speed", "1", "--socket", path.string(),
                              "--no-claim"});
     int c = connectUnixRetry(path, 5.0);
     REQUIRE(c >= 0);

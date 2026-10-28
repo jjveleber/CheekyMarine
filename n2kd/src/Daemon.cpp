@@ -223,6 +223,7 @@ int Daemon::run(std::atomic<bool>& stop) {
     std::optional<SocketCanSource> can;
     auto nextRetry = Steady::now();
     bool loggedOpenError = false;
+    bool loggedSocketError = false;
     auto tryOpen = [&] {
         auto s = SocketCanSource::open(*opts_.canInterface);
         if (!s) {
@@ -247,10 +248,17 @@ int Daemon::run(std::atomic<bool>& stop) {
         for (const auto& p : fds) {
             if (can && p.fd == can->fd()) {
                 if (p.revents & POLLIN) {
-                    while (auto f = can->next()) pipe.process(*f);
+                    while (auto f = can->next()) {
+                        loggedSocketError = false;
+                        pipe.process(*f);
+                    }
                 }
                 if (p.revents & (POLLERR | POLLHUP | POLLNVAL)) {
-                    std::cerr << "n2kd: CAN socket error on " << *opts_.canInterface << ", reopening\n";
+                    // Logged once per outage: the flag clears only after a frame is read again.
+                    if (!loggedSocketError) {
+                        std::cerr << "n2kd: CAN socket error on " << *opts_.canInterface << ", reopening\n";
+                    }
+                    loggedSocketError = true;
                     can.reset();
                     nextRetry = Steady::now() + std::chrono::duration_cast<Steady::duration>(
                                                     std::chrono::duration<double>(kCanRetrySeconds));
