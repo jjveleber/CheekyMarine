@@ -167,6 +167,33 @@ TEST_CASE("depth offset not available in a 128267 clears the previous offset") {
     REQUIRE(*vs.depth.value == Catch::Approx(11.0));
     REQUIRE_FALSE(vs.depthOffset.value);
 }
+TEST_CASE("127250 variation fills VesselState variation and wins over 127258") {
+    n2k::VesselState vs; n2k::AisTargets ais; n2k::PgnDecoder dec(db()); n2k::StateMappers mp;
+    // heading 3.6739, deviation n/a, variation +0.2618 rad (15 deg east), reference Magnetic.
+    mp.apply(*dec.decode(msg(0x09F11223, {0x00,0x83,0x8F,0xFF,0x7F,0x3A,0x0A,0xFD}, 10)), vs, ais);
+    REQUIRE(*vs.variation.value == Catch::Approx(0.2618)); REQUIRE(vs.variation.updatedAt == 10);
+    // 127258 while 127250 variation is fresh: ignored.
+    mp.apply(*dec.decode(msg(n2k::makeCanId(7, 127258, 0x05), {0x00,0xF1,0xFF,0xFF,0xC6,0xF5,0xFF,0xFF}, 11)), vs, ais);
+    REQUIRE(*vs.variation.value == Catch::Approx(0.2618));
+    // Once the 127250 variation is older than kNavMaxAge, 127258 supplies it.
+    mp.apply(*dec.decode(msg(n2k::makeCanId(7, 127258, 0x05), {0x00,0xF1,0xFF,0xFF,0xC6,0xF5,0xFF,0xFF}, 16)), vs, ais);
+    REQUIRE(*vs.variation.value == Catch::Approx(-0.2618)); REQUIRE(vs.variation.updatedAt == 16);
+}
+TEST_CASE("127258 alone fills variation; 127250 with variation n/a does not clear it") {
+    n2k::VesselState vs; n2k::AisTargets ais; n2k::PgnDecoder dec(db()); n2k::StateMappers mp;
+    mp.apply(*dec.decode(msg(n2k::makeCanId(7, 127258, 0x05), {0x00,0xF1,0xFF,0xFF,0x3A,0x0A,0xFF,0xFF}, 10)), vs, ais);
+    REQUIRE(*vs.variation.value == Catch::Approx(0.2618));
+    mp.apply(*dec.decode(msg(0x09F11223, {0x00,0x83,0x8F,0xFF,0x7F,0xFF,0x7F,0xFD}, 10.5)), vs, ais);
+    mp.apply(*dec.decode(msg(n2k::makeCanId(7, 127258, 0x05), {0x00,0xF1,0xFF,0xFF,0x3B,0x0A,0xFF,0xFF}, 11)), vs, ais);
+    REQUIRE(*vs.variation.value == Catch::Approx(0.2619)); REQUIRE(vs.variation.updatedAt == 11);
+}
+TEST_CASE("127250 with reference Error drops heading and reference") {
+    n2k::VesselState vs; n2k::AisTargets ais; n2k::PgnDecoder dec(db()); n2k::StateMappers mp;
+    mp.apply(*dec.decode(msg(0x09F11223, {0x00,0x83,0x8F,0xFF,0x7F,0xFF,0x7F,0xFD}, 9)), vs, ais);    // Magnetic
+    REQUIRE(vs.heading.value);
+    mp.apply(*dec.decode(msg(0x09F11223, {0x00,0x83,0x8F,0xFF,0x7F,0xFF,0x7F,0xFE}, 10)), vs, ais);  // reference 2
+    REQUIRE_FALSE(vs.heading.value); REQUIRE_FALSE(vs.headingReference.value);
+}
 TEST_CASE("two GPS sources: position stays on the first source") {
     n2k::VesselState vs; n2k::AisTargets ais; n2k::PgnDecoder dec(db()); n2k::StateMappers mp;
     std::vector<uint8_t> a(8), b(8);

@@ -22,6 +22,7 @@ struct VesselState {
     Aged<double> cog;                          // rad, true
     Aged<double> heading;                      // rad
     Aged<std::string> headingReference;        // "True" | "Magnetic"
+    Aged<double> variation;                    // rad, east positive; from 127250, else 127258
     Aged<double> depth;                        // m, below transducer
     Aged<double> depthOffset;                  // m, + = to waterline, - = to keel
     Aged<double> stw;                          // m/s

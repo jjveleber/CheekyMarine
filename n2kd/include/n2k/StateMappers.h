@@ -35,6 +35,7 @@ private:
     bool accept(Group g, const DecodedMessage& m, double maxAge);
 
     std::array<SourceLock, kGroupCount> locks_{};
+    Aged<double> headingVariation_;  // last 127250 variation; while fresh, 127258 is ignored
 };
 
 }  // namespace n2k

@@ -38,6 +38,7 @@ nlohmann::json vesselSnapshot(const VesselState& vs, double now) {
         {"cog", agedValue(vs.cog, now, kNavMaxAge)},
         {"hdg", agedValue(vs.heading, now, kNavMaxAge)},
         {"hdgRef", agedValue(vs.headingReference, now, kNavMaxAge)},
+        {"variation", agedValue(vs.variation, now, kNavMaxAge)},
         {"depth", agedValue(vs.depth, now, kDepthMaxAge)},
         {"depthOffset", agedValue(vs.depthOffset, now, kDepthMaxAge)},
         {"stw", agedValue(vs.stw, now, kNavMaxAge)},

@@ -95,9 +95,25 @@ void StateMappers::apply(const DecodedMessage& m, VesselState& vs, AisTargets& a
         if (accept(kGnssTime, m, kNavMaxAge)) setGnssTime(m, vs);
         break;
     case 127250:
+    {
         if (!accept(kHeading, m, kNavMaxAge)) break;
-        setIf(vs.heading, getD(m, "heading"), now);
-        if (auto r = getS(m, "referenceName")) vs.headingReference.set(*r, now);
+        // Only True (0) or Magnetic (1) headings are usable; Error or n/a clears both.
+        const auto ref = getI(m, "reference");
+        if (ref == 0 || ref == 1) {
+            setIf(vs.heading, getD(m, "heading"), now);
+            if (auto r = getS(m, "referenceName")) vs.headingReference.set(*r, now);
+        } else {
+            vs.heading = Aged<double>{};
+            vs.headingReference = Aged<std::string>{};
+        }
+        if (auto v = getD(m, "variation")) {
+            vs.variation.set(*v, now);
+            headingVariation_.set(*v, now);
+        }
+        break;
+    }
+    case 127258:
+        if (!headingVariation_.fresh(now, kNavMaxAge)) setIf(vs.variation, getD(m, "variation"), now);
         break;
     case 128267:
         // Depth and offset come from the same message: an offset marked not available

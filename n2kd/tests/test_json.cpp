@@ -14,6 +14,12 @@ TEST_CASE("vessel snapshot nulls stale fields and keeps fresh ones") {
     REQUIRE(j["pos"].is_null()); REQUIRE(j["sog"].is_null());
     REQUIRE(j["depth"] == Catch::Approx(14.42)); REQUIRE(j["stw"].is_null()); REQUIRE(j.contains("rpm"));
 }
+TEST_CASE("vessel snapshot carries variation, null when stale") {
+    n2k::VesselState vs; vs.variation.set(0.2618, 100);
+    REQUIRE(n2k::vesselSnapshot(vs, 104)["variation"] == Catch::Approx(0.2618));
+    auto stale = n2k::vesselSnapshot(vs, 105.1);
+    REQUIRE(stale.contains("variation")); REQUIRE(stale["variation"].is_null());
+}
 TEST_CASE("ais snapshot includes age and sorted targets") {
     n2k::AisTargets a; a.upsert(367123450, 100).lat = 47.7; a.upsert(316000001, 101);
     auto j = n2k::aisSnapshot(a, 102.5);
