@@ -7,6 +7,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 
 #include "n2k/PgnDatabase.h"
@@ -23,8 +24,11 @@ struct DaemonOptions {
     std::filesystem::path canboatJson;  // --pgns PATH; main picks the installed or source-tree default
     double publishHz = 2.0;             // --hz
     bool stdoutJson = false;            // --stdout: print snapshots instead of serving a socket
-    bool claimAddress = true;           // --no-claim
+    bool claimAddress = false;          // --claim (experimental; --no-claim is accepted and keeps it off)
 };
+
+// Applies a value-less flag (--stdout, --claim, --no-claim) to o; false if a is not one.
+bool applyFlagOption(DaemonOptions& o, std::string_view a);
 
 // Publish tick scheduling. due() returns true on the first call, once at least
 // `period` seconds have passed since the last tick, or when the clock went

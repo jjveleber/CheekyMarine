@@ -29,7 +29,8 @@ constexpr const char* kUsage =
     "  --rawlog DIR    write raw frames to rotating candump -L files in DIR\n"
     "  --pgns PATH     canboat.json PGN database (default: installed copy, else source tree)\n"
     "  --hz N          publish rate in Hz (default 2)\n"
-    "  --no-claim      do not send an ISO address claim on the CAN bus\n"
+    "  --claim         send an ISO address claim on the CAN bus (experimental, off by default)\n"
+    "  --no-claim      do not send an address claim (the default; accepted for compatibility)\n"
     "  --help          show this help\n"
     "  --version       show the version\n";
 
@@ -69,10 +70,8 @@ int main(int argc, char** argv) {
         } else if (a == "--version") {
             std::cout << "n2kd " << n2k::version() << "\n";
             return 0;
-        } else if (a == "--stdout") {
-            opts.stdoutJson = true;
-        } else if (a == "--no-claim") {
-            opts.claimAddress = false;
+        } else if (n2k::applyFlagOption(opts, a)) {
+            continue;
         } else if (a == "--can" || a == "--replay" || a == "--speed" || a == "--socket" || a == "--rawlog" ||
                    a == "--pgns" || a == "--hz") {
             auto v = value();

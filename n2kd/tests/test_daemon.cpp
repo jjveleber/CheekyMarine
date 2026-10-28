@@ -209,3 +209,16 @@ TEST_CASE("an empty ais message is sent when the last target expires") {
     REQUIRE(ais[0]["targets"].size() == 1);
     REQUIRE(ais[1]["targets"].empty());
 }
+
+TEST_CASE("address claiming is off by default and enabled only by --claim") {
+    n2k::DaemonOptions o;
+    REQUIRE_FALSE(o.claimAddress);
+    REQUIRE(n2k::applyFlagOption(o, "--claim"));
+    REQUIRE(o.claimAddress);
+    REQUIRE(n2k::applyFlagOption(o, "--no-claim"));
+    REQUIRE_FALSE(o.claimAddress);
+    REQUIRE(n2k::applyFlagOption(o, "--stdout"));
+    REQUIRE(o.stdoutJson);
+    REQUIRE_FALSE(n2k::applyFlagOption(o, "--can"));
+    REQUIRE(runDaemon({"--replay", FIXTURE("mixed.log"), "--speed", "0", "--stdout", "--claim"}).exitCode == 0);
+}

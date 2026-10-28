@@ -22,7 +22,8 @@ n2kd (--can IFACE | --replay FILE) [options]
   --rawlog DIR    write raw frames to rotating candump -L files in DIR
   --pgns PATH     canboat.json PGN database (default: installed copy, else source tree)
   --hz N          publish rate in Hz (default 2)
-  --no-claim      do not send an ISO address claim on the CAN bus
+  --claim         send an ISO address claim on the CAN bus (experimental, off by default)
+  --no-claim      do not send an address claim (the default; accepted for compatibility)
   --help, --version
 ```
 
@@ -36,7 +37,7 @@ Behavior:
 
 - Snapshots go out at `--hz`: a `vessel` snapshot every tick, and an `ais` snapshot when targets exist and either their content (ignoring `t` and per-target `age` and `posAge`) changed since the last one sent or a new client connected, plus one empty-targets `ais` snapshot when the last target expires. Socket clients first receive a `hello` line; `--stdout` prints snapshots only, one JSON object per line.
 - Live ticks are scheduled on the monotonic clock, so wall clock steps do not pause publishing; snapshots carry wall time. In replay mode the clock is the timestamp of the last frame read, so freshness and ticks follow the log, not the wall clock. A final snapshot is printed at end of file, then n2kd exits 0.
-- With `--can`, if the interface cannot be opened n2kd logs once and retries every 5 s while still serving clients. After opening it sends one ISO address claim (PGN 60928, fixed unique number) unless `--no-claim`; it never sends anything else.
+- With `--can`, if the interface cannot be opened n2kd logs once and retries every 5 s while still serving clients. By default n2kd is a listen-only node and never transmits. Address claiming is experimental and off by default: with `--claim` it sends one ISO address claim (PGN 60928, fixed unique number) from the null address after opening, with no arbitration and no reply to ISO Request. A later plan implements proper claiming and arbitration from a non-null address.
 - If the socket's parent directory is missing it is created.
 - Exit codes: 0 clean stop (SIGTERM/SIGINT) or end of replay; 1 bad options, unopenable replay file or socket; 2 unreadable or unparsable `canboat.json`.
 

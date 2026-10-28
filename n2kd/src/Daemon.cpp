@@ -149,6 +149,19 @@ double steadySeconds() { return std::chrono::duration<double>(Steady::now().time
 
 }  // namespace
 
+bool applyFlagOption(DaemonOptions& o, std::string_view a) {
+    if (a == "--stdout") {
+        o.stdoutJson = true;
+    } else if (a == "--claim") {
+        o.claimAddress = true;
+    } else if (a == "--no-claim") {
+        o.claimAddress = false;
+    } else {
+        return false;
+    }
+    return true;
+}
+
 std::expected<Daemon, std::string> Daemon::create(DaemonOptions opts, PgnDatabase db) {
     if (opts.canInterface.has_value() == opts.replayFile.has_value()) {
         return std::unexpected("exactly one of --can or --replay is required");
