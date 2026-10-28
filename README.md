@@ -41,7 +41,9 @@ Behavior:
 - If the socket's parent directory is missing it is created.
 - Exit codes: 0 clean stop (SIGTERM/SIGINT) or end of replay; 1 bad options, unopenable replay file or socket; 2 unreadable or unparsable `canboat.json`.
 
-`cmake --install build` installs the binary, `canboat.json` and `lib/systemd/system/n2kd.service`.
+`cmake --install build` installs `bin/n2kd`, `share/cheekymarine/canboat.json` and `lib/systemd/system/n2kd.service` under `CMAKE_INSTALL_PREFIX` (default `/usr/local`; configure with `-DCMAKE_INSTALL_PREFIX=/usr` to match the release tarballs). The unit is generated at configure time so its `ExecStart` points at the installed binary. The default `--pgns` is the installed `canboat.json`; builds with `-DN2K_SOURCE_PGNS_FALLBACK=ON` (the default) also fall back to the source tree copy, release builds turn it off.
+
+The unit runs n2kd as user and group `cheekymarine`, so the socket `/run/cheekymarine/n2k.sock` is owned by that group with mode 0660. The image plan creates the `cheekymarine` user and adds the app user to the `cheekymarine` group so it can open the socket. On a hand-built system create them yourself, for example `sudo useradd --system --no-create-home --shell /usr/sbin/nologin cheekymarine` and `sudo usermod -aG cheekymarine APPUSER`.
 
 ## JSON messages
 
@@ -69,10 +71,17 @@ Units are the NMEA 2000 SI units canboat reports: `t` and `gnssTime` epoch secon
 1. Bump `VERSION` in the `project(...)` line of the root `CMakeLists.txt` and commit.
 2. Tag and push: `git tag vX.Y.Z && git push origin vX.Y.Z`.
 
-The `Release` workflow runs on the tag, builds and tests x86_64, cross-builds aarch64 (fully static), and attaches `n2kd-X.Y.Z-x86_64.tar.gz` and `n2kd-X.Y.Z-aarch64.tar.gz` to a GitHub release. Each tarball contains `n2kd`, `n2kd.service`, `canboat.json`, `LICENSE`, `canboat-LICENSE` and `SHA256SUMS`.
+The `Release` workflow runs on the tag, builds and tests x86_64, cross-builds aarch64 (fully static), and attaches `n2kd-X.Y.Z-x86_64.tar.gz` and `n2kd-X.Y.Z-aarch64.tar.gz` to a GitHub release. Each tarball holds one top-level directory `n2kd-X.Y.Z-ARCH/` containing an install tree for prefix `/usr` (`usr/bin/n2kd`, `usr/share/cheekymarine/canboat.json`, `usr/lib/systemd/system/n2kd.service`) plus `LICENSE`, `canboat-LICENSE`, `THIRD_PARTY_NOTICES` and `SHA256SUMS`. `scripts/package-n2kd.sh BUILD_DIR VERSION ARCH` builds it from a build configured with `-DCMAKE_INSTALL_PREFIX=/usr`.
 
 The tag must equal the CMake project version (`scripts/check-version-tag.sh vX.Y.Z` checks this locally), otherwise the workflow fails before building.
 
-The aarch64 tarball is statically linked and runs on any Raspberry Pi OS. The x86_64 tarball is dynamically linked and needs glibc 2.38 or newer (Ubuntu 24.04 class).
+The aarch64 tarball is statically linked and runs on any 64-bit Raspberry Pi OS. The x86_64 tarball is dynamically linked and needs glibc 2.38 or newer (Ubuntu 24.04 class).
 
-The tarball's `n2kd` looks for `canboat.json` at `/usr/local/share/cheekymarine/canboat.json` by default, so either install the file there or pass `--pgns ./canboat.json`.
+To install, extract only the `usr` tree onto `/` (the licenses and checksums stay out of `/`):
+
+```bash
+sudo tar -C / --strip-components=1 --no-overwrite-dir -xzf n2kd-X.Y.Z-aarch64.tar.gz n2kd-X.Y.Z-aarch64/usr
+sudo systemctl daemon-reload
+```
+
+The installed `n2kd` finds `canboat.json` at `/usr/share/cheekymarine/canboat.json` by default.

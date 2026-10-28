@@ -1,0 +1,36 @@
+Third-party components used by n2kd
+===================================
+
+nlohmann/json
+  License: MIT
+  Source: https://github.com/nlohmann/json
+  Used as a header-only library compiled into n2kd.
+
+canboat PGN database (canboat.json)
+  License: Apache-2.0 (full text in canboat-LICENSE)
+  Source: https://github.com/canboat/canboat
+  Distributed unmodified as usr/share/cheekymarine/canboat.json.
+
+Catch2
+  License: BSL-1.0
+  Source: https://github.com/catchorg/Catch2
+  Used only to build the unit tests. Not distributed in release tarballs.
+
+Statically linked runtime (aarch64 release tarball only)
+--------------------------------------------------------
+
+The aarch64 n2kd binary is fully statically linked and contains:
+
+GNU C Library (glibc)
+  License: LGPL-2.1-or-later
+libstdc++ and libgcc (GCC runtime libraries)
+  License: GPL-3.0 with the GCC Runtime Library Exception
+
+The corresponding source for these libraries is available from the Ubuntu
+24.04 cross-toolchain packages used to build the binary (gcc-aarch64-linux-gnu,
+g++-aarch64-linux-gnu, libc6-dev-arm64-cross and their source packages). To
+allow relinking against a modified C library, the object files n2kd was built
+from are available on request from the project maintainer.
+
+The x86_64 release tarball links these libraries dynamically from the host
+system.

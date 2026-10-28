@@ -6,6 +6,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 option(N2K_BUILD_TESTS "Build the unit tests (fetches Catch2)" ON)
+option(N2K_SOURCE_PGNS_FALLBACK "Compile the source-tree canboat.json path into n2kd as a fallback default" ON)
 
 include(cmake/Dependencies.cmake)
 

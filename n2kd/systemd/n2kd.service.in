@@ -3,7 +3,9 @@ Description=CheekyMarine NMEA 2000 daemon
 After=network.target
 
 [Service]
-ExecStart=/usr/bin/n2kd --can can0 --rawlog /var/lib/cheekymarine/rawlog
+ExecStart=@CMAKE_INSTALL_FULL_BINDIR@/n2kd --can can0 --rawlog /var/lib/cheekymarine/rawlog
+User=cheekymarine
+Group=cheekymarine
 Restart=always
 RestartSec=2
 RuntimeDirectory=cheekymarine

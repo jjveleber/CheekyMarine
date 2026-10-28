@@ -48,9 +48,11 @@ int badOption(const std::string& msg) {
 }
 
 std::filesystem::path defaultCanboatJson() {
+#ifdef N2K_CANBOAT_JSON
     std::error_code ec;
-    if (std::filesystem::exists(N2K_CANBOAT_JSON_INSTALLED, ec)) return N2K_CANBOAT_JSON_INSTALLED;
-    return N2K_CANBOAT_JSON;
+    if (!std::filesystem::exists(N2K_CANBOAT_JSON_INSTALLED, ec)) return N2K_CANBOAT_JSON;
+#endif
+    return N2K_CANBOAT_JSON_INSTALLED;
 }
 
 }  // namespace

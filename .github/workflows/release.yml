@@ -30,7 +30,9 @@ jobs:
       - name: Test
         run: ctest --test-dir build-test --output-on-failure
       - name: Configure x86_64 release
-        run: cmake -S . -B build-x86_64 -G Ninja -DCMAKE_BUILD_TYPE=Release -DN2K_BUILD_TESTS=OFF
+        run: >
+          cmake -S . -B build-x86_64 -G Ninja -DCMAKE_BUILD_TYPE=Release -DN2K_BUILD_TESTS=OFF
+          -DCMAKE_INSTALL_PREFIX=/usr -DN2K_SOURCE_PGNS_FALLBACK=OFF
       - name: Build x86_64 release
         run: cmake --build build-x86_64 --target n2kd
       - name: Configure aarch64 release
@@ -39,6 +41,8 @@ jobs:
           -DCMAKE_TOOLCHAIN_FILE=cmake/toolchains/aarch64-linux-gnu.cmake
           -DCMAKE_BUILD_TYPE=Release
           -DN2K_BUILD_TESTS=OFF
+          -DCMAKE_INSTALL_PREFIX=/usr
+          -DN2K_SOURCE_PGNS_FALLBACK=OFF
           -DCMAKE_EXE_LINKER_FLAGS="-static"
       - name: Build aarch64 release
         run: cmake --build build-aarch64 --target n2kd
