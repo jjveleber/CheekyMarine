@@ -32,3 +32,14 @@ TEST_CASE("stream source yields frames and counts skipped lines") {
     REQUIRE(src.next()); REQUIRE(src.next()); REQUIRE_FALSE(src.next());
     REQUIRE(src.skippedLines() == 1);
 }
+
+TEST_CASE("rejects non-finite timestamps") {
+    REQUIRE_FALSE(n2k::LogFileSource::parseLine("(nan) can0 09F80123#3021601C589A15B7"));
+    REQUIRE_FALSE(n2k::LogFileSource::parseLine("(inf) can0 09F80123#3021601C589A15B7"));
+    REQUIRE_FALSE(n2k::LogFileSource::parseLine("(-inf) can0 09F80123#3021601C589A15B7"));
+    REQUIRE_FALSE(n2k::LogFileSource::parseLine("(1e999) can0 09F80123#3021601C589A15B7"));
+    std::istringstream in("(nan) can0 09F80123#3021601C589A15B7\n(2.0) can0 0DF50B10#FFA2050000D4FEFF\n");
+    n2k::LogFileSource src(in);
+    REQUIRE(src.next()); REQUIRE_FALSE(src.next());
+    REQUIRE(src.skippedLines() == 1);
+}

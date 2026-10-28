@@ -17,7 +17,8 @@ const AisTarget* AisTargets::find(uint32_t mmsi) const {
 size_t AisTargets::expire(double now, double maxAgeSeconds) {
     size_t removed = 0;
     for (auto it = targets_.begin(); it != targets_.end();) {
-        if (now - it->second.lastSeen > maxAgeSeconds) {
+        const double age = now - it->second.lastSeen;
+        if (age > maxAgeSeconds || age < -1.0) {  // more than 1 s in the future also expires
             it = targets_.erase(it);
             ++removed;
         } else {

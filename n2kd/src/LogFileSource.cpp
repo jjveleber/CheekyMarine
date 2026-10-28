@@ -1,6 +1,7 @@
 #include "n2k/LogFileSource.h"
 
 #include <charconv>
+#include <cmath>
 #include <cstdlib>
 #include <ctime>
 #include <string>
@@ -27,7 +28,7 @@ bool parseDouble(std::string_view s, double& out) {
     std::string tmp(s);
     char* end = nullptr;
     out = std::strtod(tmp.c_str(), &end);
-    return end == tmp.c_str() + tmp.size();
+    return end == tmp.c_str() + tmp.size() && std::isfinite(out);
 }
 
 std::optional<CanFrame> parseCandump(std::string_view line) {

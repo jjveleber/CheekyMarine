@@ -57,3 +57,16 @@ TEST_CASE("stale partial expires") {
     fa.expire(12.0);
     REQUIRE(fa.droppedIncomplete() == 1);
 }
+TEST_CASE("partial started in the future expires") {
+    std::vector<uint8_t> p(28, 1);
+    auto fr = encodeFastPacket(0x11F80E30, 0, p);
+    n2k::FastPacketAssembler fa([](uint32_t) { return true; });
+    fr[0].timestamp = 1e300;
+    fa.push(fr[0]);
+    fa.expire(5.0);
+    REQUIRE(fa.droppedIncomplete() == 1);
+    fr[0].timestamp = 5.5;
+    fa.push(fr[0]);
+    fa.expire(5.0);                     // within one second: kept
+    REQUIRE(fa.droppedIncomplete() == 1);
+}

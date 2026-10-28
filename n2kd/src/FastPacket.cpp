@@ -61,7 +61,8 @@ std::optional<N2kMessage> FastPacketAssembler::push(const CanFrame& frame) {
 
 void FastPacketAssembler::expire(double now, double maxAgeSeconds) {
     for (auto it = partials_.begin(); it != partials_.end();) {
-        if (it->second.startTime < now - maxAgeSeconds) {
+        const double start = it->second.startTime;
+        if (start < now - maxAgeSeconds || start > now + 1.0) {  // more than 1 s in the future also expires
             ++dropped_;
             it = partials_.erase(it);
         } else {

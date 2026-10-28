@@ -10,7 +10,10 @@ template <class T> struct Aged {
     std::optional<T> value;
     double updatedAt = 0;  // epoch s
     void set(T v, double now) { value = v; updatedAt = now; }
-    bool fresh(double now, double maxAge) const { return value && now - updatedAt <= maxAge; }
+    // A stamp more than 1 s in the future (clock stepped back, bogus replay time) is not current.
+    bool fresh(double now, double maxAge) const {
+        return value && now - updatedAt <= maxAge && now >= updatedAt - 1.0;
+    }
 };
 
 struct VesselState {

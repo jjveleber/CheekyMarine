@@ -23,7 +23,8 @@ public:
 
     // Single-frame PGNs return immediately; fast-packet PGNs return on completion.
     std::optional<N2kMessage> push(const CanFrame& frame);
-    // Drop partial messages whose first frame is older than now - maxAgeSeconds.
+    // Drop partial messages whose first frame is older than now - maxAgeSeconds
+    // or more than 1 s in the future.
     void expire(double now, double maxAgeSeconds = 1.0);
     size_t droppedIncomplete() const { return dropped_; }
 
