@@ -1,6 +1,8 @@
 [Unit]
 Description=CheekyMarine NMEA 2000 daemon
 After=network.target
+# Keep restarting however often n2kd exits (Restart=always); never hit the start limit.
+StartLimitIntervalSec=0
 
 [Service]
 ExecStart=@CMAKE_INSTALL_FULL_BINDIR@/n2kd --can can0 --rawlog /var/lib/cheekymarine/rawlog

@@ -1,9 +1,9 @@
 Third-party components used by n2kd
 ===================================
 
-nlohmann/json
-  License: MIT
-  Source: https://github.com/nlohmann/json
+nlohmann/json v3.12.0
+  License: MIT (full text below and in nlohmann_json-LICENSE.MIT)
+  Source: https://github.com/nlohmann/json (tag v3.12.0, file LICENSE.MIT)
   Used as a header-only library compiled into n2kd.
 
 canboat PGN database (canboat.json)
@@ -16,21 +16,30 @@ Catch2
   Source: https://github.com/catchorg/Catch2
   Used only to build the unit tests. Not distributed in release tarballs.
 
-Statically linked runtime (aarch64 release tarball only)
---------------------------------------------------------
+GCC runtime libraries
+  The aarch64 binary links libstdc++ and libgcc statically under the GCC Runtime Library Exception; glibc is always dynamic.
 
-The aarch64 n2kd binary is fully statically linked and contains:
+nlohmann/json license text
+--------------------------
 
-GNU C Library (glibc)
-  License: LGPL-2.1-or-later
-libstdc++ and libgcc (GCC runtime libraries)
-  License: GPL-3.0 with the GCC Runtime Library Exception
+MIT License 
 
-The corresponding source for these libraries is available from the Ubuntu
-24.04 cross-toolchain packages used to build the binary (gcc-aarch64-linux-gnu,
-g++-aarch64-linux-gnu, libc6-dev-arm64-cross and their source packages). To
-allow relinking against a modified C library, the object files n2kd was built
-from are available on request from the project maintainer.
+Copyright (c) 2013-2025 Niels Lohmann
 
-The x86_64 release tarball links these libraries dynamically from the host
-system.
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.

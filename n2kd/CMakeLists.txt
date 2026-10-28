@@ -14,12 +14,12 @@ target_link_libraries(n2kd PRIVATE n2kcore)
 target_compile_definitions(n2kd PRIVATE
     N2K_CANBOAT_JSON_INSTALLED="${CMAKE_INSTALL_FULL_DATADIR}/cheekymarine/canboat.json")
 if(N2K_SOURCE_PGNS_FALLBACK)
-    target_compile_definitions(n2kd PRIVATE N2K_CANBOAT_JSON="${CMAKE_SOURCE_DIR}/third_party/canboat/canboat.json")
+    target_compile_definitions(n2kd PRIVATE N2K_CANBOAT_JSON="${PROJECT_SOURCE_DIR}/third_party/canboat/canboat.json")
 endif()
 
 if(N2K_BUILD_TESTS)
     add_executable(n2kd_tests tests/test_version.cpp tests/test_frame.cpp tests/test_logfilesource.cpp tests/test_socketcan.cpp tests/test_fastpacket.cpp tests/test_pgndecoder.cpp tests/test_state.cpp tests/test_mappers.cpp tests/test_json.cpp tests/test_publisher.cpp tests/test_rawlogger.cpp tests/test_addressclaim.cpp tests/test_daemon.cpp)
-    target_compile_definitions(n2kd_tests PRIVATE N2K_CANBOAT_JSON="${CMAKE_SOURCE_DIR}/third_party/canboat/canboat.json"
+    target_compile_definitions(n2kd_tests PRIVATE N2K_CANBOAT_JSON="${PROJECT_SOURCE_DIR}/third_party/canboat/canboat.json"
         N2KD_BINARY="$<TARGET_FILE:n2kd>" N2K_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures"
         N2K_EXPECTED_VERSION="${PROJECT_VERSION}")
     target_link_libraries(n2kd_tests PRIVATE n2kcore Catch2::Catch2WithMain)
@@ -29,6 +29,7 @@ if(N2K_BUILD_TESTS)
     catch_discover_tests(n2kd_tests)
 endif()
 
-install(FILES ${CMAKE_SOURCE_DIR}/third_party/canboat/canboat.json DESTINATION ${CMAKE_INSTALL_DATADIR}/cheekymarine)
+install(FILES ${PROJECT_SOURCE_DIR}/third_party/canboat/canboat.json DESTINATION ${CMAKE_INSTALL_DATADIR}/cheekymarine)
 install(TARGETS n2kd)
 install(FILES ${CMAKE_CURRENT_BINARY_DIR}/n2kd.service DESTINATION lib/systemd/system)
+install(FILES systemd/cheekymarine.sysusers DESTINATION lib/sysusers.d RENAME cheekymarine.conf)
