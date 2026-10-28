@@ -41,3 +41,12 @@ Behavior:
 - Exit codes: 0 clean stop (SIGTERM/SIGINT) or end of replay; 1 bad options, unopenable replay file or socket; 2 unreadable or unparsable `canboat.json`.
 
 `cmake --install build` installs the binary, `canboat.json` and `lib/systemd/system/n2kd.service`.
+
+## Cutting a release
+
+1. Bump `VERSION` in the `project(...)` line of the root `CMakeLists.txt` and commit.
+2. Tag and push: `git tag vX.Y.Z && git push origin vX.Y.Z`.
+
+The `Release` workflow runs on the tag, builds and tests x86_64, cross-builds aarch64 (static libstdc++), and attaches `n2kd-X.Y.Z-x86_64.tar.gz` and `n2kd-X.Y.Z-aarch64.tar.gz` to a GitHub release. Each tarball contains `n2kd`, `n2kd.service`, `canboat.json`, `LICENSE`, `canboat-LICENSE` and `SHA256SUMS`.
+
+The tag must equal the CMake project version (`scripts/check-version-tag.sh vX.Y.Z` checks this locally), otherwise the workflow fails before building.
