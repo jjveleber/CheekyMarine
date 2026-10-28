@@ -232,7 +232,7 @@ int Daemon::run(std::atomic<bool>& stop) {
                 auto target = wallStart + std::chrono::duration_cast<Steady::duration>(
                                               std::chrono::duration<double>(pacer.due(f->timestamp)));
                 if (pacer.capped() && !loggedCap) {
-                    std::cerr << "n2kd: replay gap longer than " << kMaxReplaySleepSeconds / opts_.replaySpeed
+                    std::cerr << "n2kd: replay gap longer than " << kMaxReplaySleepSeconds * opts_.replaySpeed
                               << " s of log time shortened to " << kMaxReplaySleepSeconds << " s\n";
                     loggedCap = true;
                 }
