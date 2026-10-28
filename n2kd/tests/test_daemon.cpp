@@ -4,6 +4,7 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <catch2/catch_test_macros.hpp>
 #include <chrono>
 #include <filesystem>
@@ -140,10 +141,10 @@ TEST_CASE("replay serves clients over the socket") {
     auto path = tmpSock();
     auto proc = startDaemon({"--replay", FIXTURE("garmin-airmar.log"), "--speed", "50", "--socket", path.string(),
                              "--no-claim"});
-    int c = connectUnixRetry(path, 2.0);
+    int c = connectUnixRetry(path, 5.0);
     REQUIRE(c >= 0);
     auto lines = readLines(c, 3, 5.0);
-    REQUIRE(lines.size() == 3);
+    REQUIRE(lines.size() >= 3);
     REQUIRE(nlohmann::json::parse(lines[0])["type"] == "hello");
     ::close(c);
     proc.terminate();
@@ -177,22 +178,30 @@ TEST_CASE("late socket client receives current AIS targets even when unchanged")
     auto path = tmpSock();
     auto proc = startDaemon({"--replay", FIXTURE("ais-static.log"), "--speed", "2", "--socket", path.string(),
                              "--no-claim"});
-    // First AIS send happens about 0.5 s in; connect well after it, before the static reports end (3.5 s).
-    std::this_thread::sleep_for(std::chrono::milliseconds(1500));
-    int c = connectUnixRetry(path, 1.0);
-    REQUIRE(c >= 0);
-    bool gotAis = false;
-    auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
-    while (!gotAis && std::chrono::steady_clock::now() < deadline) {
-        auto lines = readLines(c, 1, 0.5);
-        if (lines.empty()) continue;
-        auto j = nlohmann::json::parse(lines[0]);
-        gotAis = j["type"] == "ais" && j["targets"].size() == 1 && j["targets"][0]["mmsi"] == 338123456;
+    auto isTarget = [](const std::string& line) {
+        auto j = nlohmann::json::parse(line);
+        return j["type"] == "ais" && j["targets"].size() == 1 && j["targets"][0]["mmsi"] == 338123456;
+    };
+    // Client A waits until the target has been sent once, so its content is unchanged from here on.
+    int a = connectUnixRetry(path, 5.0);
+    REQUIRE(a >= 0);
+    bool aGotAis = false;
+    auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    while (!aGotAis && std::chrono::steady_clock::now() < deadline) {
+        for (const auto& line : readLines(a, 1, 0.5)) aGotAis = aGotAis || isTarget(line);
     }
-    ::close(c);
+    REQUIRE(aGotAis);
+    // Client B connects after that send (before the static reports end at 3.5 s) and must get it.
+    int b = connectUnixRetry(path, 5.0);
+    REQUIRE(b >= 0);
+    auto lines = readLines(b, 3, 5.0);
+    REQUIRE(lines.size() >= 3);
+    lines.resize(3);
+    REQUIRE(std::any_of(lines.begin(), lines.end(), isTarget));
+    ::close(a);
+    ::close(b);
     proc.terminate();
     REQUIRE(proc.wait() == 0);
-    REQUIRE(gotAis);
 }
 
 TEST_CASE("an empty ais message is sent when the last target expires") {

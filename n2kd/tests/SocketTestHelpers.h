@@ -36,7 +36,9 @@ inline int connectUnix(const std::filesystem::path& path) {
     return fd;
 }
 
-// Reads until n newline-terminated lines have arrived or the timeout expires.
+// Reads until at least n newline-terminated lines have arrived or the timeout expires,
+// then returns every complete line received (possibly more than n, never dropping any
+// that arrived in the same read). A trailing partial line is discarded.
 inline std::vector<std::string> readLines(int fd, size_t n, double timeoutSeconds = 1.0) {
     std::vector<std::string> lines;
     std::string buf;
@@ -51,7 +53,7 @@ inline std::vector<std::string> readLines(int fd, size_t n, double timeoutSecond
         if (r <= 0) break;
         buf.append(tmp, static_cast<size_t>(r));
         size_t pos;
-        while (lines.size() < n && (pos = buf.find('\n')) != std::string::npos) {
+        while ((pos = buf.find('\n')) != std::string::npos) {
             lines.push_back(buf.substr(0, pos));
             buf.erase(0, pos + 1);
         }
