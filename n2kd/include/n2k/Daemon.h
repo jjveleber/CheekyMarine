@@ -43,18 +43,22 @@ class TickSchedule {
 public:
     explicit TickSchedule(double period) : period_(period) {}
     bool due(double now) {
-        if (last_ && now >= *last_ && now - *last_ < period_) return false;
+        if (armed_ && now >= last_ && now - last_ < period_) return false;
         last_ = now;
+        armed_ = true;
         return true;
     }
     double secondsUntilDue(double now) const {
-        if (!last_ || now < *last_) return 0.0;
-        return std::max(0.0, *last_ + period_ - now);
+        if (!armed_ || now < last_) return 0.0;
+        return std::max(0.0, last_ + period_ - now);
     }
 
 private:
     double period_;
-    std::optional<double> last_;
+    // Value plus flag rather than std::optional<double>: GCC 12 reports a false
+    // maybe-uninitialized on the optional at -O3.
+    double last_ = 0.0;
+    bool armed_ = false;  // a tick has happened; last_ is valid
 };
 
 // Replay pacing never sleeps longer than this (wall seconds) for one gap between frames.
@@ -69,8 +73,8 @@ class ReplayPacer {
 public:
     explicit ReplayPacer(double speed) : speed_(speed) {}
     double due(double ts) {
-        if (prev_) {
-            double gap = (ts - *prev_) / speed_;
+        if (started_) {
+            double gap = (ts - prev_) / speed_;
             if (gap > kMaxReplaySleepSeconds) {
                 gap = kMaxReplaySleepSeconds;
                 capped_ = true;
@@ -78,13 +82,15 @@ public:
             if (gap > 0) offset_ += gap;
         }
         prev_ = ts;
+        started_ = true;
         return offset_;
     }
     bool capped() const { return capped_; }
 
 private:
     double speed_;
-    std::optional<double> prev_;
+    double prev_ = 0;       // timestamp of the previous frame, valid once started_
+    bool started_ = false;
     double offset_ = 0;
     bool capped_ = false;
 };

@@ -103,11 +103,12 @@ public:
         if (!empty || lastSentNonEmpty) {
             auto j = aisSnapshot(ais_, now, maxAis_);
             auto content = aisContent(j);
-            const bool refresh = !empty && (!lastAisAt_ || now - *lastAisAt_ >= kAisRefreshSeconds || now < *lastAisAt_);
+            const bool refresh = !empty && (!aisSent_ || now - lastAisAt_ >= kAisRefreshSeconds || now < lastAisAt_);
             if (resendAis_ || refresh || content != lastAis_) {
                 emit(j);
                 lastAis_ = std::move(content);
                 lastAisAt_ = now;
+                aisSent_ = true;
             }
         }
         resendAis_ = false;
@@ -137,7 +138,8 @@ private:
     AisTargets ais_;
     std::optional<RawLogger> rawlog_;
     nlohmann::json lastAis_;  // last AIS content sent; null = none yet
-    std::optional<double> lastAisAt_;  // time of the last AIS send
+    double lastAisAt_ = 0;  // time of the last AIS send, valid once aisSent_
+    bool aisSent_ = false;
     bool resendAis_ = false;  // a client connected since the last tick
     size_t frames_ = 0;
     size_t undecodable_ = 0;
