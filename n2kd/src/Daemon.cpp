@@ -219,20 +219,23 @@ int Daemon::run(std::atomic<bool>& stop) {
     if (replay_) {
         // Replay clock: "now" is the timestamp of the most recent frame.
         LogFileSource src(*replay_);
-        std::optional<double> firstTs;
+        ReplayPacer pacer(opts_.replaySpeed > 0 ? opts_.replaySpeed : 1.0);
         Steady::time_point wallStart;
+        bool loggedCap = false;
         double now = 0;
         bool any = false;
         while (!stop) {
             auto f = src.next();
             if (!f) break;
             if (opts_.replaySpeed > 0) {
-                if (!firstTs) {
-                    firstTs = f->timestamp;
-                    wallStart = Steady::now();
-                }
+                if (!any) wallStart = Steady::now();
                 auto target = wallStart + std::chrono::duration_cast<Steady::duration>(
-                                              std::chrono::duration<double>((f->timestamp - *firstTs) / opts_.replaySpeed));
+                                              std::chrono::duration<double>(pacer.due(f->timestamp)));
+                if (pacer.capped() && !loggedCap) {
+                    std::cerr << "n2kd: replay gap longer than " << kMaxReplaySleepSeconds / opts_.replaySpeed
+                              << " s of log time shortened to " << kMaxReplaySleepSeconds << " s\n";
+                    loggedCap = true;
+                }
                 waitUntil(target, pub, pipe, stop);
                 if (stop) break;
             }

@@ -43,3 +43,14 @@ TEST_CASE("rejects non-finite timestamps") {
     REQUIRE(src.next()); REQUIRE_FALSE(src.next());
     REQUIRE(src.skippedLines() == 1);
 }
+
+TEST_CASE("rejects timestamps after year 2096 (above 4e9) as unparseable") {
+    REQUIRE_FALSE(n2k::LogFileSource::parseLine("(1e300) can0 09F80123#3021601C589A15B7"));
+    REQUIRE_FALSE(n2k::LogFileSource::parseLine("(4000000000.5) can0 09F80123#3021601C589A15B7"));
+    REQUIRE_FALSE(n2k::LogFileSource::parseLine("2100-01-01-00:00:00.000,3,128267,4,255,8,25,1b,01,00,00,00,00,ff"));
+    REQUIRE(n2k::LogFileSource::parseLine("(3999999999.0) can0 09F80123#3021601C589A15B7"));
+    std::istringstream in("(1e300) can0 09F80123#3021601C589A15B7\n(2.0) can0 0DF50B10#FFA2050000D4FEFF\n");
+    n2k::LogFileSource src(in);
+    REQUIRE(src.next()); REQUIRE_FALSE(src.next());
+    REQUIRE(src.skippedLines() == 1);
+}

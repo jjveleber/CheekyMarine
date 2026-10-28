@@ -10,6 +10,8 @@
 namespace n2k {
 namespace {
 
+constexpr double kMaxTimestamp = 4e9;  // epoch s, year 2096
+
 std::string_view trim(std::string_view s) {
     while (!s.empty() && (s.front() == ' ' || s.front() == '\t')) s.remove_prefix(1);
     while (!s.empty() && (s.back() == ' ' || s.back() == '\t' || s.back() == '\r')) s.remove_suffix(1);
@@ -118,8 +120,10 @@ LogFileSource::LogFileSource(std::istream& in) : in_(in) {}
 
 std::optional<CanFrame> LogFileSource::parseLine(std::string_view line) {
     line = trim(line);
-    if (auto f = parseCandump(line)) return f;
-    return parseRaw(line);
+    auto f = parseCandump(line);
+    if (!f) f = parseRaw(line);
+    if (f && f->timestamp > kMaxTimestamp) return std::nullopt;  // implausible: treat as unparseable
+    return f;
 }
 
 std::optional<CanFrame> LogFileSource::next() {

@@ -57,6 +57,38 @@ private:
     std::optional<double> last_;
 };
 
+// Replay pacing never sleeps longer than this (wall seconds) for one gap between frames.
+constexpr double kMaxReplaySleepSeconds = 5.0;
+
+// Replay pacing. due(ts) returns the wall-clock offset in seconds, from the first
+// frame, at which the frame stamped ts should be processed: the sum of the gaps
+// between consecutive frames divided by speed, each gap capped at
+// kMaxReplaySleepSeconds and a backward step counted as zero. capped() reports
+// whether any gap so far was capped.
+class ReplayPacer {
+public:
+    explicit ReplayPacer(double speed) : speed_(speed) {}
+    double due(double ts) {
+        if (prev_) {
+            double gap = (ts - *prev_) / speed_;
+            if (gap > kMaxReplaySleepSeconds) {
+                gap = kMaxReplaySleepSeconds;
+                capped_ = true;
+            }
+            if (gap > 0) offset_ += gap;
+        }
+        prev_ = ts;
+        return offset_;
+    }
+    bool capped() const { return capped_; }
+
+private:
+    double speed_;
+    std::optional<double> prev_;
+    double offset_ = 0;
+    bool capped_ = false;
+};
+
 class Daemon {
 public:
     // The database is loaded by the caller so that a load failure can map to its own

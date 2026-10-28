@@ -204,6 +204,23 @@ TEST_CASE("tick schedule fires on period and after a backward clock step") {
     REQUIRE(s.due(400.6));
 }
 
+TEST_CASE("replay pacing caps each gap at kMaxReplaySleepSeconds of wall time") {
+    n2k::ReplayPacer p(1.0);
+    REQUIRE(p.due(100.0) == 0.0);
+    REQUIRE(p.due(101.5) == 1.5);
+    REQUIRE_FALSE(p.capped());
+    REQUIRE(p.due(101.5 + 86400) == 1.5 + n2k::kMaxReplaySleepSeconds);  // day gap: capped
+    REQUIRE(p.capped());
+    REQUIRE(p.due(102.5 + 86400) == 2.5 + n2k::kMaxReplaySleepSeconds);  // later frames keep their pace
+    REQUIRE(p.due(50.0) == 2.5 + n2k::kMaxReplaySleepSeconds);           // backward step: no wait
+    n2k::ReplayPacer fast(10.0);
+    fast.due(0.0);
+    REQUIRE(fast.due(20.0) == 2.0);  // 20 s of log at speed 10
+    n2k::ReplayPacer slow(0.001);
+    slow.due(0.0);
+    REQUIRE(slow.due(3.9e9) == n2k::kMaxReplaySleepSeconds);  // huge gap at slow speed stays bounded
+}
+
 TEST_CASE("speed below 0.001 is rejected") {
     REQUIRE(runDaemon({"--replay", FIXTURE("mixed.log"), "--speed", "0.0005", "--stdout"}).exitCode == 1);
 }
