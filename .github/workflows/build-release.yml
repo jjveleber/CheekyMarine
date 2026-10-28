@@ -1,0 +1,127 @@
+name: Build release tarballs
+
+# Builds, checks, smoke-runs and packages the x86_64 and aarch64 release tarballs.
+# Called by ci.yml on every push and pull request and by release.yml on a tag.
+# Uploads the artifact "release": n2kd-X.Y.Z-ARCH.tar.gz for both arches plus
+# SHA256SUMS over the tarballs.
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  x86_64:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build
+      - name: Configure
+        run: >
+          cmake -S . -B build-x86_64 -G Ninja -DCMAKE_BUILD_TYPE=Release -DN2K_BUILD_TESTS=OFF
+          -DCMAKE_INSTALL_PREFIX=/usr -DN2K_SOURCE_PGNS_FALLBACK=OFF
+      - name: Read version
+        run: echo "VERSION=$(sed -n 's/^CMAKE_PROJECT_VERSION:STATIC=//p' build-x86_64/CMakeCache.txt)" >> "$GITHUB_ENV"
+      - name: Build
+        run: cmake --build build-x86_64 --target n2kd
+      - name: Check binary
+        run: |
+          info="$(file build-x86_64/n2kd/n2kd)"
+          echo "${info}"
+          if ! echo "${info}" | grep -q 'x86-64'; then echo "not x86-64"; exit 1; fi
+          if ! echo "${info}" | grep -q 'dynamically linked'; then echo "not dynamically linked"; exit 1; fi
+      - name: Smoke run
+        run: |
+          out="$(build-x86_64/n2kd/n2kd --version)"
+          echo "${out}"
+          if [ "${out}" != "n2kd ${VERSION}" ]; then echo "unexpected --version output"; exit 1; fi
+          build-x86_64/n2kd/n2kd --replay n2kd/tests/fixtures/garmin-airmar.log --speed 0 --stdout --no-claim \
+            --pgns third_party/canboat/canboat.json > replay.out
+          last="$(tail -n 1 replay.out)"
+          echo "${last}"
+          if ! echo "${last}" | grep -q '"type":"vessel"'; then echo "last replay line is not a vessel snapshot"; exit 1; fi
+      - name: Package
+        run: scripts/package-n2kd.sh build-x86_64 "${VERSION}" x86_64
+      - uses: actions/upload-artifact@v4
+        with:
+          name: n2kd-x86_64
+          path: n2kd-*-x86_64.tar.gz
+          if-no-files-found: error
+
+  aarch64:
+    # Built against Debian bookworm's glibc 2.36 so the binary runs on Raspberry Pi OS
+    # Bookworm; libstdc++ and libgcc are linked statically, glibc dynamically.
+    runs-on: ubuntu-24.04
+    container: debian:bookworm
+    steps:
+      - name: Install packages
+        run: |
+          apt-get update
+          apt-get install -y cmake ninja-build g++-aarch64-linux-gnu git ca-certificates python3 file qemu-user-static
+      - uses: actions/checkout@v4
+      - name: Configure
+        run: >
+          cmake -S . -B build-aarch64 -G Ninja
+          -DCMAKE_TOOLCHAIN_FILE=cmake/toolchains/aarch64-linux-gnu.cmake
+          -DCMAKE_BUILD_TYPE=Release
+          -DN2K_BUILD_TESTS=OFF
+          -DCMAKE_INSTALL_PREFIX=/usr
+          -DN2K_SOURCE_PGNS_FALLBACK=OFF
+          -DCMAKE_EXE_LINKER_FLAGS="-static-libstdc++ -static-libgcc"
+      - name: Read version
+        run: echo "VERSION=$(sed -n 's/^CMAKE_PROJECT_VERSION:STATIC=//p' build-aarch64/CMakeCache.txt)" >> "$GITHUB_ENV"
+      - name: Build
+        run: cmake --build build-aarch64 --target n2kd
+      - name: Check binary
+        run: |
+          info="$(file build-aarch64/n2kd/n2kd)"
+          echo "${info}"
+          if ! echo "${info}" | grep -q 'aarch64'; then echo "not aarch64"; exit 1; fi
+          if ! echo "${info}" | grep -q 'dynamically linked'; then echo "not dynamically linked"; exit 1; fi
+      - name: Smoke run under qemu
+        run: |
+          out="$(qemu-aarch64-static -L /usr/aarch64-linux-gnu build-aarch64/n2kd/n2kd --version)"
+          echo "${out}"
+          if [ "${out}" != "n2kd ${VERSION}" ]; then echo "unexpected --version output"; exit 1; fi
+          qemu-aarch64-static -L /usr/aarch64-linux-gnu build-aarch64/n2kd/n2kd \
+            --replay n2kd/tests/fixtures/garmin-airmar.log --speed 0 --stdout --no-claim \
+            --pgns third_party/canboat/canboat.json > replay.out
+          last="$(tail -n 1 replay.out)"
+          echo "${last}"
+          if ! echo "${last}" | grep -q '"type":"vessel"'; then echo "last replay line is not a vessel snapshot"; exit 1; fi
+      - name: Package
+        run: scripts/package-n2kd.sh build-aarch64 "${VERSION}" aarch64
+      - uses: actions/upload-artifact@v4
+        with:
+          name: n2kd-aarch64
+          path: n2kd-*-aarch64.tar.gz
+          if-no-files-found: error
+
+  checksums:
+    needs: [x86_64, aarch64]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: n2kd-*
+          merge-multiple: true
+      - name: SHA256SUMS over the tarballs
+        run: |
+          sha256sum n2kd-*.tar.gz > SHA256SUMS
+          cat SHA256SUMS
+          if [ "$(wc -l < SHA256SUMS)" -ne 2 ]; then echo "expected two tarballs"; exit 1; fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release
+          path: |
+            n2kd-*.tar.gz
+            SHA256SUMS
+          if-no-files-found: error
