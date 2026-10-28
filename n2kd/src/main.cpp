@@ -23,7 +23,7 @@ constexpr const char* kUsage =
     "usage: n2kd (--can IFACE | --replay FILE) [options]\n"
     "  --can IFACE     read live frames from a SocketCAN interface (e.g. can0)\n"
     "  --replay FILE   replay a candump -L or canboat RAW log\n"
-    "  --speed N       replay speed factor, 0 = as fast as possible (default 1)\n"
+    "  --speed N       replay speed factor >= 0.001, 0 = as fast as possible (default 1)\n"
     "  --socket PATH   Unix socket to serve JSON on (default /run/cheekymarine/n2k.sock)\n"
     "  --stdout        print JSON snapshots to stdout instead of serving a socket\n"
     "  --rawlog DIR    write raw frames to rotating candump -L files in DIR\n"
@@ -91,7 +91,7 @@ int main(int argc, char** argv) {
             } else {
                 auto n = parseNumber(*v);
                 if (a == "--speed") {
-                    if (!n || *n < 0) return badOption("--speed needs a number >= 0");
+                    if (!n || *n < 0 || (*n > 0 && *n < 0.001)) return badOption("--speed needs 0 or a number >= 0.001");
                     opts.replaySpeed = *n;
                 } else {
                     if (!n || *n <= 0) return badOption("--hz needs a number > 0");

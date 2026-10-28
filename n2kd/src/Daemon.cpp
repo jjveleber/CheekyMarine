@@ -56,8 +56,7 @@ public:
     Pipeline(const DaemonOptions& o, const PgnDatabase& db, Publisher* pub)
         : pub_(pub),
           assembler_([&db](uint32_t pgn) { return db.isFastPacket(pgn); }),
-          decoder_(db),
-          period_(1.0 / o.publishHz) {
+          decoder_(db) {
         if (o.rawLogDir) rawlog_.emplace(*o.rawLogDir, o.canInterface.value_or("can0"));
     }
 
@@ -75,24 +74,35 @@ public:
         mappers_.apply(*d, vs_, ais_);
     }
 
-    bool tickDue(double now) const { return !lastTick_ || now - *lastTick_ >= period_; }
-    double secondsToTick(double now) const { return lastTick_ ? *lastTick_ + period_ - now : 0.0; }
+    // Accepts waiting clients; any new client forces the next tick to resend AIS.
+    void accept() {
+        if (!pub_) return;
+        size_t before = pub_->clientCount();
+        pub_->acceptPending();
+        if (pub_->clientCount() > before) resendAis_ = true;
+    }
 
+    // AIS rule: send the snapshot when targets exist and their content (without `t`
+    // and per-target `age`) differs from the last one sent, or a client connected
+    // since then (resendAis_, set in accept()). Send one empty-targets snapshot when
+    // the set becomes empty so clients drop stale targets. Otherwise send nothing.
     void tick(double now) {
-        lastTick_ = now;
         assembler_.expire(now);
         ais_.expire(now);
         if (rawlog_) rawlog_->flush();
-        if (pub_) pub_->acceptPending();
+        accept();
         emit(vesselSnapshot(vs_, now));
-        if (!ais_.all().empty()) {
+        bool empty = ais_.all().empty();
+        bool lastSentNonEmpty = lastAis_.is_object() && !lastAis_["targets"].empty();
+        if (!empty || lastSentNonEmpty) {
             auto j = aisSnapshot(ais_, now);
             auto content = aisContent(j);
-            if (content != lastAis_) {
+            if (resendAis_ || content != lastAis_) {
                 emit(j);
                 lastAis_ = std::move(content);
             }
         }
+        resendAis_ = false;
     }
 
     void summary(size_t skippedLines) const {
@@ -117,21 +127,22 @@ private:
     VesselState vs_;
     AisTargets ais_;
     std::optional<RawLogger> rawlog_;
-    double period_;
-    std::optional<double> lastTick_;
-    nlohmann::json lastAis_;
+    nlohmann::json lastAis_;  // last AIS content sent; null = none yet
+    bool resendAis_ = false;  // a client connected since the last tick
     size_t frames_ = 0;
     size_t undecodable_ = 0;
 };
 
 // Polls the listening socket (if any) until deadline or stop, accepting clients.
-void waitUntil(Steady::time_point deadline, Publisher* pub, const std::atomic<bool>& stop) {
+void waitUntil(Steady::time_point deadline, Publisher* pub, Pipeline& pipe, const std::atomic<bool>& stop) {
     while (!stop && Steady::now() < deadline) {
         pollfd p{pub ? pub->fd() : -1, POLLIN, 0};
         ::poll(&p, 1, std::max(1, msUntil(deadline)));
-        if (pub && (p.revents & POLLIN)) pub->acceptPending();
+        if (p.revents & POLLIN) pipe.accept();
     }
 }
+
+double steadySeconds() { return std::chrono::duration<double>(Steady::now().time_since_epoch()).count(); }
 
 }  // namespace
 
@@ -160,6 +171,7 @@ std::expected<Daemon, std::string> Daemon::create(DaemonOptions opts, PgnDatabas
 int Daemon::run(std::atomic<bool>& stop) {
     Publisher* pub = pub_ ? &*pub_ : nullptr;
     Pipeline pipe(opts_, *db_, pub);
+    TickSchedule schedule(1.0 / opts_.publishHz);
 
     if (replay_) {
         // Replay clock: "now" is the timestamp of the most recent frame.
@@ -178,13 +190,13 @@ int Daemon::run(std::atomic<bool>& stop) {
                 }
                 auto target = wallStart + std::chrono::duration_cast<Steady::duration>(
                                               std::chrono::duration<double>((f->timestamp - *firstTs) / opts_.replaySpeed));
-                waitUntil(target, pub, stop);
+                waitUntil(target, pub, pipe, stop);
                 if (stop) break;
             }
             pipe.process(*f);
             now = f->timestamp;
             any = true;
-            if (pipe.tickDue(now)) pipe.tick(now);
+            if (schedule.due(now)) pipe.tick(now);  // ticks follow the replay clock
         }
         if (!stop && any) pipe.tick(now);  // final snapshot at end of file
         pipe.summary(src.skippedLines());
@@ -214,7 +226,7 @@ int Daemon::run(std::atomic<bool>& stop) {
         std::vector<pollfd> fds;
         if (can) fds.push_back({can->fd(), POLLIN, 0});
         if (pub) fds.push_back({pub->fd(), POLLIN, 0});
-        int timeout = static_cast<int>(std::clamp(pipe.secondsToTick(wallNow()) * 1000.0 + 1, 0.0, double{kMaxPollMs}));
+        int timeout = static_cast<int>(std::clamp(schedule.secondsUntilDue(steadySeconds()) * 1000.0 + 1, 0.0, double{kMaxPollMs}));
         ::poll(fds.data(), fds.size(), timeout);
         for (const auto& p : fds) {
             if (can && p.fd == can->fd()) {
@@ -228,11 +240,12 @@ int Daemon::run(std::atomic<bool>& stop) {
                                                     std::chrono::duration<double>(kCanRetrySeconds));
                 }
             } else if (pub && p.fd == pub->fd() && (p.revents & POLLIN)) {
-                pub->acceptPending();
+                pipe.accept();
             }
         }
-        double now = wallNow();
-        if (pipe.tickDue(now)) pipe.tick(now);
+        // Ticks run on the steady clock so a wall clock step (NTP, GPS) cannot stall
+        // publishing; snapshots are still stamped and aged with wall time.
+        if (schedule.due(steadySeconds())) pipe.tick(wallNow());
     }
     pipe.summary(0);
     return 0;

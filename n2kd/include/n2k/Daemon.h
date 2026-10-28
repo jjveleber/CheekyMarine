@@ -1,4 +1,5 @@
 #pragma once
+#include <algorithm>
 #include <atomic>
 #include <expected>
 #include <filesystem>
@@ -23,6 +24,27 @@ struct DaemonOptions {
     double publishHz = 2.0;             // --hz
     bool stdoutJson = false;            // --stdout: print snapshots instead of serving a socket
     bool claimAddress = true;           // --no-claim
+};
+
+// Publish tick scheduling. due() returns true on the first call, once at least
+// `period` seconds have passed since the last tick, or when the clock went
+// backwards past the last tick; a true result records now as the last tick.
+class TickSchedule {
+public:
+    explicit TickSchedule(double period) : period_(period) {}
+    bool due(double now) {
+        if (last_ && now >= *last_ && now - *last_ < period_) return false;
+        last_ = now;
+        return true;
+    }
+    double secondsUntilDue(double now) const {
+        if (!last_ || now < *last_) return 0.0;
+        return std::max(0.0, *last_ + period_ - now);
+    }
+
+private:
+    double period_;
+    std::optional<double> last_;
 };
 
 class Daemon {

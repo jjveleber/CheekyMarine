@@ -14,6 +14,7 @@
 #include <vector>
 
 #include "SocketTestHelpers.h"
+#include "n2k/Daemon.h"
 
 namespace {
 
@@ -156,4 +157,55 @@ TEST_CASE("bad options exit 1, missing pgns file exits 2") {
 
 TEST_CASE("garbage lines in replay do not stop the daemon") {
     REQUIRE(runDaemon({"--replay", FIXTURE("mixed.log"), "--speed", "0", "--stdout", "--no-claim"}).exitCode == 0);
+}
+
+TEST_CASE("tick schedule fires on period and after a backward clock step") {
+    n2k::TickSchedule s(0.5);
+    REQUIRE(s.due(1000.0));        // first call
+    REQUIRE_FALSE(s.due(1000.2));  // within period
+    REQUIRE(s.due(1000.5));        // period elapsed
+    REQUIRE(s.due(400.0));         // clock stepped back: due at once, not 600 s later
+    REQUIRE_FALSE(s.due(400.1));
+    REQUIRE(s.due(400.6));
+}
+
+TEST_CASE("speed below 0.001 is rejected") {
+    REQUIRE(runDaemon({"--replay", FIXTURE("mixed.log"), "--speed", "0.0005", "--stdout"}).exitCode == 1);
+}
+
+TEST_CASE("late socket client receives current AIS targets even when unchanged") {
+    auto path = tmpSock();
+    auto proc = startDaemon({"--replay", FIXTURE("ais-static.log"), "--speed", "2", "--socket", path.string(),
+                             "--no-claim"});
+    // First AIS send happens about 0.5 s in; connect well after it, before the static reports end (3.5 s).
+    std::this_thread::sleep_for(std::chrono::milliseconds(1500));
+    int c = connectUnixRetry(path, 1.0);
+    REQUIRE(c >= 0);
+    bool gotAis = false;
+    auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+    while (!gotAis && std::chrono::steady_clock::now() < deadline) {
+        auto lines = readLines(c, 1, 0.5);
+        if (lines.empty()) continue;
+        auto j = nlohmann::json::parse(lines[0]);
+        gotAis = j["type"] == "ais" && j["targets"].size() == 1 && j["targets"][0]["mmsi"] == 338123456;
+    }
+    ::close(c);
+    proc.terminate();
+    REQUIRE(proc.wait() == 0);
+    REQUIRE(gotAis);
+}
+
+TEST_CASE("an empty ais message is sent when the last target expires") {
+    auto out = runDaemon({"--replay", FIXTURE("ais-static.log"), "--speed", "0", "--stdout", "--no-claim"});
+    REQUIRE(out.exitCode == 0);
+    std::vector<nlohmann::json> ais;
+    std::istringstream in(out.stdout);
+    std::string line;
+    while (std::getline(in, line)) {
+        auto j = nlohmann::json::parse(line);
+        if (j["type"] == "ais") ais.push_back(j);
+    }
+    REQUIRE(ais.size() == 2);  // first sighting, then the expiry at t = 1000
+    REQUIRE(ais[0]["targets"].size() == 1);
+    REQUIRE(ais[1]["targets"].empty());
 }
