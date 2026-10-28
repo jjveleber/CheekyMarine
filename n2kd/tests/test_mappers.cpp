@@ -132,3 +132,48 @@ TEST_CASE("AIS static data does not touch posSeen") {
         std::vector<uint8_t> q(76, 0xFF); q[0] = 0x05; putLe(q, 1, 316000001, 4); return q; }(), 61)), vs, ais);
     REQUIRE(ais.find(316000001)->posSeen == 0);
 }
+
+// 128267 from source src: depth (0.01 m), offset (0.001 m, 0x7FFF = not available).
+static n2k::N2kMessage depthMsg(uint8_t src, uint32_t depthCm, uint16_t offsetMm, double t) {
+    std::vector<uint8_t> p(8, 0xFF);
+    putLe(p, 1, depthCm, 4); putLe(p, 5, offsetMm, 2);
+    return msg(n2k::makeCanId(3, 128267, src), p, t);
+}
+
+TEST_CASE("two depth sounders: the first source is locked and its depth and offset stay paired") {
+    n2k::VesselState vs; n2k::AisTargets ais; n2k::PgnDecoder dec(db()); n2k::StateMappers mp;
+    for (double t = 10; t < 13; t += 0.5) {
+        mp.apply(*dec.decode(depthMsg(35, 1000, 500, t)), vs, ais);           // 10.0 m, offset +0.5
+        mp.apply(*dec.decode(depthMsg(36, 300, 0x7FFF, t + 0.25)), vs, ais);  // 3.0 m, offset n/a
+        REQUIRE(*vs.depth.value == Catch::Approx(10.0));
+        REQUIRE(*vs.depthOffset.value == Catch::Approx(0.5));
+    }
+    // Source 35 last spoke at 12.5; within kDepthMaxAge source 36 is still ignored.
+    mp.apply(*dec.decode(depthMsg(36, 300, 0x7FFF, 12.5 + n2k::kDepthMaxAge)), vs, ais);
+    REQUIRE(*vs.depth.value == Catch::Approx(10.0));
+    // Silent for longer than kDepthMaxAge: source 36 takes the lock; its n/a offset clears the old one.
+    mp.apply(*dec.decode(depthMsg(36, 300, 0x7FFF, 12.6 + n2k::kDepthMaxAge)), vs, ais);
+    REQUIRE(*vs.depth.value == Catch::Approx(3.0));
+    REQUIRE_FALSE(vs.depthOffset.value);
+    // Source 35 is back but 36 now holds the lock.
+    mp.apply(*dec.decode(depthMsg(35, 1000, 500, 13 + n2k::kDepthMaxAge)), vs, ais);
+    REQUIRE(*vs.depth.value == Catch::Approx(3.0));
+}
+TEST_CASE("depth offset not available in a 128267 clears the previous offset") {
+    n2k::VesselState vs; n2k::AisTargets ais; n2k::PgnDecoder dec(db()); n2k::StateMappers mp;
+    mp.apply(*dec.decode(depthMsg(35, 1000, 500, 10)), vs, ais);
+    REQUIRE(*vs.depthOffset.value == Catch::Approx(0.5));
+    mp.apply(*dec.decode(depthMsg(35, 1100, 0x7FFF, 11)), vs, ais);
+    REQUIRE(*vs.depth.value == Catch::Approx(11.0));
+    REQUIRE_FALSE(vs.depthOffset.value);
+}
+TEST_CASE("two GPS sources: position stays on the first source") {
+    n2k::VesselState vs; n2k::AisTargets ais; n2k::PgnDecoder dec(db()); n2k::StateMappers mp;
+    std::vector<uint8_t> a(8), b(8);
+    putLe(a, 0, 476062000, 4); putLe(a, 4, static_cast<uint32_t>(-1223321000), 4);
+    putLe(b, 0, 480000000, 4); putLe(b, 4, static_cast<uint32_t>(-1230000000), 4);
+    mp.apply(*dec.decode(msg(n2k::makeCanId(2, 129025, 0x10), a, 10)), vs, ais);
+    mp.apply(*dec.decode(msg(n2k::makeCanId(2, 129025, 0x11), b, 10.1)), vs, ais);
+    REQUIRE(vs.position.value->first == Catch::Approx(47.6062));
+    REQUIRE(vs.position.updatedAt == 10);
+}

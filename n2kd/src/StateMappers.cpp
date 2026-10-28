@@ -61,46 +61,71 @@ void aisKinematics(const DecodedMessage& m, AisTarget& t) {
 
 }  // namespace
 
-void StateMappers::apply(const DecodedMessage& m, VesselState& vs, AisTargets& ais) const {
+bool StateMappers::accept(Group g, const DecodedMessage& m, double maxAge) {
+    SourceLock& l = locks_[g];
+    const double now = m.timestamp;
+    // Silent: nothing from the locked source within maxAge (a stamp more than 1 s in
+    // the future, after a clock step back, also counts as silent).
+    const bool silent = !l.source || now - l.lastSeen > maxAge || now < l.lastSeen - 1.0;
+    if (l.source != m.source && !silent) return false;
+    l.source = m.source;
+    l.lastSeen = now;
+    return true;
+}
+
+void StateMappers::apply(const DecodedMessage& m, VesselState& vs, AisTargets& ais) {
     const double now = m.timestamp;
     switch (m.pgn) {
     case 129025:
-        setPosition(m, vs);
+        if (accept(kPosition, m, kNavMaxAge)) setPosition(m, vs);
         break;
     case 129026:
+        if (!accept(kCogSog, m, kNavMaxAge)) break;
         setIf(vs.sog, getD(m, "sog"), now);
         if (getI(m, "cogReference") == 0) setIf(vs.cog, getD(m, "cog"), now);
         break;
     case 129029:
-        setPosition(m, vs);
-        if (auto n = getI(m, "numberOfSvs")) vs.satellites.set(*n, now);
-        setGnssTime(m, vs);
+        if (accept(kPosition, m, kNavMaxAge)) {
+            setPosition(m, vs);
+            if (auto n = getI(m, "numberOfSvs")) vs.satellites.set(*n, now);
+        }
+        if (accept(kGnssTime, m, kNavMaxAge)) setGnssTime(m, vs);
         break;
     case 126992:
-        setGnssTime(m, vs);
+        if (accept(kGnssTime, m, kNavMaxAge)) setGnssTime(m, vs);
         break;
     case 127250:
+        if (!accept(kHeading, m, kNavMaxAge)) break;
         setIf(vs.heading, getD(m, "heading"), now);
         if (auto r = getS(m, "referenceName")) vs.headingReference.set(*r, now);
         break;
     case 128267:
+        // Depth and offset come from the same message: an offset marked not available
+        // clears the previous one rather than pairing it with this depth.
+        if (!accept(kDepth, m, kDepthMaxAge)) break;
         setIf(vs.depth, getD(m, "depth"), now);
-        setIf(vs.depthOffset, getD(m, "offset"), now);
+        if (auto o = getD(m, "offset")) {
+            vs.depthOffset.set(*o, now);
+        } else {
+            vs.depthOffset = Aged<double>{};
+        }
         break;
     case 128259:
-        setIf(vs.stw, getD(m, "speedWaterReferenced"), now);
+        if (accept(kStw, m, kNavMaxAge)) setIf(vs.stw, getD(m, "speedWaterReferenced"), now);
         break;
     case 130310:
-        setIf(vs.waterTemp, getD(m, "waterTemperature"), now);
+        if (accept(kWaterTemp, m, kEnvMaxAge)) setIf(vs.waterTemp, getD(m, "waterTemperature"), now);
         break;
     case 130311:
-        if (getI(m, "temperatureSource") == 0) setIf(vs.waterTemp, getD(m, "temperature"), now);
+        if (getI(m, "temperatureSource") == 0 && accept(kWaterTemp, m, kEnvMaxAge)) {
+            setIf(vs.waterTemp, getD(m, "temperature"), now);
+        }
         break;
     case 130316:
-        if (getI(m, "source") == 0) setIf(vs.waterTemp, getD(m, "temperature"), now);
+        if (getI(m, "source") == 0 && accept(kWaterTemp, m, kEnvMaxAge)) setIf(vs.waterTemp, getD(m, "temperature"), now);
         break;
     case 127488:
-        if (getI(m, "instance") == 0) setIf(vs.engineRpm, getD(m, "speed"), now);
+        if (getI(m, "instance") == 0 && accept(kRpm, m, kNavMaxAge)) setIf(vs.engineRpm, getD(m, "speed"), now);
         break;
     case 129038:
         if (auto* t = aisTarget(m, ais, 'A')) {
