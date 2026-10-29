@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+  <!-- US Chart No. 1 reference: P 1 light flare -->
+  <path d="M12 19 L5 5 A 14 14 0 0 1 19 5 Z"/>
+  <circle cx="12" cy="20" r="3"/>
+</svg>

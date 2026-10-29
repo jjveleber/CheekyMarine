@@ -17,3 +17,10 @@ System tools, not bundled:
 
   GDAL (apt python3-gdal)   MIT
   tippecanoe 2.79.0 (felt)  BSD-2-Clause
+
+Bundled fonts (fonts/, used to render glyph ranges):
+
+  Noto Sans v2.015 (Regular, Bold)  SIL Open Font License 1.1 (fonts/OFL.txt)
+    Static hinted TTFs from the notofonts/latin-greek-cyrillic release NotoSans-v2.015.
+
+Symbols (symbols/*.svg) are drawn in-house after US Chart No. 1 (public domain).

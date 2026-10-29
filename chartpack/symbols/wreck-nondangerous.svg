@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+  <!-- US Chart No. 1 reference: K 21 wreck, non-dangerous depth -->
+  <polygon points="3,14 21,14 18,20 6,20"/>
+  <rect x="11" y="4" width="2" height="10"/>
+  <polygon points="13,4 19,8 13,8"/>
+</svg>

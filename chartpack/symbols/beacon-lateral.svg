@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+  <!-- US Chart No. 1 reference: Q 5 lateral beacon -->
+  <polygon points="12,1 18,9 6,9"/>
+  <rect x="11" y="9" width="2" height="9"/>
+  <circle cx="12" cy="20" r="3"/>
+</svg>

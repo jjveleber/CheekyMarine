@@ -88,3 +88,13 @@ def enc_pack_path(tmp_path_factory) -> Path:
     region = load_region(ROOT / "regions" / "test-cell.toml")
     cells = [read_cell(ROOT / "tests" / "fixtures" / "US4WA1HK.zip")]
     return build_enc_mbtiles(cells, base / "enc.mbtiles", region=region, work=base / "work")
+
+
+@pytest.fixture
+def symbols_dir() -> Path:
+    return ROOT / "symbols"
+
+
+@pytest.fixture
+def fonts_dir() -> Path:
+    return ROOT / "fonts"

@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+  <!-- US Chart No. 1 reference: K 14 rock awash -->
+  <line x1="12" y1="2" x2="12" y2="22" stroke-width="3"/>
+  <line x1="2" y1="12" x2="22" y2="12" stroke-width="3"/>
+  <line x1="5" y1="5" x2="19" y2="19" stroke-width="3"/>
+  <line x1="19" y1="5" x2="5" y2="19" stroke-width="3"/>
+  <circle cx="12" cy="12" r="3.5"/>
+</svg>
