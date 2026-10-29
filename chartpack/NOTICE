@@ -19,6 +19,32 @@ System tools, not bundled:
   GDAL (apt python3-gdal)   MIT
   tippecanoe 2.79.0 (felt)  BSD-2-Clause
 
+Bottom composition data from the U.S. Geological Survey (fetch-seabed), licence gate
+(spec 6.10), metadata read 2026-10-29. Each passes as a US Government work in the public domain:
+
+  usSEABED Pacific Coast, Data Series 182 (doi:10.3133/ds182), pac_ext and pac_prs:
+    Access_Constraints: None
+    Use_Constraints: "Public domain data from the U.S. Government are freely redistributable
+    with proper metadata and source attribution. Please recognize the U.S. Geological Survey
+    (USGS) as the source of this information."
+  CMECS Admiralty Inlet, Open-File Report 2015-1073 (doi:10.3133/ofr20151073), Data Series 935:
+    Access_Constraints: None
+    Use_Constraints (excerpt): "This information is not intended for navigational purposes.
+    [...] Acknowledge the U.S. Geological Survey in products derived from these data. Share
+    data products developed using these data with the U.S. Geological Survey. This database
+    has been approved for release and publication by the Director of the USGS. [...]"
+    The report itself states: "Although this report is in the public domain, permission must
+    be secured from the individual copyright owners to reproduce any copyrighted material
+    contained within this report." No copyrighted material is named for the GIS data.
+  CMECS offshore Seattle (doi:10.5066/P9GVRZ3M), offshore Tacoma (doi:10.5066/P9KA6GH2),
+  offshore Burien (doi:10.5066/P96T1B44), Data Series 935:
+    Access_Constraints: None
+    Use_Constraints: "USGS-authored or produced data and information are in the public domain
+    from the U.S. Government and are freely redistributable with proper metadata and source
+    attribution. Please recognize and acknowledge the U.S. Geological Survey as the originator
+    of the dataset and in products derived from these data."
+  Each charts pack NOTICE that holds USGS features names these sources.
+
 Bundled fonts (fonts/, used to render glyph ranges):
 
   Noto Sans v2.015 (Regular, Bold)  SIL Open Font License 1.1 (fonts/OFL.txt)

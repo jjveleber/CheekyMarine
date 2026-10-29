@@ -146,7 +146,13 @@ def test_styles_show_seabed():
         for s in (nav_style(palette), fish_style(palette)):
             ids = [l["id"] for l in s["layers"]]
             seabed = [l for l in s["layers"] if l.get("source-layer") == "seabed"]
-            assert {l["id"] for l in seabed} == {"seabed", "seabed-kelp"}
+            assert {l["id"] for l in seabed} == {"seabed", "seabed-kelp", "seabed-cmecs"}
+            # CMECS substrate polygons: a thin grey outline plus their label, never a fill (spec 6.10)
+            outline = next(l for l in seabed if l["id"] == "seabed-cmecs")
+            assert outline["type"] == "line" and outline["filter"] == ["==", ["get", "class"], "CMECS"]
+            assert outline["paint"]["line-color"] == PALETTES[palette]["CHGRD"] and outline["paint"]["line-width"] <= 0.75
+            assert not [l for l in seabed if l["type"] == "fill"]
+            assert ids.index("seabed-cmecs") < ids.index("seabed")
             text = next(l for l in seabed if l["id"] == "seabed")
             assert text["type"] == "symbol" and text["layout"]["text-field"] == ["get", "label"]
             assert text["layout"]["text-font"] == ["Noto Sans Regular"] and text["paint"]["text-color"] == PALETTES[palette]["CHGRD"]
@@ -155,7 +161,8 @@ def test_styles_show_seabed():
             assert kelp["filter"] == ["all", ["==", ["get", "class"], "WEDKLP"], ["==", ["get", "CATWED"], 1]]
             assert text["filter"] == ["!", kelp["filter"]]
             for layer in seabed:
-                assert layer["layout"]["text-size"] < 11  # soundings are 11
+                if layer["type"] == "symbol":
+                    assert layer["layout"]["text-size"] < 11  # soundings are 11
                 assert ids.index(layer["id"]) < ids.index("hazard")
                 if "soundg-deep" in ids:
                     assert ids.index(layer["id"]) < min(ids.index("soundg-deep"), ids.index("soundg-shallow"))

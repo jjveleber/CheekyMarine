@@ -3,7 +3,8 @@
 Generated from `chartpack/src/chartpack/seabed/codes.py` (`legend_markdown`); do not edit by hand.
 
 The charts pack `seabed` layer labels each ENC seabed area (`SBDARE`) and weed or kelp feature
-(`WEDKLP`) with the chart abbreviations below. Each pack's `legend.json` lists the ones it uses.
+(`WEDKLP`), each USGS usSEABED sediment sample (`SAMPLE`) and each USGS CMECS substrate polygon (`CMECS`)
+with the chart abbreviations below. Each pack's `legend.json` lists the ones it uses and their sources.
 
 Sources: US Chart No. 1, 13th edition, section J "Nature of the Seabed" (NOAA and NGA, public domain),
 NOAA column where it differs from INT, INT otherwise; codes from the IHO S-57 Edition 3.1 attribute
@@ -49,3 +50,57 @@ weed or kelp feature with no category reads `Wd` (J 13.1, weed including kelp).
 | vol | volcanic | qualifier | NATQUA 8 | J 37, NOAA (INT v) |
 | Ca | calcareous | qualifier | NATQUA 9 | J 38, NOAA (INT ca) |
 | h | hard | qualifier | NATQUA 10 | J 39 |
+
+## USGS survey classes
+
+The same abbreviations label the USGS sources, main constituent first. usSEABED (USGS Data Series 182)
+samples carry a Folk grain-size class; "slightly gravelly" (a trace of gravel) is written like
+"gravelly". A class not listed here keeps its raw value in the tile and has no label.
+
+| Folk code | Folk class | Label |
+|---|---|---|
+| M | mud | M |
+| S | sand | S |
+| G | gravel | G |
+| sM | sandy mud | M.S |
+| mS | muddy sand | S.M |
+| gM | gravelly mud | M.G |
+| gS | gravelly sand | S.G |
+| mG | muddy gravel | G.M |
+| sG | sandy gravel | G.S |
+| gmS | gravelly muddy sand | S.M.G |
+| msG | muddy sandy gravel | G.S.M |
+| (g)M | slightly gravelly mud | M.G |
+| (g)S | slightly gravelly sand | S.G |
+| (g)mS | slightly gravelly muddy sand | S.M.G |
+| (g)sM | slightly gravelly sandy mud | M.S.G |
+| H | hard ground | h |
+
+CMECS substrate polygons (USGS Southern Salish Sea habitat maps, Data Series 935) carry the finest
+substrate level the map gives. Coarser levels that do not say which grain dominates ("gravelly",
+"gravel mix", "fine unconsolidated substrate" and so on) and names with no Chart No. 1 term are drawn
+as an outline with no label.
+
+| CMECS substrate | Label |
+|---|---|
+| rock substrate | Rk |
+| bedrock | Rk |
+| boulder | Blds |
+| cobble | Cb |
+| gravel | G |
+| sand | S |
+| mud | M |
+| muddy sand | S.M |
+| sandy mud | M.S |
+| gravelly sand | S.G |
+| gravelly mud | M.G |
+| slightly gravelly sand | S.G |
+| slightly gravelly mud | M.G |
+| slightly gravelly muddy sand | S.M.G |
+| sandy gravel | G.S |
+| sandy cobble | Cb.S |
+| muddy cobble | Cb.M |
+| muddy sandy cobble | Cb.S.M |
+| cobbley sand | S.Cb |
+| slightly cobbley sand | S.Cb |
+| cobbley sandy mud | M.S.Cb |

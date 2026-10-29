@@ -63,3 +63,28 @@ def test_unknown_code_is_an_error():
 def test_weed_label():
     assert weed_label(1) == "Kelp" and weed_label(2) == "Wd" and weed_label(3) == "Sg" and weed_label(4) == "Wd"
     assert weed_label(None) == "Wd"
+
+
+def test_usgs_labels_use_only_chart_no1_abbreviations():
+    """usSEABED Folk classes and CMECS substrate names map onto the same Chart No. 1 set (ruling R25):
+    every part of every label is an abbreviation the S-57 tables already define."""
+    from chartpack.seabed.codes import ABBREVIATIONS, CMECS, FOLK
+
+    labels = {code: abbr_label for code, (abbr_label, folk_name) in FOLK.items() if folk_name} | CMECS
+    assert len(labels) == len(FOLK) + len(CMECS)
+    for name, abbr_label in labels.items():
+        assert all(part in ABBREVIATIONS for part in abbr_label.split(".")), name
+    assert ABBREVIATIONS["Cb"] == ("cobbles", "type") and ABBREVIATIONS["h"] == ("hard", "qualifier")
+
+
+def test_usgs_labels_main_constituent_first():
+    from chartpack.seabed.codes import cmecs_label, folk_label
+
+    assert folk_label("mS") == "S.M" and folk_label("sM") == "M.S" and folk_label("msG") == "G.S.M"
+    assert folk_label("(g)S") == "S.G" and folk_label("H") == "h" and folk_label("G") == "G"
+    assert cmecs_label("muddy sand") == "S.M" and cmecs_label("bedrock") == "Rk" and cmecs_label("boulder") == "Blds"
+    assert cmecs_label("Sandy cobble") == cmecs_label("sandy cobble") == "Cb.S"  # Admiralty Inlet capitalises one
+    # a CMECS level that does not say which grain dominates gets no label
+    for name in ("gravelly", "slightly gravelly", "gravel mix", "cobble mix", "cobbley", "fine unconsolidated substrate",
+                 "coarse unconsolidated substrate", "unconsolidated mineral substrate", "anthropogenic rock rubble"):
+        assert cmecs_label(name) is None, name

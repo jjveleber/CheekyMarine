@@ -33,6 +33,8 @@ from chartpack.pack.assemble import assemble_bathy_pack, assemble_charts_pack
 from chartpack.pack.check import check_pack
 from chartpack.pack.manifest import describe_pack, write_manifest
 from chartpack.region import load_region
+from chartpack.seabed.cmecs import BLOCKS, fetch_cmecs, read_cmecs
+from chartpack.seabed.usseabed import FILES, fetch_usseabed, read_usseabed
 
 
 def _load_catalog(cache: Path):
@@ -69,11 +71,33 @@ def _newest_cached_zip(cache: Path, name: str) -> Path:
     return max(found)[1]
 
 
+def _fetch_seabed(args: argparse.Namespace) -> int:
+    region = load_region(args.region)
+    paths = fetch_usseabed(args.cache) if "usseabed" in region.seabed_sources else []
+    for path in paths + fetch_cmecs(list(region.cmecs_blocks), args.cache):
+        print(path)
+    return 0
+
+
+def _usgs_seabed(region, cache: Path) -> list:
+    """The region's USGS seabed features from the fetch-seabed cache."""
+    usseabed = [cache / "seabed" / name for name in FILES] if "usseabed" in region.seabed_sources else []
+    blocks = {block: cache / "seabed" / f"{BLOCKS[block].name}.zip" for block in region.cmecs_blocks}
+    missing = [p for p in usseabed + list(blocks.values()) if not p.is_file()]
+    if missing:
+        raise SystemExit(f"{missing[0]} not found; run fetch-seabed first")
+    features = read_usseabed(usseabed, region.bbox) if usseabed else []
+    for block, path in blocks.items():
+        features += read_cmecs(path, block, region.bbox)
+    return features
+
+
 def _build_enc(args: argparse.Namespace) -> int:
     region = load_region(args.region)
     names = [n for band in sorted(region.cells) for n in region.cells[band]]
     cells = [read_cell(_newest_cached_zip(args.cache, name)) for name in names]
-    enc = build_enc_mbtiles(cells, args.work / "enc.mbtiles", region=region, work=args.work / "tippecanoe")
+    enc = build_enc_mbtiles(cells, args.work / "enc.mbtiles", region=region, work=args.work / "tippecanoe",
+                            seabed=_usgs_seabed(region, args.cache))
     print(_finish(assemble_charts_pack(region, enc, args.out), region))
     return 0
 
@@ -199,6 +223,10 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("region", type=Path)
     p.add_argument("--cache", type=Path, required=True)
     p.set_defaults(func=_fetch_bathy)
+    p = sub.add_parser("fetch-seabed")
+    p.add_argument("region", type=Path)
+    p.add_argument("--cache", type=Path, required=True)
+    p.set_defaults(func=_fetch_seabed)
     p = sub.add_parser("build-enc")
     p.add_argument("region", type=Path)
     p.add_argument("out", type=Path)

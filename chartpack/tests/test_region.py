@@ -17,3 +17,32 @@ def test_missing_key_is_an_error(tmp_path):
     (tmp_path / "bad.toml").write_text('name = "x"\n')
     with pytest.raises(RegionError, match="charts_version"):
         load_region(tmp_path / "bad.toml")
+
+
+def test_seabed_defaults_to_enc_only(regions_dir):
+    r = load_region(regions_dir / "test-cell.toml")
+    assert r.seabed_sources == ("enc",) and r.cmecs_blocks == ()
+
+
+def _with_seabed(tmp_path, regions_dir, table):
+    path = tmp_path / "r.toml"
+    path.write_text((regions_dir / "test-cell.toml").read_text() + "\n[seabed]\n" + table)
+    return path
+
+
+def test_seabed_table(tmp_path, regions_dir):
+    r = load_region(_with_seabed(tmp_path, regions_dir,
+                                 'sources = ["enc", "usseabed", "usgs-cmecs"]\ncmecs_blocks = ["admiralty-inlet", "seattle"]\n'))
+    assert r.seabed_sources == ("enc", "usseabed", "usgs-cmecs") and r.cmecs_blocks == ("admiralty-inlet", "seattle")
+
+
+@pytest.mark.parametrize("table, match", [
+    ('sources = ["enc", "shorezone"]\n', "shorezone"),
+    ('sources = ["usseabed"]\n', "enc"),
+    ('sources = ["enc", "usgs-cmecs"]\n', "cmecs_blocks"),
+    ('sources = ["enc", "usgs-cmecs"]\ncmecs_blocks = ["everett"]\n', "everett"),
+    ('sources = ["enc"]\ncmecs_blocks = ["seattle"]\n', "usgs-cmecs"),
+])
+def test_seabed_table_errors(tmp_path, regions_dir, table, match):
+    with pytest.raises(RegionError, match=match):
+        load_region(_with_seabed(tmp_path, regions_dir, table))

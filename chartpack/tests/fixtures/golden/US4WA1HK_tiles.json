@@ -38,7 +38,7 @@
     "lndare": 92,
     "meta": 190,
     "navaid": 44,
-    "seabed": 122,
+    "seabed": 156,
     "soundg": 994
   },
   "14": {
@@ -52,7 +52,7 @@
     "lndare": 294,
     "meta": 502,
     "navaid": 45,
-    "seabed": 129,
+    "seabed": 163,
     "soundg": 989
   },
   "15": {
@@ -66,7 +66,7 @@
     "lndare": 1053,
     "meta": 1717,
     "navaid": 47,
-    "seabed": 162,
+    "seabed": 199,
     "soundg": 1016
   },
   "16": {
@@ -80,7 +80,7 @@
     "lndare": 3866,
     "meta": 5960,
     "navaid": 46,
-    "seabed": 266,
+    "seabed": 303,
     "soundg": 1021
   }
 }

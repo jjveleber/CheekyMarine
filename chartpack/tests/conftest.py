@@ -79,15 +79,22 @@ def work_dir(tmp_path) -> Path:
 
 @pytest.fixture(scope="session")
 def enc_pack_path(tmp_path_factory) -> Path:
-    """enc.mbtiles built once per session from the US4WA1HK fixture and regions/test-cell.toml."""
+    """enc.mbtiles built once per session from the US4WA1HK fixture and regions/test-cell.toml, plus the
+    usSEABED and Seattle CMECS seabed fixtures (tests/fixtures/seabed) clipped to the test cell, so the
+    session pack holds every seabed source. The test-cell region file itself lists the ENC source only."""
     from chartpack.enc.reader import read_cell
     from chartpack.enc.tiles import build_enc_mbtiles
     from chartpack.region import load_region
+    from chartpack.seabed.cmecs import read_cmecs
+    from chartpack.seabed.usseabed import FILES, read_usseabed
 
     base = tmp_path_factory.mktemp("enc_pack")
     region = load_region(ROOT / "regions" / "test-cell.toml")
-    cells = [read_cell(ROOT / "tests" / "fixtures" / "US4WA1HK.zip")]
-    return build_enc_mbtiles(cells, base / "enc.mbtiles", region=region, work=base / "work")
+    fixtures = ROOT / "tests" / "fixtures"
+    cells = [read_cell(fixtures / "US4WA1HK.zip")]
+    seabed = (read_usseabed([fixtures / "seabed" / name for name in FILES], region.bbox)
+              + read_cmecs(fixtures / "seabed" / "CMECS_OffshoreSeattle.zip", "seattle", region.bbox))
+    return build_enc_mbtiles(cells, base / "enc.mbtiles", region=region, work=base / "work", seabed=seabed)
 
 
 @pytest.fixture(scope="session")

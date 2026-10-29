@@ -1,7 +1,7 @@
 # chartpack
 
 Builds MBTiles chart packs from NOAA ENC cells and bathymetry grids for the
-CheekyMarine chartplotter. Subcommands: `fetch-enc`, `build-enc`, `fetch-bathy`,
+CheekyMarine chartplotter. Subcommands: `fetch-enc`, `fetch-seabed`, `build-enc`, `fetch-bathy`,
 `build-bathy`, `check`, `manifest`, `archive`, `render`, `cells`.
 
 ## Setup
@@ -27,6 +27,12 @@ with 403. Retry with this User-Agent header:
 ```
 Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36
 ```
+
+`fetch-seabed` downloads the USGS bottom composition zips a region's `[seabed]` table names
+(`sources` with `usseabed` and `usgs-cmecs`, `cmecs_blocks` from `admiralty-inlet`, `seattle`,
+`tacoma`, `burien`) into `<cache>/seabed/`; `build-enc` reads them from there. Their published
+sizes are pinned in `seabed/usseabed.py` and `seabed/cmecs.py`, so a damaged or revised file fails
+the fetch. A region without `[seabed]` uses the ENC bottom marks only.
 
 ## Tests
 
@@ -54,7 +60,12 @@ A charts pack is a directory `charts-<region>-<version>/` holding `enc.mbtiles`,
   `cheekymarine:region`, `cheekymarine:version`, `cheekymarine:sources` (the ENC cells
   with edition, update and issue date), `cheekymarine:valdco`, `cheekymarine:seabed` (the
   distinct seabed codes in the tiles) and `cheekymarine:built`.
-- The optional `seabed` layer holds bottom composition with its chart abbreviation in `label`.
+- The optional `seabed` layer holds bottom composition with its chart abbreviation in `label`
+  (absent when the source class has none). `src` and `class` say where a feature comes from:
+  `enc` with `SBDARE` or `WEDKLP` (quilted like the other ENC layers, with `cell` and `band`);
+  `usseabed` with `SAMPLE`, a USGS sediment sample point with its Folk class in `folk`;
+  `usgs-cmecs` with `CMECS`, a USGS substrate polygon with its CMECS name in `substrate`. The
+  USGS features are not quilted and have no `cell` or `band`.
   `legend.json` (`{"schema": 1, "entries": [{"abbr", "meaning", "kind", "sources"}]}`) explains
   every abbreviation the pack's labels use; `docs/chartpack/seabed-legend.md` is the full table.
 - Depth values are stored in the tiles in metres as charted; feet and rounding happen

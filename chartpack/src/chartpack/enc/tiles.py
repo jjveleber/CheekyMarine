@@ -29,7 +29,7 @@ _COMMON = ["-Z", str(MINZOOM), "-z", str(MAXZOOM), "-r1", "--no-feature-limit", 
            "--no-tiny-polygon-reduction", "--no-simplification-of-shared-nodes",
            "--extend-zooms-if-still-dropping", "-P", "--force"]
 _SAFETY_ONLY = ["--detect-shared-borders"]
-_SEABED_KEYS = ("src", "class", "NATSUR", "NATQUA", "CATWED")
+_SEABED_KEYS = ("src", "class", "NATSUR", "NATQUA", "CATWED", "folk", "substrate")
 
 
 def run(cmd: list[str]) -> None:
@@ -60,14 +60,18 @@ def _tippecanoe(out: Path, layer_files: list[tuple[str, Path]], extra: list[str]
 
 
 def build_enc_mbtiles(
-    cells: list[tuple[CellMeta, list[Feature]]], out: Path, *, region: Region, work: Path
+    cells: list[tuple[CellMeta, list[Feature]]], out: Path, *, region: Region, work: Path,
+    seabed: list[Feature] = (),
 ) -> Path:
+    """`seabed`: USGS survey features (seabed/usseabed.py, seabed/cmecs.py) that already carry their
+    tippecanoe zooms; they join the seabed layer as they are, not quilted (spec 6.10)."""
     out, work = Path(out), Path(work)
     work.mkdir(parents=True, exist_ok=True)
     out.parent.mkdir(parents=True, exist_ok=True)
     by_layer: dict[str, list[Feature]] = {spec.name: [] for spec in LAYERS}
     for feature in quilt(cells):
         by_layer[feature.layer].append(feature)
+    by_layer["seabed"].extend(seabed)
 
     groups: dict[str, list[tuple[str, Path]]] = {"safety": [], "thinned": []}
     for spec in LAYERS:

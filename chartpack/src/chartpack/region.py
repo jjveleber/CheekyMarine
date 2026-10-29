@@ -5,6 +5,10 @@ import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 
+from chartpack.seabed.cmecs import BLOCKS
+
+SEABED_SOURCES = ("enc", "usseabed", "usgs-cmecs")  # spec 6.10
+
 
 class RegionError(Exception):
     pass
@@ -33,6 +37,8 @@ class Region:
     msl_to_mllw_m: float
     datum_station: str
     views: list[View]
+    seabed_sources: tuple[str, ...] = ("enc",)
+    cmecs_blocks: tuple[str, ...] = ()  # keys of seabed.cmecs.BLOCKS
 
 
 def _need(table: dict, key: str, where: str = ""):
@@ -68,6 +74,17 @@ def load_region(path: Path) -> Region:
     if coarse_fallback not in ("crm", "enc"):
         raise RegionError("coarse_fallback must be 'crm' or 'enc'")
 
+    seabed = data.get("seabed", {})
+    seabed_sources = tuple(seabed.get("sources", ["enc"]))
+    cmecs_blocks = tuple(seabed.get("cmecs_blocks", []))
+    unknown = [s for s in seabed_sources if s not in SEABED_SOURCES] + [b for b in cmecs_blocks if b not in BLOCKS]
+    if unknown:
+        raise RegionError(f"unknown seabed source or CMECS block: {', '.join(unknown)}")
+    if "enc" not in seabed_sources:
+        raise RegionError("seabed.sources must include enc, the baseline bottom marks")
+    if ("usgs-cmecs" in seabed_sources) != bool(cmecs_blocks):
+        raise RegionError("seabed.cmecs_blocks must be listed exactly when seabed.sources has usgs-cmecs")
+
     clip = data.get("clip")
     views = [
         View(
@@ -93,4 +110,6 @@ def load_region(path: Path) -> Region:
         msl_to_mllw_m=float(_need(datum, "msl_to_mllw_m", "datum.")),
         datum_station=_need(datum, "station", "datum."),
         views=views,
+        seabed_sources=seabed_sources,
+        cmecs_blocks=cmecs_blocks,
     )

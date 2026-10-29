@@ -1,6 +1,7 @@
 """Download helper: stream to a .part file, verify size, rename on success."""
 
 import urllib.request
+import zipfile
 from pathlib import Path
 
 # NOAA's server may answer a default Python User-Agent with 403 (see README, Downloads).
@@ -39,4 +40,35 @@ def download(
         part.rename(dest)
     finally:
         part.unlink(missing_ok=True)  # no-op after a successful rename
+    return dest
+
+
+def _check_zip(path: Path, size: int, member: str) -> None:
+    """Raise DownloadError unless path is a whole zip of the published size holding member."""
+    if path.stat().st_size != size:
+        raise DownloadError(f"{path} is {path.stat().st_size} bytes, the published file is {size}")
+    try:
+        with zipfile.ZipFile(path) as zf:
+            if member not in zf.namelist() or zf.testzip() is not None:
+                raise DownloadError(f"{path}: {member} missing or damaged")
+    except zipfile.BadZipFile as e:
+        raise DownloadError(f"{path}: not a zip: {e}") from e
+
+
+def fetch_zip(url: str, dest: Path, *, size: int, member: str) -> Path:
+    """A published zip in the cache: a cached copy is checked (size, zip structure, member) and refetched
+    when damaged; a fresh download is checked the same way and removed if it fails."""
+    dest = Path(dest)
+    if dest.exists():
+        try:
+            _check_zip(dest, size, member)
+            return dest
+        except DownloadError:
+            dest.unlink()
+    download(url, dest, expected_size=size)
+    try:
+        _check_zip(dest, size, member)
+    except DownloadError:
+        dest.unlink(missing_ok=True)
+        raise
     return dest

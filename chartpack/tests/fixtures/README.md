@@ -37,3 +37,20 @@ refreshed, regenerate the golden file and re-run those tests.
 compound CRS) cut with `gdal_translate -projwin` centred on -122.38, 47.90 from
 `ncei19_n48x00_w122x50_2023v1.tif` (1/9 arc-second). Depths run from -98.5 m to 0.05 m
 (NAVD88 metres, negative down).
+
+## Seabed (USGS) fixtures
+
+`seabed/` mimics the `fetch-seabed` cache (`<cache>/seabed/`): each zip has the published file's name
+and member names, cut from the real download of 2026-10-29. Licences: chartpack/NOTICE.
+
+- `pac_ext.zip`, `pac_prs.zip`: USGS usSEABED DS 182 (`https://pubs.usgs.gov/ds/2006/182/data/`). Each
+  holds the header and unchanged raw lines (CRLF kept) of `PAC_EXT.txt` / `PAC_PRS.txt`: every row inside
+  the test cell bbox (19 EXT, 12 PRS, with exact duplicates at 47.9025, -122.38), plus real Puget Sound
+  rows outside it (EXT `mS`, `gmS`; PRS `H`, `sG`, `msG`) for the clipping and hard-ground tests.
+- `CMECS_*.zip`: USGS DS 935 CMECS substrate shapefiles (NAD83 / UTM 10N, all fields kept), a few
+  polygons each cut with `ogr2ogr -where "FID IN (...)"` from the published block zips:
+  `CMECS_OffshoreSeattle` FIDs 1637, 1957, 1907, 1644, 1737, 1845 (crosses the test cell's west edge),
+  2449 (`na`, land, invalid geometry); `CMECS_AdmiraltyInlet` FIDs 163, 2603, 37, 20, 442, 366, 209, 65,
+  146, 221 (all outside the test cell); `CMECS_OffshoreTacoma` FIDs 3601, 3494, 457, 731;
+  `CMECS_OffshoreBurien` FIDs 1865, 20, 1599, 1503, 2632, 1000. Their sizes differ from the published
+  zips, so tests that fetch them patch the pinned sizes.

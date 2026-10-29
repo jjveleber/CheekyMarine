@@ -230,7 +230,7 @@ def test_seabed_in_tiles_with_label(enc_pack, fixtures_dir, z):
     _, feats = read_cell(fixtures_dir / "US4WA1HK.zip")
     sources = [f for f in feats if f.layer == "seabed"]
     assert {f.props["class"] for f in sources} == {"SBDARE", "WEDKLP"}
-    got = _seabed_at(enc_pack, z)
+    got = [(p, g) for p, g in _seabed_at(enc_pack, z) if p["src"] == "enc"]
     tol = 1.5 * 360 / 2**z / EXTENT
     keys = ("class", "NATSUR", "NATQUA", "CATWED", "label", "src", "cell")
     for f in sources:
@@ -250,9 +250,9 @@ def test_seabed_thinned_by_scamin_only(enc_pack, fixtures_dir):
     assert {minzoom_for_scamin(f.props["SCAMIN"], 4) for f in sources} == {12, 13}
     for z in ZOOMS:  # band 4 only: drawn from z 11, so a feature shows from its SCAMIN zoom on
         want = {f.props["class"] for f in sources if minzoom_for_scamin(f.props["SCAMIN"], 4) <= z}
-        got = {p["class"] for p, _ in _seabed_at(enc_pack, z)}
+        got = {p["class"] for p, _ in _seabed_at(enc_pack, z) if p["src"] == "enc"}
         assert got == want, z
-    assert not _seabed_at(enc_pack, 11)
+    assert not [p for p, _ in _seabed_at(enc_pack, 11) if p["src"] == "enc"]
 
 
 def test_build_without_seabed_features(tmp_path, fixtures_dir, regions_dir):
@@ -265,12 +265,46 @@ def test_build_without_seabed_features(tmp_path, fixtures_dir, regions_dir):
     assert json.loads(md["cheekymarine:seabed"]) == []
 
 
-def test_seabed_metadata_lists_distinct_codes(enc_pack, fixtures_dir):
+def test_seabed_metadata_lists_distinct_codes(enc_pack, fixtures_dir, test_region):
     _, feats = read_cell(fixtures_dir / "US4WA1HK.zip")
-    keys = ("src", "class", "NATSUR", "NATQUA", "CATWED")
-    want = {tuple(f.props.get(k) for k in keys) for f in feats if f.layer == "seabed"}
+    keys = ("src", "class", "NATSUR", "NATQUA", "CATWED", "folk", "substrate")
+    want = {tuple(f.props.get(k) for k in keys) for f in feats + _usgs(fixtures_dir, test_region) if f.layer == "seabed"}
     got = json.loads(enc_pack.metadata()["cheekymarine:seabed"])
     assert len(got) == len(want) and {tuple(d.get(k) for k in keys) for d in got} == want
+
+
+def _usgs(fixtures_dir, region):
+    """The USGS fixture features the session pack is built with (tests/conftest.py)."""
+    from chartpack.seabed.cmecs import read_cmecs
+    from chartpack.seabed.usseabed import FILES, read_usseabed
+
+    return (read_usseabed([fixtures_dir / "seabed" / n for n in FILES], region.bbox)
+            + read_cmecs(fixtures_dir / "seabed" / "CMECS_OffshoreSeattle.zip", "seattle", region.bbox))
+
+
+def test_usgs_seabed_in_tiles_not_quilted(enc_pack, fixtures_dir, test_region):
+    """usSEABED samples and CMECS polygons join the seabed layer from their fixed minzoom to the top zoom,
+    every one of them, with no cell or band (they are not quilted), and never before their minzoom."""
+    from chartpack.seabed import cmecs, usseabed
+
+    sources = _usgs(fixtures_dir, test_region)
+    assert {f.props["src"] for f in sources} == {"usseabed", "usgs-cmecs"}
+    first = {"usseabed": usseabed.MINZOOM, "usgs-cmecs": cmecs.MINZOOM}
+    for z in ZOOMS:
+        got = [(p, g) for p, g in _seabed_at(enc_pack, z) if p["src"] != "enc"]
+        assert {p["src"] for p, _ in got} == {s for s, lo in first.items() if lo <= z}, z
+        for p, _ in got:
+            assert set(p) <= {"src", "class", "folk", "substrate", "label"}, p
+        if z not in (first["usgs-cmecs"], 16):
+            continue
+        tol = 1.5 * 360 / 2**z / EXTENT
+        for f in sources:
+            if first[f.props["src"]] > z:
+                continue
+            key = tuple(f.props.get(k) for k in ("src", "folk", "substrate", "label"))
+            pt = shape(f.geometry).representative_point()
+            assert any(tuple(p.get(k) for k in ("src", "folk", "substrate", "label")) == key and g.distance(pt) <= tol
+                       for p, g in got), (key, pt.wkt)
 
 
 def test_metadata_has_no_temp_paths(enc_pack):

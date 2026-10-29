@@ -122,10 +122,15 @@ _KELP = ["all", ["==", ["get", "class"], "WEDKLP"], ["==", ["get", "CATWED"], 1]
 
 def seabed_layers(p: dict) -> list[dict]:
     """Bottom composition labels (spec 6.10): chart abbreviations in grey ink, smaller than soundings and
-    drawn below them, so a sounding wins where the two collide. Kelp gets its Chart No. 1 symbol."""
+    drawn below them, so a sounding wins where the two collide. Kelp gets its Chart No. 1 symbol. USGS
+    CMECS substrate polygons get a thin outline and their label, never a fill, which would change the
+    depth colours."""
     text = {"text-field": ["get", "label"], "text-font": ["Noto Sans Regular"], "text-size": 10}
     paint = {"text-color": p["CHGRD"], "text-halo-color": p["DEPDW"], "text-halo-width": 1.5}
     return [
+        {"id": "seabed-cmecs", "type": "line", "source": "enc", "source-layer": "seabed",
+         "filter": ["==", ["get", "class"], "CMECS"],
+         "paint": {"line-color": p["CHGRD"], "line-width": 0.5, "line-dasharray": [2, 2]}},  # dashed: not a contour
         {"id": "seabed", "type": "symbol", "source": "enc", "source-layer": "seabed", "filter": ["!", _KELP],
          "layout": text, "paint": paint},
         {"id": "seabed-kelp", "type": "symbol", "source": "enc", "source-layer": "seabed", "filter": _KELP,

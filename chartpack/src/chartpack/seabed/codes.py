@@ -3,7 +3,8 @@
 Codes: the S-57 attribute catalogue, IHO S-57 Edition 3.1 Appendix A chapter 2 (NATSUR 113, NATQUA 114,
 CATWED 70). Abbreviations: US Chart No. 1 section J (NOAA/NGA, 13th edition), the NOAA column where it
 differs from INT (Rk, Blds, vol, Ca), the INT column otherwise. Codes with no section J entry (land
-surfaces in NATSUR) are labelled with the S-57 meaning itself. docs/chartpack/seabed-legend.md is
+surfaces in NATSUR) are labelled with the S-57 meaning itself. The USGS survey classes (usSEABED Folk
+codes, CMECS substrate names) map onto the same abbreviations. docs/chartpack/seabed-legend.md is
 generated from these tables.
 """
 
@@ -91,6 +92,75 @@ CHART_NO1: dict[str, dict[int, str]] = {
         4: "J 13.1 (sargasso is a seaweed)",
     },
 }
+
+
+# Every abbreviation above that a USGS label may use: abbreviation -> (meaning, kind).
+ABBREVIATIONS: dict[str, tuple[str, str]] = {
+    **{abbr: (meaning, "type") for abbr, meaning in NATSUR.values()},
+    **{abbr: (meaning, "qualifier") for abbr, meaning in NATQUA.values()},
+}
+
+# usSEABED (USGS DS 182) FolkCode -> (label, Folk class name as the DS 182 metadata defines it). The Folk
+# noun is the main constituent and comes first (Chart No. 1 J 12.2), then each adjective from the noun
+# outward; "slightly gravelly" (a trace of gravel) is written like "gravelly", gravel after the main
+# constituent. H (hard ground) is the hard qualifier alone, as ENC NATQUA 10 alone reads "h".
+FOLK: dict[str, tuple[str, str]] = {
+    "M": ("M", "mud"),
+    "S": ("S", "sand"),
+    "G": ("G", "gravel"),
+    "sM": ("M.S", "sandy mud"),
+    "mS": ("S.M", "muddy sand"),
+    "gM": ("M.G", "gravelly mud"),
+    "gS": ("S.G", "gravelly sand"),
+    "mG": ("G.M", "muddy gravel"),
+    "sG": ("G.S", "sandy gravel"),
+    "gmS": ("S.M.G", "gravelly muddy sand"),
+    "msG": ("G.S.M", "muddy sandy gravel"),
+    "(g)M": ("M.G", "slightly gravelly mud"),
+    "(g)S": ("S.G", "slightly gravelly sand"),
+    "(g)mS": ("S.M.G", "slightly gravelly muddy sand"),
+    "(g)sM": ("M.S.G", "slightly gravelly sandy mud"),
+    "H": ("h", "hard ground"),
+}
+
+# USGS CMECS substrate name (lower case; the name is its own meaning) -> label, same rules as FOLK. Names
+# left out have no label: a level that does not say which grain dominates ("gravelly", "slightly
+# gravelly", "gravel mix", "cobble mix", "cobbley", "slightly cobbley", the fine and coarse unconsolidated
+# subclasses, the unconsolidated mineral class), and those with no Chart No. 1 term ("megaclast",
+# "anthropogenic rock", "anthropogenic rock rubble", the "... mix" subgroups).
+CMECS: dict[str, str] = {
+    "rock substrate": "Rk",
+    "bedrock": "Rk",
+    "boulder": "Blds",
+    "cobble": "Cb",
+    "gravel": "G",
+    "sand": "S",
+    "mud": "M",
+    "muddy sand": "S.M",
+    "sandy mud": "M.S",
+    "gravelly sand": "S.G",
+    "gravelly mud": "M.G",
+    "slightly gravelly sand": "S.G",
+    "slightly gravelly mud": "M.G",
+    "slightly gravelly muddy sand": "S.M.G",
+    "sandy gravel": "G.S",
+    "sandy cobble": "Cb.S",
+    "muddy cobble": "Cb.M",
+    "muddy sandy cobble": "Cb.S.M",
+    "cobbley sand": "S.Cb",
+    "slightly cobbley sand": "S.Cb",
+    "cobbley sandy mud": "M.S.Cb",
+}
+
+
+def folk_label(code: str) -> str | None:
+    """The chart label of a usSEABED Folk class; None for a class not in FOLK (kept raw, never guessed)."""
+    return FOLK[code][0] if code in FOLK else None
+
+
+def cmecs_label(name: str) -> str | None:
+    """The chart label of a CMECS substrate name; None for a name not in CMECS (kept raw, never guessed)."""
+    return CMECS.get(name.lower())
 
 
 def split_codes(value: str | None) -> list[str]:

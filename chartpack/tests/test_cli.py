@@ -179,3 +179,62 @@ def test_check_reports_problems_as_errors_not_tracebacks(charts_pack_root_copy, 
     (charts_pack_root_copy / "manifest.json").unlink()
     assert main(["check", str(charts_pack_root_copy), "--enc-cache", str(tmp_path / "empty")]) == 1
     assert "manifest.json" in capsys.readouterr().out
+
+
+def _seabed_region(tmp_path, regions_dir):
+    path = tmp_path / "seabed-test.toml"
+    path.write_text((regions_dir / "test-cell.toml").read_text()
+                    + '\n[seabed]\nsources = ["enc", "usseabed", "usgs-cmecs"]\ncmecs_blocks = ["seattle", "admiralty-inlet"]\n')
+    return path
+
+
+def test_fetch_seabed(tmp_path, fixtures_dir, regions_dir, monkeypatch, capsys):
+    import shutil
+
+    from chartpack.seabed import cmecs, usseabed
+
+    def fake_download(url, dest, *, expected_size=None, timeout=120):
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy(fixtures_dir / "seabed" / dest.name, dest)
+        return dest
+
+    def size(name):
+        return (fixtures_dir / "seabed" / name).stat().st_size
+
+    monkeypatch.setattr("chartpack.cache.download", fake_download)
+    monkeypatch.setattr(usseabed, "FILES", {n: (u, size(n), m) for n, (u, _, m) in usseabed.FILES.items()})
+    monkeypatch.setattr(cmecs, "BLOCKS", {b: k._replace(size=size(f"{k.name}.zip")) for b, k in cmecs.BLOCKS.items()})
+    assert main(["fetch-seabed", str(_seabed_region(tmp_path, regions_dir)), "--cache", str(tmp_path / "cache")]) == 0
+    seabed = tmp_path / "cache" / "seabed"
+    assert capsys.readouterr().out.splitlines() == [
+        str(seabed / "pac_ext.zip"), str(seabed / "pac_prs.zip"),
+        str(seabed / "CMECS_OffshoreSeattle.zip"), str(seabed / "CMECS_AdmiraltyInlet.zip")]
+    # a region with the ENC source only fetches nothing
+    assert main(["fetch-seabed", str(regions_dir / "test-cell.toml"), "--cache", str(tmp_path / "c2")]) == 0
+    assert capsys.readouterr().out == "" and not (tmp_path / "c2").exists()
+
+
+def test_build_enc_merges_usgs_seabed(tmp_path, fixtures_dir, regions_dir):
+    import json
+    import shutil
+
+    from chartpack.mbtiles import MBTiles, decode_pbf
+
+    region = _seabed_region(tmp_path, regions_dir)
+    cache = tmp_path / "cache"
+    (cache / "enc").mkdir(parents=True)
+    shutil.copy(fixtures_dir / "US4WA1HK.zip", cache / "enc" / "US4WA1HK-1.3.zip")
+    args = ["build-enc", str(region), str(tmp_path / "out"), "--cache", str(cache), "--work", str(tmp_path / "work")]
+    with pytest.raises(SystemExit, match="fetch-seabed"):
+        main(args)
+    shutil.copytree(fixtures_dir / "seabed", cache / "seabed")
+    assert main(args) == 0
+    root = tmp_path / "out" / "charts-test-cell-0.1.0"
+    srcs = set()
+    with MBTiles.open(root / "enc.mbtiles") as m:
+        for _, _, data in m.tiles_at(16):
+            srcs |= {f["properties"]["src"] for f in decode_pbf(data).get("seabed", [])}
+    assert srcs == {"enc", "usseabed", "usgs-cmecs"}
+    legend = json.loads((root / "legend.json").read_text())
+    assert {s for e in legend["entries"] for s in e["sources"]} == {"enc", "usseabed", "usgs-cmecs"}
+    assert main(["check", str(root), "--enc-cache", str(cache)]) == 0

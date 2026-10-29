@@ -2,13 +2,27 @@
 
 from collections.abc import Iterable
 
-from chartpack.seabed.codes import CATWED, CHART_NO1, NATQUA, NATSUR, split_codes
+from chartpack.seabed.codes import (
+    ABBREVIATIONS,
+    CATWED,
+    CHART_NO1,
+    CMECS,
+    FOLK,
+    NATQUA,
+    NATSUR,
+    cmecs_label,
+    folk_label,
+    split_codes,
+)
 
 LEGEND_SCHEMA = 1
 
 
 def _abbreviations(props: dict) -> list[tuple[str, str, str]]:
     """(abbr, meaning, kind) of each code on one seabed feature."""
+    if props["class"] in ("SAMPLE", "CMECS"):
+        text = folk_label(props["folk"]) if props["class"] == "SAMPLE" else cmecs_label(props["substrate"])
+        return [(abbr, *ABBREVIATIONS[abbr]) for abbr in text.split(".")] if text else []
     if props["class"] == "WEDKLP":
         catwed = props.get("CATWED")
         return [(*CATWED[2 if catwed is None else catwed], "type")]
@@ -35,7 +49,8 @@ _DOC_HEAD = """# Seabed legend
 Generated from `chartpack/src/chartpack/seabed/codes.py` (`legend_markdown`); do not edit by hand.
 
 The charts pack `seabed` layer labels each ENC seabed area (`SBDARE`) and weed or kelp feature
-(`WEDKLP`) with the chart abbreviations below. Each pack's `legend.json` lists the ones it uses.
+(`WEDKLP`), each USGS usSEABED sediment sample (`SAMPLE`) and each USGS CMECS substrate polygon (`CMECS`)
+with the chart abbreviations below. Each pack's `legend.json` lists the ones it uses and their sources.
 
 Sources: US Chart No. 1, 13th edition, section J "Nature of the Seabed" (NOAA and NGA, public domain),
 NOAA column where it differs from INT, INT otherwise; codes from the IHO S-57 Edition 3.1 attribute
@@ -52,10 +67,34 @@ weed or kelp feature with no category reads `Wd` (J 13.1, weed including kelp).
 """
 
 
+_DOC_USGS = """
+## USGS survey classes
+
+The same abbreviations label the USGS sources, main constituent first. usSEABED (USGS Data Series 182)
+samples carry a Folk grain-size class; "slightly gravelly" (a trace of gravel) is written like
+"gravelly". A class not listed here keeps its raw value in the tile and has no label.
+
+| Folk code | Folk class | Label |
+|---|---|---|
+{folk}
+
+CMECS substrate polygons (USGS Southern Salish Sea habitat maps, Data Series 935) carry the finest
+substrate level the map gives. Coarser levels that do not say which grain dominates ("gravelly",
+"gravel mix", "fine unconsolidated substrate" and so on) and names with no Chart No. 1 term are drawn
+as an outline with no label.
+
+| CMECS substrate | Label |
+|---|---|
+{cmecs}
+"""
+
+
 def legend_markdown() -> str:
     """docs/chartpack/seabed-legend.md: every code the tool can label, with its source."""
     rows = []
     for name, table, kind in (("NATSUR", NATSUR, "type"), ("CATWED", CATWED, "type"), ("NATQUA", NATQUA, "qualifier")):
         for code, (abbr, meaning) in table.items():
             rows.append(f"| {abbr} | {meaning} | {kind} | {name} {code} | {CHART_NO1[name][code]} |")
-    return _DOC_HEAD + "\n".join(rows) + "\n"
+    folk = "\n".join(f"| {code} | {name} | {text} |" for code, (text, name) in FOLK.items())
+    cmecs = "\n".join(f"| {name} | {text} |" for name, text in CMECS.items())
+    return _DOC_HEAD + "\n".join(rows) + "\n" + _DOC_USGS.format(folk=folk, cmecs=cmecs)

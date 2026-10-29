@@ -7,6 +7,7 @@ from pathlib import Path
 
 from chartpack.mbtiles import MBTiles
 from chartpack.region import Region
+from chartpack.seabed import cmecs, usseabed
 from chartpack.seabed.legend import build_legend
 from chartpack.style.fish import fish_style
 from chartpack.style.glyphs import build_glyphs
@@ -51,7 +52,11 @@ def _notice(metadata: dict[str, str], name: str, version: str) -> str:
     )
     licences = (PROJECT / "NOTICE").read_text()
     fonts = licences[licences.index("Bundled fonts"):]
-    return _NOTICE_HEAD.format(name=name, version=version, cells=cells) + fonts
+    srcs = {row["src"] for row in json.loads(metadata["cheekymarine:seabed"])}
+    usgs = [text for src, text in (("usseabed", usseabed.NOTICE), ("usgs-cmecs", cmecs.NOTICE)) if src in srcs]
+    survey = ("Bottom composition also from the U.S. Geological Survey (public domain; the USGS is the source):\n"
+              + "\n".join(usgs) + "\n\n") if usgs else ""
+    return _NOTICE_HEAD.format(name=name, version=version, cells=cells) + survey + fonts
 
 
 def _sprites_glyphs_readme(root: Path, sprite_name: str, title: str) -> None:

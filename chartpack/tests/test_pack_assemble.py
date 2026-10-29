@@ -43,6 +43,21 @@ def test_notice_and_readme(charts_pack_root):
     assert "NOAA ENC" in notice and "not certified for navigation" in notice and "US4WA1HK" in notice
     assert "SIL Open Font License" in notice
     assert "Pack contract" in (charts_pack_root / "README.md").read_text()
+    # the USGS releases ask to be recognized as the source in derived products
+    assert "U.S. Geological Survey" in notice and "doi:10.3133/ds182" in notice and "doi:10.5066/P9GVRZ3M" in notice
+
+
+def test_notice_without_usgs_seabed(test_region, enc_pack_path, tmp_path):
+    from chartpack.mbtiles import MBTiles
+    from chartpack.pack.assemble import assemble_charts_pack
+
+    enc = tmp_path / "enc.mbtiles"
+    enc.write_bytes(enc_pack_path.read_bytes())
+    with MBTiles.open(enc) as m:
+        rows = [r for r in json.loads(m.metadata()["cheekymarine:seabed"]) if r["src"] == "enc"]
+        m.set_metadata({"cheekymarine:seabed": json.dumps(rows)})
+    notice = (assemble_charts_pack(test_region, enc, tmp_path / "out") / "NOTICE").read_text()
+    assert "NOAA ENC" in notice and "Geological Survey" not in notice
 
 
 def test_bathy_pack_layout(test_region, tmp_path):
