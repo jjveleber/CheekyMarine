@@ -27,7 +27,8 @@ BANDS = ((10, 11, 150.0), (12, 13, 30.0), (14, 16, 0.0))
 
 
 def zoom_tolerance_deg(zoom: int) -> float:
-    """Douglas-Peucker tolerance of about one screen pixel (R33): the 256 px Web Mercator ground resolution
+    """Douglas-Peucker tolerance of one 256 px Web Mercator pixel (R33), which is about 2 screen pixels in
+    MapLibre's 512 px world (R46, kept for pack size: a true 1 px measured 301.4 MB): the ground resolution
     at latitude 48 (about 100 m at z10, 3 m at z15) in degrees of latitude; z16 uses the z15 value."""
     return 156543.03392804097 * math.cos(math.radians(48)) / 2 ** min(zoom, 15) / M_PER_DEG
 

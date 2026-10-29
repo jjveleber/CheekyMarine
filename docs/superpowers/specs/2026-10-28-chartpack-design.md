@@ -102,7 +102,7 @@ Quilting across usage bands (my call): each zoom draws exactly one band. Band 2 
 
 Never thinned, never dropped: `depare`, `depcnt`, `hazard`, `navaid`, `light`, `coalne`, `lndare`. tippecanoe runs those layers with feature dropping, tiny-polygon reduction and tile size limits off (`-r1`, `--no-tiny-polygon-reduction`, `--no-feature-limit`, `--no-tile-size-limit`, `--no-simplification-of-shared-nodes`, `--detect-shared-borders` so adjacent depth areas simplify to the same edge and leave no slivers). Line simplification at low zoom is allowed for geometry only; attributes are never touched.
 
-Thinned by rule, not by chance: `soundg`, `area` names and `line` get a per-feature `tippecanoe:minzoom` computed from S-57 `SCAMIN` (the scale the hydrographer set as "do not show smaller than"), falling back to the band's lowest zoom. Deterministic, tested, no random drop rate anywhere.
+Thinned by rule, not by chance: `soundg`, `area` names and `line` get a per-feature `tippecanoe:minzoom` computed from S-57 `SCAMIN` (the scale the hydrographer set as "do not show smaller than"), falling back to the band's lowest zoom. All zooms in this spec are MapLibre zooms (a 512 px world, so map zoom z has the ground resolution of 256 px zoom z+1), and SCAMIN maps to a zoom in that world (R44). Deterministic, tested, no random drop rate anywhere.
 
 Depths stay in metres in the tiles, exactly as charted. The style converts to feet for display (`round(m * 3.28084)` as an expression); a metres style variant is a build flag. Rationale: one conversion, in one place, visible in the style, never baked into data.
 
@@ -157,15 +157,18 @@ Owner revisions after the Task 8 renders (2026-10-29, rulings R15 to R19 in the 
 - Background is `NODTA`, so area outside every cell reads as no data, not as deep water (controller's call, shown to the owner in the preview).
 - Rock, obstruction and wreck symbols are redrawn by us in the visual style of OpenCPN's chart symbols. OpenCPN (GPL-2) is looked at as a visual reference only: no file, path data or bitmap is copied, and the repo stays MIT. This replaces the earlier "no OpenCPN file is opened" rule for these symbols only.
 
-Owner revisions after the puget-north renders (2026-10-29, rulings R29 to R43 in the SDD ledger):
+Owner revisions after the puget-north renders (2026-10-29, rulings R29 to R46 in the SDD ledger):
 
 - R29: night `DEPMD` is `#15304C`.
 - R30: seabed labels take the `SNDG2` ink.
 - R31: `RESARE` outline is 8 on 4 dash plus inward T marks; cables are 4 on 2.
 - R32, R34, R40, R41 (hazard marks): 11 px fixed. The ring shows only when the hazard-danger rule holds. `hazard-danger` and `hazard-danger-outline` are shipped and listed in `metadata.cheekymarine.depths.layers`. Declutter below z15 as in R40: `icon-allow-overlap` and `icon-ignore-placement` are false below z15 and true from z15, so below z15 hazards hide each other and any sounding or label under them. Ring and mark are baked into one RGBA (non-SDF) image per palette (R41), so `icon-color` does not tint hazards.
 - R35: line and area hazards get a dotted outline plus the point symbol.
-- R33: contour and band geometry is simplified to about one pixel per zoom.
+- R33: contour and band geometry is simplified to about 2 screen px (R46).
 - R42: the quilt rule is kept for the seam obstruction (US3WA1DF, -122.700, 47.7775): the band 3 object is clipped from z11 because the finer band 4 and 5 cells chart it 344 m WNW.
+- R44: SCAMIN maps to a MapLibre zoom (512 px world), one zoom earlier than the 256 px tile rule: band 4 soundings (SCAMIN 59999) show from z12, band 5 soundings (17999, 29999) from z13. The R37 48 px size rule counts screen px in the same world (`extent * 2**(z+1) >= 48`, extent in 256 px zoom-0 pixels).
+- R45: label placement order is unchanged: soundings keep winning over seabed labels.
+- R46: the contour tolerance stays one 256 px Web Mercator pixel, about 2 screen px in MapLibre; a true 1 px measured 301.4 MB for the bathy pack and was not adopted.
 
 Symbols: our own SVGs in `chartpack/symbols/`, drawn after US Chart No. 1 (public domain): can, nun, spherical, pillar and spar buoys, lateral and cardinal beacons, light flare, rock awash, submerged rock, dangerous wreck, non-dangerous wreck, obstruction, isolated danger, anchorage, marina. Colour comes from `COLOUR` through the style, so one shape per class and a palette per mode. The sprite sheet (PNG at 1x and 2x plus JSON index) is assembled by `chartpack` at build time. Starts small, grows later.
 

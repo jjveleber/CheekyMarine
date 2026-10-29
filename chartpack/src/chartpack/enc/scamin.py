@@ -10,15 +10,18 @@ from shapely.geometry import shape
 BAND_ZOOMS = {2: (6, 10), 3: (6, 10), 4: (11, 12), 5: (13, 16)}
 
 _MAX_ZOOM = 16
-_ZOOM0_SCALE = 559082264.028  # scale denominator at zoom 0 for 256 px tiles at the equator
+# Scale denominator at zoom 0 for 256 px tiles at the equator. MapLibre GL draws a 512 px world, so its map
+# zoom z has the ground resolution of 256 px zoom z+1: map zooms are one earlier than this constant implies (R44).
+_ZOOM0_SCALE = 559082264.028
 _COS_LAT = math.cos(math.radians(48))  # the region sits near 48 N
 
 
 def minzoom_for_scamin(scamin: int | None, band: int) -> int:
+    """The MapLibre zoom (512 px world, R44) from which a feature of this SCAMIN is shown, clamped to the band."""
     low = BAND_ZOOMS[band][0]
     if scamin is None or scamin <= 0:
         return low
-    zoom = round(math.log2(_ZOOM0_SCALE * _COS_LAT / scamin))
+    zoom = round(math.log2(_ZOOM0_SCALE * _COS_LAT / scamin) - 1)
     return max(low, min(zoom, _MAX_ZOOM))
 
 
@@ -39,7 +42,7 @@ def extent_z0(geometry: dict) -> float:
 
 
 def minzoom_for_extent(extent: float) -> int:
-    """The first zoom at which a feature of this zoom-0 size is SEABED_MIN_PX across, clamped to 0..16."""
+    """The first MapLibre zoom z (512 px world, R44) at which extent * 2**(z+1) >= SEABED_MIN_PX, clamped to 0..16."""
     if extent <= 0:
         return _MAX_ZOOM
-    return max(0, min(math.ceil(math.log2(SEABED_MIN_PX / extent) - 1e-9), _MAX_ZOOM))
+    return max(0, min(math.ceil(math.log2(SEABED_MIN_PX / extent) - 1e-9) - 1, _MAX_ZOOM))

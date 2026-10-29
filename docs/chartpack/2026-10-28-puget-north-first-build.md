@@ -159,9 +159,9 @@ the final packs and looked at.
   stays in the tiles (no clustering), and `check` still finds each one at zoom 16.
 - **Hazard lines and areas (R35):** a thin dotted outline (black, or red when the danger rule holds) plus
   the point symbol.
-- **Contour and band simplification (R33):** the Douglas-Peucker tolerance is about one screen pixel at
-  each zoom (256 px Web Mercator ground resolution at latitude 48: about 100 m at z10, halving each zoom,
-  z16 uses the z15 value), replacing the fixed 0.0002 degrees.
+- **Contour and band simplification (R33):** the Douglas-Peucker tolerance is one 256 px Web Mercator pixel at
+  each zoom, about 2 screen px in MapLibre's 512 px world (see Revision 3). The ground resolution at latitude 48 is about 100 m at z10, halving each zoom,
+  z16 uses the z15 value; this replaces the fixed 0.0002 degrees.
 - **Seabed thinning (R37):** seabed areas get a build-time minzoom where they are about 48 px across
   (combined with SCAMIN for ENC areas); seabed points are thinned at draw time with labels about 40 px
   apart below zoom 15, bigger areas first, then ENC points, then usSEABED samples.
@@ -203,3 +203,41 @@ starts at 11). Within 344 m of it, at -122.70444, 47.77861, US3WA1DF, US4WA1HI a
 obstruction of unknown depth (WATLEV 3); that one is in the tiles at every zoom from 8 to 16 (US3WA1DF
 to 10, US4WA1HI at 11 and 12, US5SEAIG from 13) and is most likely the same object at the finer
 position. At zoom 10 the two are about 7 px apart, so the declutter shows one of them.
+
+## Revision 3 (2026-10-29): SCAMIN and seabed extent zooms in MapLibre's 512 px world
+
+### The defect
+
+`minzoom_for_scamin` converted a scale denominator to a zoom for 256 px tiles, but MapLibre GL draws a
+512 px world: map zoom z has the ground resolution of 256 px zoom z+1. Every SCAMIN-thinned feature
+therefore appeared one zoom late. Band 4 soundings (SCAMIN 59999) got minzoom 13, above band 4's top zoom
+12, so no soundings showed at z11 to z12; band 5 soundings (17999, 29999) got 14. The R37 "about 48 px
+across" seabed rule had the same error and waited until about 96 screen px.
+
+### The fix (R44 to R46)
+
+- **R44:** the SCAMIN zoom is `round(log2(scale0 * cos(48 deg) / scamin) - 1)`, clamped to the band. Puget
+  North SCAMINs: 259999 gives 9 (band 3), 59999 gives 12, 29999 and 17999 give 13. The seabed size rule
+  is `extent * 2**(z+1) >= 48` (extent still in 256 px zoom-0 pixels), so a feature shows one zoom earlier.
+- **R45:** label placement order is unchanged: soundings win over seabed labels.
+- **R46:** the contour tolerance stays one 256 px Web Mercator pixel, which is about 2 screen px in
+  MapLibre (this corrects the Revision 2 wording "about one pixel"). A true 1 px tolerance measured
+  301.4 MB for the bathy pack and was not adopted. The bathy pack is not rebuilt.
+
+### Sizes after revision 3 (charts pack only)
+
+| Pack | Directory | Tar | enc.mbtiles |
+|---|---|---|---|
+| charts-puget-north-1.0.0 | 180,123,255 bytes (172 MiB), was 176,133,751 | 180,142,080 bytes | 179,552,256 bytes, was 175,562,752 |
+
+`chartpack check` prints nothing and exits 0; `sha256sum -c SHA256SUMS` passes for both tars. build-enc
+took 2 min 20 s.
+
+### What the renders show now
+
+- **z11:** no soundings (band 4 starts them at z12). Cables, pipelines and restricted-area lines whose SCAMIN
+  allows are drawn, and seabed areas show where they are about 48 px across.
+- **z12:** soundings from band 4 cells appear.
+- **z13:** soundings from band 5 cells show (`possession-bar-z13-nav-day.png`); seabed labels yield to
+  soundings where they collide (R45), and appear at z14 to z15 as the sounding density allows.
+- The 60 puget-north PNGs and the 7 changed test-cell PNGs were re-rendered.

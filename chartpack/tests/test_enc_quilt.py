@@ -64,8 +64,8 @@ def test_soundings_use_scamin():
         {"cell": "US4AAAAA", "band": 4, "class": "SOUNDG", "depth": "3.2", "SCAMIN": 44999},
     )
     out = quilt([(_cell("US4AAAAA", 4, (0, 0, 1, 1)), [pt])])
-    # 44999 -> zoom 13: absent from (11,12), present from 13
-    assert [_range(f) for f in out] == [(13, 16)]
+    # 44999 -> zoom 12 (R44, 512 px world): absent at z11, present from z12 (band 4 ends at 12, then band 5)
+    assert [_range(f) for f in out] == [(12, 12), (13, 16)]
 
 
 def test_thinned_feature_dropped_when_minzoom_exceeds_range():
@@ -75,20 +75,20 @@ def test_thinned_feature_dropped_when_minzoom_exceeds_range():
         {"cell": "US3AAAAA", "band": 3, "class": "SEAARE", "SCAMIN": 5999},
     )
     out = quilt([(_cell("US3AAAAA", 3, (0, 0, 1, 1)), [area])])
-    assert [_range(f) for f in out] == [(16, 16)]
+    assert [_range(f) for f in out] == [(15, 16)]  # 5999 -> zoom 15, past band 3's top zoom 10
 
 
 def test_seabed_area_minzoom_is_the_larger_of_scamin_and_size():
     """R37: a seabed area shows from the zoom where it is about 48 px across, or its SCAMIN zoom if later."""
-    small = box(-122.5, 48.0, -122.499, 48.001)  # about 75 by 110 m: 48 px across at z16
-    big = box(-122.5, 48.0, -122.45, 48.05)  # about 3.7 by 5.6 km: 48 px across at z11
+    small = box(-122.5, 48.0, -122.499, 48.001)  # about 75 by 110 m: 48 px across at z15 (R44)
+    big = box(-122.5, 48.0, -122.45, 48.05)  # about 3.7 by 5.6 km: 48 px across at z10, so band 4's z11
     feats = [Feature("seabed", mapping(g), {"cell": "US4AAAAA", "band": 4, "class": "SBDARE", "SCAMIN": scamin,
                                             "extent": extent_z0(mapping(g))})
              for g, scamin in ((small, 179999), (big, 179999), (big, 44999))]
     out = quilt([(_cell("US4AAAAA", 4, (-123, 47, -122, 49)), feats)])
     ranges = [[_range(f) for f in out if f.props["SCAMIN"] == s and f.geometry == mapping(g)] for g, s in
               ((small, 179999), (big, 179999), (big, 44999))]
-    assert ranges == [[(16, 16)], [(11, 12), (13, 16)], [(13, 16)]]
+    assert ranges == [[(15, 16)], [(11, 12), (13, 16)], [(12, 12), (13, 16)]]
 
 
 def test_safety_layers_ignore_scamin():

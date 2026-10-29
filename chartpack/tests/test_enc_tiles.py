@@ -252,7 +252,7 @@ def test_seabed_in_tiles_with_label(enc_pack, fixtures_dir, z):
 
 
 def test_seabed_thinned_by_scamin_and_size(enc_pack, fixtures_dir):
-    """SCAMIN 59999 (SBDARE) and 119999 (WEDKLP) in the test cell give minzoom 13 and 12, and a small area
+    """SCAMIN 59999 (SBDARE) and 119999 (WEDKLP) in the test cell give minzoom 12 and 11 (R44), and a small area
     waits until it is about 48 px across (R37); below its first zoom a feature is absent, from there on it is
     always drawn (never randomly dropped)."""
     _, feats = read_cell(fixtures_dir / "US4WA1HK.zip")
@@ -263,7 +263,6 @@ def test_seabed_thinned_by_scamin_and_size(enc_pack, fixtures_dir):
         want = {tuple(f.props.get(k) for k in keys) for f in sources if _enc_seabed_first_zoom(f) <= z}
         got = {tuple(p.get(k) for k in keys) for p, _ in _seabed_at(enc_pack, z) if p["src"] == "enc"}
         assert got == want, z
-    assert not [p for p, _ in _seabed_at(enc_pack, 11) if p["src"] == "enc"]
 
 
 def test_build_without_seabed_features(tmp_path, fixtures_dir, regions_dir):
