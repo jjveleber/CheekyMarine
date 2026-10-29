@@ -120,3 +120,5 @@ jobs:
             *.tar
             SHA256SUMS
           generate_release_notes: true
+          # "Latest" stays with the n2kd v* releases; a pack release never replaces it.
+          make_latest: false
