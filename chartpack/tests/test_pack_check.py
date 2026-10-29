@@ -110,3 +110,25 @@ def test_check_catches_style_using_unknown_icon(charts_pack_root_copy, test_regi
     path.write_text(json.dumps(style))
     _refresh(charts_pack_root_copy, test_region)
     assert any("nav-day.json" in e and "no-such-icon" in e for e in check_pack(charts_pack_root_copy))
+
+
+def test_check_catches_depare_missing_from_coverage(charts_pack_root_copy, fixtures_dir, test_region):
+    _rewrite_tiles(charts_pack_root_copy / "enc.mbtiles", 16, lambda layers: [l for l in layers if l["name"] != "depare"])
+    _refresh(charts_pack_root_copy, test_region)
+    errs = check_pack(charts_pack_root_copy, enc_zips=[fixtures_dir / "US4WA1HK.zip"])
+    assert any("depare and lndare cover" in e for e in errs)
+
+
+def test_check_catches_hazard_not_in_source(charts_pack_root_copy, fixtures_dir, test_region):
+    def add_one(layers):
+        for layer in layers:
+            if layer["name"] == "hazard" and layer["features"]:
+                feat = layer["features"][0]
+                layer["features"].append({**feat, "properties": {**feat["properties"], "VALSOU": "99.9"}})
+                break
+        return layers
+
+    _rewrite_tiles(charts_pack_root_copy / "enc.mbtiles", 16, add_one)
+    _refresh(charts_pack_root_copy, test_region)
+    errs = check_pack(charts_pack_root_copy, enc_zips=[fixtures_dir / "US4WA1HK.zip"])
+    assert any("hazard" in e and "not in the source cells" in e for e in errs)

@@ -91,12 +91,17 @@ def _manifest(args: argparse.Namespace) -> int:
 
 
 def _check(args: argparse.Namespace) -> int:
-    zips = None
+    errors, zips = [], None
     if args.enc_cache:
-        manifest = json.loads((args.packdir / "manifest.json").read_text())
-        zips = [args.enc_cache / "enc" / f"{s['cell']}-{s['edtn']}.{s['updn']}.zip"
-                for s in manifest["sources"] if manifest["pack"] == "charts"]
-    errors = check_pack(args.packdir, enc_zips=zips)
+        try:
+            manifest = json.loads((args.packdir / "manifest.json").read_text())
+            cells = manifest["sources"] if manifest["pack"] == "charts" else []
+            paths = [args.enc_cache / "enc" / f"{s['cell']}-{s['edtn']}.{s['updn']}.zip" for s in cells]
+        except (OSError, ValueError, KeyError, TypeError):
+            paths = []  # check_pack reports the manifest problem
+        errors = [f"{p}: ENC zip not found in --enc-cache" for p in paths if not p.is_file()]
+        zips = [p for p in paths if p.is_file()]
+    errors += check_pack(args.packdir, enc_zips=zips)
     for error in errors:
         print(error)
     return 1 if errors else 0

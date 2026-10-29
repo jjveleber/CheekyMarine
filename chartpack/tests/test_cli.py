@@ -171,3 +171,11 @@ def test_manifest_and_archive_commands(charts_pack_root_copy, regions_dir, tmp_p
     capsys.readouterr()
     assert main(["archive", str(charts_pack_root_copy), str(tmp_path / "dist")]) == 0
     assert capsys.readouterr().out.split() == [str(tmp_path / "dist" / "charts-test-cell-0.1.0.tar"), str(tmp_path / "dist" / "SHA256SUMS")]
+
+
+def test_check_reports_problems_as_errors_not_tracebacks(charts_pack_root_copy, tmp_path, capsys):
+    assert main(["check", str(charts_pack_root_copy), "--enc-cache", str(tmp_path / "empty")]) == 1
+    assert "US4WA1HK-1.3.zip" in capsys.readouterr().out
+    (charts_pack_root_copy / "manifest.json").unlink()
+    assert main(["check", str(charts_pack_root_copy), "--enc-cache", str(tmp_path / "empty")]) == 1
+    assert "manifest.json" in capsys.readouterr().out
