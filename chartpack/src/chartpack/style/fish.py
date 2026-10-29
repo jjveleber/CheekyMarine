@@ -68,7 +68,7 @@ def _label(layer_id: str, filter_: list, p: dict, minzoom: int | None = None) ->
         "layout": {"symbol-placement": "line", "symbol-spacing": 400,
                    "text-field": ["to-string", ["get", "depth_ft"]], "text-font": ["Noto Sans Bold"],
                    "text-size": 11},
-        "paint": {"text-color": p["CHBLK"], "text-halo-color": p["CHWHT"], "text-halo-width": 1.5},
+        "paint": {"text-color": p["CHBLK"], "text-halo-color": p["DEPDW"], "text-halo-width": 1.5},
     }
     if minzoom is not None:
         layer["minzoom"] = minzoom

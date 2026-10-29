@@ -1,6 +1,9 @@
+import pytest
+
 from chartpack.enc.schema import BATHY_LAYER_SPECS, LAYERS
 from chartpack.style.fish import fish_style
-from chartpack.style.nav import Depths
+from chartpack.style.nav import Depths, nav_style
+from chartpack.style.palette import PALETTES
 from chartpack.style.validate import check_style_against_schema
 
 
@@ -88,3 +91,13 @@ def test_fish_notice():
 def test_fish_schema():
     for palette in ("day", "dusk", "night"):
         assert check_style_against_schema(fish_style(palette), LAYERS + BATHY_LAYER_SPECS) == []
+
+
+@pytest.mark.parametrize("palette", sorted(PALETTES))
+@pytest.mark.parametrize("make", [fish_style, nav_style])
+def test_text_halo_differs_from_text(make, palette):
+    """A halo in the text colour hides the text (puget-north renders: fish-night contour labels were blobs)."""
+    for layer in make(palette)["layers"]:
+        paint = layer.get("paint", {})
+        if "text-halo-color" in paint:
+            assert paint["text-halo-color"] != paint["text-color"], layer["id"]
