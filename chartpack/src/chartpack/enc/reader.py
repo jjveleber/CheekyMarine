@@ -36,6 +36,7 @@ class CellMeta:
     updn: int
     isdt: str
     covr: dict
+    skipped_no_geometry: int = 0  # features GDAL gave without a geometry
 
 
 def _accepts(geometry: str, geom_name: str) -> bool:
@@ -49,8 +50,8 @@ def _accepts(geometry: str, geom_name: str) -> bool:
 
 
 def _route(cls: str, geom_name: str):
-    """The layer a feature of this class and geometry goes to. Nothing is dropped:
-    when no candidate accepts the geometry, the first candidate takes it."""
+    """The layer a feature of this class and geometry goes to. Geometry never causes a drop:
+    when no candidate accepts the geometry, the first candidate takes it (pinned by a test)."""
     candidates = [spec for spec in LAYERS if cls in spec.classes]
     for spec in candidates:
         if _accepts(spec.geometry, geom_name):
@@ -89,11 +90,10 @@ def _geometry(feature) -> dict | None:
 def read_cell(zip_path: Path, *, apply_updates: bool = True) -> tuple[CellMeta, list[Feature]]:
     with tempfile.TemporaryDirectory() as tmp, zipfile.ZipFile(zip_path) as zf:
         base000 = next(n for n in zf.namelist() if n.endswith(".000"))
-        folder = base000.rsplit("/", 1)[0] + "/"
-        for n in zf.namelist():
-            if n.startswith(folder) and not n.endswith("/"):
-                (Path(tmp) / Path(n).name).write_bytes(zf.read(n))
         name = Path(base000).stem
+        for n in zf.namelist():
+            if not n.endswith("/") and Path(n).name.startswith(name + "."):
+                (Path(tmp) / Path(n).name).write_bytes(zf.read(n))
         band = int(name[2])
         ds = gdal.OpenEx(
             str(Path(tmp) / f"{name}.000"),
@@ -113,6 +113,7 @@ def read_cell(zip_path: Path, *, apply_updates: bool = True) -> tuple[CellMeta, 
             edtn, updn = int(dsid.GetField("DSID_EDTN")), int(dsid.GetField("DSID_UPDN"))
             features: list[Feature] = []
             covr_parts = []
+            skipped = 0
             classes = [c for spec in LAYERS for c in spec.classes]
             for cls in dict.fromkeys(classes):
                 layer = ds.GetLayerByName(cls)
@@ -123,6 +124,7 @@ def read_cell(zip_path: Path, *, apply_updates: bool = True) -> tuple[CellMeta, 
                         continue
                     geometry = _geometry(feature)
                     if geometry is None:
+                        skipped += 1
                         continue
                     spec = _route(cls, geometry["type"].upper())
                     props = _props(feature, cls, spec.attributes, name, band)
@@ -131,5 +133,7 @@ def read_cell(zip_path: Path, *, apply_updates: bool = True) -> tuple[CellMeta, 
                     features.append(Feature(spec.name, geometry, props))
         finally:
             layer = feature = dsid = ds = None  # release the files before the temp dir goes
+    if not covr_parts:
+        raise ValueError(f"{name}: no M_COVR feature with CATCOV=1")
     covr = mapping(unary_union(covr_parts))
-    return CellMeta(name, band, edtn, updn, isdt, covr), features
+    return CellMeta(name, band, edtn, updn, isdt, covr, skipped), features

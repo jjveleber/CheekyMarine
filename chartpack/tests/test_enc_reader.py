@@ -74,20 +74,95 @@ def test_depare_values_are_exact_strings(fixtures_dir):
     assert {(f.props["DRVAL1"], f.props["DRVAL2"]) for f in d} == ogr_depare_pairs(fixtures_dir / "US4WA1HK.zip")
 
 
+def ogr_hazards(zip_path):
+    """Sorted (class, minx, miny, VALSOU-or-None) for every UWTROC, WRECKS and OBSTRN, read via GDAL."""
+    ds, tmp = _open(zip_path)
+    with tmp:
+        rows = []
+        for cls in ("UWTROC", "WRECKS", "OBSTRN"):
+            for f in ds.GetLayerByName(cls):
+                g = f.GetGeometryRef().Clone()
+                g.FlattenTo2D()
+                minx, _, miny, _ = g.GetEnvelope()
+                v = f.GetField("VALSOU") if f.IsFieldSetAndNotNull("VALSOU") else None
+                rows.append((cls, minx, miny, None if v is None else format(v, ".15g")))
+        ds = None
+    return sorted(rows, key=repr)
+
+
 def test_every_hazard_present_with_attributes(fixtures_dir):
-    _, feats = read_cell(fixtures_dir / "US4WA1HK.zip")
+    zip_path = fixtures_dir / "US4WA1HK.zip"
+    _, feats = read_cell(zip_path)
     h = [f for f in feats if f.layer == "hazard"]
-    assert Counter(f.props["class"] for f in h) == ogr_class_counts(fixtures_dir / "US4WA1HK.zip", ["UWTROC", "WRECKS", "OBSTRN"])
+    assert Counter(f.props["class"] for f in h) == ogr_class_counts(zip_path, ["UWTROC", "WRECKS", "OBSTRN"])
     assert all("WATLEV" in f.props or f.props["class"] == "OBSTRN" for f in h)
-    rock_without_depth = next(f for f in h if f.props["class"] == "UWTROC" and "VALSOU" not in f.props)
-    assert "VALSOU" not in rock_without_depth.props
+    ours = sorted(
+        ((f.props["class"],) + shape(f.geometry).bounds[:2] + (f.props.get("VALSOU"),) for f in h),
+        key=repr,
+    )
+    theirs = ogr_hazards(zip_path)
+    assert ours == theirs  # VALSOU present exactly where OGR has it, with the same exact string
+    values = {r[3] for r in theirs}
+    assert None in values and "0" in values and any(v and v.startswith("-") for v in values)
+    assert sum(r[3] is None for r in theirs if r[0] == "UWTROC") > 0
 
 
 def test_soundings_are_split_points_with_depth(fixtures_dir):
-    _, feats = read_cell(fixtures_dir / "US4WA1HK.zip")
+    zip_path = fixtures_dir / "US4WA1HK.zip"
+    _, feats = read_cell(zip_path)
     s = [f for f in feats if f.layer == "soundg"]
     assert all(f.geometry["type"] == "Point" and "depth" in f.props for f in s)
-    assert len(s) == ogr_sounding_point_count(fixtures_dir / "US4WA1HK.zip")
+    ours = sorted((*f.geometry["coordinates"], f.props["depth"], f.props.get("SCAMIN")) for f in s)
+    ds, tmp = _open(zip_path)
+    with tmp:
+        theirs = sorted(
+            (
+                f.GetGeometryRef().GetX(),
+                f.GetGeometryRef().GetY(),
+                format(f.GetField("DEPTH"), ".15g"),
+                f.GetField("SCAMIN") if f.IsFieldSetAndNotNull("SCAMIN") else None,
+            )
+            for f in ds.GetLayerByName("SOUNDG")
+        )
+        ds = None
+    assert ours == theirs
+
+
+def test_geometry_mismatched_features_are_kept_and_counted(fixtures_dir):
+    """A feature whose geometry its layer does not list is kept in its class's first layer.
+    The exact counts are pinned so any routing change is noticed."""
+    meta, feats = read_cell(fixtures_dir / "US4WA1HK.zip")
+    accepts = {"polygon": ("Polygon", "MultiPolygon"), "line": ("LineString", "MultiLineString"),
+               "point": ("Point", "MultiPoint")}
+    from chartpack.enc.schema import LAYERS
+
+    geometry = {spec.name: spec.geometry for spec in LAYERS}
+    mismatched = Counter(
+        f.layer for f in feats
+        if geometry[f.layer] != "any" and f.geometry["type"] not in accepts[geometry[f.layer]]
+    )
+    assert mismatched == {"area": 4, "coalne": 1}
+    assert meta.skipped_no_geometry == 0
+
+
+def test_zip_with_000_at_the_root(fixtures_dir, tmp_path):
+    src = fixtures_dir / "US5SEAKL.zip"
+    flat = tmp_path / "US5SEAKL.zip"
+    with zipfile.ZipFile(src) as zin, zipfile.ZipFile(flat, "w") as zout:
+        for n in zin.namelist():
+            if not n.endswith("/") and Path(n).name.startswith("US5SEAKL."):
+                zout.writestr(Path(n).name, zin.read(n))
+    meta, feats = read_cell(flat)
+    assert meta.updn == 1 and feats
+
+
+def test_cell_without_coverage_is_an_error(fixtures_dir, monkeypatch):
+    import chartpack.enc.reader as reader
+
+    # without the meta layer M_COVR is never read, as for a cell with no CATCOV=1 polygon
+    monkeypatch.setattr(reader, "LAYERS", tuple(s for s in reader.LAYERS if s.name != "meta"))
+    with pytest.raises(ValueError, match="US4WA1HK"):
+        read_cell(fixtures_dir / "US4WA1HK.zip")
 
 
 def test_lists_are_comma_joined(fixtures_dir):
