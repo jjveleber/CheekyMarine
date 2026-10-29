@@ -1,4 +1,5 @@
 import importlib.util
+import json
 import os
 from pathlib import Path
 
@@ -32,6 +33,33 @@ def pytest_collection_modifyitems(config, items):
                 render_ok = _chromium_installed()
             if not render_ok:
                 item.add_marker(skip_render)
+
+
+def pytest_addoption(parser):
+    parser.addoption("--update-golden", action="store_true", help="rewrite golden files from the compared values")
+
+
+class _Golden:
+    def __init__(self, path: Path, update: bool):
+        self.path, self.update = path, update
+
+    def __eq__(self, other):
+        if self.update:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            self.path.write_text(json.dumps(other, indent=2, sort_keys=True) + "\n")
+            return True
+        return json.loads(self.path.read_text()) == json.loads(json.dumps(other))
+
+
+@pytest.fixture
+def golden(request):
+    """golden(name) compares equal to the JSON in tests/fixtures/golden/<name>.
+
+    Under --update-golden the compared value is written to the file instead and the
+    comparison passes, so `assert value == golden("x.json")` regenerates the file.
+    """
+    update = request.config.getoption("--update-golden")
+    return lambda name: _Golden(ROOT / "tests" / "fixtures" / "golden" / name, update)
 
 
 @pytest.fixture
