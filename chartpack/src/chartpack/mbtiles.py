@@ -67,6 +67,10 @@ class MBTiles:
         self._conn.executemany("insert or replace into metadata values (?, ?)", list(items.items()))
         self._conn.commit()
 
+    def delete_metadata(self, keys: list[str]) -> None:
+        self._conn.executemany("delete from metadata where name=?", [(k,) for k in keys])
+        self._conn.commit()
+
 
 def decode_pbf(data: bytes) -> dict[str, list[dict]]:
     """Decode a (possibly gzipped) vector tile to {layer: [GeoJSON-like features]}.

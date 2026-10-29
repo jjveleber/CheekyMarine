@@ -94,6 +94,7 @@ def build_enc_mbtiles(
         w, s, e, n = region.bbox
         m.set_metadata({
             "name": f"charts-{region.name}",
+            "description": f"CheekyMarine charts pack {region.name}",
             "format": "pbf",
             "bounds": f"{w},{s},{e},{n}",
             "minzoom": str(MINZOOM),
@@ -105,4 +106,5 @@ def build_enc_mbtiles(
             "cheekymarine:sources": json.dumps(sources),
             "cheekymarine:built": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         })
+        m.delete_metadata(["generator_options"])  # holds the temp work paths
     return out

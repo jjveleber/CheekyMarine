@@ -1,13 +1,18 @@
 import json
 from collections import Counter
 
+import numpy as np
 import pytest
+import shapely
 from shapely.geometry import LineString, Polygon, box, shape
+from shapely import STRtree
 from shapely.ops import unary_union
 from shapely.validation import make_valid
 
 from chartpack.enc.reader import read_cell
 from chartpack.enc.schema import LAYERS
+from chartpack.enc.tiles import build_enc_mbtiles
+from chartpack.region import load_region
 from chartpack.mbtiles import MBTiles, decode_pbf
 
 from tilemath import EXTENT, to_lonlat, tile_of
@@ -54,18 +59,66 @@ def test_counts_match_golden(enc_pack, golden):
     assert counts == golden("US4WA1HK_tiles.json")
 
 
+def _hazard_geoms(z, tiles):
+    """{(class, VALSOU, WATLEV): [lon/lat geometry]} decoded from the hazard layer at zoom z."""
+    got = {}
+    for x, y, data in tiles:
+        for feat in decode_pbf(data).get("hazard", []):
+            p = feat["properties"]
+            geom = shapely.transform(
+                shape(feat["geometry"]), lambda c: np.array([to_lonlat(z, x, y, px, py) for px, py in c])
+            )
+            got.setdefault((p["class"], p.get("VALSOU"), p.get("WATLEV")), []).append(geom)
+    return got
+
+
 def test_every_hazard_in_every_zoom_of_its_band(enc_pack, fixtures_dir):
+    """Hazards (points, lines and polygons) keep class, VALSOU, WATLEV and position at every zoom.
+
+    Tile coordinates are integers, so positions are compared within 1.5 tile units.
+    """
     _, feats = read_cell(fixtures_dir / "US4WA1HK.zip")
-    expected = Counter((f.props["class"], f.props.get("VALSOU"), f.props.get("WATLEV")) for f in feats if f.layer == "hazard")
-    assert expected
+    hazards = [f for f in feats if f.layer == "hazard"]
+    assert hazards
+    keys = {(f.props["class"], f.props.get("VALSOU"), f.props.get("WATLEV")) for f in hazards}
     for z in ZOOMS:  # band 4 at 11-12 and fill-in at 13-16 (no band 5 in test-cell)
-        got = Counter()
-        for _, _, data in enc_pack.tiles_at(z):
-            for feat in decode_pbf(data).get("hazard", []):
-                p = feat["properties"]
-                got[(p["class"], p.get("VALSOU"), p.get("WATLEV"))] += 1
-        # a feature can appear in several tiles (buffers), so compare keys
-        assert set(got) == set(expected), z
+        got = _hazard_geoms(z, list(enc_pack.tiles_at(z)))
+        tol = 1.5 * 360 / 2**z / EXTENT
+        for f in hazards:
+            key = (f.props["class"], f.props.get("VALSOU"), f.props.get("WATLEV"))
+            pt = shape(f.geometry).representative_point()
+            assert any(g.distance(pt) <= tol for g in got.get(key, [])), (z, key, pt.wkt)
+        assert set(got) <= keys, z  # nothing invented
+
+
+def _layer_polys(enc_pack, layer, z):
+    """([lon/lat polygons], [props], STRtree) of a layer at zoom z, each clipped to its own tile."""
+    polys, props = [], []
+    for x, y, data in enc_pack.tiles_at(z):
+        for pr, poly in _tile_polys(decode_pbf(data).get(layer, []), z, x, y):
+            polys.append(poly)
+            props.append(pr)
+    return polys, props, STRtree(polys)
+
+
+@pytest.mark.parametrize("layer, source_layer", [("depare", "depare"), ("lndare", "lndare")])
+def test_every_source_polygon_present_at_every_zoom(enc_pack, fixtures_dir, layer, source_layer):
+    _, feats = read_cell(fixtures_dir / "US4WA1HK.zip")
+    sources = [f for f in feats if f.layer == source_layer]
+    assert sources
+    for z in ZOOMS:
+        polys, props, tree = _layer_polys(enc_pack, layer, z)
+        tol = 1.5 * 360 / 2**z / EXTENT
+        for f in sources:
+            for part in _polys(shape(f.geometry)):
+                pt = part.representative_point()
+                hits = tree.query(pt.buffer(tol))
+                ok = any(
+                    polys[i].distance(pt) <= tol
+                    and (layer != "depare" or (props[i].get("DRVAL1"), props[i].get("DRVAL2")) == (f.props.get("DRVAL1"), f.props.get("DRVAL2")))
+                    for i in hits
+                )
+                assert ok, (z, f.props, pt.wkt)
 
 
 def test_depare_values_byte_equal(enc_pack, fixtures_dir):
@@ -136,3 +189,26 @@ def test_metadata(enc_pack, fixtures_dir):
         {"cell": "US4WA1HK", "edtn": meta.edtn, "updn": meta.updn, "isdt": meta.isdt}
     ]
     assert {l["id"] for l in json.loads(md["json"])["vector_layers"]} == {l.name for l in LAYERS}
+
+
+def _cell_without(fixtures_dir, layer):
+    meta, feats = read_cell(fixtures_dir / "US4WA1HK.zip")
+    return meta, [f for f in feats if f.layer != layer]
+
+
+def test_missing_tippecanoe_names_install_script(tmp_path, fixtures_dir, regions_dir, monkeypatch):
+    monkeypatch.setattr("chartpack.enc.tiles.shutil.which", lambda name: None)
+    with pytest.raises(RuntimeError, match="scripts/install-tippecanoe.sh"):
+        build_enc_mbtiles([_cell_without(fixtures_dir, "line")], tmp_path / "o.mbtiles",
+                          region=load_region(regions_dir / "test-cell.toml"), work=tmp_path / "w")
+
+
+def test_layer_without_features_is_named(tmp_path, fixtures_dir, regions_dir):
+    with pytest.raises(RuntimeError, match="line"):
+        build_enc_mbtiles([_cell_without(fixtures_dir, "line")], tmp_path / "o.mbtiles",
+                          region=load_region(regions_dir / "test-cell.toml"), work=tmp_path / "w")
+
+
+def test_metadata_has_no_temp_paths(enc_pack):
+    md = enc_pack.metadata()
+    assert md["description"] == "CheekyMarine charts pack test-cell" and "generator_options" not in md
