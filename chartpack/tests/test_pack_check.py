@@ -144,3 +144,23 @@ def test_check_catches_hazard_not_in_source(charts_pack_root_copy, fixtures_dir,
     _refresh(charts_pack_root_copy, test_region)
     errs = check_pack(charts_pack_root_copy, enc_zips=[fixtures_dir / "US4WA1HK.zip"])
     assert any("hazard" in e and "not in the source cells" in e for e in errs)
+
+
+def test_hazard_on_a_seam_of_finer_cells_is_quilted_away(charts_pack_root, fixtures_dir, monkeypatch):
+    """A coarse-band hazard on the shared edge of two finer cells lies inside their union, so the quilt
+    clips it out; the check must not expect it (puget-north: an OBSTRN of US3WA1DF on the -122.7 seam)."""
+    from shapely.geometry import box, mapping
+
+    from chartpack.enc.reader import CellMeta, Feature, read_cell
+    from chartpack.pack import check
+
+    meta, feats = read_cell(fixtures_dir / "US4WA1HK.zip")
+    seam = Feature("hazard", {"type": "Point", "coordinates": [-122.25, 47.85]},
+                   {"cell": meta.name, "band": 4, "class": "OBSTRN", "WATLEV": 3})
+    cells = {
+        "hk": (meta, feats + [seam]),
+        "west": (CellMeta("US5TESTW", 5, 1, 0, "20260101", mapping(box(-122.30, 47.80, -122.25, 47.90))), []),
+        "east": (CellMeta("US5TESTE", 5, 1, 0, "20260101", mapping(box(-122.25, 47.80, -122.20, 47.90))), []),
+    }
+    monkeypatch.setattr(check, "read_cell", lambda path: cells[str(path)])
+    assert check_pack(charts_pack_root, enc_zips=["hk", "west", "east"]) == []

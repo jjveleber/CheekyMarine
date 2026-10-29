@@ -129,12 +129,13 @@ def _check_against_sources(m: MBTiles, metadata: dict, enc_zips: list[Path]) -> 
     errors = []
     source_keys = set()
     for meta, feats in cells:
-        finer = [shape(other.covr) for other, _ in cells if other.band > meta.band]
+        # The union, as the quilt clips: a point on the seam of two finer cells is inside it, though in neither.
+        finer = unary_union([shape(other.covr) for other, _ in cells if other.band > meta.band])
         for f in feats:
             if f.layer != "hazard":
                 continue
             point = shape(f.geometry).representative_point()
-            if any(covr.contains(point) for covr in finer):
+            if finer.contains(point):
                 continue  # a finer band's cell takes this ground over in the quilt
             key = hazard_key(f.props)
             source_keys.add(key)
