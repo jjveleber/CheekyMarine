@@ -1,0 +1,70 @@
+name = "puget-north"
+charts_version = "1.0.0"
+bathy_version = "1.0.0"
+bbox = [-122.9, 47.5, -122.1, 48.3]
+clip = "clip/canada-wa.geojson"
+
+# Every Active cell of bands 3 to 5 whose catalog polygon meets the bbox (`chartpack cells`, catalog of
+# 2026-10-29). Bands 1 and 2 (US1GLBDD, US2PACWY) also meet it but are left out: band 3 covers the whole
+# bbox, so the quilt would clip band 2 away everywhere, and band 1 has no zoom range.
+[enc]
+band3 = ["US3WA1DF", "US3WA1DG", "US3WA1EF", "US3WA1EG"]
+band4 = ["US4WA1GI", "US4WA1GJ", "US4WA1GK", "US4WA1HI", "US4WA1HJ", "US4WA1HK", "US4WA1II", "US4WA1IJ", "US4WA1IK", "US4WA1JI", "US4WA1JJ"]
+band5 = [
+    "US5SEAEH", "US5SEAEI", "US5SEAEJ", "US5SEAEK", "US5SEAEL", "US5SEAEM", "US5SEAEN",
+    "US5SEAFG", "US5SEAFH", "US5SEAFI", "US5SEAFJ", "US5SEAFK", "US5SEAFL", "US5SEAFM", "US5SEAFN",
+    "US5SEAGE", "US5SEAGF", "US5SEAGG", "US5SEAGH", "US5SEAGI", "US5SEAGJ", "US5SEAGK", "US5SEAGL", "US5SEAGM", "US5SEAGN",
+    "US5SEAHE", "US5SEAHF", "US5SEAHG", "US5SEAHH", "US5SEAHI", "US5SEAHJ", "US5SEAHK", "US5SEAHL", "US5SEAHM", "US5SEAHN",
+    "US5SEAIE", "US5SEAIF", "US5SEAIG", "US5SEAIH", "US5SEAII", "US5SEAIJ", "US5SEAIK", "US5SEAIL",
+    "US5SEAJH", "US5SEAJI", "US5SEAJJ", "US5SEAJK", "US5SEAJL",
+    "US5SEAKG", "US5SEAKH", "US5SEAKI", "US5SEAKJ", "US5SEAKK", "US5SEAKL", "US5SEAKM", "US5SEAKN", "US5SEAKO",
+    "US5SEALF", "US5SEALG", "US5SEALH", "US5SEALI", "US5SEALJ", "US5SEALK", "US5SEALL", "US5SEALN",
+    "US5SEAMF", "US5SEAMG", "US5SEAMH", "US5SEAMI", "US5SEAMJ", "US5SEAMK",
+    "US5SEANF", "US5SEANG", "US5SEANH", "US5SEANI", "US5SEANJ",
+    "US5SEAOF", "US5SEAOG", "US5SEAOH", "US5SEAOI", "US5SEAOJ",
+    "US5SEAPI", "US5SEAPJ",
+    "US5WA1EN", "US5WA1EO", "US5WA1EP",
+]
+
+[bathy]
+sources = ["cudem", "crm"]
+dem_maxzoom = 14
+
+[datum]
+station = "9447130"  # Seattle
+navd88_to_mllw_m = 0.715
+msl_to_mllw_m = 2.02
+
+[seabed]
+sources = ["enc", "usseabed", "usgs-cmecs"]
+cmecs_blocks = ["admiralty-inlet", "seattle", "burien"]  # the DS 935 blocks inside the bbox
+
+[[render.views]]
+name = "everett"
+lon = -122.23
+lat = 47.98
+zooms = [11, 13, 15]
+
+[[render.views]]
+name = "possession-bar"
+lon = -122.37
+lat = 47.90
+zooms = [11, 13, 15]
+
+[[render.views]]
+name = "point-no-point"
+lon = -122.52
+lat = 47.92
+zooms = [11, 13, 15]
+
+[[render.views]]
+name = "jeff-head"
+lon = -122.47
+lat = 47.75
+zooms = [11, 13, 15]
+
+[[render.views]]
+name = "admiralty-inlet"  # inside the USGS CMECS Admiralty Inlet block
+lon = -122.74
+lat = 48.13
+zooms = [11, 13, 15]
