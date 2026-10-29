@@ -1,1 +1,5 @@
+build/
 .superpowers/
+.cache/
+.claude/
+build-*/

@@ -1,0 +1,39 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  version:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check tag matches CMake version
+        run: scripts/check-version-tag.sh "${GITHUB_REF_NAME}"
+
+  # The CI workflow: the test job (with the vcan guard) and build-release.yml, which
+  # uploads the "release" artifact (both tarballs and SHA256SUMS).
+  ci:
+    needs: version
+    uses: ./.github/workflows/ci.yml
+
+  publish:
+    needs: ci
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            n2kd-*.tar.gz
+            SHA256SUMS
+          generate_release_notes: true
