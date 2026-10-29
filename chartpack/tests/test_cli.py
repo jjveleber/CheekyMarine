@@ -43,3 +43,26 @@ def test_build_enc_uses_cached_zip(tmp_path, fixtures_dir, regions_dir):
     (tmp_path / "cache" / "enc" / "US4WA1HK-1.3.zip").unlink()
     with pytest.raises(SystemExit):
         main(args)
+
+
+def test_fetch_bathy_prints_tiles_and_crm(tmp_path, fixtures_dir, regions_dir, monkeypatch, capsys):
+    import shutil
+
+    from chartpack import cli
+
+    def fake_download(url, dest, *, expected_size=None, timeout=120):
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy(fixtures_dir / "cudem_urllist_excerpt.txt", dest)
+        return dest
+
+    def fake_fetch_crm(bbox, cache_dir):
+        assert bbox == (-122.4, 47.7, -122.1, 48.0)
+        return cache_dir / "crm" / "crm_x.tif"
+
+    monkeypatch.setattr(cli, "download", fake_download)
+    monkeypatch.setattr(cli, "fetch_crm", fake_fetch_crm)
+    assert main(["fetch-bathy", str(regions_dir / "test-cell.toml"), "--cache", str(tmp_path)]) == 0
+    lines = capsys.readouterr().out.splitlines()
+    assert (tmp_path / "cudem" / "urllist8483.txt").exists()
+    assert "ncei19_n48x00_w122x50_2023v1" in lines
+    assert lines[-1] == str(tmp_path / "crm" / "crm_x.tif")

@@ -29,3 +29,11 @@ Review Focus 3 (a depth area crossing a tile edge) is pinned by
 in `tests/test_enc_tiles.py`: it picks a `DEPARE` from this cell whose bbox spans two adjacent
 zoom 16 tiles, so it stays valid only while the fixture cell is unchanged. If the cell is
 refreshed, regenerate the golden file and re-run those tests.
+
+`cudem_urllist_excerpt.txt` is the 64 Washington lines (folders `wash_pugetsound`, `wash_bellingham`,
+`wash_juandefuca`, `wash_outercoast`) of the live `urllist8483.txt` (942 lines in all), fetched 2026-10-28.
+
+`cudem_possession_bar.tif` is a 300 by 300 window (311 KB, DEFLATE, Float32, NoData -9999, NAD83 + NAVD88
+compound CRS) cut with `gdal_translate -projwin` centred on -122.38, 47.90 from
+`ncei19_n48x00_w122x50_2023v1.tif` (1/9 arc-second). Depths run from -98.5 m to 0.05 m
+(NAVD88 metres, negative down).

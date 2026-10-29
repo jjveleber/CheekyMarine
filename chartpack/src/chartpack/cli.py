@@ -5,6 +5,8 @@ import re
 from pathlib import Path
 
 from chartpack import __version__
+from chartpack.bathy.crm import fetch_crm
+from chartpack.bathy.cudem import URLLIST, parse_urllist, tiles_for_bbox
 from chartpack.cache import download
 from chartpack.enc.catalog import CATALOG_URL, cells_in_bbox, parse_catalog
 from chartpack.enc.fetch import fetch_cells
@@ -72,6 +74,16 @@ def _build_enc(args: argparse.Namespace) -> int:
     return 0
 
 
+def _fetch_bathy(args: argparse.Namespace) -> int:
+    region = load_region(args.region)
+    # The tile list changes as NCEI adds tiles, so it is fetched on every run.
+    text = download(URLLIST, args.cache / "cudem" / "urllist8483.txt").read_text()
+    for tile in tiles_for_bbox(parse_urllist(text), region.bbox):
+        print(tile.name)
+    print(fetch_crm(region.bbox, args.cache))
+    return 0
+
+
 def _render(args: argparse.Namespace) -> int:
     from chartpack.render.render import render_views
 
@@ -89,13 +101,17 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--version", action="store_true")
     sub = parser.add_subparsers(dest="command")
     for name in SUBCOMMANDS:
-        if name in ("fetch-enc", "cells", "build-enc", "render"):
+        if name in ("fetch-enc", "cells", "build-enc", "render", "fetch-bathy"):
             continue
         sub.add_parser(name).set_defaults(func=_not_implemented)
     p = sub.add_parser("fetch-enc")
     p.add_argument("region", type=Path)
     p.add_argument("--cache", type=Path, required=True)
     p.set_defaults(func=_fetch_enc)
+    p = sub.add_parser("fetch-bathy")
+    p.add_argument("region", type=Path)
+    p.add_argument("--cache", type=Path, required=True)
+    p.set_defaults(func=_fetch_bathy)
     p = sub.add_parser("build-enc")
     p.add_argument("region", type=Path)
     p.add_argument("out", type=Path)
