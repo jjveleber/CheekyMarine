@@ -12,8 +12,9 @@ _BIG_M = 1e9
 def build_bands(depth_m: np.ndarray, transform, *, levels_ft: list[int], simplify_deg: float = SIMPLIFY_DEG) -> list[dict]:
     """GeoJSON Polygon features, one set per band between consecutive levels.
 
-    A band below the first level (depth_min_ft 0) and one above the last (depth_max_ft None)
-    are included so the bands tile the whole water area. Polygons are not smoothed.
+    A band from 0 m to the first level (depth_min_ft 0) and one above the last (depth_max_ft None)
+    are included so the bands tile all water; cells at or above MLLW (including the fill_land
+    plateau) are outside every band. Polygons are not smoothed.
     """
     x, y = axes(depth_m.shape, transform)
     gen = contourpy.contour_generator(
@@ -22,7 +23,7 @@ def build_bands(depth_m: np.ndarray, transform, *, levels_ft: list[int], simplif
     bounds = [(0, levels_ft[0])] + list(zip(levels_ft, levels_ft[1:])) + [(levels_ft[-1], None)]
     feats = []
     for lo, hi in bounds:
-        lo_m = -_BIG_M if lo == 0 else lo / M_TO_FT
+        lo_m = lo / M_TO_FT
         hi_m = _BIG_M if hi is None else hi / M_TO_FT
         points, offsets = gen.filled(lo_m, hi_m)
         for pts, offs in zip(points, offsets):

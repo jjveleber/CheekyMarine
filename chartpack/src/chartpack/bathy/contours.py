@@ -80,9 +80,9 @@ def build_contours(
     feats = []
     for ft in levels_ft:
         for raw in gen.lines(ft / M_TO_FT):
-            pts = simplify(chaikin_line([(float(a), float(b)) for a, b in raw], smooth_passes), simplify_deg)
-            if len(pts) < min_points:
+            if len(raw) < min_points:  # specks, judged on the raw line as wa-creel does
                 continue
+            pts = simplify(chaikin_line([(float(a), float(b)) for a, b in raw], smooth_passes), simplify_deg)
             feats.append(
                 {
                     "type": "Feature",

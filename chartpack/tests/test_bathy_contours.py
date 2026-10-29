@@ -23,13 +23,15 @@ def _depth(fixtures_dir):
 
 @pytest.fixture
 def ridge_depth(fixtures_dir):
-    """Ridge (21 m crest) made shallower by 12 m with a north-south wiggle, land removed.
-
-    Straight contours would simplify to two points, so the wiggle gives them real shape.
-    """
-    d = _depth(fixtures_dir) - 12.0 + 3.0 * np.sin(np.arange(200) * 2 * np.pi / 40)[:, None]
-    d[d < -5.0] = np.nan  # the land columns
+    d = _depth(fixtures_dir)
+    d[d < 0] = np.nan  # the land columns
     return d
+
+
+@pytest.fixture
+def shallow_ridge_depth(ridge_depth):
+    """The ridge 12 m shallower, so the 5 ft steps (25 ft = 7.6 m) exist."""
+    return ridge_depth - 12.0
 
 
 @pytest.fixture
@@ -54,12 +56,12 @@ def test_ridge_contours_at_expected_depths(ridge_depth):
     feats = build_contours(ridge_depth, TRANSFORM, levels_ft=DEPTHS_FT)
     depths = {f["properties"]["depth_ft"] for f in feats}
     assert {70, 100, 200, 300} <= depths and 10 not in depths and 600 not in depths
-    assert all(len(f["geometry"]["coordinates"]) >= 6 for f in feats)
+    assert all(len(f["geometry"]["coordinates"]) >= 2 for f in feats)
     assert all(f["properties"]["minzoom"] == min_zoom(f["properties"]["depth_ft"]) for f in feats)
 
 
 def test_lines_close_at_shore(ridge_depth_with_land):
-    feats = build_contours(ridge_depth_with_land, TRANSFORM, levels_ft=[10], min_points=2)
+    feats = build_contours(ridge_depth_with_land, TRANSFORM, levels_ft=[10])
     assert feats
     west, east = BBOX[0] + PIXEL_DEG / 2, BBOX[2] - PIXEL_DEG / 2
     south, north = BBOX[1] + PIXEL_DEG / 2, BBOX[3] - PIXEL_DEG / 2
@@ -83,8 +85,8 @@ def test_deterministic(ridge_depth):
     assert json.dumps(a) == json.dumps(b)
 
 
-def test_contours_by_zoom_assigns_bands(ridge_depth):
-    feats = contours_by_zoom(ridge_depth, TRANSFORM, fine=True)
+def test_contours_by_zoom_assigns_bands(shallow_ridge_depth):
+    feats = contours_by_zoom(shallow_ridge_depth, TRANSFORM, fine=True)
     assert {(f["tippecanoe"]["minzoom"], f["tippecanoe"]["maxzoom"]) for f in feats} == {(10, 11), (12, 13), (14, 16)}
     native = [f for f in feats if f["tippecanoe"]["minzoom"] == 14]
     assert any(f["properties"]["depth_ft"] == 25 for f in native)
@@ -97,3 +99,10 @@ def test_contours_by_zoom_assigns_bands(ridge_depth):
 def test_contours_by_zoom_without_fine_has_no_fine_levels(ridge_depth):
     feats = contours_by_zoom(ridge_depth, TRANSFORM, fine=False)
     assert not {f["properties"]["depth_ft"] for f in feats} & set(FINE_FT)
+
+
+def test_straight_contour_survives_default_min_points():
+    plane = np.tile(np.arange(200) * 0.3, (200, 1))  # depth rises west to east; 100 ft = 30.48 m at col ~101.6
+    feats = build_contours(plane, TRANSFORM, levels_ft=[100])
+    assert len(feats) == 1
+    assert len(feats[0]["geometry"]["coordinates"]) >= 2
