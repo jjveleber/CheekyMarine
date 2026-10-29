@@ -214,7 +214,7 @@ Integration (network, skipped unless `CHARTPACK_ONLINE=1`): fetch US5SEAKL from 
 
 ### 6.10 Bottom composition (owner requirement, 2026-10-29)
 
-Why: the owner wants this done well, for two uses. Bottom fishing: different fish hold over different bottoms. Anchoring: sand and gravel hold, rock and weed do not.
+Why: the owner wants this done well, for two uses. Bottom fishing: different fish hold over different bottoms. Anchoring: sand and gravel hold, rock and weed do not. The chart shows the bottom type and the owner judges anchoring from it, so no anchoring-quality tag is computed (owner, 2026-10-29).
 
 Display (owner decided): the Garmin and NOAA chart convention of short abbreviations at the spot (S sand, M mud, Rk rock and so on), and every abbreviation can be looked up quickly. Only real data is shown, nothing inferred or interpolated. If no better source exists for an area, the NOAA chart's own bottom marks are enough.
 
@@ -226,13 +226,12 @@ Sources, all layered, each feature tagged with its source (`src`):
 
 Licence gate: each USGS release is used only after its metadata `Use_Constraints` / access constraints are read and recorded in `chartpack/NOTICE` as public domain (US Government work) or a permissive licence. A source that fails the gate is left out and the decision is written in the SDD ledger; the ENC source alone still ships. WA DNR ShoreZone was considered and rejected: it describes the shoreline, not the bottom, and its licence is unclear.
 
-Tiles (my call): one new layer `seabed` in `enc.mbtiles`, so the pack contract (sources `enc`, `bathy`, `dem`) does not change. Attributes: `src`, `class` (`SBDARE`, `WEDKLP`, `SAMPLE`, `CMECS`), the source's own codes (`NATSUR`, `NATQUA` comma-joined as GDAL gives them; CMECS substrate class name), `label` (the abbreviation, computed at build time because MapLibre expressions cannot split the comma lists), `holding` (`good`, `poor` or `unknown`). ENC features follow the band quilting like every other ENC layer; USGS features are not quilted. Thinning: ENC by `SCAMIN` like `soundg`; USGS points at a fixed minzoom chosen from the renders. The layer is not a safety layer, but it is never randomly dropped. Additions do not bump `schema`.
+Tiles (my call): one new layer `seabed` in `enc.mbtiles`, so the pack contract (sources `enc`, `bathy`, `dem`) does not change. Attributes: `src`, `class` (`SBDARE`, `WEDKLP`, `SAMPLE`, `CMECS`), the source's own codes (`NATSUR`, `NATQUA` comma-joined as GDAL gives them; CMECS substrate class name), `label` (the abbreviation, computed at build time because MapLibre expressions cannot split the comma lists). ENC features follow the band quilting like every other ENC layer; USGS features are not quilted. Thinning: ENC by `SCAMIN` like `soundg`; USGS points at a fixed minzoom chosen from the renders. The layer is not a safety layer, but it is never randomly dropped. Additions do not bump `schema`.
 
 Abbreviations: from US Chart No. 1 section J (public domain), for example M mud, Cy clay, Si silt, S sand, St stones, G gravel, P pebbles, Cb cobbles, Rk rock, Co coral, Sh shells, Bo boulders, Wd weed, with qualifiers (f fine, m medium, c coarse, bk broken, sy sticky, so soft, sf stiff, h hard) prefixed, and several types joined the chart way (for example `fS.M`). The builder verifies every code against Chart No. 1 and the S-57 attribute catalogue.
 
-Holding (owner's rule, extended by my call): `good` for sand, gravel, mud and clay (mud and clay are my addition); `poor` for rock, boulders, stones, cobbles, coral and weed or kelp; `unknown` for everything else and for mixed types that include a poor one. This is data for the plotter; the style does not colour by it yet.
 
-Lookup: each charts pack ships `legend.json`: for every abbreviation and qualifier used anywhere in the pack, the meaning in plain words, the holding value, and the sources it appears in. Plan 3's tap-to-identify and legend page read it. The same table is published as `docs/chartpack/seabed-legend.md`.
+Lookup: each charts pack ships `legend.json`: for every abbreviation and qualifier used anywhere in the pack, the meaning in plain words and the sources it appears in. Plan 3's tap-to-identify and legend page read it. The same table is published as `docs/chartpack/seabed-legend.md`.
 
 Style: both nav and fish styles show `seabed` labels in grey chart ink (`CHGRD`), Noto Sans Regular, smaller than soundings, below soundings and hazards in draw order. CMECS polygons draw as a thin outline plus their label, with no fill: a fill would change the depth colours, the same lesson as the restricted areas. Renders at Possession Bar and in one CMECS block go to the owner with Task 15.
 

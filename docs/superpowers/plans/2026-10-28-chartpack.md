@@ -1230,7 +1230,7 @@ git commit -m "feat(chartpack): pack manifest, structural checks and tar archive
 Added 2026-10-29 (spec 6.10). Bottom composition is an owner requirement for bottom fishing and anchoring.
 
 **Files:**
-- Create: `chartpack/src/chartpack/seabed/__init__.py`, `chartpack/src/chartpack/seabed/codes.py` (abbreviations, qualifiers, holding), `chartpack/src/chartpack/seabed/legend.py`
+- Create: `chartpack/src/chartpack/seabed/__init__.py`, `chartpack/src/chartpack/seabed/codes.py` (abbreviations, qualifiers), `chartpack/src/chartpack/seabed/legend.py`
 - Modify: `chartpack/src/chartpack/enc/schema.py` (new `seabed` layer: SBDARE, WEDKLP), `chartpack/src/chartpack/enc/reader.py`, `chartpack/src/chartpack/enc/tiles.py` (SCAMIN thinning, quilting, never randomly dropped), `chartpack/src/chartpack/style/nav.py`, `chartpack/src/chartpack/style/fish.py`, `chartpack/src/chartpack/pack/assemble.py` (ship `legend.json`), golden counts
 - Create: `docs/chartpack/seabed-legend.md` (generated from `codes.py`)
 - Test: `chartpack/tests/test_seabed_codes.py`, `chartpack/tests/test_seabed_legend.py`, additions to `test_enc_reader.py`, `test_enc_tiles.py`, `test_style_nav.py`, `test_pack_assemble.py`
@@ -1242,11 +1242,10 @@ Added 2026-10-29 (spec 6.10). Bottom composition is an owner requirement for bot
   NATSUR: dict[int, tuple[str, str]]      # code -> (abbreviation, plain meaning), from US Chart No. 1 section J and the S-57 attribute catalogue
   NATQUA: dict[int, tuple[str, str]]
   def label(natsur: str | None, natqua: str | None) -> str | None     # comma lists in, chart-style label out ("4,1" + "1," -> "fS.M"); None when no NATSUR
-  def holding(natsur: str | None, wedklp: bool = False) -> str        # "good" | "poor" | "unknown", spec 6.10 rule
   # seabed/legend.py
-  def build_legend(features: Iterable[dict]) -> dict    # {"schema": 1, "entries": [{"abbr", "meaning", "kind": "type"|"qualifier", "holding", "sources": [...]}]} for every abbreviation present
+  def build_legend(features: Iterable[dict]) -> dict    # {"schema": 1, "entries": [{"abbr", "meaning", "kind": "type"|"qualifier", "sources": [...]}]} for every abbreviation present
   ```
-- Tile layer `seabed` attributes: `src`, `class`, `NATSUR`, `NATQUA`, `CATWED`, `label`, `holding`, plus `cell` and `band` for ENC features.
+- Tile layer `seabed` attributes: `src`, `class`, `NATSUR`, `NATQUA`, `CATWED`, `label`, plus `cell` and `band` for ENC features.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -1256,15 +1255,10 @@ def test_label_single_and_mixed():
     assert label("4,1", "1") == "fS.M"           # qualifier applies to the first type, chart convention; builder confirms against Chart No. 1
     assert label(None, None) is None
 
-def test_holding_rule():
-    assert holding("4") == "good" and holding("6") == "good" and holding("1") == "good"
-    assert holding("9") == "poor" and holding(None, wedklp=True) == "poor"
-    assert holding("4,9") == "unknown"            # mixed with a poor type
-
 def test_every_code_has_meaning(): ...            # every NATSUR/NATQUA value in the S-57 catalogue has an abbreviation and meaning
 def test_reader_extracts_seabed(fixtures_dir): ...  # counts match ogr on SBDARE + WEDKLP in the fixture cells; NATSUR kept as comma string
-def test_seabed_in_tiles_with_label(enc_pack_path): ...   # every source SBDARE point present at its top zoom with label and holding
-def test_legend_covers_every_label(charts_pack_root): ... # every abbreviation in any seabed label appears in legend.json with meaning and holding
+def test_seabed_in_tiles_with_label(enc_pack_path): ...   # every source SBDARE point present at its top zoom with label
+def test_legend_covers_every_label(charts_pack_root): ... # every abbreviation in any seabed label appears in legend.json with meaning
 def test_styles_show_seabed(): ...                # nav and fish styles: symbol layer on source-layer seabed, text-field label, CHGRD, below soundg and hazard
 ```
 
@@ -1305,9 +1299,9 @@ Added 2026-10-29 (spec 6.10). Adds survey sources on top of Task 14a.
 - [ ] **Step 2: Write the failing tests**
 
 ```python
-def test_usseabed_maps_to_labels(fixtures_dir): ...   # fixture rows -> features with src "usseabed", class "SAMPLE", label, holding; exact duplicates by position and type dropped
-def test_cmecs_maps_to_labels(fixtures_dir): ...      # fixture polygons (reprojected from UTM 10 NAD83 to WGS84) -> src "usgs-cmecs", class "CMECS", substrate name, label, holding
-def test_unknown_class_is_kept_unlabelled(): ...      # an unmapped class keeps its raw value, label None, holding "unknown"; never guessed
+def test_usseabed_maps_to_labels(fixtures_dir): ...   # fixture rows -> features with src "usseabed", class "SAMPLE", label; exact duplicates by position and type dropped
+def test_cmecs_maps_to_labels(fixtures_dir): ...      # fixture polygons (reprojected from UTM 10 NAD83 to WGS84) -> src "usgs-cmecs", class "CMECS", substrate name, label
+def test_unknown_class_is_kept_unlabelled(): ...      # an unmapped class keeps its raw value, label None; never guessed
 def test_sources_clipped_to_region_bbox(): ...
 def test_legend_lists_sources(charts_pack_root): ...  # legend entries name every source an abbreviation came from
 ```
