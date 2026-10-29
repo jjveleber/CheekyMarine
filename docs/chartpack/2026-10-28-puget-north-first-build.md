@@ -202,4 +202,4 @@ The band 3 obstruction from fix 1 above is drawn only at zooms 6 to 10 (band 3's
 starts at 11). Within 344 m of it, at -122.70444, 47.77861, US3WA1DF, US4WA1HI and US5SEAIG all chart an
 obstruction of unknown depth (WATLEV 3); that one is in the tiles at every zoom from 8 to 16 (US3WA1DF
 to 10, US4WA1HI at 11 and 12, US5SEAIG from 13) and is most likely the same object at the finer
-position. At zoom 10 the two are 3 px apart, so the declutter shows one of them.
+position. At zoom 10 the two are about 7 px apart, so the declutter shows one of them.

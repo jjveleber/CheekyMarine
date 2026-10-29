@@ -204,8 +204,11 @@ def _hazards(p: dict, palette: str, depths: Depths) -> list[dict]:
     """R32 to R35. Every hazard has its black mark (one per class, about 11 px at every zoom); where the
     hazard-danger rule holds the hazard-danger layer draws the same mark inside a red dotted ring, as one
     image, on top. Below z15 overlapping hazards hide each other (the danger ones win: they are placed
-    first, and a plain mark under a shown ring collides with it); from z15 every hazard is drawn and none
-    blocks another symbol. Line and area hazards also get a thin dotted outline, red where dangerous."""
+    first, and a plain mark under a shown ring collides with it); below z15 a hazard also takes collision
+    space from every symbol placed after it (soundings, seabed labels, area names, navaid text), so those
+    hide under it (R40). ignore-placement is not true below z15 because a symbol with it true goes into a
+    grid placement never queries, so hazards could not hide each other. From z15 every hazard is drawn
+    and none blocks another symbol. Line and area hazards also get a thin dotted outline, red where dangerous."""
     by_zoom = ["step", ["zoom"], False, 15, True]
 
     def marks(lid: str, danger: bool, filter_=None) -> dict:

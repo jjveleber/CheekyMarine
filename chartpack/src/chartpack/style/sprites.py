@@ -6,7 +6,8 @@ shape out again, which is how rings are drawn. line and polyline need stroke-wid
 
 The hazard marks (symbols/hazard/) are not SDF: each is baked in each palette's colours, plain (CHBLK) and
 inside the danger ring (DNGHL), so a hazard and its ring are one image that always shows or hides as one
-(R34). An SDF image takes one colour, and two symbol layers cannot be made to collide as one.
+(R34, R41). An SDF image takes one colour, and two symbol layers cannot be made to collide as one. That
+is why hazard icon names carry the palette (hazard-rock-danger-night) and icon-color does not tint them.
 """
 
 import json
