@@ -18,6 +18,8 @@ scripts/install-tippecanoe.sh        # tippecanoe 2.79.0 and tile-join to ~/.loc
 .venv/bin/pytest -q
 ```
 
+numpy is pinned to the apt version (1.26.4) because python3-gdal is built against it.
+
 ## Downloads
 
 NOAA's server may answer a plain fetch of `https://charts.noaa.gov/ENCs/<CELL>.zip`

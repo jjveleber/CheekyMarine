@@ -8,8 +8,9 @@ version = "0.1.0"
 description = "Build MBTiles chart packs from NOAA ENC cells and bathymetry grids"
 requires-python = ">=3.12"
 dependencies = [
-    "numpy==2.4.6",
-    "contourpy==1.4.0",
+    # Must match the apt python3-numpy that apt python3-gdal was built against.
+    "numpy==1.26.4",
+    "contourpy==1.3.3",
     "shapely==2.2.0",
     "scipy==1.17.1",
     "Pillow==13.0.0",
