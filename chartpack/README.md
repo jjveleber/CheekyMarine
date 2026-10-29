@@ -170,7 +170,6 @@ A charts pack is a directory `charts-<region>-<version>/` holding `enc.mbtiles`,
 - Data is derived from NOAA ENC (and, in the bathy pack, NOAA NCEI CUDEM and CRM). It is not an
   official chart and is not certified for navigation.
 
-
 ## Verification
 
 CI (`chartpack-ci.yml`) runs the unit tests (no network; tests marked `online` need `CHARTPACK_ONLINE=1`)
@@ -184,7 +183,8 @@ to judge legibility and colour before a release.
 
 1. Bump `charts_version` and/or `bathy_version` in `regions/<region>.toml` and commit.
 2. Tag the commit `charts-<region>-vX.Y.Z` or `bathy-<region>-vX.Y.Z` (the version must equal the
-   region file's, `scripts/check-pack-tag.sh TAG` checks it) and push the tag.
+   region file's, `scripts/check-pack-tag.sh TAG` checks it) and push the tag. Tag only a commit whose `chartpack-ci` run is green: the release
+   workflow does not rerun the tests.
 3. `.github/workflows/chartpack-release.yml` fetches, builds, checks and archives the pack and attaches
    `<pack>-<region>-<version>.tar` and `SHA256SUMS` to a GitHub release. If the build does not fit the
    runner, run the commands above on the dev machine and attach the tar by hand.

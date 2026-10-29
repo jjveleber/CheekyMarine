@@ -53,15 +53,15 @@ class PackServer:
         if path is None:
             return None
         style = json.loads(path.read_text())
-        for name, source in style["sources"].items():
-            tiles = self._tile_source(name)
+        for src_name, source in style["sources"].items():
+            tiles = self._tile_source(src_name)
             if tiles is None:
                 continue
             with MBTiles.open(tiles) as m:
                 md = m.metadata()
             ext = "png" if source["type"] == "raster-dem" else "pbf"
             source.pop("url", None)
-            source["tiles"] = [f"{self.base}/tiles/{name}/{{z}}/{{x}}/{{y}}.{ext}"]
+            source["tiles"] = [f"{self.base}/tiles/{src_name}/{{z}}/{{x}}/{{y}}.{ext}"]
             if "minzoom" in md and "maxzoom" in md:
                 source["minzoom"], source["maxzoom"] = int(md["minzoom"]), int(md["maxzoom"])
         sprite = style["sprite"].rsplit("/", 1)[-1]

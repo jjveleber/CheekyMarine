@@ -32,6 +32,10 @@ def _check_float_tif(path: Path) -> None:
         raise DownloadError(f"{path}: not a readable GeoTIFF: {e}") from e
     if ds.RasterCount != 1 or ds.GetRasterBand(1).DataType != gdal.GDT_Float32:
         raise DownloadError(f"{path}: expected one Float32 band")
+    try:
+        ds.GetRasterBand(1).ReadAsArray()  # a cut file keeps its header; only the strips fail
+    except RuntimeError as e:
+        raise DownloadError(f"{path}: raster data is cut short: {e}") from e
 
 
 def fetch_crm(bbox, cache_dir: Path) -> Path:

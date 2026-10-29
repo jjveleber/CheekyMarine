@@ -52,13 +52,19 @@ BLOCKS: dict[str, Block] = {
 }
 
 # For the pack NOTICE: the releases ask that the USGS be acknowledged in derived products.
-NOTICE = (
-    "  Southern Salish Sea Habitat Map Series, USGS Data Series 935, CMECS substrate polygons:\n"
-    "    Admiralty Inlet, Open-File Report 2015-1073, doi:10.3133/ofr20151073\n"
-    "    offshore Seattle, doi:10.5066/P9GVRZ3M\n"
-    "    offshore Tacoma, doi:10.5066/P9KA6GH2\n"
-    "    offshore Burien, doi:10.5066/P96T1B44"
-)
+_CREDITS = {
+    "admiralty-inlet": "Admiralty Inlet, Open-File Report 2015-1073, doi:10.3133/ofr20151073",
+    "seattle": "offshore Seattle, doi:10.5066/P9GVRZ3M",
+    "tacoma": "offshore Tacoma, doi:10.5066/P9KA6GH2",
+    "burien": "offshore Burien, doi:10.5066/P96T1B44",
+}
+
+
+def notice(blocks) -> str:
+    """The pack NOTICE credit lines for the CMECS blocks in use."""
+    head = "  Southern Salish Sea Habitat Map Series, USGS Data Series 935, CMECS substrate polygons:"
+    return "\n".join([head] + [f"    {_CREDITS[b]}" for b in BLOCKS if b in blocks])
+
 
 # Substrate outlines and labels show from zoom 13, with the samples and the ENC bottom marks: at zoom 12 the
 # Admiralty Inlet polygons crowd the chart (renders, Task 14b report). A smaller polygon waits until it is

@@ -15,10 +15,11 @@ dependencies = [
     "scipy==1.17.1",
     "Pillow==13.0.0",
     "freetype-py==2.5.1",
+    "mapbox-vector-tile==2.2.0",
 ]
 
 [project.optional-dependencies]
-dev = ["pytest==9.0.3", "mapbox-vector-tile==2.2.0"]
+dev = ["pytest==9.0.3"]
 render = ["playwright==1.64.1"]
 
 [project.scripts]

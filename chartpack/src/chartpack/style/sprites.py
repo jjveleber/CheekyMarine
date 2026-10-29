@@ -225,5 +225,6 @@ def build_sprites(symbols_dir: Path, out_dir: Path, name: str) -> dict:
         image, index = _sheet(symbols, symbols_dir, scale)
         image.save(out_dir / f"{name}{suffix}.png")
         (out_dir / f"{name}{suffix}.json").write_text(json.dumps(index, indent=2, sort_keys=True) + "\n")
-        result = result or index
+        if not suffix:
+            result = index
     return result

@@ -1,6 +1,6 @@
 # Seabed legend
 
-Generated from `chartpack/src/chartpack/seabed/codes.py` (`legend_markdown`); do not edit by hand.
+Generated from `chartpack/src/chartpack/seabed/legend.py` (`legend_markdown`); do not edit by hand.
 
 The charts pack `seabed` layer labels each ENC seabed area (`SBDARE`) and weed or kelp feature
 (`WEDKLP`), each USGS usSEABED sediment sample (`SAMPLE`) and each USGS CMECS substrate polygon (`CMECS`)

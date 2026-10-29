@@ -1,7 +1,8 @@
+import dataclasses
 import json
 
 from chartpack.mbtiles import MBTiles
-from chartpack.pack.assemble import assemble_charts_pack
+from chartpack.pack.assemble import PROJECT, assemble_charts_pack
 from chartpack.style.validate import check_style_sprites_glyphs
 
 
@@ -13,6 +14,7 @@ def test_charts_pack_layout(test_region, enc_pack_path, tmp_path):
     assert "styles/nav-day.json" in names and "styles/nav-dusk.json" in names and "sprites/nav.png" in names
     assert "glyphs/Noto Sans Regular/0-255.pbf" in names and "glyphs/Noto Sans Bold/256-511.pbf" in names
     assert "README.md" in names and "NOTICE" in names and "legend.json" in names
+    assert "OFL.txt" in names
 
 
 def test_legend_from_enc_metadata(charts_pack_root):
@@ -41,10 +43,18 @@ def test_safety_contour_is_a_charted_value(charts_pack_root):
 def test_notice_and_readme(charts_pack_root):
     notice = (charts_pack_root / "NOTICE").read_text()
     assert "NOAA ENC" in notice and "not certified for navigation" in notice and "US4WA1HK" in notice
-    assert "SIL Open Font License" in notice
+    assert "SIL Open Font License" in notice and "(OFL.txt)" in notice
+    assert (charts_pack_root / "OFL.txt").read_text() == (PROJECT / "fonts" / "OFL.txt").read_text()
     assert "Pack contract" in (charts_pack_root / "README.md").read_text()
     # the USGS releases ask to be recognized as the source in derived products
-    assert "U.S. Geological Survey" in notice and "doi:10.3133/ds182" in notice and "doi:10.5066/P9GVRZ3M" in notice
+    assert "U.S. Geological Survey" in notice and "doi:10.3133/ds182" in notice
+
+
+def test_notice_credits_only_the_cmecs_blocks_present(test_region, enc_pack_path, tmp_path):
+    region = dataclasses.replace(test_region, cmecs_blocks=("seattle",))
+    notice = (assemble_charts_pack(region, enc_pack_path, tmp_path / "out") / "NOTICE").read_text()
+    assert "doi:10.5066/P9GVRZ3M" in notice
+    assert "P9KA6GH2" not in notice and "P96T1B44" not in notice and "ofr20151073" not in notice
 
 
 def test_notice_without_usgs_seabed(test_region, enc_pack_path, tmp_path):
@@ -77,7 +87,7 @@ def test_bathy_pack_layout(test_region, tmp_path):
     names = sorted(str(p.relative_to(root)) for p in root.rglob("*") if p.is_file())
     for want in ("bathy.mbtiles", "dem.mbtiles", "styles/fish-day.json", "styles/fish-dusk.json", "styles/fish-night.json",
                  "sprites/fish.json", "sprites/fish.png", "sprites/fish@2x.json", "sprites/fish@2x.png",
-                 "glyphs/Noto Sans Bold/0-255.pbf", "README.md", "NOTICE"):
+                 "glyphs/Noto Sans Bold/0-255.pbf", "README.md", "NOTICE", "OFL.txt"):
         assert want in names
     assert not any(n.startswith("styles/nav") for n in names)
     fonts = {p.name for p in (root / "glyphs").iterdir()}

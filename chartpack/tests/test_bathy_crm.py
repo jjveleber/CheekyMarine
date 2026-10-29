@@ -35,6 +35,24 @@ def test_truncated_tif_is_rejected(tmp_path, monkeypatch):
     assert list((tmp_path / "crm").glob("*")) == []
 
 
+def test_cut_strips_are_rejected(tmp_path, monkeypatch):
+    import numpy as np
+
+    def fake(url, dest, **kw):
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        ds = gdal.GetDriverByName("GTiff").Create(str(dest), 200, 200, 1, gdal.GDT_Float32)
+        ds.SetGeoTransform((-122.9, 0.001, 0, 48.3, 0, -0.001))
+        ds.GetRasterBand(1).WriteArray(np.full((200, 200), -20.0, np.float32))
+        ds = None
+        dest.write_bytes(dest.read_bytes()[:-60000])  # header and tags intact, last strips cut
+        return dest
+
+    monkeypatch.setattr("chartpack.bathy.crm.download", fake)
+    with pytest.raises(DownloadError):
+        fetch_crm(BBOX, tmp_path)
+    assert list((tmp_path / "crm").glob("*")) == []
+
+
 def test_cache_path_name(tmp_path, monkeypatch, fixtures_dir):
     monkeypatch.setattr("chartpack.bathy.crm.download", _fake_download(fixtures_dir, gdal.GDT_Float32))
     assert fetch_crm(BBOX, tmp_path) == tmp_path / "crm" / "crm_-122.9_47.5_-122.1_48.3.tif"

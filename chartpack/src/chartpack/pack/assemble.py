@@ -46,14 +46,19 @@ def _contract_section() -> str:
     return m.group(0).rstrip() + "\n"
 
 
-def _notice(metadata: dict[str, str], name: str, version: str) -> str:
+def _fonts_notice(licences: str) -> str:
+    """The project NOTICE font block, pointing at the OFL.txt that sits in the pack root."""
+    return licences[licences.index("Bundled fonts"):].replace("(fonts/OFL.txt)", "(OFL.txt)")
+
+
+def _notice(metadata: dict[str, str], name: str, version: str, cmecs_blocks: tuple[str, ...]) -> str:
     cells = "\n".join(
         f"  {s['cell']} {s['edtn']}.{s['updn']} {s['isdt']}" for s in json.loads(metadata["cheekymarine:sources"])
     )
     licences = (PROJECT / "NOTICE").read_text()
-    fonts = licences[licences.index("Bundled fonts"):]
+    fonts = _fonts_notice(licences)
     srcs = {row["src"] for row in json.loads(metadata["cheekymarine:seabed"])}
-    usgs = [text for src, text in (("usseabed", usseabed.NOTICE), ("usgs-cmecs", cmecs.NOTICE)) if src in srcs]
+    usgs = [text for src, text in (("usseabed", usseabed.NOTICE), ("usgs-cmecs", cmecs.notice(cmecs_blocks))) if src in srcs]
     survey = ("Bottom composition also from the U.S. Geological Survey (public domain; the USGS is the source):\n"
               + "\n".join(usgs) + "\n\n") if usgs else ""
     return _NOTICE_HEAD.format(name=name, version=version, cells=cells) + survey + fonts
@@ -63,6 +68,7 @@ def _sprites_glyphs_readme(root: Path, sprite_name: str, title: str) -> None:
     build_sprites(PROJECT / "symbols", root / "sprites", sprite_name)
     for fontstack, filename in FONTS.items():
         build_glyphs(PROJECT / "fonts" / filename, fontstack, root / "glyphs")
+    shutil.copyfile(PROJECT / "fonts" / "OFL.txt", root / "OFL.txt")
     (root / "README.md").write_text(f"# {title}\n\n{_contract_section()}")
 
 
@@ -82,7 +88,7 @@ def assemble_charts_pack(region: Region, enc_mbtiles: Path, out_dir: Path) -> Pa
     _sprites_glyphs_readme(root, "nav", f"charts-{region.name}-{region.charts_version}")
     legend = build_legend(json.loads(metadata["cheekymarine:seabed"]))
     (root / "legend.json").write_text(json.dumps(legend, indent=2) + "\n")
-    (root / "NOTICE").write_text(_notice(metadata, region.name, region.charts_version))
+    (root / "NOTICE").write_text(_notice(metadata, region.name, region.charts_version, region.cmecs_blocks))
     return root
 
 
@@ -91,7 +97,7 @@ def _bathy_notice(metadata: dict[str, str], name: str, version: str) -> str:
     tiles = "\n".join(f"  {t['name']} ({t['year']} v{t['version']})" for t in sources["cudem"])
     datum = sources["datum"]
     licences = (PROJECT / "NOTICE").read_text()
-    fonts = licences[licences.index("Bundled fonts"):]
+    fonts = _fonts_notice(licences)
     return f"""CheekyMarine bathy pack {name} {version}
 
 This pack is a derived product. It is not an official chart.
