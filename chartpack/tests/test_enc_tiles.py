@@ -211,6 +211,68 @@ def test_layer_without_features_is_named(tmp_path, fixtures_dir, regions_dir):
                           region=load_region(regions_dir / "test-cell.toml"), work=tmp_path / "w")
 
 
+def _seabed_at(enc_pack, z):
+    """[(props, lon/lat geometry)] of the seabed layer at zoom z."""
+    out = []
+    for x, y, data in enc_pack.tiles_at(z):
+        for feat in decode_pbf(data).get("seabed", []):
+            geom = shapely.transform(
+                shape(feat["geometry"]), lambda c: np.array([to_lonlat(z, x, y, px, py) for px, py in c])
+            )
+            out.append((feat["properties"], geom))
+    return out
+
+
+@pytest.mark.parametrize("z", [13, 16])
+def test_seabed_in_tiles_with_label(enc_pack, fixtures_dir, z):
+    """Every source SBDARE and WEDKLP feature is at the pack's top zoom, and at the first zoom where its
+    SCAMIN lets all of them show, with its codes and label."""
+    _, feats = read_cell(fixtures_dir / "US4WA1HK.zip")
+    sources = [f for f in feats if f.layer == "seabed"]
+    assert {f.props["class"] for f in sources} == {"SBDARE", "WEDKLP"}
+    got = _seabed_at(enc_pack, z)
+    tol = 1.5 * 360 / 2**z / EXTENT
+    keys = ("class", "NATSUR", "NATQUA", "CATWED", "label", "src", "cell")
+    for f in sources:
+        want = tuple(f.props.get(k) for k in keys)
+        pt = shape(f.geometry).representative_point()
+        assert any(tuple(p.get(k) for k in keys) == want and g.distance(pt) <= tol for p, g in got), (want, pt.wkt)
+    assert {tuple(p.get(k) for k in keys) for p, _ in got} == {tuple(f.props.get(k) for k in keys) for f in sources}
+
+
+def test_seabed_thinned_by_scamin_only(enc_pack, fixtures_dir):
+    """SCAMIN 59999 (SBDARE) and 119999 (WEDKLP) in the test cell give minzoom 13 and 12; below that the
+    layer is empty, from there on every feature is drawn (never randomly dropped)."""
+    from chartpack.enc.scamin import minzoom_for_scamin
+
+    _, feats = read_cell(fixtures_dir / "US4WA1HK.zip")
+    sources = [f for f in feats if f.layer == "seabed"]
+    assert {minzoom_for_scamin(f.props["SCAMIN"], 4) for f in sources} == {12, 13}
+    for z in ZOOMS:  # band 4 only: drawn from z 11, so a feature shows from its SCAMIN zoom on
+        want = {f.props["class"] for f in sources if minzoom_for_scamin(f.props["SCAMIN"], 4) <= z}
+        got = {p["class"] for p, _ in _seabed_at(enc_pack, z)}
+        assert got == want, z
+    assert not _seabed_at(enc_pack, 11)
+
+
+def test_build_without_seabed_features(tmp_path, fixtures_dir, regions_dir):
+    """seabed is an optional layer (ruling R21): a region with none still builds."""
+    out = build_enc_mbtiles([_cell_without(fixtures_dir, "seabed")], tmp_path / "o.mbtiles",
+                            region=load_region(regions_dir / "test-cell.toml"), work=tmp_path / "w")
+    with MBTiles.open(out) as m:
+        md = m.metadata()
+    assert "seabed" not in {l["id"] for l in json.loads(md["json"])["vector_layers"]}
+    assert json.loads(md["cheekymarine:seabed"]) == []
+
+
+def test_seabed_metadata_lists_distinct_codes(enc_pack, fixtures_dir):
+    _, feats = read_cell(fixtures_dir / "US4WA1HK.zip")
+    keys = ("src", "class", "NATSUR", "NATQUA", "CATWED")
+    want = {tuple(f.props.get(k) for k in keys) for f in feats if f.layer == "seabed"}
+    got = json.loads(enc_pack.metadata()["cheekymarine:seabed"])
+    assert len(got) == len(want) and {tuple(d.get(k) for k in keys) for d in got} == want
+
+
 def test_metadata_has_no_temp_paths(enc_pack):
     md = enc_pack.metadata()
     assert md["description"] == "CheekyMarine charts pack test-cell" and "generator_options" not in md

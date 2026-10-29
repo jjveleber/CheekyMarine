@@ -8,7 +8,7 @@ from pathlib import Path
 
 from chartpack.enc.quilt import quilt
 from chartpack.enc.reader import CellMeta, Feature
-from chartpack.enc.schema import LAYERS, SAFETY_LAYERS, SCHEMA_VERSION
+from chartpack.enc.schema import LAYERS, OPTIONAL_LAYERS, SAFETY_LAYERS, SCHEMA_VERSION
 from chartpack.mbtiles import MBTiles
 from chartpack.region import Region
 
@@ -19,6 +19,7 @@ ENC_METADATA_KEYS = (
     "cheekymarine:version",
     "cheekymarine:sources",
     "cheekymarine:valdco",
+    "cheekymarine:seabed",
     "cheekymarine:built",
 )
 
@@ -28,6 +29,7 @@ _COMMON = ["-Z", str(MINZOOM), "-z", str(MAXZOOM), "-r1", "--no-feature-limit", 
            "--no-tiny-polygon-reduction", "--no-simplification-of-shared-nodes",
            "--extend-zooms-if-still-dropping", "-P", "--force"]
 _SAFETY_ONLY = ["--detect-shared-borders"]
+_SEABED_KEYS = ("src", "class", "NATSUR", "NATQUA", "CATWED")
 
 
 def run(cmd: list[str]) -> None:
@@ -85,7 +87,7 @@ def build_enc_mbtiles(
 
     with MBTiles.open(out) as m:
         built_layers = {l["id"] for l in json.loads(m.metadata()["json"])["vector_layers"]}
-        missing = [spec.name for spec in LAYERS if spec.name not in built_layers]
+        missing = [spec.name for spec in LAYERS if spec.name not in built_layers | OPTIONAL_LAYERS]
         if missing:
             raise RuntimeError(f"enc.mbtiles has no features in layer(s): {', '.join(missing)}")
         sources = [
@@ -93,6 +95,9 @@ def build_enc_mbtiles(
             for meta, _ in sorted(cells, key=lambda c: c[0].name)
         ]
         valdco = sorted({f.props["VALDCO"] for f in by_layer["depcnt"] if "VALDCO" in f.props}, key=float)
+        # the distinct seabed codes in the tiles, for legend.json (seabed/legend.py)
+        seabed = sorted({json.dumps({k: f.props[k] for k in _SEABED_KEYS if k in f.props}, sort_keys=True)
+                         for f in by_layer["seabed"]})
         w, s, e, n = region.bbox
         m.set_metadata({
             "name": f"charts-{region.name}",
@@ -107,6 +112,7 @@ def build_enc_mbtiles(
             "cheekymarine:version": region.charts_version,
             "cheekymarine:sources": json.dumps(sources),
             "cheekymarine:valdco": json.dumps(valdco),
+            "cheekymarine:seabed": json.dumps([json.loads(row) for row in seabed]),
             "cheekymarine:built": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         })
         m.delete_metadata(["generator_options"])  # holds the temp work paths

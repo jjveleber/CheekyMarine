@@ -97,6 +97,18 @@ def test_check_catches_layer_mismatch(charts_pack_root_copy, test_region):
     assert any("meta" in e and "missing" in e for e in errs) and any("bogus" in e for e in errs)
 
 
+def test_check_allows_pack_without_seabed(charts_pack_root_copy, test_region):
+    """seabed is optional (ruling R21): a pack whose region has no seabed features passes."""
+    conn = sqlite3.connect(charts_pack_root_copy / "enc.mbtiles")
+    meta = json.loads(conn.execute("select value from metadata where name='json'").fetchone()[0])
+    meta["vector_layers"] = [l for l in meta["vector_layers"] if l["id"] != "seabed"]
+    conn.execute("update metadata set value=? where name='json'", (json.dumps(meta),))
+    conn.commit()
+    conn.close()
+    _refresh(charts_pack_root_copy, test_region)
+    assert not [e for e in check_pack(charts_pack_root_copy) if "seabed" in e]
+
+
 def test_check_catches_safety_layer_empty_in_band_range(charts_pack_root_copy, test_region):
     _rewrite_tiles(charts_pack_root_copy / "enc.mbtiles", 12, lambda layers: [l for l in layers if l["name"] != "navaid"])
     _refresh(charts_pack_root_copy, test_region)

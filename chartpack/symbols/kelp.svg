@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+  <!-- US Chart No. 1 reference: J 13.2 kelp, weed (NOAA column) -->
+  <!-- Drawn by hand: a frond stem with paired side strokes swept back, as on NOAA charts. -->
+  <polyline points="2,14 7,12.5 12,12.5 17,11.5 22,11" stroke-width="1.4"/>
+  <polyline points="9,8.5 12,12.5 9,16" stroke-width="1.4"/>
+  <polyline points="15,7.5 18,11.4 15,15" stroke-width="1.4"/>
+  <polyline points="4.5,10 7,12.5 5,15.5" stroke-width="1.2"/>
+</svg>

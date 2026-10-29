@@ -9,7 +9,7 @@ from shapely.ops import unary_union
 from chartpack.enc.reader import CellMeta, Feature
 from chartpack.enc.scamin import BAND_ZOOMS, minzoom_for_scamin
 
-THINNED_LAYERS = ("soundg", "area", "line")
+THINNED_LAYERS = ("soundg", "area", "line", "seabed")
 # (zoom range, primary band), coarse to fine
 _RANGES = tuple((BAND_ZOOMS[band], band) for band in (3, 4, 5))
 

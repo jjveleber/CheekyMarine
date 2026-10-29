@@ -12,7 +12,15 @@ def test_charts_pack_layout(test_region, enc_pack_path, tmp_path):
     assert "enc.mbtiles" in names and "styles/nav-night.json" in names and "sprites/nav@2x.json" in names
     assert "styles/nav-day.json" in names and "styles/nav-dusk.json" in names and "sprites/nav.png" in names
     assert "glyphs/Noto Sans Regular/0-255.pbf" in names and "glyphs/Noto Sans Bold/256-511.pbf" in names
-    assert "README.md" in names and "NOTICE" in names
+    assert "README.md" in names and "NOTICE" in names and "legend.json" in names
+
+
+def test_legend_from_enc_metadata(charts_pack_root):
+    from chartpack.seabed.legend import build_legend
+
+    with MBTiles.open(charts_pack_root / "enc.mbtiles") as m:
+        features = json.loads(m.metadata()["cheekymarine:seabed"])
+    assert json.loads((charts_pack_root / "legend.json").read_text()) == build_legend(features)
 
 
 def test_shipped_style_matches_sprite_and_glyphs(charts_pack_root):

@@ -12,6 +12,7 @@ from shapely.geometry import mapping, shape
 from shapely.ops import unary_union
 
 from chartpack.enc.schema import LAYERS
+from chartpack.seabed.codes import label, weed_label
 
 gdal.UseExceptions()
 
@@ -75,6 +76,14 @@ def _props(feature, cls: str, attributes, cell: str, band: int) -> dict:
         value = _value(feature, "DEPTH" if attr == "depth" else attr)
         if value is not None:
             props[attr] = value
+    if cls in ("SBDARE", "WEDKLP"):
+        props["src"] = "enc"
+        try:
+            text = weed_label(props.get("CATWED")) if cls == "WEDKLP" else label(props.get("NATSUR"), props.get("NATQUA"))
+        except ValueError as exc:
+            raise ValueError(f"{cell}: {cls}: {exc}") from None
+        if text is not None:
+            props["label"] = text
     return props
 
 

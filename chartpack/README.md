@@ -38,7 +38,7 @@ Licences of Python dependencies are listed in `NOTICE`.
 ## Pack contract
 
 A charts pack is a directory `charts-<region>-<version>/` holding `enc.mbtiles`,
-`styles/*.json`, `sprites/`, `glyphs/`, `README.md` and `NOTICE`.
+`styles/*.json`, `sprites/`, `glyphs/`, `legend.json`, `README.md` and `NOTICE`.
 
 - Style source names are `enc` (and, in later packs, `bathy` and `dem`). Each source
   has `"url": "mbtiles://<name>"`, resolved to the `<name>.mbtiles` file in the pack.
@@ -52,7 +52,11 @@ A charts pack is a directory `charts-<region>-<version>/` holding `enc.mbtiles`,
   `hazard-danger` layer until the app has route navigation.
 - MBTiles metadata carries `cheekymarine:schema` (currently 1), `cheekymarine:pack`,
   `cheekymarine:region`, `cheekymarine:version`, `cheekymarine:sources` (the ENC cells
-  with edition, update and issue date), `cheekymarine:valdco` and `cheekymarine:built`.
+  with edition, update and issue date), `cheekymarine:valdco`, `cheekymarine:seabed` (the
+  distinct seabed codes in the tiles) and `cheekymarine:built`.
+- The optional `seabed` layer holds bottom composition with its chart abbreviation in `label`.
+  `legend.json` (`{"schema": 1, "entries": [{"abbr", "meaning", "kind", "sources"}]}`) explains
+  every abbreviation the pack's labels use; `docs/chartpack/seabed-legend.md` is the full table.
 - Depth values are stored in the tiles in metres as charted; feet and rounding happen
   only in style expressions.
 - Data is derived from NOAA ENC. It is not an official chart and is not certified for

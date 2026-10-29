@@ -54,9 +54,14 @@ LAYERS: tuple[LayerSpec, ...] = (
         "any",
     ),
     LayerSpec("meta", ("M_COVR", "M_QUAL"), ("CATZOC",), "polygon"),
+    # Bottom composition (spec 6.10). src and label are set by the reader, not read from the cell.
+    LayerSpec("seabed", ("SBDARE", "WEDKLP"), ("src", "NATSUR", "NATQUA", "CATWED", "label", "SCAMIN"), "any"),
 )
 
 SAFETY_LAYERS = ("depare", "depcnt", "hazard", "navaid", "light", "coalne", "lndare")
+
+# Schema layers a region may have no features in (ruling R21): the build and the pack check accept their absence.
+OPTIONAL_LAYERS: frozenset[str] = frozenset({"seabed"})
 
 # The bathy.mbtiles layers (Task 13). Not S-57 classes: classes is empty.
 BATHY_LAYER_SPECS: tuple[LayerSpec, ...] = (

@@ -22,7 +22,7 @@ def test_fish_hides_nav_clutter():
     assert not ids & {"depare-deep", "soundg-deep", "navaid"}
     assert {"hillshade", "contour-major", "contour-label", "water-base"} <= ids and "hazard-danger" not in ids
     enc_layers = {l["source-layer"] for l in s["layers"] if l.get("source") == "enc"}
-    assert enc_layers == {"depare", "lndare", "coalne", "light", "hazard"}
+    assert enc_layers == {"depare", "lndare", "coalne", "light", "hazard", "seabed"}
 
 
 def test_fish_layer_order():

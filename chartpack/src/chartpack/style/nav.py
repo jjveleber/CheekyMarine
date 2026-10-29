@@ -117,6 +117,23 @@ def _contours(p: dict, depths: Depths, safety_contour_m: float | None) -> list[d
     ]
 
 
+_KELP = ["all", ["==", ["get", "class"], "WEDKLP"], ["==", ["get", "CATWED"], 1]]
+
+
+def seabed_layers(p: dict) -> list[dict]:
+    """Bottom composition labels (spec 6.10): chart abbreviations in grey ink, smaller than soundings and
+    drawn below them, so a sounding wins where the two collide. Kelp gets its Chart No. 1 symbol."""
+    text = {"text-field": ["get", "label"], "text-font": ["Noto Sans Regular"], "text-size": 10}
+    paint = {"text-color": p["CHGRD"], "text-halo-color": p["DEPDW"], "text-halo-width": 1.5}
+    return [
+        {"id": "seabed", "type": "symbol", "source": "enc", "source-layer": "seabed", "filter": ["!", _KELP],
+         "layout": text, "paint": paint},
+        {"id": "seabed-kelp", "type": "symbol", "source": "enc", "source-layer": "seabed", "filter": _KELP,
+         "layout": {**text, "icon-image": "kelp", "text-anchor": "left", "text-offset": [0.9, 0]},
+         "paint": {**paint, "icon-color": p["CHGRD"]}},
+    ]
+
+
 def _soundings(p: dict, depths: Depths, units: str) -> list[dict]:
     text_field = ["get", "depth"] if units == "m" else ["to-string", ["round", ["*", _num("depth"), FEET_PER_METRE]]]
     layers = []
@@ -182,6 +199,7 @@ def nav_style(palette: str, depths: Depths = Depths(), *, units: str = "ft", saf
         *_depth_areas(p, depths),
         *_land_and_areas(p),
         *_contours(p, depths, safety_contour_m),
+        *seabed_layers(p),
         *_soundings(p, depths, units),
         *_navaids_and_lights(p),
         *_hazards(p),

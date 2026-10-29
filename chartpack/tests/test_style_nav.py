@@ -1,6 +1,6 @@
 import json
 
-from chartpack.enc.schema import LAYERS
+from chartpack.enc.schema import BATHY_LAYER_SPECS, LAYERS
 from chartpack.style.fish import fish_style
 from chartpack.style.nav import DEPTH_LAYERS, SHIPPED_DEPTH_LAYERS, Depths, depth_filter, nav_style
 from chartpack.style.palette import PALETTES
@@ -9,7 +9,7 @@ from chartpack.style.validate import check_style_against_schema, check_style_spr
 ICONS = {
     "buoy-can", "buoy-nun", "buoy-spherical", "buoy-pillar", "buoy-spar", "beacon-lateral", "beacon-cardinal",
     "beacon-generic", "light-flare", "rock-awash", "rock-submerged", "wreck-dangerous", "wreck-nondangerous",
-    "obstruction", "isolated-danger",
+    "obstruction", "isolated-danger", "kelp",
 }
 FONTS = {"Noto Sans Regular", "Noto Sans Bold"}
 
@@ -139,3 +139,25 @@ def test_nav_notice():
     assert nav_style("day")["metadata"]["cheekymarine"]["notice"] == (
         "Derived from NOAA ENC. Not an official chart. Not certified for navigation."
     )
+
+
+def test_styles_show_seabed():
+    for palette in PALETTES:
+        for s in (nav_style(palette), fish_style(palette)):
+            ids = [l["id"] for l in s["layers"]]
+            seabed = [l for l in s["layers"] if l.get("source-layer") == "seabed"]
+            assert {l["id"] for l in seabed} == {"seabed", "seabed-kelp"}
+            text = next(l for l in seabed if l["id"] == "seabed")
+            assert text["type"] == "symbol" and text["layout"]["text-field"] == ["get", "label"]
+            assert text["layout"]["text-font"] == ["Noto Sans Regular"] and text["paint"]["text-color"] == PALETTES[palette]["CHGRD"]
+            kelp = next(l for l in seabed if l["id"] == "seabed-kelp")
+            assert kelp["layout"]["icon-image"] == "kelp" and kelp["layout"]["text-field"] == ["get", "label"]
+            assert kelp["filter"] == ["all", ["==", ["get", "class"], "WEDKLP"], ["==", ["get", "CATWED"], 1]]
+            assert text["filter"] == ["!", kelp["filter"]]
+            for layer in seabed:
+                assert layer["layout"]["text-size"] < 11  # soundings are 11
+                assert ids.index(layer["id"]) < ids.index("hazard")
+                if "soundg-deep" in ids:
+                    assert ids.index(layer["id"]) < min(ids.index("soundg-deep"), ids.index("soundg-shallow"))
+            assert check_style_against_schema(s, LAYERS + BATHY_LAYER_SPECS) == []
+            assert check_style_sprites_glyphs(s, {k: {} for k in ICONS}, FONTS) == []

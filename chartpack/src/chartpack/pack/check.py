@@ -13,14 +13,11 @@ from shapely.validation import make_valid
 
 from chartpack.enc.reader import read_cell
 from chartpack.enc.scamin import BAND_ZOOMS
-from chartpack.enc.schema import BATHY_LAYER_SPECS, LAYERS, SAFETY_LAYERS, SCHEMA_VERSION
+from chartpack.enc.schema import BATHY_LAYER_SPECS, LAYERS, OPTIONAL_LAYERS, SAFETY_LAYERS, SCHEMA_VERSION
 from chartpack.enc.tiles import ENC_METADATA_KEYS
 from chartpack.mbtiles import MBTiles, decode_pbf
 from chartpack.pack.manifest import MANIFEST, sha256_of
 from chartpack.style.validate import check_style_against_schema, check_style_sprites_glyphs
-
-# Schema layers a pack may lack. Empty today; the seabed layer goes here when it becomes optional.
-OPTIONAL_LAYERS: frozenset[str] = frozenset()
 
 _COMMON_KEYS = ("name", "format", "bounds", "minzoom", "maxzoom", "cheekymarine:schema", "cheekymarine:pack",
                 "cheekymarine:region", "cheekymarine:version", "cheekymarine:sources", "cheekymarine:built")

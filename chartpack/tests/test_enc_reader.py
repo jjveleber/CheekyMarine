@@ -182,3 +182,53 @@ def test_cell_meta_and_covr(fixtures_dir):
     meta, _ = read_cell(fixtures_dir / "US4WA1HK.zip")
     assert (meta.name, meta.band) == ("US4WA1HK", 4)
     assert shape(meta.covr).is_valid and shape(meta.covr).bounds == pytest.approx((-122.4, 47.7, -122.1, 48.0), abs=0.01)
+
+
+def ogr_seabed(zip_path):
+    """Sorted (class, minx, miny, NATSUR, NATQUA, CATWED) for every SBDARE and WEDKLP, read via GDAL
+    without LIST_AS_STRING, so the lists are joined here independently of the reader."""
+    ds, tmp = _open(zip_path)
+    with tmp:
+        rows = []
+        for cls in ("SBDARE", "WEDKLP"):
+            for f in ds.GetLayerByName(cls) or []:
+                g = f.GetGeometryRef().Clone()
+                g.FlattenTo2D()
+                minx, _, miny, _ = g.GetEnvelope()
+
+                def value(field, f=f):
+                    if f.GetFieldIndex(field) < 0 or not f.IsFieldSetAndNotNull(field):
+                        return None
+                    if field == "CATWED":
+                        return f.GetField(field)
+                    return ",".join(f.GetFieldAsStringList(f.GetFieldIndex(field)))
+
+                rows.append((cls, minx, miny, value("NATSUR"), value("NATQUA"), value("CATWED")))
+        ds = None
+    return sorted(rows, key=repr)
+
+
+@pytest.mark.parametrize("cell", ["US4WA1HK", "US5SEAKL"])
+def test_reader_extracts_seabed(fixtures_dir, cell):
+    zip_path = fixtures_dir / f"{cell}.zip"
+    _, feats = read_cell(zip_path)
+    s = [f for f in feats if f.layer == "seabed"]
+    assert Counter(f.props["class"] for f in s) == ogr_class_counts(zip_path, ["SBDARE", "WEDKLP"])
+    ours = sorted(
+        ((f.props["class"],) + shape(f.geometry).bounds[:2]
+         + (f.props.get("NATSUR"), f.props.get("NATQUA"), f.props.get("CATWED")) for f in s),
+        key=repr,
+    )
+    assert ours == ogr_seabed(zip_path)
+    assert all(f.props["src"] == "enc" and f.props["label"] and "SCAMIN" in f.props for f in s)
+
+
+def test_seabed_labels_in_test_cell(fixtures_dir):
+    _, feats = read_cell(fixtures_dir / "US4WA1HK.zip")
+    s = [f.props for f in feats if f.layer == "seabed"]
+    assert any(p.get("NATSUR") == "4,1" for p in s)  # NATSUR kept as the comma string
+    by = {(p.get("NATSUR"), p.get("NATQUA")): p["label"] for p in s if p["class"] == "SBDARE"}
+    assert by[("4,1", None)] == "S.M" and by[("4", "1")] == "fS" and by[(None, "10")] == "h"
+    assert by[("2,1,17", None)] == "Cy.M.Sh" and by[("9", None)] == "Rk"
+    weed = {p.get("CATWED"): p["label"] for p in s if p["class"] == "WEDKLP"}
+    assert weed == {1: "Kelp", 3: "Sg", None: "Wd"}

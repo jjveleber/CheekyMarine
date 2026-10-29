@@ -13,6 +13,7 @@ from chartpack.style.nav import (
     _hazards,
     _land_and_areas,
     _navaids_and_lights,
+    seabed_layers,
 )
 from chartpack.style.palette import PALETTES
 
@@ -105,6 +106,7 @@ def fish_style(palette: str, depths: Depths = Depths()) -> dict:
         *_pick(_land_and_areas(p), "lndare", "coalne"),
         *_contours(p),
         *_labels(p),
+        *seabed_layers(p),
         *_pick(_navaids_and_lights(p), "light"),
         *_hazards(p),
     ]

@@ -1,4 +1,4 @@
-"""Assemble the charts pack directory: enc.mbtiles, nav styles, sprites, glyphs, README, NOTICE."""
+"""Assemble the charts pack directory: enc.mbtiles, nav styles, sprites, glyphs, legend, README, NOTICE."""
 
 import json
 import re
@@ -7,6 +7,7 @@ from pathlib import Path
 
 from chartpack.mbtiles import MBTiles
 from chartpack.region import Region
+from chartpack.seabed.legend import build_legend
 from chartpack.style.fish import fish_style
 from chartpack.style.glyphs import build_glyphs
 from chartpack.style.nav import Depths, nav_style
@@ -74,6 +75,8 @@ def assemble_charts_pack(region: Region, enc_mbtiles: Path, out_dir: Path) -> Pa
         (root / "styles" / f"nav-{palette}.json").write_text(json.dumps(style, indent=2) + "\n")
 
     _sprites_glyphs_readme(root, "nav", f"charts-{region.name}-{region.charts_version}")
+    legend = build_legend(json.loads(metadata["cheekymarine:seabed"]))
+    (root / "legend.json").write_text(json.dumps(legend, indent=2) + "\n")
     (root / "NOTICE").write_text(_notice(metadata, region.name, region.charts_version))
     return root
 
