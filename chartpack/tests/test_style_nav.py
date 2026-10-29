@@ -109,3 +109,9 @@ def test_sprites_and_glyphs_checked():
     s = nav_style("day")
     assert check_style_sprites_glyphs(s, {k: {} for k in ICONS}, FONTS) == []
     assert check_style_sprites_glyphs(s, {k: {} for k in ICONS - {"obstruction"}}, FONTS - {"Noto Sans Bold"}) != []
+
+
+def test_nav_notice():
+    assert nav_style("day")["metadata"]["cheekymarine"]["notice"] == (
+        "Derived from NOAA ENC. Not an official chart. Not certified for navigation."
+    )

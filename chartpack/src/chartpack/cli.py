@@ -1,17 +1,33 @@
 """chartpack command line. Subcommands are stubs until their tasks land."""
 
 import argparse
+import json
 import re
 from pathlib import Path
 
+import numpy as np
+
 from chartpack import __version__
+from chartpack.bathy.bands import build_bands
+from chartpack.bathy.contours import DEPTHS_FT, FINE_FT, contours_by_zoom
 from chartpack.bathy.crm import fetch_crm
-from chartpack.bathy.cudem import URLLIST, parse_urllist, tiles_for_bbox
+from chartpack.bathy.cudem import URLLIST, parse_urllist, read_window, tiles_for_bbox
+from chartpack.bathy.dem import build_dem_mbtiles
+from chartpack.bathy.merge import (
+    clip_mask,
+    coverage_polygons,
+    fill_land,
+    merge_to_mllw,
+    tag_source,
+    uncovered_area,
+)
+from chartpack.bathy.tiles import build_bathy_mbtiles, enc_fallback_contours
 from chartpack.cache import download
 from chartpack.enc.catalog import CATALOG_URL, cells_in_bbox, parse_catalog
 from chartpack.enc.fetch import fetch_cells
 from chartpack.enc.reader import read_cell
 from chartpack.enc.tiles import build_enc_mbtiles
+from chartpack.pack.assemble import assemble_bathy_pack
 from chartpack.region import load_region
 
 SUBCOMMANDS = (
@@ -84,6 +100,55 @@ def _fetch_bathy(args: argparse.Namespace) -> int:
     return 0
 
 
+def _build_bathy(args: argparse.Namespace) -> int:
+    region = load_region(args.region)
+    urllist = args.cache / "cudem" / "urllist8483.txt"
+    w, s, e, n = region.bbox
+    crm = args.cache / "crm" / f"crm_{w}_{s}_{e}_{n}.tif"
+    for path in (urllist, crm):
+        if not path.exists():
+            raise SystemExit(f"{path} not found; run fetch-bathy first")
+    tiles = tiles_for_bbox(parse_urllist(urllist.read_text()), region.bbox)
+    primary = []
+    for t in tiles:
+        tw, ts, te, tn = t.bounds
+        window = (max(w, tw), max(s, ts), min(e, te), min(n, tn))
+        primary.append((read_window("/vsicurl/" + t.url, window), t.name))
+    fallback = read_window(str(crm), region.bbox)
+    grid, source = merge_to_mllw(primary, fallback, region.msl_to_mllw_m, region.navd88_to_mllw_m, region.bbox)
+    del primary, fallback
+    depth, transform = grid.data, grid.transform
+    if region.clip is not None:
+        mask = clip_mask(transform, depth.shape, json.loads(region.clip.read_text()))
+        depth[mask] = np.nan
+        source[mask] = 0
+        del mask
+    args.work.mkdir(parents=True, exist_ok=True)
+    dem = build_dem_mbtiles(depth, transform, args.work / "dem.mbtiles", maxzoom=region.dem_maxzoom)
+    depth = fill_land(depth)  # after the DEM, which keeps the real land heights for hillshade
+    del grid
+
+    names = {1: "cudem", 2: "crm"}
+    contours = [
+        f for f in tag_source(contours_by_zoom(depth, transform, fine=True), source, transform, names)
+        if not (f["properties"]["depth_ft"] in FINE_FT and f["properties"]["source"] != "cudem")
+    ]
+    bands = build_bands(depth, transform, levels_ft=DEPTHS_FT)
+    del depth
+    years = ",".join(sorted({str(t.year) for t in tiles}))
+    labels = {1: {"source": "cudem", "resolution_m": 3, "date": years},
+              2: {"source": "crm", "resolution_m": 30, "date": "2025"}}
+    coverage = coverage_polygons(source, transform, labels)
+    uncovered = uncovered_area(source, transform, treat_fallback_as_uncovered=region.coarse_fallback == "enc")
+    cells = [read_cell(_newest_cached_zip(args.cache, name)) for band in sorted(region.cells) for name in region.cells[band]]
+    contours += enc_fallback_contours(cells, uncovered)
+
+    bathy = build_bathy_mbtiles(contours, bands, coverage, args.work / "bathy.mbtiles", region=region,
+                                work=args.work / "tippecanoe", cudem_tiles=tiles)
+    print(assemble_bathy_pack(region, bathy, dem, args.out))
+    return 0
+
+
 def _render(args: argparse.Namespace) -> int:
     from chartpack.render.render import render_views
 
@@ -101,7 +166,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--version", action="store_true")
     sub = parser.add_subparsers(dest="command")
     for name in SUBCOMMANDS:
-        if name in ("fetch-enc", "cells", "build-enc", "render", "fetch-bathy"):
+        if name in ("fetch-enc", "cells", "build-enc", "render", "fetch-bathy", "build-bathy"):
             continue
         sub.add_parser(name).set_defaults(func=_not_implemented)
     p = sub.add_parser("fetch-enc")
@@ -118,6 +183,12 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--cache", type=Path, required=True)
     p.add_argument("--work", type=Path, required=True)
     p.set_defaults(func=_build_enc)
+    p = sub.add_parser("build-bathy")
+    p.add_argument("region", type=Path)
+    p.add_argument("out", type=Path)
+    p.add_argument("--cache", type=Path, required=True)
+    p.add_argument("--work", type=Path, required=True)
+    p.set_defaults(func=_build_bathy)
     p = sub.add_parser("render")
     p.add_argument("packdirs", type=Path, nargs="+", metavar="PACKDIR")
     p.add_argument("--views", type=Path, required=True, help="region file whose render views are drawn")

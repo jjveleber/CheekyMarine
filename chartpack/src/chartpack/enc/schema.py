@@ -57,3 +57,10 @@ LAYERS: tuple[LayerSpec, ...] = (
 )
 
 SAFETY_LAYERS = ("depare", "depcnt", "hazard", "navaid", "light", "coalne", "lndare")
+
+# The bathy.mbtiles layers (Task 13). Not S-57 classes: classes is empty.
+BATHY_LAYER_SPECS: tuple[LayerSpec, ...] = (
+    LayerSpec("contour", (), ("depth_ft", "major", "minzoom", "source"), "line"),
+    LayerSpec("band", (), ("depth_min_ft", "depth_max_ft", "minzoom"), "polygon"),
+    LayerSpec("coverage", (), ("source", "resolution_m", "date"), "polygon"),
+)

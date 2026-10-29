@@ -196,6 +196,7 @@ def nav_style(palette: str, depths: Depths = Depths(), *, units: str = "ft", saf
             "safety_contour_m": depths.safety_m if safety_contour_m is None else safety_contour_m,
             "units": units,
             "palette": palette,
+            "notice": "Derived from NOAA ENC. Not an official chart. Not certified for navigation.",
         }},
         "sources": {"enc": {"type": "vector", "url": "mbtiles://enc"}},
         "sprite": "pack://sprites/nav",

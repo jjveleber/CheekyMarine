@@ -1,5 +1,6 @@
 import json
 
+from chartpack.mbtiles import MBTiles
 from chartpack.pack.assemble import assemble_charts_pack
 from chartpack.style.validate import check_style_sprites_glyphs
 
@@ -34,3 +35,33 @@ def test_notice_and_readme(charts_pack_root):
     assert "NOAA ENC" in notice and "not certified for navigation" in notice and "US4WA1HK" in notice
     assert "SIL Open Font License" in notice
     assert "Pack contract" in (charts_pack_root / "README.md").read_text()
+
+
+def test_bathy_pack_layout(test_region, tmp_path):
+    import numpy as np
+
+    from chartpack.bathy.dem import build_dem_mbtiles
+    from chartpack.pack.assemble import assemble_bathy_pack
+
+    with MBTiles.create(tmp_path / "bathy.mbtiles", fmt="pbf") as m:
+        m.set_metadata({"cheekymarine:sources": json.dumps({
+            "cudem": [{"name": "t1", "url": "u", "year": 2023, "version": 1}], "crm": "https://crm.test",
+            "datum": {"station": "9447130", "navd88_to_mllw_m": 0.715, "msl_to_mllw_m": 2.02}})})
+    dem = tmp_path / "dem.mbtiles"
+    build_dem_mbtiles(np.full((40, 40), 20.0, np.float32), (-122.3, 0.001, 0, 47.9, 0, -0.001), dem, maxzoom=11)
+    root = assemble_bathy_pack(test_region, tmp_path / "bathy.mbtiles", dem, tmp_path / "out")
+    assert root == tmp_path / "out" / "bathy-test-cell-0.1.0"
+    names = sorted(str(p.relative_to(root)) for p in root.rglob("*") if p.is_file())
+    for want in ("bathy.mbtiles", "dem.mbtiles", "styles/fish-day.json", "styles/fish-dusk.json", "styles/fish-night.json",
+                 "sprites/fish.json", "sprites/fish.png", "sprites/fish@2x.json", "sprites/fish@2x.png",
+                 "glyphs/Noto Sans Bold/0-255.pbf", "README.md", "NOTICE"):
+        assert want in names
+    assert not any(n.startswith("styles/nav") for n in names)
+    fonts = {p.name for p in (root / "glyphs").iterdir()}
+    sprite = json.loads((root / "sprites" / "fish.json").read_text())
+    for palette in ("day", "dusk", "night"):
+        style = json.loads((root / "styles" / f"fish-{palette}.json").read_text())
+        assert check_style_sprites_glyphs(style, sprite, fonts) == []
+    notice = (root / "NOTICE").read_text()
+    assert "10.25921/ds9v-ky35" in notice and "Coastal Relief Model" in notice and "SIL Open Font License" in notice
+    assert "Pack contract" in (root / "README.md").read_text()

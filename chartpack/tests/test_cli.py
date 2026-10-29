@@ -66,3 +66,55 @@ def test_fetch_bathy_prints_tiles_and_crm(tmp_path, fixtures_dir, regions_dir, m
     assert (tmp_path / "cudem" / "urllist8483.txt").exists()
     assert "ncei19_n48x00_w122x50_2023v1" in lines
     assert lines[-1] == str(tmp_path / "crm" / "crm_x.tif")
+
+
+def _bathy_region(tmp_path, regions_dir):
+    toml = (regions_dir / "test-cell.toml").read_text().replace(
+        "bbox = [-122.4, 47.7, -122.1, 48.0]", "bbox = [-122.3846, 47.8954, -122.3754, 47.9046]"
+    ).replace("dem_maxzoom = 14", "dem_maxzoom = 12")
+    path = tmp_path / "bathy-test.toml"
+    path.write_text(toml)
+    return path
+
+
+def test_build_bathy_needs_fetch_bathy_first(tmp_path, regions_dir):
+    args = ["build-bathy", str(_bathy_region(tmp_path, regions_dir)), str(tmp_path / "out"),
+            "--cache", str(tmp_path / "cache"), "--work", str(tmp_path / "work")]
+    with pytest.raises(SystemExit, match="fetch-bathy"):
+        main(args)
+
+
+def test_build_bathy_end_to_end(tmp_path, fixtures_dir, regions_dir, monkeypatch, capsys):
+    import json
+    import shutil
+
+    from chartpack import cli
+    from chartpack.bathy.cudem import read_window as real_read_window
+    from chartpack.mbtiles import MBTiles
+
+    region = _bathy_region(tmp_path, regions_dir)
+    cache = tmp_path / "cache"
+    (cache / "enc").mkdir(parents=True)
+    (cache / "cudem").mkdir()
+    (cache / "crm").mkdir()
+    shutil.copy(fixtures_dir / "US4WA1HK.zip", cache / "enc" / "US4WA1HK-1.3.zip")
+    shutil.copy(fixtures_dir / "cudem_possession_bar.tif", cache / "crm" / "crm_-122.3846_47.8954_-122.3754_47.9046.tif")
+    (cache / "cudem" / "urllist8483.txt").write_text(
+        "https://example.test/ncei19_n48x00_w122x50_2023v1.tif\nhttps://example.test/ncei19_n48x00_w122x50_2017v1.tif\n"
+    )
+    opened = []
+
+    def fake_read_window(src, bbox):
+        opened.append(src)
+        return real_read_window(str(fixtures_dir / "cudem_possession_bar.tif"), bbox)
+
+    monkeypatch.setattr(cli, "read_window", fake_read_window)
+    assert main(["build-bathy", str(region), str(tmp_path / "out"), "--cache", str(cache), "--work", str(tmp_path / "work")]) == 0
+    root = tmp_path / "out" / "bathy-test-cell-0.1.0"
+    assert capsys.readouterr().out.strip() == str(root)
+    assert opened[0] == "/vsicurl/https://example.test/ncei19_n48x00_w122x50_2023v1.tif" and len(opened) == 2  # tile, then CRM
+    assert (root / "styles" / "fish-day.json").exists() and (root / "dem.mbtiles").exists()
+    with MBTiles.open(root / "bathy.mbtiles") as m:
+        md = m.metadata()
+        assert [t["year"] for t in json.loads(md["cheekymarine:sources"])["cudem"]] == [2023]
+        assert any(True for _ in m.tiles_at(12))
