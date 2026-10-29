@@ -56,8 +56,9 @@ LAYERS: tuple[LayerSpec, ...] = (
     LayerSpec("meta", ("M_COVR", "M_QUAL"), ("CATZOC",), "polygon"),
     # Bottom composition (spec 6.10). src and label are set by the reader, not read from the cell; folk
     # (usSEABED Folk class) and substrate (CMECS substrate name) come from the USGS sources, not the ENC.
+    # extent (areas and lines only) is the size in zoom-0 Web Mercator pixels (enc/scamin.py extent_z0).
     LayerSpec("seabed", ("SBDARE", "WEDKLP"),
-              ("src", "NATSUR", "NATQUA", "CATWED", "label", "SCAMIN", "folk", "substrate"), "any"),
+              ("src", "NATSUR", "NATQUA", "CATWED", "label", "SCAMIN", "folk", "substrate", "extent"), "any"),
 )
 
 SAFETY_LAYERS = ("depare", "depcnt", "hazard", "navaid", "light", "coalne", "lndare")

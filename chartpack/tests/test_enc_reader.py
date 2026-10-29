@@ -10,6 +10,7 @@ from osgeo import gdal
 from shapely.geometry import shape
 
 from chartpack.enc.reader import read_cell
+from chartpack.enc.scamin import extent_z0
 
 gdal.UseExceptions()
 
@@ -221,6 +222,12 @@ def test_reader_extracts_seabed(fixtures_dir, cell):
     )
     assert ours == ogr_seabed(zip_path)
     assert all(f.props["src"] == "enc" and f.props["label"] and "SCAMIN" in f.props for f in s)
+    # R37: areas and lines carry their size for the zoom thinning and the label order; points do not
+    for f in s:
+        if f.geometry["type"] == "Point":
+            assert "extent" not in f.props
+        else:
+            assert f.props["extent"] == pytest.approx(extent_z0(f.geometry), rel=1e-5) and f.props["extent"] > 0
 
 
 def test_seabed_labels_in_test_cell(fixtures_dir):

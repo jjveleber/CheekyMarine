@@ -34,7 +34,7 @@ _DAY = {
 
 _NIGHT = {
     "DEPDW": "#18253A",  # deep water fill (dark blue-grey)
-    "DEPMD": "#0A1F33",  # medium depth water fill
+    "DEPMD": "#15304C",  # medium depth water fill (lighter than DEPDW, R29)
     "DEPMS": "#123A5A",  # medium-shallow water fill
     "DEPVS": "#1B5280",  # very shallow water fill
     "DEPIT": "#1E3A1E",  # intertidal area fill

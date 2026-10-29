@@ -23,14 +23,14 @@ def test_fish_hides_nav_clutter():
     s = fish_style("day")
     ids = {l["id"] for l in s["layers"]}
     assert not ids & {"depare-deep", "soundg-deep", "navaid"}
-    assert {"hillshade", "contour-major", "contour-label", "water-base"} <= ids and "hazard-danger" not in ids
+    assert {"hillshade", "contour-major", "contour-label", "water-base"} <= ids
     enc_layers = {l["source-layer"] for l in s["layers"] if l.get("source") == "enc"}
     assert enc_layers == {"depare", "lndare", "coalne", "light", "hazard", "seabed"}
 
 
 def test_fish_layer_order():
     ids = [l["id"] for l in fish_style("night")["layers"]]
-    assert ids[:2] == ["background", "water-base"] and ids[-1] == "hazard"
+    assert ids[:2] == ["background", "water-base"] and ids[-1] == "hazard-danger"
     assert ids.index("hillshade") > max(i for i, x in enumerate(ids) if x.startswith("band-"))
     assert ids.index("lndare") > ids.index("hillshade") and ids.index("contour-enc") > ids.index("coalne")
 
@@ -79,7 +79,7 @@ def test_thinning_uses_layer_minzoom_not_zoom_in_filters():
 
 def test_fish_depth_layers_metadata():
     md = fish_style("day")["metadata"]["cheekymarine"]
-    assert md["depths"]["layers"] == [] and md["depths"]["safety_m"] == Depths().safety_m
+    assert md["depths"]["layers"] == ["hazard-danger", "hazard-danger-outline"] and md["depths"]["safety_m"] == Depths().safety_m
     assert "safety_contour_m" not in md and md["units"] == "ft" and md["palette"] == "day"
 
 

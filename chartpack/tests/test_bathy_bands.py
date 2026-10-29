@@ -57,3 +57,15 @@ def test_bands_by_zoom_gives_each_zoom_range_a_complete_band_set(ridge_depth):
         assert levels and all(min_zoom(ft) <= hi for ft in levels)
     z10 = {f["properties"]["depth_min_ft"] for f in feats if f["tippecanoe"]["minzoom"] == 10}
     assert z10 - {0} <= MAJOR_FT and len(z10) >= 3
+
+
+def test_bands_by_zoom_simplify_at_the_top_zoom_of_each_range(ridge_depth, monkeypatch):
+    """R33: band polygons follow the same per-zoom tolerance as the contours."""
+    from chartpack.bathy import bands
+    from chartpack.bathy.contours import zoom_tolerance_deg
+
+    seen = []
+    real = bands.build_bands
+    monkeypatch.setattr(bands, "build_bands", lambda *a, **k: seen.append(k["simplify_deg"]) or real(*a, **k))
+    bands.bands_by_zoom(ridge_depth, TRANSFORM)
+    assert seen == [zoom_tolerance_deg(11), zoom_tolerance_deg(13), zoom_tolerance_deg(15)]

@@ -1,16 +1,17 @@
 import json
 
+import pytest
+
 from chartpack.enc.schema import BATHY_LAYER_SPECS, LAYERS
 from chartpack.style.fish import fish_style
-from chartpack.style.nav import DEPTH_LAYERS, SHIPPED_DEPTH_LAYERS, Depths, depth_filter, nav_style
+from chartpack.style.nav import DEPTH_LAYERS, HAZARD_SHAPES, Depths, depth_filter, nav_style
 from chartpack.style.palette import PALETTES
 from chartpack.style.validate import check_style_against_schema, check_style_sprites_glyphs
 
 ICONS = {
     "buoy-can", "buoy-nun", "buoy-spherical", "buoy-pillar", "buoy-spar", "beacon-lateral", "beacon-cardinal",
-    "beacon-generic", "light-flare", "rock-awash", "rock-submerged", "wreck-dangerous", "wreck-nondangerous",
-    "obstruction", "isolated-danger", "kelp",
-}
+    "beacon-generic", "light-flare", "isolated-danger", "kelp", "resare-tick",
+} | {f"hazard-{shape}{danger}-{palette}" for shape in HAZARD_SHAPES for danger in ("", "-danger") for palette in PALETTES}
 FONTS = {"Noto Sans Regular", "Noto Sans Bold"}
 
 
@@ -23,8 +24,8 @@ def test_style_is_v8_with_contract_sources():
 def test_depth_layers_exist_and_only_they_carry_thresholds():
     s = nav_style("day")
     ids = {l["id"] for l in s["layers"]}
-    assert set(SHIPPED_DEPTH_LAYERS) <= ids
-    assert s["metadata"]["cheekymarine"]["depths"] == {"shallow_m": 1.8288, "safety_m": 3.048, "deep_m": 9.144, "layers": list(SHIPPED_DEPTH_LAYERS)}
+    assert set(DEPTH_LAYERS) <= ids
+    assert s["metadata"]["cheekymarine"]["depths"] == {"shallow_m": 1.8288, "safety_m": 3.048, "deep_m": 9.144, "layers": list(DEPTH_LAYERS)}
     for l in s["layers"]:
         if l["id"] not in DEPTH_LAYERS:
             text = json.dumps(l)
@@ -60,6 +61,8 @@ def _ev(e, props):
         return not vals[0]
     if op == "<":
         return vals[0] < vals[1]
+    if op == "==":
+        return vals[0] == vals[1]
     if op == "in":
         return vals[0] in vals[1]
     raise NotImplementedError(op)
@@ -97,7 +100,7 @@ def test_three_palettes_same_layers():
 
 def test_hazards_above_everything():
     ids = [l["id"] for l in nav_style("day")["layers"]]
-    assert ids[-1] == "hazard"
+    assert ids[-4:] == ["hazard-outline", "hazard-danger-outline", "hazard", "hazard-danger"]
 
 
 def test_background_is_no_data():
@@ -107,19 +110,81 @@ def test_background_is_no_data():
             assert bg["type"] == "background" and bg["paint"]["background-color"] == PALETTES[palette]["NODTA"]
 
 
-def test_no_hazard_danger_layer_shipped():
-    for s in (nav_style("day"), fish_style("day")):
-        assert "hazard-danger" not in {l["id"] for l in s["layers"]}
-        assert "hazard-danger" not in s["metadata"]["cheekymarine"]["depths"]["layers"]
-    assert SHIPPED_DEPTH_LAYERS == tuple(l for l in DEPTH_LAYERS if l != "hazard-danger")
-    assert depth_filter("hazard-danger", Depths())[0] == "any"  # kept for plan 3
+def _layer(style, lid):
+    return next(l for l in style["layers"] if l["id"] == lid)
 
 
-def test_resare_is_dashed_outline():
+STYLES = [(make, palette) for make in (nav_style, fish_style) for palette in sorted(PALETTES)]
+
+
+@pytest.mark.parametrize("make,palette", STYLES)
+def test_hazard_danger_ring_is_shipped(make, palette):
+    """R32/R34: the red danger ring is back, on the hazard-danger filter, which the app's safety depth moves."""
+    s = make(palette)
+    for lid in ("hazard-danger", "hazard-danger-outline"):
+        assert _layer(s, lid)["filter"] == depth_filter("hazard-danger", Depths())
+        assert lid in s["metadata"]["cheekymarine"]["depths"]["layers"]
+    deeper = make(palette, Depths(safety_m=5.0))
+    assert _layer(deeper, "hazard-danger")["filter"] == depth_filter("hazard-danger", Depths(safety_m=5.0))
+    assert depth_filter("hazard-danger-outline", Depths()) == depth_filter("hazard-danger", Depths())
+
+
+def test_fish_ships_only_the_hazard_depth_layers():
+    assert fish_style("day")["metadata"]["cheekymarine"]["depths"]["layers"] == ["hazard-danger", "hazard-danger-outline"]
+
+
+@pytest.mark.parametrize("make,palette", STYLES)
+def test_hazard_marks_one_shape_per_class_fixed_size(make, palette):
+    """R34: one black mark per class (no WATLEV or CATWRK variants); the danger layer shows the same mark in its
+    red ring as one image, so the ring and the mark always show or hide together."""
+    s = make(palette)
+    for lid, suffix in (("hazard", ""), ("hazard-danger", "-danger")):
+        layout = _layer(s, lid)["layout"]
+        assert layout["icon-image"] == ["match", ["get", "class"],
+                                        "UWTROC", f"hazard-rock{suffix}-{palette}",
+                                        "WRECKS", f"hazard-wreck{suffix}-{palette}",
+                                        f"hazard-obstruction{suffix}-{palette}"]
+        assert "icon-size" not in layout  # one size at every zoom: the sprite image is drawn at 1:1
+
+
+@pytest.mark.parametrize("make,palette", STYLES)
+def test_hazard_declutter_below_z15(make, palette):
+    """R32: below z15 overlapping hazards hide each other; from z15 every hazard is drawn. Hazards are the top
+    symbol layers, so they are placed first and no other symbol hides them."""
+    s = make(palette)
+    by_zoom = ["step", ["zoom"], False, 15, True]
+    for lid in ("hazard", "hazard-danger"):
+        layout = _layer(s, lid)["layout"]
+        assert layout["icon-allow-overlap"] == by_zoom and layout["icon-ignore-placement"] == by_zoom
+        assert layout["icon-padding"] == 0
+    ids = [l["id"] for l in s["layers"]]
+    symbols = [l["id"] for l in s["layers"] if l["type"] == "symbol"]
+    assert symbols[-2:] == ["hazard", "hazard-danger"] and ids[-1] == "hazard-danger"
+
+
+@pytest.mark.parametrize("make,palette", STYLES)
+def test_hazard_lines_and_areas_get_a_dotted_outline(make, palette):
+    """R35: line and area hazards: a thin dotted CHBLK outline, DNGHL where the danger rule holds."""
+    s, p = make(palette), PALETTES[palette]
+    plain, danger = _layer(s, "hazard-outline"), _layer(s, "hazard-danger-outline")
+    for layer, colour in ((plain, p["CHBLK"]), (danger, p["DNGHL"])):
+        assert layer["type"] == "line" and layer["source-layer"] == "hazard"
+        assert layer["paint"]["line-color"] == colour and layer["paint"]["line-width"] <= 1
+        assert layer["paint"]["line-dasharray"] == [1, 2]
+    assert "filter" not in plain  # a line layer draws only the lines and polygon edges
+
+
+def test_resare_is_dashed_outline_with_ticks():
+    """R31: RESARE outline CHMGD dashed [8, 4] (cables keep [4, 2]) with T ticks along it pointing inside."""
     s = nav_style("day")
     resare = [l for l in s["layers"] if "RESARE" in json.dumps(l.get("filter", []))]
-    assert [l["type"] for l in resare] == ["line"]
-    assert resare[0]["paint"]["line-color"] == PALETTES["day"]["CHMGD"] and resare[0]["paint"]["line-dasharray"]
+    assert [l["type"] for l in resare] == ["line", "symbol"]
+    line, ticks = resare
+    assert line["paint"]["line-color"] == PALETTES["day"]["CHMGD"] and line["paint"]["line-dasharray"] == [8, 4]
+    assert _layer(s, "line-cable")["paint"]["line-dasharray"] == [4, 2]
+    assert ticks["filter"] == line["filter"] and ticks["source-layer"] == "area"
+    assert ticks["layout"]["symbol-placement"] == "line" and ticks["layout"]["symbol-spacing"] == 100
+    assert ticks["layout"]["icon-image"] == "resare-tick" and ticks["paint"]["icon-color"] == PALETTES["day"]["CHMGD"]
 
 
 def test_safety_contour_metadata():
@@ -155,7 +220,7 @@ def test_styles_show_seabed():
             assert ids.index("seabed-cmecs") < ids.index("seabed")
             text = next(l for l in seabed if l["id"] == "seabed")
             assert text["type"] == "symbol" and text["layout"]["text-field"] == ["get", "label"]
-            assert text["layout"]["text-font"] == ["Noto Sans Regular"] and text["paint"]["text-color"] == PALETTES[palette]["CHGRD"]
+            assert text["layout"]["text-font"] == ["Noto Sans Regular"] and text["paint"]["text-color"] == PALETTES[palette]["SNDG2"]
             kelp = next(l for l in seabed if l["id"] == "seabed-kelp")
             assert kelp["layout"]["icon-image"] == "kelp" and kelp["layout"]["text-field"] == ["get", "label"]
             assert kelp["filter"] == ["all", ["==", ["get", "class"], "WEDKLP"], ["==", ["get", "CATWED"], 1]]
@@ -164,7 +229,38 @@ def test_styles_show_seabed():
                 if layer["type"] == "symbol":
                     assert layer["layout"]["text-size"] < 11  # soundings are 11
                 assert ids.index(layer["id"]) < ids.index("hazard")
+                if layer["type"] == "symbol":
+                    assert layer["paint"]["text-color"] == PALETTES[palette]["SNDG2"]  # R30
+                    assert layer["layout"]["text-size"] == 10 and layer["paint"]["text-halo-width"] == 1.5
                 if "soundg-deep" in ids:
                     assert ids.index(layer["id"]) < min(ids.index("soundg-deep"), ids.index("soundg-shallow"))
             assert check_style_against_schema(s, LAYERS + BATHY_LAYER_SPECS) == []
             assert check_style_sprites_glyphs(s, {k: {} for k in ICONS}, FONTS) == []
+
+
+@pytest.mark.parametrize("make,palette", STYLES)
+def test_seabed_labels_thin_below_z15(make, palette):
+    """R37: below z15 bottom labels keep about 40 px apart (20 px padding each); from z15 the default 2 px."""
+    s = make(palette)
+    for lid in ("seabed", "seabed-kelp"):
+        assert _layer(s, lid)["layout"]["text-padding"] == ["step", ["zoom"], 20, 15, 2]
+
+
+def _sort_key(expr, props):
+    if expr[0] != "case":
+        raise NotImplementedError(expr)
+    for cond, out in zip(expr[1:-1:2], expr[2:-1:2]):
+        if _ev(cond, props):
+            return -float(props["extent"]) if out == ["-", ["to-number", ["get", "extent"]]] else out
+    return expr[-1]
+
+
+def test_seabed_sort_key_areas_by_size_then_enc_points_then_samples():
+    """R37: symbol-sort-key places areas first (bigger first), then ENC points, then usSEABED samples."""
+    for lid in ("seabed", "seabed-kelp"):
+        key = _layer(nav_style("day"), lid)["layout"]["symbol-sort-key"]
+        assert key == _layer(fish_style("day"), lid)["layout"]["symbol-sort-key"]
+        ranked = [_sort_key(key, props) for props in (
+            {"src": "usgs-cmecs", "extent": "0.05"}, {"src": "enc", "extent": "0.01"},
+            {"src": "enc"}, {"src": "usseabed"})]
+        assert ranked == sorted(ranked) and len(set(ranked)) == 4

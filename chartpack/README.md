@@ -52,10 +52,12 @@ A charts pack is a directory `charts-<region>-<version>/` holding `enc.mbtiles`,
   The app rewrites these three things (source URLs, sprite, glyphs) and nothing else.
 - Depth thresholds appear only in the `filter` of the layers named `depare-deep`,
   `depare-medium`, `depare-shallow`, `depare-vshallow`, `depcnt-safety`, `soundg-shallow`,
-  `soundg-deep` and `hazard-danger`. `metadata.cheekymarine` in each style records the
-  thresholds (`depths`, whose `layers` lists the depth layers the style actually ships),
-  the drawn `safety_contour_m`, `units` and `palette`. The shipped styles carry no
-  `hazard-danger` layer until the app has route navigation.
+  `soundg-deep`, `hazard-danger` and `hazard-danger-outline`. `metadata.cheekymarine` in each
+  style records the thresholds (`depths`, whose `layers` lists the depth layers the style
+  actually ships), the drawn `safety_contour_m`, `units` and `palette`. `hazard-danger` draws
+  the red dotted ring round a hazard that is awash, drying, of unknown depth or shallower than
+  the safety depth; `hazard-danger-outline` draws a line or area hazard's outline red on the same
+  rule.
 - MBTiles metadata carries `cheekymarine:schema` (currently 1), `cheekymarine:pack`,
   `cheekymarine:region`, `cheekymarine:version`, `cheekymarine:sources` (the ENC cells
   with edition, update and issue date), `cheekymarine:valdco`, `cheekymarine:seabed` (the
@@ -65,7 +67,9 @@ A charts pack is a directory `charts-<region>-<version>/` holding `enc.mbtiles`,
   `enc` with `SBDARE` or `WEDKLP` (quilted like the other ENC layers, with `cell` and `band`);
   `usseabed` with `SAMPLE`, a USGS sediment sample point with its Folk class in `folk`;
   `usgs-cmecs` with `CMECS`, a USGS substrate polygon with its CMECS name in `substrate`. The
-  USGS features are not quilted and have no `cell` or `band`.
+  USGS features are not quilted and have no `cell` or `band`. Areas and lines carry `extent`,
+  their size in 256 px Web Mercator pixels at zoom 0 (square root of the area, or the length),
+  and are in the tiles from the zoom at which they are about 48 px across.
   `legend.json` (`{"schema": 1, "entries": [{"abbr", "meaning", "kind", "sources"}]}`) explains
   every abbreviation the pack's labels use; `docs/chartpack/seabed-legend.md` is the full table.
 - Depth values are stored in the tiles in metres as charted; feet and rounding happen

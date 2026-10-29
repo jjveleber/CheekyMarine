@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+  <!-- US Chart No. 1 reference: K 28, K 29 wrecks. Drawn by hand by us (R34): a small hull with three masts, -->
+  <!-- one mark for dangerous and non-dangerous wrecks (the danger ring tells them apart). -->
+  <rect x="5" y="10.8" width="14" height="2.4"/>
+  <rect x="6.92" y="8.5" width="2.16" height="7"/>
+  <rect x="10.92" y="8.5" width="2.16" height="7"/>
+  <rect x="14.92" y="8.5" width="2.16" height="7"/>
+</svg>

@@ -17,7 +17,7 @@ from shapely.geometry import box, mapping
 
 from chartpack.cache import fetch_zip
 from chartpack.enc.reader import Feature
-from chartpack.enc.scamin import BAND_ZOOMS
+from chartpack.enc.scamin import BAND_ZOOMS, extent_z0, minzoom_for_extent
 from chartpack.seabed.codes import cmecs_label
 
 ogr.UseExceptions()
@@ -61,9 +61,10 @@ NOTICE = (
 )
 
 # Substrate outlines and labels show from zoom 13, with the samples and the ENC bottom marks: at zoom 12 the
-# Admiralty Inlet polygons crowd the chart (renders, Task 14b report).
+# Admiralty Inlet polygons crowd the chart (renders, Task 14b report). A smaller polygon waits until it is
+# about 48 px across (R37).
 MINZOOM = 13
-_TIPPECANOE = {"minzoom": MINZOOM, "maxzoom": BAND_ZOOMS[5][1]}
+MAXZOOM = BAND_ZOOMS[5][1]
 
 
 def fetch_cmecs(blocks: list[str], cache_dir: Path) -> list[Path]:
@@ -123,7 +124,8 @@ def read_cmecs(zip_path: Path, block: str, bbox) -> list[Feature]:
             text = cmecs_label(substrate)
             if text is not None:
                 props["label"] = text
-            props["tippecanoe"] = dict(_TIPPECANOE)
+            props["extent"] = extent_z0(mapping(shp))
+            props["tippecanoe"] = {"minzoom": max(MINZOOM, minzoom_for_extent(props["extent"])), "maxzoom": MAXZOOM}
             out.append(Feature("seabed", mapping(shp), props))
     finally:
         feature = layer = ds = None

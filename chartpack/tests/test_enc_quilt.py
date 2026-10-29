@@ -5,6 +5,7 @@ import pytest
 from shapely.geometry import box, mapping, shape
 
 from chartpack.enc.quilt import quilt
+from chartpack.enc.scamin import extent_z0
 from chartpack.enc.reader import CellMeta, Feature, read_cell
 
 
@@ -75,6 +76,19 @@ def test_thinned_feature_dropped_when_minzoom_exceeds_range():
     )
     out = quilt([(_cell("US3AAAAA", 3, (0, 0, 1, 1)), [area])])
     assert [_range(f) for f in out] == [(16, 16)]
+
+
+def test_seabed_area_minzoom_is_the_larger_of_scamin_and_size():
+    """R37: a seabed area shows from the zoom where it is about 48 px across, or its SCAMIN zoom if later."""
+    small = box(-122.5, 48.0, -122.499, 48.001)  # about 75 by 110 m: 48 px across at z16
+    big = box(-122.5, 48.0, -122.45, 48.05)  # about 3.7 by 5.6 km: 48 px across at z11
+    feats = [Feature("seabed", mapping(g), {"cell": "US4AAAAA", "band": 4, "class": "SBDARE", "SCAMIN": scamin,
+                                            "extent": extent_z0(mapping(g))})
+             for g, scamin in ((small, 179999), (big, 179999), (big, 44999))]
+    out = quilt([(_cell("US4AAAAA", 4, (-123, 47, -122, 49)), feats)])
+    ranges = [[_range(f) for f in out if f.props["SCAMIN"] == s and f.geometry == mapping(g)] for g, s in
+              ((small, 179999), (big, 179999), (big, 44999))]
+    assert ranges == [[(16, 16)], [(11, 12), (13, 16)], [(13, 16)]]
 
 
 def test_safety_layers_ignore_scamin():

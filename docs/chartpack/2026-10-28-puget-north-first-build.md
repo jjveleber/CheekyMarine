@@ -135,3 +135,71 @@ fish-night: 60 PNGs, 1024 by 600. All 60 were looked at (before and after fix 3)
   (`jeff-head-z11-nav-day.png`, `point-no-point-z13-nav-day.png`).
 - The fish-night hillshade highlight (CHWHT `#C0C0C0`) shows as a light haze on steep slopes
   (`everett-z13-fish-night.png`, `possession-bar-z15-fish-night.png`).
+
+## Revision 2 (2026-10-29): owner style revision
+
+The owner looked at the 60 renders above and decided the style changes below (ledger rulings R29 to
+R35 and R37). Both packs were rebuilt with them from the same caches, both checks print nothing and exit
+0, both tars were re-archived and `sha256sum -c SHA256SUMS` passes. All 60 PNGs were re-rendered against
+the final packs and looked at.
+
+### What changed
+
+- **Night depth tints (R29):** night DEPMD is `#15304C` (was `#0A1F33`), so night fills get lighter from
+  DEPDW to DEPMD to DEPMS to DEPVS, the same order as day.
+- **Seabed label ink (R30):** seabed and kelp labels use the SNDG2 token (day `#4A5560`, night `#98A4AE`)
+  instead of CHGRD; size 10 and halo 1.5 unchanged. CMECS outlines stay CHGRD.
+- **Restricted areas (R31):** RESARE edges are magenta dashes 8 on 4 off with a small T mark repeated
+  along the line about every 100 px, pointing into the area. Cables and pipelines keep 4 on 2.
+- **Hazard symbols (R32, R34):** one fixed size (about 11 px) at every zoom. Rocks are a black 8-point
+  star, obstructions a dot, wrecks a small hull. A red dotted ring is added when the hazard can be struck:
+  WATLEV 1, 2, 4 or 5, or no VALSOU, or VALSOU under the safety depth (the `hazard-danger` layer, which is
+  back in `metadata.cheekymarine.depths.layers` so the app's safety depth moves it). Below zoom 15
+  hazards that would overlap are hidden at draw time; from zoom 15 every hazard is drawn. Every hazard
+  stays in the tiles (no clustering), and `check` still finds each one at zoom 16.
+- **Hazard lines and areas (R35):** a thin dotted outline (black, or red when the danger rule holds) plus
+  the point symbol.
+- **Contour and band simplification (R33):** the Douglas-Peucker tolerance is about one screen pixel at
+  each zoom (256 px Web Mercator ground resolution at latitude 48: about 100 m at z10, halving each zoom,
+  z16 uses the z15 value), replacing the fixed 0.0002 degrees.
+- **Seabed thinning (R37):** seabed areas get a build-time minzoom where they are about 48 px across
+  (combined with SCAMIN for ENC areas); seabed points are thinned at draw time with labels about 40 px
+  apart below zoom 15, bigger areas first, then ENC points, then usSEABED samples.
+
+### Sizes after revision 2
+
+| Pack | Directory | Tar | Largest files |
+|---|---|---|---|
+| charts-puget-north-1.0.0 | 176,133,751 bytes (168 MiB), was 177,353,750 | 176,158,720 bytes | enc.mbtiles 175,562,752 |
+| bathy-puget-north-1.0.0 | 292,689,941 bytes (279 MiB), was 279,465,106 | 292,710,400 bytes | dem.mbtiles 243,003,392 (unchanged); bathy.mbtiles 49,131,520 (was 35,926,016) |
+
+The bathy pack grew 13.2 MB because contours and bands now keep about one pixel of detail at zoom 15
+and 16 (bathy.mbtiles z16: 18.9 MB, z15: 10.8 MB). It is still under the 300 MB target, with 7.3 MB to
+spare, so no size lever was used. Wall times: build-enc 2 min 14 s (peak RSS 2.4 GB), build-bathy
+4 min 3 s (peak RSS 5.0 GB), render of the 60 PNGs 34 s.
+
+### What the revision 2 renders show
+
+- **Hazard declutter:** at zoom 11 the dense rock carpets of the first build (Marrowstone and Indian
+  Island shores in `admiralty-inlet-z11-*`, the Snohomish delta in `everett-z11-*`) are now single,
+  evenly spaced marks; most carry the red ring because they dry or have unknown depth. At zoom 13 the
+  Possession Point shore shows ringed and unringed rocks side by side: the unringed ones have a charted
+  depth of 3.3 to 12.1 m, over the 10 ft default safety depth (checked against the tile data).
+- **Seabed labels:** none at zoom 11; at zoom 13 sparse and readable (`jeff-head-z13-*`,
+  `admiralty-inlet-z13-*`); dense at zoom 15 as before, in the darker SNDG2 ink.
+- **Night:** the 10 to 30 ft band now reads lighter than deep water in nav-night and fish-night.
+- **RESARE:** the T marks separate restricted-area edges from cables (`point-no-point-z15-nav-day.png`,
+  `everett-z15-nav-day.png`). At night the magenta dash is low contrast on the navy water.
+- **Fish contours at zoom 15:** smoother than the first build (`possession-bar-z15-fish-day.png`).
+- **Not changed by this revision and still visible:** overlapping navaid symbols where many buoys sit
+  together (`admiralty-inlet-z11-nav-day.png`, Port Townsend canal entrance): the navaid layer allows
+  overlap; the straight west bathy edge in `admiralty-inlet-z11-fish-*`.
+
+### The seam obstruction (US3WA1DF, -122.700, 47.7775)
+
+The band 3 obstruction from fix 1 above is drawn only at zooms 6 to 10 (band 3's zoom range). From zoom
+11 the band 4 cells take the ground over and the quilt clips it (the earlier note said zoom 13; band 4
+starts at 11). Within 344 m of it, at -122.70444, 47.77861, US3WA1DF, US4WA1HI and US5SEAIG all chart an
+obstruction of unknown depth (WATLEV 3); that one is in the tiles at every zoom from 8 to 16 (US3WA1DF
+to 10, US4WA1HI at 11 and 12, US5SEAIG from 13) and is most likely the same object at the finer
+position. At zoom 10 the two are 3 px apart, so the declutter shows one of them.

@@ -5,6 +5,8 @@ below approximate MLLW (positive down, nan = removed, land already filled by mer
 numpy, contourpy and shapely only.
 """
 
+import math
+
 import contourpy
 import numpy as np
 from shapely.geometry import LineString
@@ -15,13 +17,19 @@ FINE_FT = list(range(5, 61, 10))  # 5, 15, ..., 55: the 5 ft steps between the 1
 MAJOR_FT = frozenset({60, 120, 180, 300, 600})  # heavier line, labelled first, shown from z10
 BASE_FT = frozenset({30, 60, 90, 120, 150, 180, 240, 300, 400, 600})  # the original ten levels, from z12
 SMOOTH_PASSES = 1
-SIMPLIFY_DEG = 0.0002
+SIMPLIFY_DEG = 0.0002  # the wa-creel default; the per-zoom builds use zoom_tolerance_deg
 MIN_POINTS = 6
 M_TO_FT = 3.28084
 M_PER_DEG = 111320.0
 
 # (tippecanoe minzoom, maxzoom, target cell size in metres; 0 = native grid)
 BANDS = ((10, 11, 150.0), (12, 13, 30.0), (14, 16, 0.0))
+
+
+def zoom_tolerance_deg(zoom: int) -> float:
+    """Douglas-Peucker tolerance of about one screen pixel (R33): the 256 px Web Mercator ground resolution
+    at latitude 48 (about 100 m at z10, 3 m at z15) in degrees of latitude; z16 uses the z15 value."""
+    return 156543.03392804097 * math.cos(math.radians(48)) / 2 ** min(zoom, 15) / M_PER_DEG
 
 
 def min_zoom(depth_ft: int) -> int:
@@ -120,7 +128,8 @@ def zoom_grids(depth_m: np.ndarray, transform):
 
 
 def contours_by_zoom(depth_m: np.ndarray, transform, *, fine: bool) -> list[dict]:
-    """Contours per zoom band: z10-11 from ~150 m cells, z12-13 from ~30 m, z14-16 native.
+    """Contours per zoom band: z10-11 from ~150 m cells, z12-13 from ~30 m, z14-16 native, each simplified
+    to about one pixel at the band's top zoom (zoom_tolerance_deg).
 
     The tippecanoe key carries the band's zoom range; the `minzoom` property carries
     max(min_zoom(depth), band low) for the style filter. Depths whose min_zoom exceeds the
@@ -130,7 +139,7 @@ def contours_by_zoom(depth_m: np.ndarray, transform, *, fine: bool) -> list[dict
     for lo, hi, target, grid, tr in zoom_grids(depth_m, transform):
         levels = DEPTHS_FT + FINE_FT if fine and not target else DEPTHS_FT
         levels = [ft for ft in sorted(levels) if min_zoom(ft) <= hi]
-        for f in build_contours(grid, tr, levels_ft=levels):
+        for f in build_contours(grid, tr, levels_ft=levels, simplify_deg=zoom_tolerance_deg(hi)):
             f["properties"]["minzoom"] = max(f["properties"]["minzoom"], lo)
             f["tippecanoe"] = {"minzoom": lo, "maxzoom": hi}
             feats.append(f)

@@ -3,6 +3,10 @@
 Supported SVG: circle, rect, polygon, line, polyline and path (M L H V A Z, absolute and relative).
 Shapes are painted in document order. A black (default) fill paints opaque; fill="white" knocks the
 shape out again, which is how rings are drawn. line and polyline need stroke-width and are stroked.
+
+The hazard marks (symbols/hazard/) are not SDF: each is baked in each palette's colours, plain (CHBLK) and
+inside the danger ring (DNGHL), so a hazard and its ring are one image that always shows or hides as one
+(R34). An SDF image takes one colour, and two symbol layers cannot be made to collide as one.
 """
 
 import json
@@ -14,12 +18,16 @@ from pathlib import Path
 import numpy as np
 from PIL import Image, ImageDraw
 
+from chartpack.style.nav import HAZARD_SHAPES, hazard_icon
+from chartpack.style.palette import PALETTES
 from chartpack.style.sdf import bitmap_to_sdf
 
 _VIEWBOX = 24
 _SUPERSAMPLE = 4
 _SDF_BUFFER = 3
 _GUTTER = 2
+_HAZARD_PX = 11  # the hazard mark and its ring, drawn at this size at 1x (R34)
+_HAZARD_PAD = 1  # transparent margin round it
 _TOKEN = re.compile(r"[MLHVAZmlhvaz]|[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?")
 _ARGS = {"M": 2, "L": 2, "H": 1, "V": 1, "A": 7, "Z": 0}
 
@@ -152,17 +160,57 @@ def rasterize_svg(path: Path, size: int) -> np.ndarray:
     return np.asarray(image.resize((size, size), Image.LANCZOS), dtype=np.uint8)
 
 
-def _sheet(symbols: list[Path], scale: int) -> tuple[Image.Image, dict]:
-    size, buffer = _VIEWBOX * scale, _SDF_BUFFER * scale
+def _rgb(colour: str) -> np.ndarray:
+    return np.array([int(colour[i : i + 2], 16) for i in (1, 3, 5)], dtype=np.float64)
+
+
+def _paint(layers: list[tuple[np.ndarray, str]], pad: int) -> np.ndarray:
+    """Alpha masks painted bottom to top in their colours (straight alpha "over"), as padded RGBA uint8."""
+    shape = layers[0][0].shape
+    rgb, alpha = np.zeros(shape + (3,)), np.zeros(shape)
+    for mask, colour in layers:
+        a = mask / 255.0
+        out = a + alpha * (1 - a)
+        with np.errstate(invalid="ignore", divide="ignore"):
+            rgb = np.where(out[..., None] > 0,
+                           (_rgb(colour) * a[..., None] + rgb * (alpha * (1 - a))[..., None]) / out[..., None], 0)
+        alpha = out
+    image = np.dstack([rgb, alpha * 255]).round().astype(np.uint8)
+    return np.pad(image, ((pad, pad), (pad, pad), (0, 0)))
+
+
+def _hazard_images(symbols_dir: Path, scale: int) -> dict[str, np.ndarray]:
+    """hazard_icon(shape, danger, palette) -> RGBA image, for every shape, both states and every palette."""
+    size, folder = _HAZARD_PX * scale, Path(symbols_dir) / "hazard"
+    ring = rasterize_svg(folder / "danger-ring.svg", size)
+    marks = {shape: rasterize_svg(folder / f"{shape}.svg", size) for shape in HAZARD_SHAPES}
+    images = {}
+    for palette, p in PALETTES.items():
+        for shape, mark in marks.items():
+            images[hazard_icon(shape, False, palette)] = _paint([(mark, p["CHBLK"])], _HAZARD_PAD * scale)
+            images[hazard_icon(shape, True, palette)] = _paint([(ring, p["DNGHL"]), (mark, p["CHBLK"])], _HAZARD_PAD * scale)
+    return images
+
+
+def _sheet(symbols: list[Path], symbols_dir: Path, scale: int) -> tuple[Image.Image, dict]:
+    size, buffer, gutter = _VIEWBOX * scale, _SDF_BUFFER * scale, _GUTTER * scale
     cells = [bitmap_to_sdf(rasterize_svg(p, size), buffer=buffer, radius=8.0 * scale) for p in symbols]
+    baked = _hazard_images(symbols_dir, scale)
     width = size + 2 * buffer
-    sheet = np.zeros((width, len(cells) * (width + _GUTTER * scale) - _GUTTER * scale, 4), np.uint8)
+    total = len(cells) * (width + gutter) + sum(im.shape[1] + gutter for im in baked.values()) - gutter
+    sheet = np.zeros((width, total, 4), np.uint8)
     sheet[..., :3] = 255
     index = {}
     for i, (p, cell) in enumerate(zip(symbols, cells)):
-        x = i * (width + _GUTTER * scale)
+        x = i * (width + gutter)
         sheet[:, x : x + width, 3] = cell
         index[p.stem] = {"width": width, "height": width, "x": x, "y": 0, "pixelRatio": scale, "sdf": True}
+    x = len(cells) * (width + gutter)
+    for name, im in baked.items():
+        h, w = im.shape[:2]
+        sheet[:h, x : x + w] = im
+        index[name] = {"width": w, "height": h, "x": x, "y": 0, "pixelRatio": scale, "sdf": False}
+        x += w + gutter
     return Image.fromarray(sheet, "RGBA"), index
 
 
@@ -173,7 +221,7 @@ def build_sprites(symbols_dir: Path, out_dir: Path, name: str) -> dict:
     out_dir.mkdir(parents=True, exist_ok=True)
     result = {}
     for scale, suffix in ((1, ""), (2, "@2x")):
-        image, index = _sheet(symbols, scale)
+        image, index = _sheet(symbols, symbols_dir, scale)
         image.save(out_dir / f"{name}{suffix}.png")
         (out_dir / f"{name}{suffix}.json").write_text(json.dumps(index, indent=2, sort_keys=True) + "\n")
         result = result or index

@@ -11,6 +11,7 @@ from osgeo import gdal
 from shapely.geometry import mapping, shape
 from shapely.ops import unary_union
 
+from chartpack.enc.scamin import extent_z0
 from chartpack.enc.schema import LAYERS
 from chartpack.seabed.codes import label, weed_label
 
@@ -137,6 +138,8 @@ def read_cell(zip_path: Path, *, apply_updates: bool = True) -> tuple[CellMeta, 
                         continue
                     spec = _route(cls, geometry["type"].upper())
                     props = _props(feature, cls, spec.attributes, name, band)
+                    if spec.name == "seabed" and geometry["type"] not in ("Point", "MultiPoint"):
+                        props["extent"] = extent_z0(geometry)  # R37 size thinning and label order
                     if cls == "M_COVR":
                         covr_parts.append(shape(geometry))
                     features.append(Feature(spec.name, geometry, props))

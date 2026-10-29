@@ -223,34 +223,45 @@ def _seabed_at(enc_pack, z):
     return out
 
 
+def _enc_seabed_first_zoom(f):
+    """Band 4 (drawn from z11): the later of the SCAMIN zoom and, for areas and lines, the zoom at which the
+    feature is about 48 px across (R37)."""
+    from chartpack.enc.scamin import minzoom_for_extent, minzoom_for_scamin
+
+    size = minzoom_for_extent(f.props["extent"]) if "extent" in f.props else 0
+    return max(minzoom_for_scamin(f.props["SCAMIN"], 4), size)
+
+
 @pytest.mark.parametrize("z", [13, 16])
 def test_seabed_in_tiles_with_label(enc_pack, fixtures_dir, z):
-    """Every source SBDARE and WEDKLP feature is at the pack's top zoom, and at the first zoom where its
-    SCAMIN lets all of them show, with its codes and label."""
+    """Every source SBDARE and WEDKLP feature is in the tiles from its first zoom on (always at the pack's top
+    zoom), with its codes and label."""
     _, feats = read_cell(fixtures_dir / "US4WA1HK.zip")
     sources = [f for f in feats if f.layer == "seabed"]
     assert {f.props["class"] for f in sources} == {"SBDARE", "WEDKLP"}
+    shown = [f for f in sources if _enc_seabed_first_zoom(f) <= z]
+    assert shown and (z < 16 or len(shown) == len(sources))
     got = [(p, g) for p, g in _seabed_at(enc_pack, z) if p["src"] == "enc"]
     tol = 1.5 * 360 / 2**z / EXTENT
     keys = ("class", "NATSUR", "NATQUA", "CATWED", "label", "src", "cell")
-    for f in sources:
+    for f in shown:
         want = tuple(f.props.get(k) for k in keys)
         pt = shape(f.geometry).representative_point()
         assert any(tuple(p.get(k) for k in keys) == want and g.distance(pt) <= tol for p, g in got), (want, pt.wkt)
-    assert {tuple(p.get(k) for k in keys) for p, _ in got} == {tuple(f.props.get(k) for k in keys) for f in sources}
+    assert {tuple(p.get(k) for k in keys) for p, _ in got} == {tuple(f.props.get(k) for k in keys) for f in shown}
 
 
-def test_seabed_thinned_by_scamin_only(enc_pack, fixtures_dir):
-    """SCAMIN 59999 (SBDARE) and 119999 (WEDKLP) in the test cell give minzoom 13 and 12; below that the
-    layer is empty, from there on every feature is drawn (never randomly dropped)."""
-    from chartpack.enc.scamin import minzoom_for_scamin
-
+def test_seabed_thinned_by_scamin_and_size(enc_pack, fixtures_dir):
+    """SCAMIN 59999 (SBDARE) and 119999 (WEDKLP) in the test cell give minzoom 13 and 12, and a small area
+    waits until it is about 48 px across (R37); below its first zoom a feature is absent, from there on it is
+    always drawn (never randomly dropped)."""
     _, feats = read_cell(fixtures_dir / "US4WA1HK.zip")
     sources = [f for f in feats if f.layer == "seabed"]
-    assert {minzoom_for_scamin(f.props["SCAMIN"], 4) for f in sources} == {12, 13}
-    for z in ZOOMS:  # band 4 only: drawn from z 11, so a feature shows from its SCAMIN zoom on
-        want = {f.props["class"] for f in sources if minzoom_for_scamin(f.props["SCAMIN"], 4) <= z}
-        got = {p["class"] for p, _ in _seabed_at(enc_pack, z) if p["src"] == "enc"}
+    assert len({_enc_seabed_first_zoom(f) for f in sources}) > 2  # the size rule moves some areas later
+    keys = ("class", "NATSUR", "NATQUA", "CATWED", "label")
+    for z in ZOOMS:
+        want = {tuple(f.props.get(k) for k in keys) for f in sources if _enc_seabed_first_zoom(f) <= z}
+        got = {tuple(p.get(k) for k in keys) for p, _ in _seabed_at(enc_pack, z) if p["src"] == "enc"}
         assert got == want, z
     assert not [p for p, _ in _seabed_at(enc_pack, 11) if p["src"] == "enc"]
 
@@ -283,24 +294,22 @@ def _usgs(fixtures_dir, region):
 
 
 def test_usgs_seabed_in_tiles_not_quilted(enc_pack, fixtures_dir, test_region):
-    """usSEABED samples and CMECS polygons join the seabed layer from their fixed minzoom to the top zoom,
-    every one of them, with no cell or band (they are not quilted), and never before their minzoom."""
-    from chartpack.seabed import cmecs, usseabed
-
+    """usSEABED samples and CMECS polygons join the seabed layer from their minzoom to the top zoom (samples
+    from 13; CMECS polygons from 13 or, when smaller, from about 48 px across, R37), every one of them, with no
+    cell or band (they are not quilted), and never before their minzoom."""
     sources = _usgs(fixtures_dir, test_region)
     assert {f.props["src"] for f in sources} == {"usseabed", "usgs-cmecs"}
-    first = {"usseabed": usseabed.MINZOOM, "usgs-cmecs": cmecs.MINZOOM}
     for z in ZOOMS:
         got = [(p, g) for p, g in _seabed_at(enc_pack, z) if p["src"] != "enc"]
-        assert {p["src"] for p, _ in got} == {s for s, lo in first.items() if lo <= z}, z
+        shown = [f for f in sources if f.props["tippecanoe"]["minzoom"] <= z]
+        assert {(p["src"], p.get("substrate"), p.get("folk")) for p, _ in got} == {
+            (f.props["src"], f.props.get("substrate"), f.props.get("folk")) for f in shown}, z
         for p, _ in got:
-            assert set(p) <= {"src", "class", "folk", "substrate", "label"}, p
-        if z not in (first["usgs-cmecs"], 16):
+            assert set(p) <= {"src", "class", "folk", "substrate", "label", "extent"}, p
+        if z not in (13, 16):
             continue
         tol = 1.5 * 360 / 2**z / EXTENT
-        for f in sources:
-            if first[f.props["src"]] > z:
-                continue
+        for f in shown:
             key = tuple(f.props.get(k) for k in ("src", "folk", "substrate", "label"))
             pt = shape(f.geometry).representative_point()
             assert any(tuple(p.get(k) for k in ("src", "folk", "substrate", "label")) == key and g.distance(pt) <= tol

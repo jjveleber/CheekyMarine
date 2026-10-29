@@ -4,6 +4,7 @@ from osgeo import ogr, osr
 from shapely import wkb
 from shapely.geometry import box, shape
 
+from chartpack.enc.scamin import extent_z0, minzoom_for_extent
 from chartpack.seabed import cmecs
 from chartpack.seabed.cmecs import BLOCKS, MINZOOM, fetch_cmecs, read_cmecs
 from chartpack.seabed.codes import cmecs_label
@@ -56,7 +57,10 @@ def test_cmecs_maps_to_labels(fixtures_dir, block):
         assert (f.layer, f.props["src"], f.props["class"]) == ("seabed", "usgs-cmecs", "CMECS")
         assert f.geometry["type"] in ("Polygon", "MultiPolygon")
         assert f.props.get("label") == cmecs_label(f.props["substrate"]) and "cell" not in f.props
-        assert f.props["tippecanoe"] == {"minzoom": MINZOOM, "maxzoom": 16}
+        # R37: from the zoom where the polygon is about 48 px across, never before the CMECS floor
+        assert f.props["extent"] == pytest.approx(extent_z0(f.geometry), rel=1e-5)
+        want = max(MINZOOM, minzoom_for_extent(f.props["extent"]))
+        assert f.props["tippecanoe"] == {"minzoom": want, "maxzoom": 16}
     assert {f.props["substrate"]: f.props.get("label") for f in feats} == EXPECTED[block]
     # every polygon with a substrate is kept, reprojected from UTM 10 NAD83 to WGS84 lon/lat
     source = [(items, g) for items, g in _ogr_polygons(_path(fixtures_dir, block), BLOCKS[block].name)

@@ -14,14 +14,16 @@ class Depths:
     deep_m: float = 9.144
 
 
-# The only layers whose filters may carry depth thresholds.
+# The only layers whose filters may carry depth thresholds. hazard-danger (the red ring round a hazard) is
+# shipped again (R34); hazard-danger-outline is the red outline of a line or area hazard (R35), same rule.
 DEPTH_LAYERS = (
     "depare-deep", "depare-medium", "depare-shallow", "depare-vshallow",
-    "depcnt-safety", "soundg-shallow", "soundg-deep", "hazard-danger",
+    "depcnt-safety", "soundg-shallow", "soundg-deep", "hazard-danger", "hazard-danger-outline",
 )
-# hazard-danger shows only during route navigation, which the plotter does not have yet, so the
-# shipped styles carry no such layer (spec 6.6 owner revisions); its filter stays for plan 3.
-SHIPPED_DEPTH_LAYERS = tuple(layer for layer in DEPTH_LAYERS if layer != "hazard-danger")
+HAZARD_DEPTH_LAYERS = ("hazard-danger", "hazard-danger-outline")
+
+# One mark per hazard class (R34); the sprite builder bakes each, plain and in the danger ring, per palette.
+HAZARD_SHAPES = ("rock", "obstruction", "wreck")
 
 BUOY_CLASSES = ["BOYLAT", "BOYCAR", "BOYSAW", "BOYISD", "BOYSPP"]
 
@@ -50,7 +52,13 @@ def depth_filter(layer: str, depths: Depths, safety_contour_m: float | None = No
             ["in", ["coalesce", ["get", "WATLEV"], 0], ["literal", [1, 2, 4, 5]]],
         ],
     }
+    filters["hazard-danger-outline"] = filters["hazard-danger"]
     return filters[layer]
+
+
+def hazard_icon(shape: str, danger: bool, palette: str) -> str:
+    """The sprite name of a baked hazard image (style/sprites.py)."""
+    return f"hazard-{shape}{'-danger' if danger else ''}-{palette}"
 
 
 def _is_class(*classes: str) -> list:
@@ -103,7 +111,13 @@ def _land_and_areas(p: dict) -> list[dict]:
         _fill("lndare", "lndare", p["LANDA"]),
         _line("coalne", "coalne", p["CSTLN"], 1.2),
         _fill("area-achare", "area", p["ADINF"], _is_class("ACHARE"), 0.25),
-        _line("area-resare", "area", p["CHMGD"], 1, _is_class("RESARE"), [4, 2]),
+        _line("area-resare", "area", p["CHMGD"], 1, _is_class("RESARE"), [8, 4]),
+        # Chart No. 1 T ticks along the edge, pointing inside (R31); they never hide or block other symbols
+        {"id": "area-resare-ticks", "type": "symbol", "source": "enc", "source-layer": "area",
+         "filter": _is_class("RESARE"),
+         "layout": {"symbol-placement": "line", "symbol-spacing": 100, "icon-image": "resare-tick",
+                    "icon-size": 0.8, "icon-allow-overlap": True, "icon-ignore-placement": True},
+         "paint": {"icon-color": p["CHMGD"]}},
         _fill("area-tsslpt", "area", p["TRFCD"], _is_class("TSSLPT"), 0.25),
         _line("line-cable", "line", p["CHMGD"], 1, _is_class("CBLSUB", "CBLARE", "PIPSOL", "PIPARE"), [4, 2]),
         _line("line-route", "line", p["CHMGD"], 1, _is_class("FERYRT", "NAVLNE", "RECTRC", "TSSLPT")),
@@ -118,15 +132,20 @@ def _contours(p: dict, depths: Depths, safety_contour_m: float | None) -> list[d
 
 
 _KELP = ["all", ["==", ["get", "class"], "WEDKLP"], ["==", ["get", "CATWED"], 1]]
+# R37 label priority: areas first, bigger first (extent is set on areas and lines only); then ENC points; then
+# usSEABED samples.
+_SEABED_SORT = ["case", ["has", "extent"], ["-", ["to-number", ["get", "extent"]]],
+                ["==", ["get", "src"], "usseabed"], 2, 1]
 
 
 def seabed_layers(p: dict) -> list[dict]:
-    """Bottom composition labels (spec 6.10): chart abbreviations in grey ink, smaller than soundings and
-    drawn below them, so a sounding wins where the two collide. Kelp gets its Chart No. 1 symbol. USGS
-    CMECS substrate polygons get a thin outline and their label, never a fill, which would change the
-    depth colours."""
-    text = {"text-field": ["get", "label"], "text-font": ["Noto Sans Regular"], "text-size": 10}
-    paint = {"text-color": p["CHGRD"], "text-halo-color": p["DEPDW"], "text-halo-width": 1.5}
+    """Bottom composition labels (spec 6.10): chart abbreviations in the deep-sounding ink (R30), smaller
+    than soundings and drawn below them, so a sounding wins where the two collide. Below z15 a label keeps
+    about 40 px from the next (R37). Kelp gets its Chart No. 1 symbol. USGS CMECS substrate polygons get a
+    thin outline and their label, never a fill, which would change the depth colours."""
+    text = {"text-field": ["get", "label"], "text-font": ["Noto Sans Regular"], "text-size": 10,
+            "text-padding": ["step", ["zoom"], 20, 15, 2], "symbol-sort-key": _SEABED_SORT}
+    paint = {"text-color": p["SNDG2"], "text-halo-color": p["DEPDW"], "text-halo-width": 1.5}
     return [
         {"id": "seabed-cmecs", "type": "line", "source": "enc", "source-layer": "seabed",
          "filter": ["==", ["get", "class"], "CMECS"],
@@ -181,14 +200,30 @@ def _navaids_and_lights(p: dict) -> list[dict]:
     ]
 
 
-def _hazards(p: dict) -> list[dict]:
-    rock = ["match", _num_or_zero("WATLEV"), [4, 5], "rock-awash", "rock-submerged"]
-    wreck = ["match", _num_or_zero("CATWRK"), 1, "wreck-nondangerous", "wreck-dangerous"]
-    plain = ["match", ["get", "class"], "UWTROC", rock, "WRECKS", wreck, "obstruction"]
+def _hazards(p: dict, palette: str, depths: Depths) -> list[dict]:
+    """R32 to R35. Every hazard has its black mark (one per class, about 11 px at every zoom); where the
+    hazard-danger rule holds the hazard-danger layer draws the same mark inside a red dotted ring, as one
+    image, on top. Below z15 overlapping hazards hide each other (the danger ones win: they are placed
+    first, and a plain mark under a shown ring collides with it); from z15 every hazard is drawn and none
+    blocks another symbol. Line and area hazards also get a thin dotted outline, red where dangerous."""
+    by_zoom = ["step", ["zoom"], False, 15, True]
+
+    def marks(lid: str, danger: bool, filter_=None) -> dict:
+        icon = ["match", ["get", "class"],
+                "UWTROC", hazard_icon("rock", danger, palette), "WRECKS", hazard_icon("wreck", danger, palette),
+                hazard_icon("obstruction", danger, palette)]
+        layer = {"id": lid, "type": "symbol", "source": "enc", "source-layer": "hazard",
+                 "layout": {"icon-image": icon, "icon-allow-overlap": by_zoom, "icon-ignore-placement": by_zoom,
+                            "icon-padding": 0}}
+        if filter_ is not None:
+            layer["filter"] = filter_
+        return layer
+
     return [
-        {"id": "hazard", "type": "symbol", "source": "enc", "source-layer": "hazard",
-         "layout": {"icon-image": plain, "icon-allow-overlap": True},
-         "paint": {"icon-color": p["CHBLK"]}},
+        _line("hazard-outline", "hazard", p["CHBLK"], 0.8, dash=[1, 2]),
+        _line("hazard-danger-outline", "hazard", p["DNGHL"], 0.8, depth_filter("hazard-danger-outline", depths), [1, 2]),
+        marks("hazard", False),
+        marks("hazard-danger", True, depth_filter("hazard-danger", depths)),
     ]
 
 
@@ -207,14 +242,14 @@ def nav_style(palette: str, depths: Depths = Depths(), *, units: str = "ft", saf
         *seabed_layers(p),
         *_soundings(p, depths, units),
         *_navaids_and_lights(p),
-        *_hazards(p),
+        *_hazards(p, palette, depths),
     ]
     return {
         "version": 8,
         "name": f"CheekyMarine nav {palette}",
         "metadata": {"cheekymarine": {
             "depths": {"shallow_m": depths.shallow_m, "safety_m": depths.safety_m,
-                       "deep_m": depths.deep_m, "layers": list(SHIPPED_DEPTH_LAYERS)},
+                       "deep_m": depths.deep_m, "layers": list(DEPTH_LAYERS)},
             "safety_contour_m": depths.safety_m if safety_contour_m is None else safety_contour_m,
             "units": units,
             "palette": palette,

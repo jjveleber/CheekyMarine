@@ -7,7 +7,7 @@ from shapely.geometry import mapping, shape
 from shapely.ops import unary_union
 
 from chartpack.enc.reader import CellMeta, Feature
-from chartpack.enc.scamin import BAND_ZOOMS, minzoom_for_scamin
+from chartpack.enc.scamin import BAND_ZOOMS, minzoom_for_extent, minzoom_for_scamin
 
 THINNED_LAYERS = ("soundg", "area", "line", "seabed")
 # (zoom range, primary band), coarse to fine
@@ -58,6 +58,8 @@ def quilt(cells: list[tuple[CellMeta, list[Feature]]]) -> list[Feature]:
                 minzoom = lo
                 if feature.layer in THINNED_LAYERS:
                     minzoom = max(minzoom_for_scamin(feature.props.get("SCAMIN"), band), lo)
+                    if "extent" in feature.props:  # seabed areas and lines: from about 48 px across (R37)
+                        minzoom = max(minzoom, minzoom_for_extent(feature.props["extent"]))
                     if minzoom > hi:
                         continue
                 geometries = [copy.deepcopy(feature.geometry)] if clip is None else _clip(feature, clip)

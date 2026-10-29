@@ -9,6 +9,7 @@ layer `minzoom`: the layer appears at that zoom and the filter keeps only that t
 
 from chartpack.bathy.contours import BANDS, DEPTHS_FT, FINE_FT, MAJOR_FT, min_zoom
 from chartpack.style.nav import (
+    HAZARD_DEPTH_LAYERS,
     Depths,
     _hazards,
     _land_and_areas,
@@ -108,14 +109,14 @@ def fish_style(palette: str, depths: Depths = Depths()) -> dict:
         *_labels(p),
         *seabed_layers(p),
         *_pick(_navaids_and_lights(p), "light"),
-        *_hazards(p),
+        *_hazards(p, palette, depths),
     ]
     return {
         "version": 8,
         "name": f"CheekyMarine fish {palette}",
         "metadata": {"cheekymarine": {
             "depths": {"shallow_m": depths.shallow_m, "safety_m": depths.safety_m,
-                       "deep_m": depths.deep_m, "layers": []},
+                       "deep_m": depths.deep_m, "layers": list(HAZARD_DEPTH_LAYERS)},
             "units": "ft",
             "palette": palette,
             "notice": NOTICE,

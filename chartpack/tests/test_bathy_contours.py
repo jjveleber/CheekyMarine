@@ -1,4 +1,5 @@
 import json
+import math
 
 import numpy as np
 import pytest
@@ -11,6 +12,7 @@ from chartpack.bathy.contours import (
     chaikin_line,
     contours_by_zoom,
     min_zoom,
+    zoom_tolerance_deg,
 )
 from chartpack.bathy.merge import fill_land, to_mllw_depth
 
@@ -106,3 +108,31 @@ def test_straight_contour_survives_default_min_points():
     feats = build_contours(plane, TRANSFORM, levels_ft=[100])
     assert len(feats) == 1
     assert len(feats[0]["geometry"]["coordinates"]) >= 2
+
+
+@pytest.mark.parametrize("zoom", range(10, 17))
+def test_zoom_tolerance_is_one_pixel_at_latitude_48(zoom):
+    """R33: Douglas-Peucker tolerance = the 256 px Web Mercator ground resolution at 48 N, z16 uses z15."""
+    metres = 156543.03392804097 * math.cos(math.radians(48)) / 2 ** min(zoom, 15)
+    assert zoom_tolerance_deg(zoom) == pytest.approx(metres / 111320.0)
+    assert 95 < 156543.03392804097 * math.cos(math.radians(48)) / 2**10 < 105  # about 100 m at z10
+
+
+def test_finer_zoom_contours_keep_more_vertices(ridge_depth):
+    """The ridge with a gentle north-south wiggle (contour offset about 40 m, wavelength 4 km): about one pixel
+    at z15 (3 m) keeps the bends that one pixel at z10 (100 m) straightens."""
+    wiggly = ridge_depth + 0.5 * np.sin(2 * np.pi * np.arange(200) / 40)[:, None]
+    z10 = build_contours(wiggly, TRANSFORM, levels_ft=[100], simplify_deg=zoom_tolerance_deg(10))
+    z15 = build_contours(wiggly, TRANSFORM, levels_ft=[100], simplify_deg=zoom_tolerance_deg(15))
+    count = lambda feats: sum(len(f["geometry"]["coordinates"]) for f in feats)
+    assert len(z10) == len(z15) and count(z15) > count(z10)
+
+
+def test_contours_by_zoom_simplify_at_the_top_zoom_of_each_range(ridge_depth, monkeypatch):
+    from chartpack.bathy import contours
+
+    seen = []
+    real = contours.build_contours
+    monkeypatch.setattr(contours, "build_contours", lambda *a, **k: seen.append(k["simplify_deg"]) or real(*a, **k))
+    contours.contours_by_zoom(ridge_depth, TRANSFORM, fine=False)
+    assert seen == [zoom_tolerance_deg(11), zoom_tolerance_deg(13), zoom_tolerance_deg(15)]
