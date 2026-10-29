@@ -28,5 +28,8 @@ def archive_pack(pack_root: Path, out_dir: Path) -> tuple[Path, Path]:
             arcname = f"{name}/{path.relative_to(root).as_posix()}"
             tar.add(path, arcname=arcname, recursive=False, filter=_reproducible)
     sums = out / "SHA256SUMS"
-    sums.write_text(f"{sha256_of(tar_path)}  {tar_path.name}\n")
+    # Keep the lines of other tars in the same directory (a region's two packs), replace this one's.
+    others = [line for line in sums.read_text().splitlines() if line.split("  ", 1)[-1] != tar_path.name] if sums.exists() else []
+    lines = sorted(others + [f"{sha256_of(tar_path)}  {tar_path.name}"], key=lambda line: line.split("  ", 1)[-1])
+    sums.write_text("".join(line + "\n" for line in lines))
     return tar_path, sums
