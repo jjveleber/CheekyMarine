@@ -1,6 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
-  <!-- US Chart No. 1 reference: K 21 wreck, non-dangerous depth -->
-  <polygon points="3,14 21,14 18,20 6,20"/>
-  <rect x="11" y="4" width="2" height="10"/>
-  <polygon points="13,4 19,8 13,8"/>
+  <!-- US Chart No. 1 reference: K 29 wreck, not dangerous to surface navigation -->
+  <!-- Drawn by hand in the visual style of electronic chart displays (OpenCPN looked at as a visual
+       reference only; no OpenCPN file, path data or bitmap copied): a hull line with three masts, no danger line. -->
+  <rect x="2.5" y="11.1" width="19.0" height="1.8"/>
+  <rect x="5.95" y="8.5" width="1.6" height="7"/>
+  <rect x="11.2" y="8.5" width="1.6" height="7"/>
+  <rect x="16.45" y="8.5" width="1.6" height="7"/>
 </svg>

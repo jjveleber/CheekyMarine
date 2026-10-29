@@ -1,8 +1,11 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
-  <!-- US Chart No. 1 reference: K 14 rock awash -->
-  <line x1="12" y1="2" x2="12" y2="22" stroke-width="3"/>
-  <line x1="2" y1="12" x2="22" y2="12" stroke-width="3"/>
-  <line x1="5" y1="5" x2="19" y2="19" stroke-width="3"/>
-  <line x1="19" y1="5" x2="5" y2="19" stroke-width="3"/>
-  <circle cx="12" cy="12" r="3.5"/>
+  <!-- US Chart No. 1 reference: K 14 rock awash at chart datum -->
+  <!-- Drawn by hand in the visual style of electronic chart displays (OpenCPN looked at as a visual
+       reference only; no OpenCPN file, path data or bitmap copied): an upright cross with a dot in each quadrant. -->
+  <rect x="10.9" y="2" width="2.2" height="20"/>
+  <rect x="2" y="10.9" width="20" height="2.2"/>
+  <circle cx="6.5" cy="6.5" r="2"/>
+  <circle cx="6.5" cy="17.5" r="2"/>
+  <circle cx="17.5" cy="6.5" r="2"/>
+  <circle cx="17.5" cy="17.5" r="2"/>
 </svg>

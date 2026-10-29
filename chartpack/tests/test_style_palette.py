@@ -11,9 +11,16 @@ def test_every_palette_has_every_token():
         assert set(p) == set(TOKENS), name
 
 
+def test_owner_water_and_land_colours():
+    assert PALETTES["day"]["DEPDW"] == "#F4EEE2" and PALETTES["night"]["DEPDW"] == "#18253A"
+    assert PALETTES["day"]["LANDA"] == "#EFD98A" and PALETTES["night"]["LANDA"] == "#3A3317"
+
+
 def test_night_water_is_dark():
-    assert luminance(PALETTES["night"]["DEPDW"]) < 0.1
-    assert luminance(PALETTES["day"]["DEPDW"]) > 0.9
+    day, night = PALETTES["day"]["DEPDW"], PALETTES["night"]["DEPDW"]
+    assert luminance(night) < 0.15 and luminance(day) > 0.9
+    assert int(day[1:3], 16) > int(day[5:7], 16)  # day deep water is warm
+    assert int(night[5:7], 16) > int(night[1:3], 16)  # night deep water leans blue
 
 
 def test_dusk_is_day_mixed_toward_black():

@@ -1,7 +1,9 @@
 import json
 
 from chartpack.enc.schema import LAYERS
-from chartpack.style.nav import DEPTH_LAYERS, Depths, depth_filter, nav_style
+from chartpack.style.fish import fish_style
+from chartpack.style.nav import DEPTH_LAYERS, SHIPPED_DEPTH_LAYERS, Depths, depth_filter, nav_style
+from chartpack.style.palette import PALETTES
 from chartpack.style.validate import check_style_against_schema, check_style_sprites_glyphs
 
 ICONS = {
@@ -21,8 +23,8 @@ def test_style_is_v8_with_contract_sources():
 def test_depth_layers_exist_and_only_they_carry_thresholds():
     s = nav_style("day")
     ids = {l["id"] for l in s["layers"]}
-    assert set(DEPTH_LAYERS) <= ids
-    assert s["metadata"]["cheekymarine"]["depths"] == {"shallow_m": 1.8288, "safety_m": 3.048, "deep_m": 9.144, "layers": list(DEPTH_LAYERS)}
+    assert set(SHIPPED_DEPTH_LAYERS) <= ids
+    assert s["metadata"]["cheekymarine"]["depths"] == {"shallow_m": 1.8288, "safety_m": 3.048, "deep_m": 9.144, "layers": list(SHIPPED_DEPTH_LAYERS)}
     for l in s["layers"]:
         if l["id"] not in DEPTH_LAYERS:
             text = json.dumps(l)
@@ -95,7 +97,29 @@ def test_three_palettes_same_layers():
 
 def test_hazards_above_everything():
     ids = [l["id"] for l in nav_style("day")["layers"]]
-    assert ids[-2:] == ["hazard", "hazard-danger"]
+    assert ids[-1] == "hazard"
+
+
+def test_background_is_no_data():
+    for palette in PALETTES:
+        for s in (nav_style(palette), fish_style(palette)):
+            bg = s["layers"][0]
+            assert bg["type"] == "background" and bg["paint"]["background-color"] == PALETTES[palette]["NODTA"]
+
+
+def test_no_hazard_danger_layer_shipped():
+    for s in (nav_style("day"), fish_style("day")):
+        assert "hazard-danger" not in {l["id"] for l in s["layers"]}
+        assert "hazard-danger" not in s["metadata"]["cheekymarine"]["depths"]["layers"]
+    assert SHIPPED_DEPTH_LAYERS == tuple(l for l in DEPTH_LAYERS if l != "hazard-danger")
+    assert depth_filter("hazard-danger", Depths())[0] == "any"  # kept for plan 3
+
+
+def test_resare_is_dashed_outline():
+    s = nav_style("day")
+    resare = [l for l in s["layers"] if "RESARE" in json.dumps(l.get("filter", []))]
+    assert [l["type"] for l in resare] == ["line"]
+    assert resare[0]["paint"]["line-color"] == PALETTES["day"]["CHMGD"] and resare[0]["paint"]["line-dasharray"]
 
 
 def test_safety_contour_metadata():

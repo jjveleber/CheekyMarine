@@ -98,7 +98,7 @@ def fish_style(palette: str, depths: Depths = Depths()) -> dict:
     water_base = {"id": "water-base", "type": "fill", "source": "enc", "source-layer": "depare",
                   "paint": {"fill-color": p["DEPMD"]}}
     layers = [
-        {"id": "background", "type": "background", "paint": {"background-color": p["DEPDW"]}},
+        {"id": "background", "type": "background", "paint": {"background-color": p["NODTA"]}},
         water_base,
         _band(p),
         hillshade,
@@ -106,14 +106,14 @@ def fish_style(palette: str, depths: Depths = Depths()) -> dict:
         *_contours(p),
         *_labels(p),
         *_pick(_navaids_and_lights(p), "light"),
-        *_hazards(p, depths),
+        *_hazards(p),
     ]
     return {
         "version": 8,
         "name": f"CheekyMarine fish {palette}",
         "metadata": {"cheekymarine": {
             "depths": {"shallow_m": depths.shallow_m, "safety_m": depths.safety_m,
-                       "deep_m": depths.deep_m, "layers": ["hazard-danger"]},
+                       "deep_m": depths.deep_m, "layers": []},
             "units": "ft",
             "palette": palette,
             "notice": NOTICE,

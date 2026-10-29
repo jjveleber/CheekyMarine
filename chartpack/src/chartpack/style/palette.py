@@ -6,12 +6,12 @@ TOKENS = (
 )
 
 _DAY = {
-    "DEPDW": "#FFFFFF",  # deep water fill
+    "DEPDW": "#F4EEE2",  # deep water fill (subtle sepia)
     "DEPMD": "#DCEEF9",  # medium depth water fill
     "DEPMS": "#B8DCF2",  # medium-shallow water fill
     "DEPVS": "#8EC3E6",  # very shallow water fill
     "DEPIT": "#A8D5A2",  # intertidal area fill
-    "LANDA": "#F1E7C8",  # land area fill
+    "LANDA": "#EFD98A",  # land area fill
     "LANDF": "#D9CA90",  # land features
     "CSTLN": "#5E5E50",  # coastline
     "CHBLK": "#000000",  # black chart ink (safety contour, black navaids)
@@ -33,12 +33,12 @@ _DAY = {
 }
 
 _NIGHT = {
-    "DEPDW": "#000000",  # deep water fill
+    "DEPDW": "#18253A",  # deep water fill (dark blue-grey)
     "DEPMD": "#0A1F33",  # medium depth water fill
     "DEPMS": "#123A5A",  # medium-shallow water fill
     "DEPVS": "#1B5280",  # very shallow water fill
     "DEPIT": "#1E3A1E",  # intertidal area fill
-    "LANDA": "#2A2616",  # land area fill
+    "LANDA": "#3A3317",  # land area fill
     "LANDF": "#3A3420",  # land features
     "CSTLN": "#8A8A7A",  # coastline
     "CHBLK": "#C0C0C0",  # chart ink in place of black

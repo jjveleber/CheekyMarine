@@ -19,6 +19,9 @@ DEPTH_LAYERS = (
     "depare-deep", "depare-medium", "depare-shallow", "depare-vshallow",
     "depcnt-safety", "soundg-shallow", "soundg-deep", "hazard-danger",
 )
+# hazard-danger shows only during route navigation, which the plotter does not have yet, so the
+# shipped styles carry no such layer (spec 6.6 owner revisions); its filter stays for plan 3.
+SHIPPED_DEPTH_LAYERS = tuple(layer for layer in DEPTH_LAYERS if layer != "hazard-danger")
 
 BUOY_CLASSES = ["BOYLAT", "BOYCAR", "BOYSAW", "BOYISD", "BOYSPP"]
 
@@ -100,7 +103,7 @@ def _land_and_areas(p: dict) -> list[dict]:
         _fill("lndare", "lndare", p["LANDA"]),
         _line("coalne", "coalne", p["CSTLN"], 1.2),
         _fill("area-achare", "area", p["ADINF"], _is_class("ACHARE"), 0.25),
-        _fill("area-resare", "area", p["RESBL"], _is_class("RESARE"), 0.25),
+        _line("area-resare", "area", p["CHMGD"], 1, _is_class("RESARE"), [4, 2]),
         _fill("area-tsslpt", "area", p["TRFCD"], _is_class("TSSLPT"), 0.25),
         _line("line-cable", "line", p["CHMGD"], 1, _is_class("CBLSUB", "CBLARE", "PIPSOL", "PIPARE"), [4, 2]),
         _line("line-route", "line", p["CHMGD"], 1, _is_class("FERYRT", "NAVLNE", "RECTRC", "TSSLPT")),
@@ -156,7 +159,7 @@ def _navaids_and_lights(p: dict) -> list[dict]:
     ]
 
 
-def _hazards(p: dict, depths: Depths) -> list[dict]:
+def _hazards(p: dict) -> list[dict]:
     rock = ["match", _num_or_zero("WATLEV"), [4, 5], "rock-awash", "rock-submerged"]
     wreck = ["match", _num_or_zero("CATWRK"), 1, "wreck-nondangerous", "wreck-dangerous"]
     plain = ["match", ["get", "class"], "UWTROC", rock, "WRECKS", wreck, "obstruction"]
@@ -164,10 +167,6 @@ def _hazards(p: dict, depths: Depths) -> list[dict]:
         {"id": "hazard", "type": "symbol", "source": "enc", "source-layer": "hazard",
          "layout": {"icon-image": plain, "icon-allow-overlap": True},
          "paint": {"icon-color": p["CHBLK"]}},
-        {"id": "hazard-danger", "type": "symbol", "source": "enc", "source-layer": "hazard",
-         "filter": depth_filter("hazard-danger", depths),
-         "layout": {"icon-image": "isolated-danger", "icon-allow-overlap": True},
-         "paint": {"icon-color": p["DNGHL"]}},
     ]
 
 
@@ -179,20 +178,20 @@ def nav_style(palette: str, depths: Depths = Depths(), *, units: str = "ft", saf
     """
     p = PALETTES[palette]
     layers = [
-        {"id": "background", "type": "background", "paint": {"background-color": p["DEPDW"]}},
+        {"id": "background", "type": "background", "paint": {"background-color": p["NODTA"]}},
         *_depth_areas(p, depths),
         *_land_and_areas(p),
         *_contours(p, depths, safety_contour_m),
         *_soundings(p, depths, units),
         *_navaids_and_lights(p),
-        *_hazards(p, depths),
+        *_hazards(p),
     ]
     return {
         "version": 8,
         "name": f"CheekyMarine nav {palette}",
         "metadata": {"cheekymarine": {
             "depths": {"shallow_m": depths.shallow_m, "safety_m": depths.safety_m,
-                       "deep_m": depths.deep_m, "layers": list(DEPTH_LAYERS)},
+                       "deep_m": depths.deep_m, "layers": list(SHIPPED_DEPTH_LAYERS)},
             "safety_contour_m": depths.safety_m if safety_contour_m is None else safety_contour_m,
             "units": units,
             "palette": palette,

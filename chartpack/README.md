@@ -48,7 +48,9 @@ A charts pack is a directory `charts-<region>-<version>/` holding `enc.mbtiles`,
 - Depth thresholds appear only in the `filter` of the layers named `depare-deep`,
   `depare-medium`, `depare-shallow`, `depare-vshallow`, `depcnt-safety`, `soundg-shallow`,
   `soundg-deep` and `hazard-danger`. `metadata.cheekymarine` in each style records the
-  thresholds (`depths`), the drawn `safety_contour_m`, `units` and `palette`.
+  thresholds (`depths`, whose `layers` lists the depth layers the style actually ships),
+  the drawn `safety_contour_m`, `units` and `palette`. The shipped styles carry no
+  `hazard-danger` layer until the app has route navigation.
 - MBTiles metadata carries `cheekymarine:schema` (currently 1), `cheekymarine:pack`,
   `cheekymarine:region`, `cheekymarine:version`, `cheekymarine:sources` (the ENC cells
   with edition, update and issue date), `cheekymarine:valdco` and `cheekymarine:built`.
