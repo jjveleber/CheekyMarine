@@ -124,6 +124,28 @@ def test_fetch_rejects_wrong_size(tmp_path, fixtures_dir, monkeypatch):
     assert not dest.exists()
 
 
+def test_fetch_removes_damaged_download(tmp_path, fixtures_dir, monkeypatch):
+    """A download of the published size whose member is damaged fails the zip check after the download:
+    DownloadError, and the file is not left in the cache."""
+    from chartpack.cache import DownloadError
+    from zipdamage import flip_to_zlib_error
+
+    damaged = tmp_path / "damaged.zip"
+    damaged.write_bytes(_path(fixtures_dir, "seattle").read_bytes())
+    flip_to_zlib_error(damaged, "CMECS_OffshoreSeattle.shp")
+
+    def fake(url, dest, *, expected_size=None, timeout=120):
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(damaged.read_bytes())
+        return dest
+
+    monkeypatch.setattr("chartpack.cache.download", fake)
+    monkeypatch.setattr(cmecs, "BLOCKS", {"seattle": BLOCKS["seattle"]._replace(size=damaged.stat().st_size)})
+    with pytest.raises(DownloadError, match="CMECS_OffshoreSeattle"):
+        fetch_cmecs(["seattle"], tmp_path / "cache")
+    assert not (tmp_path / "cache" / "seabed" / "CMECS_OffshoreSeattle.zip").exists()
+
+
 @pytest.mark.online
 def test_fetch_cmecs_online(tmp_path):
     paths = fetch_cmecs(sorted(BLOCKS), tmp_path)

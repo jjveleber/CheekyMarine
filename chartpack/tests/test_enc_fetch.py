@@ -73,6 +73,28 @@ def test_fetch_replaces_corrupt_cache_entry(tmp_path, fixtures_dir, monkeypatch)
     assert check_zip_layout(path, "US5SEAKL") == (1, 1)
 
 
+@pytest.mark.parametrize("member", ["ENC_ROOT/US5SEAKL/US5SEAKL.000", "ENC_ROOT/US5SEAKL/US5SEAKL.001"])
+def test_fetch_refetches_same_size_zip_with_corrupt_deflate(tmp_path, fixtures_dir, monkeypatch, member):
+    """Review Focus 5: a cached cell zip of the catalog size with a damaged deflate stream in the base cell
+    or an update file is rejected and fetched again, not read and not a traceback."""
+    from zipdamage import flip_to_zlib_error
+
+    calls = []
+
+    def fake_download(url, dest, *, expected_size=None, timeout=120):
+        calls.append(url)
+        shutil.copy(fixtures_dir / "US5SEAKL.zip", dest)
+        return dest
+
+    monkeypatch.setattr(fetch, "download", fake_download)
+    cached = tmp_path / "enc" / "US5SEAKL-1.1.zip"
+    cached.parent.mkdir()
+    shutil.copy(fixtures_dir / "US5SEAKL.zip", cached)
+    flip_to_zlib_error(cached, member)
+    (path,) = fetch_cells(["US5SEAKL"], _catalog(fixtures_dir), tmp_path)
+    assert len(calls) == 1 and path.read_bytes() == (fixtures_dir / "US5SEAKL.zip").read_bytes()
+
+
 def test_fetch_rejects_unknown_cell(tmp_path, fixtures_dir):
     with pytest.raises(CellError, match="US9NOPE"):
         fetch_cells(["US9NOPE"], _catalog(fixtures_dir), tmp_path)

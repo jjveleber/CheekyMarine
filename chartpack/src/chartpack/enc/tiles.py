@@ -3,6 +3,7 @@
 import json
 import shutil
 import subprocess
+from collections.abc import Sequence
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -61,7 +62,7 @@ def _tippecanoe(out: Path, layer_files: list[tuple[str, Path]], extra: list[str]
 
 def build_enc_mbtiles(
     cells: list[tuple[CellMeta, list[Feature]]], out: Path, *, region: Region, work: Path,
-    seabed: list[Feature] = (),
+    seabed: Sequence[Feature] = (),
 ) -> Path:
     """`seabed`: USGS survey features (seabed/usseabed.py, seabed/cmecs.py) that already carry their
     tippecanoe zooms; they join the seabed layer as they are, not quilted (spec 6.10)."""

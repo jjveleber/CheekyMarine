@@ -7,7 +7,7 @@ from pathlib import Path
 
 from osgeo import gdal
 
-from chartpack.cache import download
+from chartpack.cache import ZIP_ERRORS, download
 from chartpack.enc.catalog import CellInfo
 
 gdal.UseExceptions()
@@ -52,10 +52,17 @@ def check_zip_layout(zip_path: Path, name: str) -> tuple[int, int]:
 
 
 def _verify(path: Path, info: CellInfo) -> None:
-    """Raise CellError or BadZipFile unless the zip matches the catalog entry."""
+    """Raise CellError unless the zip matches the catalog entry and every member reads back whole."""
     if path.stat().st_size != info.zip_size:
         raise CellError(f"{info.name}: {path} is {path.stat().st_size} bytes, catalog says {info.zip_size}")
-    edtn, updn = check_zip_layout(path, info.name)
+    try:
+        with zipfile.ZipFile(path) as zf:
+            damaged = zf.testzip()
+        edtn, updn = check_zip_layout(path, info.name)
+    except ZIP_ERRORS as e:
+        raise CellError(f"{info.name}: {path} is a damaged zip: {e!r}") from e
+    if damaged is not None:
+        raise CellError(f"{info.name}: {path}: {damaged} fails its CRC check")
     if (edtn, updn) != (info.edtn, info.updn):
         raise CellError(f"{info.name}: zip is {edtn}.{updn}, catalog says {info.edtn}.{info.updn}")
 
@@ -70,7 +77,7 @@ def fetch_cells(names: list[str], catalog: dict[str, CellInfo], cache_dir: Path)
         if path.exists():
             try:
                 _verify(path, info)
-            except (CellError, zipfile.BadZipFile):
+            except CellError:
                 path.unlink()  # damaged after download: refetch
         if not path.exists():
             download(info.zip_url, path, expected_size=info.zip_size)

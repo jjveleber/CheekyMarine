@@ -71,8 +71,8 @@ _DOC_USGS = """
 ## USGS survey classes
 
 The same abbreviations label the USGS sources, main constituent first. usSEABED (USGS Data Series 182)
-samples carry a Folk grain-size class; "slightly gravelly" (a trace of gravel) is written like
-"gravelly". A class not listed here keeps its raw value in the tile and has no label.
+samples carry a Folk grain-size class; a "slightly gravelly" class (under 5 % gravel) reads as its
+main classes only. A class not listed here keeps its raw value in the tile and has no label.
 
 | Folk code | Folk class | Label |
 |---|---|---|

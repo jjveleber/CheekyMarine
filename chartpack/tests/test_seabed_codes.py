@@ -70,9 +70,8 @@ def test_usgs_labels_use_only_chart_no1_abbreviations():
     every part of every label is an abbreviation the S-57 tables already define."""
     from chartpack.seabed.codes import ABBREVIATIONS, CMECS, FOLK
 
-    labels = {code: abbr_label for code, (abbr_label, folk_name) in FOLK.items() if folk_name} | CMECS
-    assert len(labels) == len(FOLK) + len(CMECS)
-    for name, abbr_label in labels.items():
+    labels = [(code, abbr_label) for code, (abbr_label, _) in FOLK.items()] + list(CMECS.items())
+    for name, abbr_label in labels:
         assert all(part in ABBREVIATIONS for part in abbr_label.split(".")), name
     assert ABBREVIATIONS["Cb"] == ("cobbles", "type") and ABBREVIATIONS["h"] == ("hard", "qualifier")
 
@@ -81,7 +80,10 @@ def test_usgs_labels_main_constituent_first():
     from chartpack.seabed.codes import cmecs_label, folk_label
 
     assert folk_label("mS") == "S.M" and folk_label("sM") == "M.S" and folk_label("msG") == "G.S.M"
-    assert folk_label("(g)S") == "S.G" and folk_label("H") == "h" and folk_label("G") == "G"
+    assert folk_label("H") == "h" and folk_label("G") == "G" and folk_label("gS") == "S.G"
+    # ruling R26: slightly gravelly (g) classes (under 5 % gravel) are labelled by their main classes only
+    assert {c: folk_label(c) for c in ("(g)M", "(g)S", "(g)mS", "(g)sM")} == {
+        "(g)M": "M", "(g)S": "S", "(g)mS": "S.M", "(g)sM": "M.S"}
     assert cmecs_label("muddy sand") == "S.M" and cmecs_label("bedrock") == "Rk" and cmecs_label("boulder") == "Blds"
     assert cmecs_label("Sandy cobble") == cmecs_label("sandy cobble") == "Cb.S"  # Admiralty Inlet capitalises one
     # a CMECS level that does not say which grain dominates gets no label

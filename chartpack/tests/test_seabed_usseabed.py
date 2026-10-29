@@ -29,7 +29,8 @@ def test_usseabed_maps_to_labels(fixtures_dir):
         assert f.props["label"] == folk_label(f.props["folk"]) and "cell" not in f.props and "band" not in f.props
         assert f.props["tippecanoe"] == {"minzoom": MINZOOM, "maxzoom": 16}
     by_folk = {f.props["folk"]: f.props["label"] for f in feats}
-    assert by_folk == {"M": "M", "sM": "M.S", "(g)S": "S.G", "(g)sM": "M.S.G", "(g)M": "M.G", "(g)mS": "S.M.G",
+    # ruling R26: a slightly gravelly (g) class (under 5 % gravel) reads as its main classes, no G
+    assert by_folk == {"M": "M", "sM": "M.S", "(g)S": "S", "(g)sM": "M.S", "(g)M": "M", "(g)mS": "S.M",
                        "S": "S", "gS": "S.G", "mG": "G.M"}
     # exact duplicates by position and type are dropped, computed here from the raw rows of both files
     rows = [r for name, member in FILES.items() for r in _rows(fixtures_dir / "seabed" / name, member[2])]
