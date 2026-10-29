@@ -1,0 +1,22 @@
+name = "test-cell"
+charts_version = "0.1.0"
+bathy_version = "0.1.0"
+bbox = [-122.4, 47.7, -122.1, 48.0]
+
+[enc]
+band4 = ["US4WA1HK"]
+
+[bathy]
+sources = ["cudem", "crm"]
+dem_maxzoom = 14
+
+[datum]
+station = "9447130"
+navd88_to_mllw_m = 0.715
+msl_to_mllw_m = 2.02
+
+[[render.views]]
+name = "possession-bar"
+lon = -122.37
+lat = 47.90
+zooms = [11, 13, 15]

@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+  <!-- US Chart No. 1 reference: N 2.1 restricted area limit. Drawn by hand by us (R31): a T whose bar lies on -->
+  <!-- the area edge and whose stem points to the right of the line direction, which is inside the area for -->
+  <!-- vector tile outer rings (clockwise on screen) and for holes. -->
+  <rect x="6" y="11.2" width="12" height="1.6"/>
+  <rect x="11.2" y="12" width="1.6" height="7"/>
+</svg>

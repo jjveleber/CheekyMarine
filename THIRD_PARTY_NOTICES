@@ -1,6 +1,8 @@
 Third-party components used by n2kd
 ===================================
 
+The chartpack tool and the chart packs it builds have their own list: see chartpack/NOTICE.
+
 nlohmann/json v3.12.0
   License: MIT (full text below and in nlohmann_json-LICENSE.MIT)
   Source: https://github.com/nlohmann/json (tag v3.12.0, file LICENSE.MIT)

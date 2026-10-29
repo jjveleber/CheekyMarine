@@ -1,0 +1,57 @@
+chartpack Python dependencies (all permissive licences, no GPL or LGPL):
+
+  numpy 1.26.4              BSD-3-Clause (bundled parts: 0BSD, MIT, Zlib, CC0-1.0)
+  contourpy 1.3.3           BSD-3-Clause
+  shapely 2.2.0             BSD-3-Clause
+  scipy 1.17.1              BSD-3-Clause
+  Pillow 13.0.0             MIT-CMU
+  freetype-py 2.5.1         BSD
+  mapbox-vector-tile 2.2.0  MIT
+  pytest 9.0.3 (dev)        MIT
+  playwright 1.64.1 (render)      Apache-2.0
+  maplibre-gl 6.14.0 (vendored in src/chartpack/render/vendor/, used by the render tool)  BSD-3-Clause
+
+Transitive dependencies of mapbox-vector-tile: protobuf (BSD-3-Clause),
+pyclipper (MIT).
+
+System tools, not bundled:
+
+  GDAL (apt python3-gdal)   MIT
+  tippecanoe 2.79.0 (felt)  BSD-2-Clause
+
+CI-only tool, run through npx in .github/workflows/chartpack-ci.yml, never bundled or shipped:
+
+  @maplibre/maplibre-gl-style-spec 26.4.4 (gl-style-validate)  ISC
+
+Bottom composition data from the U.S. Geological Survey (fetch-seabed), licence gate
+(spec 6.10), metadata read 2026-10-29. Each passes as a US Government work in the public domain:
+
+  usSEABED Pacific Coast, Data Series 182 (doi:10.3133/ds182), pac_ext and pac_prs:
+    Access_Constraints: None
+    Use_Constraints: "Public domain data from the U.S. Government are freely redistributable
+    with proper metadata and source attribution. Please recognize the U.S. Geological Survey
+    (USGS) as the source of this information."
+  CMECS Admiralty Inlet, Open-File Report 2015-1073 (doi:10.3133/ofr20151073), Data Series 935:
+    Access_Constraints: None
+    Use_Constraints (excerpt): "This information is not intended for navigational purposes.
+    [...] Acknowledge the U.S. Geological Survey in products derived from these data. Share
+    data products developed using these data with the U.S. Geological Survey. This database
+    has been approved for release and publication by the Director of the USGS. [...]"
+    The report itself states: "Although this report is in the public domain, permission must
+    be secured from the individual copyright owners to reproduce any copyrighted material
+    contained within this report." No copyrighted material is named for the GIS data.
+  CMECS offshore Seattle (doi:10.5066/P9GVRZ3M), offshore Tacoma (doi:10.5066/P9KA6GH2),
+  offshore Burien (doi:10.5066/P96T1B44), Data Series 935:
+    Access_Constraints: None
+    Use_Constraints: "USGS-authored or produced data and information are in the public domain
+    from the U.S. Government and are freely redistributable with proper metadata and source
+    attribution. Please recognize and acknowledge the U.S. Geological Survey as the originator
+    of the dataset and in products derived from these data."
+  Each charts pack NOTICE that holds USGS features names these sources.
+
+Bundled fonts (fonts/, used to render glyph ranges):
+
+  Noto Sans v2.015 (Regular, Bold)  SIL Open Font License 1.1 (fonts/OFL.txt)
+    Static hinted TTFs from the notofonts/latin-greek-cyrillic release NotoSans-v2.015.
+
+Symbols (symbols/*.svg) are drawn in-house after US Chart No. 1 (public domain).

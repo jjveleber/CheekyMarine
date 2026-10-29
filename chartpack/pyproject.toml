@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "chartpack"
+version = "0.1.0"
+description = "Build MBTiles chart packs from NOAA ENC cells and bathymetry grids"
+requires-python = ">=3.12"
+dependencies = [
+    # Must match the apt python3-numpy that apt python3-gdal was built against.
+    "numpy==1.26.4",
+    "contourpy==1.3.3",
+    "shapely==2.2.0",
+    "scipy==1.17.1",
+    "Pillow==13.0.0",
+    "freetype-py==2.5.1",
+    "mapbox-vector-tile==2.2.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest==9.0.3"]
+render = ["playwright==1.64.1"]
+
+[project.scripts]
+chartpack = "chartpack.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"chartpack.render" = ["page.html", "vendor/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "online: needs network (set CHARTPACK_ONLINE=1)",
+    "render: needs Playwright and Chromium",
+]

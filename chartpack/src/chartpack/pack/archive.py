@@ -1,0 +1,35 @@
+"""Tar a pack directory (uncompressed: mbtiles do not shrink) and write its SHA256SUMS."""
+
+import json
+import tarfile
+from pathlib import Path
+
+from chartpack.pack.manifest import MANIFEST, sha256_of
+
+
+def _reproducible(info: tarfile.TarInfo) -> tarfile.TarInfo:
+    info.uid = info.gid = 0
+    info.uname = info.gname = ""
+    info.mtime = 0
+    return info
+
+
+def archive_pack(pack_root: Path, out_dir: Path) -> tuple[Path, Path]:
+    root = Path(pack_root)
+    if not (root / MANIFEST).exists():
+        raise FileNotFoundError(f"{root / MANIFEST}: run `chartpack manifest` first")
+    out = Path(out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    manifest = json.loads((root / MANIFEST).read_text())
+    name = f"{manifest['pack']}-{manifest['region']}-{manifest['version']}"
+    tar_path = out / f"{name}.tar"
+    with tarfile.open(tar_path, "w") as tar:
+        for path in sorted(root.rglob("*")):
+            arcname = f"{name}/{path.relative_to(root).as_posix()}"
+            tar.add(path, arcname=arcname, recursive=False, filter=_reproducible)
+    sums = out / "SHA256SUMS"
+    # Keep the lines of other tars in the same directory (a region's two packs), replace this one's.
+    others = [line for line in sums.read_text().splitlines() if line.split("  ", 1)[-1] != tar_path.name] if sums.exists() else []
+    lines = sorted(others + [f"{sha256_of(tar_path)}  {tar_path.name}"], key=lambda line: line.split("  ", 1)[-1])
+    sums.write_text("".join(line + "\n" for line in lines))
+    return tar_path, sums
