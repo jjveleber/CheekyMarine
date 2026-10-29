@@ -30,7 +30,7 @@ _COMMON = ["-Z", str(MINZOOM), "-z", str(MAXZOOM), "-r1", "--no-feature-limit", 
 _SAFETY_ONLY = ["--detect-shared-borders"]
 
 
-def _run(cmd: list[str]) -> None:
+def run(cmd: list[str]) -> None:
     if shutil.which(cmd[0]) is None:
         raise RuntimeError(f"{cmd[0]} not found on PATH: run scripts/install-tippecanoe.sh")
     proc = subprocess.run(cmd, capture_output=True, text=True)
@@ -54,7 +54,7 @@ def _write_geojsonseq(features: list[Feature], path: Path) -> None:
 def _tippecanoe(out: Path, layer_files: list[tuple[str, Path]], extra: list[str]) -> None:
     cmd = ["tippecanoe", "-o", str(out), *_COMMON, *extra]
     cmd += [f"-L{name}:{path}" for name, path in layer_files]
-    _run(cmd)
+    run(cmd)
 
 
 def build_enc_mbtiles(
@@ -81,7 +81,7 @@ def build_enc_mbtiles(
             part = work / f"{group}.mbtiles"
             _tippecanoe(part, groups[group], extra)
             parts.append(str(part))
-    _run(["tile-join", "-o", str(out), "-pk", "-pC", "--force", *parts])
+    run(["tile-join", "-o", str(out), "-pk", "-pC", "--force", *parts])
 
     with MBTiles.open(out) as m:
         built_layers = {l["id"] for l in json.loads(m.metadata()["json"])["vector_layers"]}

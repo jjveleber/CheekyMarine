@@ -18,9 +18,8 @@ from chartpack.style.palette import PALETTES
 
 NOTICE = "Fishing chart: survey depths, approx. MLLW. Not certified for navigation."
 
-# Tiers of the `minzoom` feature property. Bands are thinned by min_zoom of their upper level
-# (a band above the top level shows from z10); minor contours carry max(min_zoom, band low zoom).
-BAND_TIERS = sorted({10} | {min_zoom(ft) for ft in DEPTHS_FT})
+# Tiers of the `minzoom` feature property: minor contours carry max(min_zoom, band low zoom).
+# Bands need no tiers: the tiles hold one complete band set per zoom range (bands_by_zoom).
 MINOR_TIERS = sorted({max(min_zoom(ft), lo) for ft in DEPTHS_FT + FINE_FT if ft not in MAJOR_FT for lo, hi, _ in BANDS if min_zoom(ft) <= hi})
 
 
@@ -33,12 +32,9 @@ def _band_color(p: dict) -> list:
     return ["step", ["get", "depth_min_ft"], p["DEPVS"], 30, p["DEPMS"], 90, p["DEPMD"], 180, p["DEPDW"]]
 
 
-def _bands(p: dict) -> list[dict]:
-    return [
-        {"id": f"band-z{n}", "type": "fill", "source": "bathy", "source-layer": "band", "minzoom": n,
-         "filter": _tier(n), "paint": {"fill-color": _band_color(p), "fill-antialias": False}}
-        for n in BAND_TIERS
-    ]
+def _band(p: dict) -> dict:
+    return {"id": "band-fill", "type": "fill", "source": "bathy", "source-layer": "band",
+            "paint": {"fill-color": _band_color(p), "fill-antialias": False}}
 
 
 def _not_enc() -> list:
@@ -104,7 +100,7 @@ def fish_style(palette: str, depths: Depths = Depths()) -> dict:
     layers = [
         {"id": "background", "type": "background", "paint": {"background-color": p["DEPDW"]}},
         water_base,
-        *_bands(p),
+        _band(p),
         hillshade,
         *_pick(_land_and_areas(p), "lndare", "coalne"),
         *_contours(p),

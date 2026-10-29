@@ -37,6 +37,16 @@ def test_water_base_has_no_depth_filter():
     assert "filter" not in base and base["source-layer"] == "depare"
 
 
+def test_bands_are_one_unfiltered_fill_over_water_base():
+    """The bathy tiles carry a complete band set per zoom range, so one layer draws every band."""
+    s = fish_style("day")
+    bands = [l for l in s["layers"] if l.get("source-layer") == "band"]
+    assert [l["id"] for l in bands] == ["band-fill"]
+    assert bands[0]["type"] == "fill" and "filter" not in bands[0] and "minzoom" not in bands[0]
+    ids = [l["id"] for l in s["layers"]]
+    assert ids.index("water-base") < ids.index("band-fill")
+
+
 def test_hillshade_paint():
     p = _layer(fish_style("day"), "hillshade")
     assert p["source"] == "dem" and p["paint"]["hillshade-exaggeration"] == 0.5
@@ -56,7 +66,7 @@ def test_contour_layers():
 
 def test_thinning_uses_layer_minzoom_not_zoom_in_filters():
     s = fish_style("day")
-    thinned = [l for l in s["layers"] if l["id"].startswith(("band-z", "contour-minor-z", "contour-label-z"))]
+    thinned = [l for l in s["layers"] if l["id"].startswith(("contour-minor-z", "contour-label-z"))]
     assert thinned
     for l in thinned:
         assert "'zoom'" not in repr(l["filter"])

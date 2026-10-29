@@ -4,7 +4,7 @@ import contourpy
 import numpy as np
 from shapely.geometry import Polygon, mapping
 
-from chartpack.bathy.contours import M_TO_FT, SIMPLIFY_DEG, axes, min_zoom
+from chartpack.bathy.contours import DEPTHS_FT, M_TO_FT, SIMPLIFY_DEG, axes, min_zoom, zoom_grids
 
 _BIG_M = 1e9
 
@@ -43,4 +43,20 @@ def build_bands(depth_m: np.ndarray, transform, *, levels_ft: list[int], simplif
                         "geometry": mapping(part),
                     }
                 )
+    return feats
+
+
+def bands_by_zoom(depth_m: np.ndarray, transform) -> list[dict]:
+    """Bands per zoom band, the grids and zoom ranges of contours_by_zoom.
+
+    Bands are disjoint, so dropping some leaves unfilled water; instead each zoom range gets a
+    complete set between the DEPTHS_FT levels it draws (min_zoom <= its top). The tippecanoe key
+    carries the range and `minzoom` its low zoom.
+    """
+    feats = []
+    for lo, hi, _, grid, tr in zoom_grids(depth_m, transform):
+        for f in build_bands(grid, tr, levels_ft=[ft for ft in DEPTHS_FT if min_zoom(ft) <= hi]):
+            f["properties"]["minzoom"] = lo
+            f["tippecanoe"] = {"minzoom": lo, "maxzoom": hi}
+            feats.append(f)
     return feats

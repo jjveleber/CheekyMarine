@@ -7,8 +7,8 @@ from pathlib import Path
 
 from chartpack.mbtiles import MBTiles
 from chartpack.region import Region
-from chartpack.style.glyphs import build_glyphs
 from chartpack.style.fish import fish_style
+from chartpack.style.glyphs import build_glyphs
 from chartpack.style.nav import Depths, nav_style
 from chartpack.style.palette import PALETTES
 from chartpack.style.sprites import build_sprites

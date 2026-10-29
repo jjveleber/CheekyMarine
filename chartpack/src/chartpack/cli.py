@@ -8,8 +8,8 @@ from pathlib import Path
 import numpy as np
 
 from chartpack import __version__
-from chartpack.bathy.bands import build_bands
-from chartpack.bathy.contours import DEPTHS_FT, FINE_FT, contours_by_zoom
+from chartpack.bathy.bands import bands_by_zoom
+from chartpack.bathy.contours import FINE_FT, contours_by_zoom
 from chartpack.bathy.crm import fetch_crm
 from chartpack.bathy.cudem import URLLIST, parse_urllist, read_window, tiles_for_bbox
 from chartpack.bathy.dem import build_dem_mbtiles
@@ -129,17 +129,19 @@ def _build_bathy(args: argparse.Namespace) -> int:
     del grid
 
     names = {1: "cudem", 2: "crm"}
+    enc_fallback = region.coarse_fallback == "enc"
     contours = [
         f for f in tag_source(contours_by_zoom(depth, transform, fine=True), source, transform, names)
         if not (f["properties"]["depth_ft"] in FINE_FT and f["properties"]["source"] != "cudem")
+        and not (enc_fallback and f["properties"]["source"] == "crm")  # ENC lines are drawn there instead
     ]
-    bands = build_bands(depth, transform, levels_ft=DEPTHS_FT)
+    bands = bands_by_zoom(depth, transform)
     del depth
     years = ",".join(sorted({str(t.year) for t in tiles}))
     labels = {1: {"source": "cudem", "resolution_m": 3, "date": years},
               2: {"source": "crm", "resolution_m": 30, "date": "2025"}}
     coverage = coverage_polygons(source, transform, labels)
-    uncovered = uncovered_area(source, transform, treat_fallback_as_uncovered=region.coarse_fallback == "enc")
+    uncovered = uncovered_area(source, transform, treat_fallback_as_uncovered=enc_fallback)
     cells = [read_cell(_newest_cached_zip(args.cache, name)) for band in sorted(region.cells) for name in region.cells[band]]
     contours += enc_fallback_contours(cells, uncovered)
 

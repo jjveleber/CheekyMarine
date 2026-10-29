@@ -108,6 +108,17 @@ def block_mean(depth_m: np.ndarray, transform, block: int):
     return out, (x0, dx * block, rx, y0, ry, dy * block)
 
 
+def zoom_grids(depth_m: np.ndarray, transform):
+    """(minzoom, maxzoom, target, grid, transform) per entry of BANDS, block-mean downsampled to target."""
+    _, dx, _, y0, _, dy = transform
+    mid_lat = y0 + dy * depth_m.shape[0] / 2
+    cell_m = (abs(dx) * np.cos(np.radians(mid_lat)) + abs(dy)) * M_PER_DEG / 2
+    for lo, hi, target in BANDS:
+        block = max(1, round(target / cell_m)) if target else 1
+        grid, tr = block_mean(depth_m, transform, block) if block > 1 else (depth_m, transform)
+        yield lo, hi, target, grid, tr
+
+
 def contours_by_zoom(depth_m: np.ndarray, transform, *, fine: bool) -> list[dict]:
     """Contours per zoom band: z10-11 from ~150 m cells, z12-13 from ~30 m, z14-16 native.
 
@@ -115,13 +126,8 @@ def contours_by_zoom(depth_m: np.ndarray, transform, *, fine: bool) -> list[dict
     max(min_zoom(depth), band low) for the style filter. Depths whose min_zoom exceeds the
     band's top are not emitted in it. Fine (5 ft) levels are added in the native band only.
     """
-    _, dx, _, y0, _, dy = transform
-    mid_lat = y0 + dy * depth_m.shape[0] / 2
-    cell_m = (abs(dx) * np.cos(np.radians(mid_lat)) + abs(dy)) * M_PER_DEG / 2
     feats = []
-    for lo, hi, target in BANDS:
-        block = max(1, round(target / cell_m)) if target else 1
-        grid, tr = block_mean(depth_m, transform, block) if block > 1 else (depth_m, transform)
+    for lo, hi, target, grid, tr in zoom_grids(depth_m, transform):
         levels = DEPTHS_FT + FINE_FT if fine and not target else DEPTHS_FT
         levels = [ft for ft in sorted(levels) if min_zoom(ft) <= hi]
         for f in build_contours(grid, tr, levels_ft=levels):

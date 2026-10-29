@@ -118,3 +118,40 @@ def test_build_bathy_end_to_end(tmp_path, fixtures_dir, regions_dir, monkeypatch
         md = m.metadata()
         assert [t["year"] for t in json.loads(md["cheekymarine:sources"])["cudem"]] == [2023]
         assert any(True for _ in m.tiles_at(12))
+
+
+def test_build_bathy_enc_fallback_drops_crm_contours(tmp_path, fixtures_dir, regions_dir, monkeypatch, capsys):
+    """coarse_fallback = "enc": where CUDEM is absent the ENC lines are the only contours, not CRM."""
+    import json
+    import shutil
+
+    from shapely.geometry import box, shape
+
+    from chartpack import cli
+    from chartpack.bathy.cudem import read_window as real_read_window
+
+    region = _bathy_region(tmp_path, regions_dir)
+    region.write_text('coarse_fallback = "enc"\n' + region.read_text())
+    cache = tmp_path / "cache"
+    (cache / "enc").mkdir(parents=True)
+    (cache / "cudem").mkdir()
+    (cache / "crm").mkdir()
+    shutil.copy(fixtures_dir / "US4WA1HK.zip", cache / "enc" / "US4WA1HK-1.3.zip")
+    shutil.copy(fixtures_dir / "cudem_possession_bar.tif", cache / "crm" / "crm_-122.3846_47.8954_-122.3754_47.9046.tif")
+    (cache / "cudem" / "urllist8483.txt").write_text("https://example.test/ncei19_n48x00_w122x50_2023v1.tif\n")
+
+    def fake_read_window(src, bbox):
+        grid = real_read_window(str(fixtures_dir / "cudem_possession_bar.tif"), bbox)
+        if src.startswith("/vsicurl/"):  # the CUDEM tile covers only the east half; CRM is everywhere
+            grid.data[:, : grid.data.shape[1] // 2] = grid.nodata
+        return grid
+
+    monkeypatch.setattr(cli, "read_window", fake_read_window)
+    work = tmp_path / "work"
+    assert main(["build-bathy", str(region), str(tmp_path / "out"), "--cache", str(cache), "--work", str(work)]) == 0
+    capsys.readouterr()
+    contours = [json.loads(line) for line in (work / "tippecanoe" / "contour.geojsonseq").read_text().splitlines()]
+    sources = {f["properties"]["source"] for f in contours}
+    assert "crm" not in sources and {"cudem", "enc"} <= sources
+    west = box(-122.3846, 47.8954, -122.382, 47.9046)  # well inside the CRM-only half
+    assert any(shape(f["geometry"]).intersects(west) for f in contours if f["properties"]["source"] == "enc")

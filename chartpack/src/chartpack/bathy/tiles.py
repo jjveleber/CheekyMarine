@@ -1,6 +1,7 @@
 """Build bathy.mbtiles: contour, band and coverage layers through tippecanoe and tile-join."""
 
 import json
+from collections.abc import Sequence
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -10,9 +11,10 @@ from shapely.geometry import mapping, shape
 from chartpack.bathy.contours import M_TO_FT
 from chartpack.bathy.crm import crm_wcs_url
 from chartpack.bathy.cudem import CudemTile
+from chartpack.enc.quilt import quilt
 from chartpack.enc.reader import CellMeta, Feature
 from chartpack.enc.schema import SCHEMA_VERSION
-from chartpack.enc.tiles import _run
+from chartpack.enc.tiles import run
 from chartpack.mbtiles import MBTiles
 from chartpack.region import Region
 
@@ -24,21 +26,28 @@ _BAND_ONLY = ["--detect-shared-borders", "--no-tiny-polygon-reduction"]
 
 
 def enc_fallback_contours(enc_cells: list[tuple[CellMeta, list[Feature]]], uncovered: shapely.Geometry) -> list[dict]:
-    """ENC depcnt lines clipped to `uncovered`, as contour Features (one per simple line)."""
+    """ENC depcnt lines clipped to `uncovered`, as contour Features (one per simple line).
+
+    The cells are quilted by usage band as in the charts pack, so overlapping bands never draw
+    the same water twice at one zoom. Each line keeps its band's zoom range, clamped to the
+    bathy pack's MINZOOM..MAXZOOM; `minzoom` mirrors the tippecanoe minzoom.
+    """
+    depcnt = [(meta, [f for f in features if f.layer == "depcnt" and "VALDCO" in f.props]) for meta, features in enc_cells]
     feats = []
-    for _, features in enc_cells:
-        for feature in features:
-            if feature.layer != "depcnt" or "VALDCO" not in feature.props:
-                continue
-            depth_ft = round(float(feature.props["VALDCO"]) * M_TO_FT)
-            clipped = shape(feature.geometry).intersection(uncovered)
-            for line in _lines(clipped):
-                feats.append({
-                    "type": "Feature",
-                    "geometry": mapping(line),
-                    "properties": {"depth_ft": depth_ft, "major": False, "minzoom": MINZOOM, "source": "enc"},
-                    "tippecanoe": {"minzoom": MINZOOM, "maxzoom": MAXZOOM},
-                })
+    for feature in quilt(depcnt):
+        lo = max(feature.props["tippecanoe"]["minzoom"], MINZOOM)
+        hi = min(feature.props["tippecanoe"]["maxzoom"], MAXZOOM)
+        if lo > hi:
+            continue
+        depth_ft = round(float(feature.props["VALDCO"]) * M_TO_FT)
+        clipped = shape(feature.geometry).intersection(uncovered)
+        for line in _lines(clipped):
+            feats.append({
+                "type": "Feature",
+                "geometry": mapping(line),
+                "properties": {"depth_ft": depth_ft, "major": False, "minzoom": lo, "source": "enc"},
+                "tippecanoe": {"minzoom": lo, "maxzoom": hi},
+            })
     return feats
 
 
@@ -61,7 +70,7 @@ def _missing_error(names: list[str]) -> RuntimeError:
 
 def build_bathy_mbtiles(
     contours: list[dict], bands: list[dict], coverage: list[dict], out: Path, *, region: Region, work: Path,
-    cudem_tiles: list[CudemTile] = (),
+    cudem_tiles: Sequence[CudemTile] = (),
 ) -> Path:
     out, work = Path(out), Path(work)
     work.mkdir(parents=True, exist_ok=True)
@@ -78,9 +87,9 @@ def build_bathy_mbtiles(
         path = work / f"{part}.mbtiles"
         cmd = ["tippecanoe", "-o", str(path), *_COMMON, *extra]
         cmd += [f"-L{name}:{work / f'{name}.geojsonseq'}" for name in names]
-        _run(cmd)
+        run(cmd)
         parts.append(str(path))
-    _run(["tile-join", "-o", str(out), "-pk", "-pC", "--force", *parts])
+    run(["tile-join", "-o", str(out), "-pk", "-pC", "--force", *parts])
 
     with MBTiles.open(out) as m:
         built = {l["id"] for l in json.loads(m.metadata()["json"])["vector_layers"]}
