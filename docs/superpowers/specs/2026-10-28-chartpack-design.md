@@ -147,7 +147,15 @@ Colours (owner decided 2026-10-28, option B): our own palette for day, dusk and 
 
 Depth tints follow S-52's four-shade scheme by `DRVAL1`: deeper than the deep contour, between safety and deep, between shallow and safety, shallower than shallow. Defaults: shallow 6 ft, safety 10 ft, deep 30 ft (owner's safety depth per the parent spec). The safety contour line is drawn bold. The three values are literals, but only inside the `filter` of a fixed set of named layers: `depare-deep`, `depare-medium`, `depare-shallow`, `depare-vshallow`, `depcnt-safety`, `soundg-shallow`, `soundg-deep`, `hazard-danger` (and the same names in the fish styles). No paint expression depends on them. The style's `metadata.cheekymarine.depths` records the three values and lists those layer names, so the app (plan 3) applies the owner's setting by replacing the filters of exactly those layers through MapLibre's set-filter API, with no other knowledge of the style. The layer names are part of the schema. `chartpack build-enc --safety-ft` sets the shipped default.
 
-Soundings: labels in feet, S-52 rule that soundings shallower than the safety depth are drawn in black and deeper ones in grey. Hazards: an isolated-danger symbol for any rock, wreck or obstruction whose `VALSOU` is shallower than the safety depth or whose `WATLEV` is dries, awash or covers-and-uncovers; otherwise the plain Chart No. 1 symbol. Hazards draw above every other layer in both modes.
+Soundings: labels in feet, S-52 rule that soundings shallower than the safety depth are drawn in black and deeper ones in grey. Hazards: the plain Chart No. 1 style symbol per class. Hazards draw above every other layer in both modes.
+
+Owner revisions after the Task 8 renders (2026-10-29, rulings R15 to R19 in the SDD ledger):
+
+- Deep water `DEPDW`: day `#F4EEE2` (subtle sepia), night `#18253A` (dark blue-grey). Land `LANDA`: day `#EFD98A`, night `#3A3317` (more yellow). Dusk stays derived from day.
+- The isolated-danger symbol shows only during route navigation. The plotter has no navigation yet, so the shipped styles carry no `hazard-danger` layer. The filter logic stays in `chartpack` so plan 3 can add the layer when navigation exists; `hazard-danger` leaves the shipped `metadata.cheekymarine.depths.layers` list until then.
+- Restricted areas (`RESARE`): magenta dashed outline, no fill. A translucent fill over most of a sound changes the depth colours.
+- Background is `NODTA`, so area outside every cell reads as no data, not as deep water (controller's call, shown to the owner in the preview).
+- Rock, obstruction and wreck symbols are redrawn by us in the visual style of OpenCPN's chart symbols. OpenCPN (GPL-2) is looked at as a visual reference only: no file, path data or bitmap is copied, and the repo stays MIT. This replaces the earlier "no OpenCPN file is opened" rule for these symbols only.
 
 Symbols: our own SVGs in `chartpack/symbols/`, drawn after US Chart No. 1 (public domain): can, nun, spherical, pillar and spar buoys, lateral and cardinal beacons, light flare, rock awash, submerged rock, dangerous wreck, non-dangerous wreck, obstruction, isolated danger, anchorage, marina. Colour comes from `COLOUR` through the style, so one shape per class and a palette per mode. The sprite sheet (PNG at 1x and 2x plus JSON index) is assembled by `chartpack` at build time. Starts small, grows later.
 
@@ -203,6 +211,30 @@ Integration (network, skipped unless `CHARTPACK_ONLINE=1`): fetch US5SEAKL from 
 ### 6.9 Verification the owner sees
 
 `chartpack render` opens the built pack in maplibre-gl-js in headless Chromium through Playwright, with a tiny local tile server reading the MBTiles, and screenshots fixed views from the region file: Everett harbour, Possession Bar, Point No Point, Jeff Head; zooms 11, 13, 15; nav and fish; day and night. 48 PNGs under `docs/chartpack/renders/puget-north/` committed with the PR so the owner compares them against the Garmin. These are for eyes, not assertions; the plan keeps the pixel checks out of CI. Note in the README that GL JS renders a superset of what Native Qt draws; the app in plan 3 is the final check.
+
+### 6.10 Bottom composition (owner requirement, 2026-10-29)
+
+Why: the owner wants this done well, for two uses. Bottom fishing: different fish hold over different bottoms. Anchoring: sand and gravel hold, rock and weed do not.
+
+Display (owner decided): the Garmin and NOAA chart convention of short abbreviations at the spot (S sand, M mud, Rk rock and so on), and every abbreviation can be looked up quickly. Only real data is shown, nothing inferred or interpolated. If no better source exists for an area, the NOAA chart's own bottom marks are enough.
+
+Sources, all layered, each feature tagged with its source (`src`):
+
+1. `enc`: ENC `SBDARE` (seabed area, point/line/area; `NATSUR`, `NATQUA`, `COLOUR`, `WATLEV`) and `WEDKLP` (weed/kelp; `CATWED`). Everywhere, sparse. Baseline.
+2. `usseabed`: USGS usSEABED Pacific Coast, Data Series 182 (2006, doi:10.3133/ds182). Sediment sample points from grabs and cores across Puget Sound. Old, and the metadata warns of duplicates across its sources: drop exact duplicates by position and type. The builder picks the EXT (lab) and PRS (parsed description) files and maps their classes to the same abbreviation set.
+3. `usgs-cmecs`: USGS Southern Salish Sea Habitat Map Series (Data Series 935): CMECS substrate polygons for Admiralty Inlet (OFR 2015-1073), offshore Seattle (doi:10.5066/P9GVRZ3M), offshore Tacoma (doi:10.5066/P9KA6GH2) and offshore Burien (doi:10.5066/P96T1B44). Continuous areas from video and bathymetry, only in those blocks.
+
+Licence gate: each USGS release is used only after its metadata `Use_Constraints` / access constraints are read and recorded in `chartpack/NOTICE` as public domain (US Government work) or a permissive licence. A source that fails the gate is left out and the decision is written in the SDD ledger; the ENC source alone still ships. WA DNR ShoreZone was considered and rejected: it describes the shoreline, not the bottom, and its licence is unclear.
+
+Tiles (my call): one new layer `seabed` in `enc.mbtiles`, so the pack contract (sources `enc`, `bathy`, `dem`) does not change. Attributes: `src`, `class` (`SBDARE`, `WEDKLP`, `SAMPLE`, `CMECS`), the source's own codes (`NATSUR`, `NATQUA` comma-joined as GDAL gives them; CMECS substrate class name), `label` (the abbreviation, computed at build time because MapLibre expressions cannot split the comma lists), `holding` (`good`, `poor` or `unknown`). ENC features follow the band quilting like every other ENC layer; USGS features are not quilted. Thinning: ENC by `SCAMIN` like `soundg`; USGS points at a fixed minzoom chosen from the renders. The layer is not a safety layer, but it is never randomly dropped. Additions do not bump `schema`.
+
+Abbreviations: from US Chart No. 1 section J (public domain), for example M mud, Cy clay, Si silt, S sand, St stones, G gravel, P pebbles, Cb cobbles, Rk rock, Co coral, Sh shells, Bo boulders, Wd weed, with qualifiers (f fine, m medium, c coarse, bk broken, sy sticky, so soft, sf stiff, h hard) prefixed, and several types joined the chart way (for example `fS.M`). The builder verifies every code against Chart No. 1 and the S-57 attribute catalogue.
+
+Holding (owner's rule, extended by my call): `good` for sand, gravel, mud and clay (mud and clay are my addition); `poor` for rock, boulders, stones, cobbles, coral and weed or kelp; `unknown` for everything else and for mixed types that include a poor one. This is data for the plotter; the style does not colour by it yet.
+
+Lookup: each charts pack ships `legend.json`: for every abbreviation and qualifier used anywhere in the pack, the meaning in plain words, the holding value, and the sources it appears in. Plan 3's tap-to-identify and legend page read it. The same table is published as `docs/chartpack/seabed-legend.md`.
+
+Style: both nav and fish styles show `seabed` labels in grey chart ink (`CHGRD`), Noto Sans Regular, smaller than soundings, below soundings and hazards in draw order. CMECS polygons draw as a thin outline plus their label, with no fill: a fill would change the depth colours, the same lesson as the restricted areas. Renders at Possession Bar and in one CMECS block go to the owner with Task 15.
 
 ## 7. Risks and open technical questions (for the builder)
 

@@ -1125,6 +1125,51 @@ git commit -m "feat(chartpack): bathy vector tiles with ENC fallback, fishing st
 
 ---
 
+### Task 13a: Style revision from the owner's Task 8 render review
+
+Added 2026-10-29 after owner checkpoint 1. Spec 6.6 "Owner revisions" and ledger rulings R15 to R19. Runs after the Task 13 fix round, before Task 14. The owner reviewed a preview built from these exact values (gallery https://claude.ai/artifact/N4rU8NdJxVnjT8UWobUfmH, "Revision 3").
+
+**Files:**
+- Modify: `chartpack/src/chartpack/style/palette.py`, `chartpack/src/chartpack/style/nav.py`, `chartpack/src/chartpack/style/fish.py` (only where it shares the changed layers), `chartpack/symbols/rock-awash.svg`, `rock-submerged.svg`, `obstruction.svg`, `wreck-dangerous.svg`, `wreck-nondangerous.svg`
+- Modify: `docs/chartpack/renders/test-cell/*.png` (re-rendered)
+- Test: `chartpack/tests/test_style_palette.py`, `chartpack/tests/test_style_nav.py` (and the fish style test if shared layers change)
+
+- [ ] **Step 1: Write the failing tests**
+
+```python
+def test_owner_water_and_land_colours():
+    assert PALETTES["day"]["DEPDW"] == "#F4EEE2" and PALETTES["night"]["DEPDW"] == "#18253A"
+    assert PALETTES["day"]["LANDA"] == "#EFD98A" and PALETTES["night"]["LANDA"] == "#3A3317"
+    # replaces test_night_water_is_dark's old thresholds: day deep water is warm (r > b), night is blue-leaning (b > r)
+
+def test_background_is_no_data(): ...           # every nav and fish style: layers[0] is background with NODTA
+def test_no_hazard_danger_layer_shipped(): ...  # no layer id "hazard-danger"; not in metadata.cheekymarine.depths.layers; depth_filter("hazard-danger", ...) still works
+def test_resare_is_dashed_outline(): ...        # layer for RESARE is type "line", CHMGD, has line-dasharray; no fill layer filters on RESARE
+```
+
+- [ ] **Step 2: Run tests to verify they fail**
+
+Run: `.venv/bin/pytest tests/test_style_palette.py tests/test_style_nav.py -q`
+Expected: FAIL on the new assertions
+
+- [ ] **Step 3: Implement** the palette values, `NODTA` background, removal of the shipped `hazard-danger` layer (keep the filter function; update spec-pinned `DEPTH_LAYERS` use so metadata lists only shipped layers), and the RESARE dashed outline.
+
+- [ ] **Step 4: Redraw the five hazard symbols** in the visual style of OpenCPN's chart symbols for rocks, obstructions and wrecks. OpenCPN (GPL-2) is a visual reference only: look at its rendered symbols, then draw new SVGs by hand. Copy no file, path data or bitmap. State in the SVG comments what each symbol depicts (Chart No. 1 reference stays). Keep one shape per class and colour from the style.
+
+- [ ] **Step 5: Run the full suite**, then re-render the test cell (`chartpack render` at the region views, nav day/dusk/night), look at every PNG, and commit them over the old ones.
+
+Run: `.venv/bin/pytest -q`
+Expected: all pass
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add chartpack docs/chartpack/renders/test-cell
+git commit -m "feat(chartpack): owner style revision: water and land colours, no-data background, RESARE outline, hazard symbols"
+```
+
+---
+
 ### Task 14: Manifest, check and archive
 
 **Files:**
@@ -1180,6 +1225,109 @@ git commit -m "feat(chartpack): pack manifest, structural checks and tar archive
 
 ---
 
+### Task 14a: Bottom composition from the ENC, seabed layer, legend
+
+Added 2026-10-29 (spec 6.10). Bottom composition is an owner requirement for bottom fishing and anchoring.
+
+**Files:**
+- Create: `chartpack/src/chartpack/seabed/__init__.py`, `chartpack/src/chartpack/seabed/codes.py` (abbreviations, qualifiers, holding), `chartpack/src/chartpack/seabed/legend.py`
+- Modify: `chartpack/src/chartpack/enc/schema.py` (new `seabed` layer: SBDARE, WEDKLP), `chartpack/src/chartpack/enc/reader.py`, `chartpack/src/chartpack/enc/tiles.py` (SCAMIN thinning, quilting, never randomly dropped), `chartpack/src/chartpack/style/nav.py`, `chartpack/src/chartpack/style/fish.py`, `chartpack/src/chartpack/pack/assemble.py` (ship `legend.json`), golden counts
+- Create: `docs/chartpack/seabed-legend.md` (generated from `codes.py`)
+- Test: `chartpack/tests/test_seabed_codes.py`, `chartpack/tests/test_seabed_legend.py`, additions to `test_enc_reader.py`, `test_enc_tiles.py`, `test_style_nav.py`, `test_pack_assemble.py`
+
+**Interfaces:**
+- Produces:
+  ```python
+  # seabed/codes.py
+  NATSUR: dict[int, tuple[str, str]]      # code -> (abbreviation, plain meaning), from US Chart No. 1 section J and the S-57 attribute catalogue
+  NATQUA: dict[int, tuple[str, str]]
+  def label(natsur: str | None, natqua: str | None) -> str | None     # comma lists in, chart-style label out ("4,1" + "1," -> "fS.M"); None when no NATSUR
+  def holding(natsur: str | None, wedklp: bool = False) -> str        # "good" | "poor" | "unknown", spec 6.10 rule
+  # seabed/legend.py
+  def build_legend(features: Iterable[dict]) -> dict    # {"schema": 1, "entries": [{"abbr", "meaning", "kind": "type"|"qualifier", "holding", "sources": [...]}]} for every abbreviation present
+  ```
+- Tile layer `seabed` attributes: `src`, `class`, `NATSUR`, `NATQUA`, `CATWED`, `label`, `holding`, plus `cell` and `band` for ENC features.
+
+- [ ] **Step 1: Write the failing tests**
+
+```python
+def test_label_single_and_mixed():
+    assert label("4", None) == "S" and label("1", None) == "M" and label("9", None) == "Rk"
+    assert label("4,1", "1") == "fS.M"           # qualifier applies to the first type, chart convention; builder confirms against Chart No. 1
+    assert label(None, None) is None
+
+def test_holding_rule():
+    assert holding("4") == "good" and holding("6") == "good" and holding("1") == "good"
+    assert holding("9") == "poor" and holding(None, wedklp=True) == "poor"
+    assert holding("4,9") == "unknown"            # mixed with a poor type
+
+def test_every_code_has_meaning(): ...            # every NATSUR/NATQUA value in the S-57 catalogue has an abbreviation and meaning
+def test_reader_extracts_seabed(fixtures_dir): ...  # counts match ogr on SBDARE + WEDKLP in the fixture cells; NATSUR kept as comma string
+def test_seabed_in_tiles_with_label(enc_pack_path): ...   # every source SBDARE point present at its top zoom with label and holding
+def test_legend_covers_every_label(charts_pack_root): ... # every abbreviation in any seabed label appears in legend.json with meaning and holding
+def test_styles_show_seabed(): ...                # nav and fish styles: symbol layer on source-layer seabed, text-field label, CHGRD, below soundg and hazard
+```
+
+If the two fixture cells carry no SBDARE or WEDKLP, add a third small fixture cell that does (record the choice in the ledger).
+
+- [ ] **Step 2: Run tests to verify they fail**
+
+Run: `.venv/bin/pytest tests/test_seabed_codes.py tests/test_seabed_legend.py -q`
+Expected: FAIL with ImportError
+
+- [ ] **Step 3: Implement** `codes.py`, `legend.py`, the reader and schema additions, tiles, styles, `legend.json` in the charts pack (listed in the manifest), and generate `docs/chartpack/seabed-legend.md`.
+
+- [ ] **Step 4: Run the full suite and re-render the test cell**; check that bottom labels are readable and do not crowd soundings.
+
+Run: `.venv/bin/pytest -q`
+Expected: all pass
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add chartpack docs/chartpack
+git commit -m "feat(chartpack): ENC bottom composition layer, chart abbreviations and legend"
+```
+
+---
+
+### Task 14b: Bottom composition from USGS usSEABED and the Southern Salish Sea habitat maps
+
+Added 2026-10-29 (spec 6.10). Adds survey sources on top of Task 14a.
+
+**Files:**
+- Create: `chartpack/src/chartpack/seabed/usseabed.py`, `chartpack/src/chartpack/seabed/cmecs.py`, small committed fixtures cut from each source (a few points, a few polygons)
+- Modify: region file schema (`[seabed] sources = ["enc", "usseabed", "usgs-cmecs"]`, with the CMECS block list), `chartpack/src/chartpack/cli.py` (`fetch-seabed`; `build-enc` merges the extra features), `chartpack/src/chartpack/seabed/codes.py` (source class mappings), `chartpack/NOTICE`
+- Test: `chartpack/tests/test_seabed_usseabed.py`, `chartpack/tests/test_seabed_cmecs.py`, online test for the fetch (skipped unless `CHARTPACK_ONLINE=1`)
+
+- [ ] **Step 1: Licence gate (before any code).** For usSEABED DS 182 and each of the four CMECS releases (Admiralty Inlet OFR 2015-1073, Seattle doi:10.5066/P9GVRZ3M, Tacoma doi:10.5066/P9KA6GH2, Burien doi:10.5066/P96T1B44), read the metadata use and access constraints. Record each verdict and quote in the ledger and `chartpack/NOTICE`. A source that is not public domain or permissive is dropped from this task (report DONE_WITH_CONCERNS).
+
+- [ ] **Step 2: Write the failing tests**
+
+```python
+def test_usseabed_maps_to_labels(fixtures_dir): ...   # fixture rows -> features with src "usseabed", class "SAMPLE", label, holding; exact duplicates by position and type dropped
+def test_cmecs_maps_to_labels(fixtures_dir): ...      # fixture polygons (reprojected from UTM 10 NAD83 to WGS84) -> src "usgs-cmecs", class "CMECS", substrate name, label, holding
+def test_unknown_class_is_kept_unlabelled(): ...      # an unmapped class keeps its raw value, label None, holding "unknown"; never guessed
+def test_sources_clipped_to_region_bbox(): ...
+def test_legend_lists_sources(charts_pack_root): ...  # legend entries name every source an abbreviation came from
+```
+
+- [ ] **Step 3: Run tests to verify they fail**, then **implement** the readers, the fetch with cache and size checks (same rules as Task 2 and 9), the merge into the `seabed` layer (USGS features not quilted; points at a fixed minzoom chosen from the renders), and the CMECS outline-plus-label style (no fill).
+
+- [ ] **Step 4: Run the full suite**
+
+Run: `.venv/bin/pytest -q`
+Expected: all pass
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add chartpack
+git commit -m "feat(chartpack): usSEABED samples and USGS CMECS substrate in the seabed layer"
+```
+
+---
+
 ### Task 15: Region puget-north, first full build, renders, size measurement
 
 **Files:**
@@ -1200,10 +1348,10 @@ def test_puget_north_region_is_consistent(regions_dir, fixtures_dir):
             assert cat[n].status == "Active" and cat[n].band == band and shape(polygon(cat[n])).intersects(box(*r.bbox)), n
     assert r.cells[4] == ["US4WA1GJ", "US4WA1GK", "US4WA1HJ", "US4WA1HK", "US4WA1II", "US4WA1IJ", "US4WA1IK"]
     assert r.cells[3] == ["US3WA1DF", "US3WA1DG", "US3WA1EF", "US3WA1EG"]
-    assert len(r.views) == 4 and {v.name for v in r.views} == {"everett", "possession-bar", "point-no-point", "jeff-head"}
+    assert len(r.views) == 5 and {v.name for v in r.views} == {"everett", "possession-bar", "point-no-point", "jeff-head", "admiralty-inlet"}
 ```
 
-- [ ] **Step 2: Write `regions/puget-north.toml`**: bbox `[-122.9, 47.5, -122.1, 48.3]`, `charts_version = "1.0.0"`, `bathy_version = "1.0.0"`, band 3 and 4 as in the test, band 5 from `chartpack cells puget-north --band 5` run against the live catalog (expected to include US5SEAJJ, JK, JL, KI, KJ, KK, KL, KM, KN, KO, LH, LI, LJ, LK, LL, LN, MH, MI, MJ, MK, NF, NG, NH, NI, NJ, IJ, IK, IL, HI, HJ, HK, HL, GI, GJ, GK, GL, FH, FI, FJ, FK, FL, EH, EI, EJ, EK, EL; commit what the catalog says), `clip = "clip/canada-wa.geojson"`, `dem_maxzoom = 14`, datum Seattle 9447130 with the two offsets, four views: everett (-122.23, 47.98), possession-bar (-122.37, 47.90), point-no-point (-122.52, 47.92), jeff-head (-122.47, 47.75), zooms `[11, 13, 15]`. Extend `ENCProdCat_excerpt.xml` with those cells.
+- [ ] **Step 2: Write `regions/puget-north.toml`**: bbox `[-122.9, 47.5, -122.1, 48.3]`, `charts_version = "1.0.0"`, `bathy_version = "1.0.0"`, band 3 and 4 as in the test, band 5 from `chartpack cells puget-north --band 5` run against the live catalog (expected to include US5SEAJJ, JK, JL, KI, KJ, KK, KL, KM, KN, KO, LH, LI, LJ, LK, LL, LN, MH, MI, MJ, MK, NF, NG, NH, NI, NJ, IJ, IK, IL, HI, HJ, HK, HL, GI, GJ, GK, GL, FH, FI, FJ, FK, FL, EH, EI, EJ, EK, EL; commit what the catalog says), `clip = "clip/canada-wa.geojson"`, `dem_maxzoom = 14`, datum Seattle 9447130 with the two offsets, five views: everett (-122.23, 47.98), possession-bar (-122.37, 47.90), point-no-point (-122.52, 47.92), jeff-head (-122.47, 47.75), and admiralty-inlet (centre inside the USGS CMECS Admiralty Inlet block, taken from that data in Task 14b, so the bottom-composition polygons are in a render), zooms `[11, 13, 15]`; `[seabed]` sources enc, usseabed, usgs-cmecs (those that passed the Task 14b licence gate). Extend `ENCProdCat_excerpt.xml` with those cells.
 
 - [ ] **Step 3: Run the test to verify it passes**
 
@@ -1224,7 +1372,7 @@ du -sh work/charts/* work/bathy/*
 
 Expected: both checks print nothing and exit 0; record sizes and wall times in `docs/chartpack/2026-10-28-puget-north-first-build.md`. If the bathy pack is over 300 MB, note it and apply the levers in order (DEM maxzoom is already 14; next 5 ft contours only at z15; then band maxzoom 14); over 1 GB is a failure to fix before continuing.
 
-- [ ] **Step 5: Render** `chartpack render work/charts work/bathy --views regions/puget-north.toml --styles nav-day,nav-night,fish-day,fish-night --out docs/chartpack/renders/puget-north` (48 PNGs). Look at all of them. Fix anything unreadable in palette or line weights once, rebuild the styles only, re-render, commit the PNGs.
+- [ ] **Step 5: Render** `chartpack render work/charts work/bathy --views regions/puget-north.toml --styles nav-day,nav-night,fish-day,fish-night --out docs/chartpack/renders/puget-north` (60 PNGs). Look at all of them. Fix anything unreadable in palette or line weights once, rebuild the styles only, re-render, commit the PNGs.
 
 - [ ] **Step 6: Commit**
 
