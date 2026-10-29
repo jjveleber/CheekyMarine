@@ -1,0 +1,80 @@
+{
+  "11": {
+    "area": 20,
+    "coalne": 641,
+    "depare": 326,
+    "depcnt": 285,
+    "hazard": 195,
+    "light": 32,
+    "line": 0,
+    "lndare": 24,
+    "meta": 69,
+    "navaid": 48,
+    "soundg": 0
+  },
+  "12": {
+    "area": 41,
+    "coalne": 647,
+    "depare": 370,
+    "depcnt": 319,
+    "hazard": 199,
+    "light": 31,
+    "line": 65,
+    "lndare": 37,
+    "meta": 92,
+    "navaid": 46,
+    "soundg": 0
+  },
+  "13": {
+    "area": 185,
+    "coalne": 670,
+    "depare": 493,
+    "depcnt": 420,
+    "hazard": 201,
+    "light": 30,
+    "line": 87,
+    "lndare": 92,
+    "meta": 190,
+    "navaid": 44,
+    "soundg": 994
+  },
+  "14": {
+    "area": 368,
+    "coalne": 706,
+    "depare": 759,
+    "depcnt": 625,
+    "hazard": 196,
+    "light": 31,
+    "line": 119,
+    "lndare": 294,
+    "meta": 502,
+    "navaid": 45,
+    "soundg": 989
+  },
+  "15": {
+    "area": 1153,
+    "coalne": 828,
+    "depare": 1474,
+    "depcnt": 1082,
+    "hazard": 210,
+    "light": 34,
+    "line": 214,
+    "lndare": 1053,
+    "meta": 1717,
+    "navaid": 47,
+    "soundg": 1016
+  },
+  "16": {
+    "area": 3605,
+    "coalne": 1038,
+    "depare": 3129,
+    "depcnt": 1962,
+    "hazard": 218,
+    "light": 33,
+    "line": 382,
+    "lndare": 3866,
+    "meta": 5960,
+    "navaid": 46,
+    "soundg": 1021
+  }
+}

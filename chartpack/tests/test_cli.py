@@ -1,3 +1,5 @@
+import pytest
+
 from chartpack import __version__
 from chartpack.cli import main
 
@@ -24,3 +26,20 @@ def test_cells_and_fetch_enc(tmp_path, fixtures_dir, regions_dir, monkeypatch, c
     assert "US4WA1HK" in capsys.readouterr().out.split()
     assert main(["fetch-enc", region, "--cache", str(tmp_path)]) == 0
     assert capsys.readouterr().out == "US4WA1HK 1.3 2026-09-09\n"
+
+
+def test_build_enc_uses_cached_zip(tmp_path, fixtures_dir, regions_dir):
+    import shutil
+
+    from chartpack.mbtiles import MBTiles
+
+    (tmp_path / "cache" / "enc").mkdir(parents=True)
+    shutil.copy(fixtures_dir / "US4WA1HK.zip", tmp_path / "cache" / "enc" / "US4WA1HK-1.3.zip")
+    args = ["build-enc", str(regions_dir / "test-cell.toml"), str(tmp_path / "out"),
+            "--cache", str(tmp_path / "cache"), "--work", str(tmp_path / "work")]
+    assert main(args) == 0
+    with MBTiles.open(tmp_path / "out" / "enc.mbtiles") as m:
+        assert m.metadata()["cheekymarine:region"] == "test-cell"
+    (tmp_path / "cache" / "enc" / "US4WA1HK-1.3.zip").unlink()
+    with pytest.raises(SystemExit):
+        main(args)

@@ -75,3 +75,16 @@ def regions_dir() -> Path:
 @pytest.fixture
 def work_dir(tmp_path) -> Path:
     return tmp_path
+
+
+@pytest.fixture(scope="session")
+def enc_pack_path(tmp_path_factory) -> Path:
+    """enc.mbtiles built once per session from the US4WA1HK fixture and regions/test-cell.toml."""
+    from chartpack.enc.reader import read_cell
+    from chartpack.enc.tiles import build_enc_mbtiles
+    from chartpack.region import load_region
+
+    base = tmp_path_factory.mktemp("enc_pack")
+    region = load_region(ROOT / "regions" / "test-cell.toml")
+    cells = [read_cell(ROOT / "tests" / "fixtures" / "US4WA1HK.zip")]
+    return build_enc_mbtiles(cells, base / "enc.mbtiles", region=region, work=base / "work")
