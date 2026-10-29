@@ -99,9 +99,23 @@ def test_region():
 
 @pytest.fixture(scope="session")
 def charts_pack_root(test_region, enc_pack_path, tmp_path_factory) -> Path:
-    from chartpack.pack.assemble import assemble_charts_pack
+    from datetime import datetime, timezone
 
-    return assemble_charts_pack(test_region, enc_pack_path, tmp_path_factory.mktemp("charts_pack"))
+    from chartpack.pack.assemble import assemble_charts_pack
+    from chartpack.pack.manifest import describe_pack, write_manifest
+
+    root = assemble_charts_pack(test_region, enc_pack_path, tmp_path_factory.mktemp("charts_pack"))
+    pack, sources, notice = describe_pack(root)
+    write_manifest(root, pack=pack, region=test_region, sources=sources, notice=notice, built=datetime.now(timezone.utc))
+    return root
+
+
+@pytest.fixture
+def charts_pack_root_copy(charts_pack_root, tmp_path) -> Path:
+    """A private copy of the session pack, for tests that damage it."""
+    import shutil
+
+    return Path(shutil.copytree(charts_pack_root, tmp_path / charts_pack_root.name))
 
 
 @pytest.fixture

@@ -38,8 +38,11 @@ def test_build_enc_uses_cached_zip(tmp_path, fixtures_dir, regions_dir):
     args = ["build-enc", str(regions_dir / "test-cell.toml"), str(tmp_path / "out"),
             "--cache", str(tmp_path / "cache"), "--work", str(tmp_path / "work")]
     assert main(args) == 0
-    with MBTiles.open(tmp_path / "out" / "enc.mbtiles") as m:
+    root = tmp_path / "out" / "charts-test-cell-0.1.0"
+    with MBTiles.open(root / "enc.mbtiles") as m:
         assert m.metadata()["cheekymarine:region"] == "test-cell"
+    assert (root / "manifest.json").exists() and (root / "styles" / "nav-day.json").exists()
+    assert main(["check", str(root), "--enc-cache", str(tmp_path / "cache")]) == 0
     (tmp_path / "cache" / "enc" / "US4WA1HK-1.3.zip").unlink()
     with pytest.raises(SystemExit):
         main(args)
@@ -114,6 +117,8 @@ def test_build_bathy_end_to_end(tmp_path, fixtures_dir, regions_dir, monkeypatch
     assert capsys.readouterr().out.strip() == str(root)
     assert opened[0] == "/vsicurl/https://example.test/ncei19_n48x00_w122x50_2023v1.tif" and len(opened) == 2  # tile, then CRM
     assert (root / "styles" / "fish-day.json").exists() and (root / "dem.mbtiles").exists()
+    assert json.loads((root / "manifest.json").read_text())["charts_schema"] == 1
+    assert main(["check", str(root)]) == 0
     with MBTiles.open(root / "bathy.mbtiles") as m:
         md = m.metadata()
         assert [t["year"] for t in json.loads(md["cheekymarine:sources"])["cudem"]] == [2023]
@@ -155,3 +160,14 @@ def test_build_bathy_enc_fallback_drops_crm_contours(tmp_path, fixtures_dir, reg
     assert "crm" not in sources and {"cudem", "enc"} <= sources
     west = box(-122.3846, 47.8954, -122.382, 47.9046)  # well inside the CRM-only half
     assert any(shape(f["geometry"]).intersects(west) for f in contours if f["properties"]["source"] == "enc")
+
+
+def test_manifest_and_archive_commands(charts_pack_root_copy, regions_dir, tmp_path, capsys):
+    (charts_pack_root_copy / "manifest.json").unlink()
+    assert main(["check", str(charts_pack_root_copy)]) == 1
+    assert "manifest" in capsys.readouterr().out
+    assert main(["manifest", str(charts_pack_root_copy), "--region", str(regions_dir / "test-cell.toml")]) == 0
+    assert main(["check", str(charts_pack_root_copy)]) == 0
+    capsys.readouterr()
+    assert main(["archive", str(charts_pack_root_copy), str(tmp_path / "dist")]) == 0
+    assert capsys.readouterr().out.split() == [str(tmp_path / "dist" / "charts-test-cell-0.1.0.tar"), str(tmp_path / "dist" / "SHA256SUMS")]

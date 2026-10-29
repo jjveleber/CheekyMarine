@@ -1,9 +1,8 @@
 # chartpack
 
 Builds MBTiles chart packs from NOAA ENC cells and bathymetry grids for the
-CheekyMarine chartplotter. Subcommands (`fetch-enc`, `build-enc`, `fetch-bathy`,
-`build-bathy`, `check`, `manifest`, `archive`, `render`, `cells`) are stubs until
-their tasks land.
+CheekyMarine chartplotter. Subcommands: `fetch-enc`, `build-enc`, `fetch-bathy`,
+`build-bathy`, `check`, `manifest`, `archive`, `render`, `cells`.
 
 ## Setup
 

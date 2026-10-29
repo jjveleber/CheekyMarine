@@ -1,8 +1,9 @@
-"""chartpack command line. Subcommands are stubs until their tasks land."""
+"""chartpack command line."""
 
 import argparse
 import json
 import re
+from datetime import datetime, timezone
 from pathlib import Path
 
 import numpy as np
@@ -27,24 +28,11 @@ from chartpack.enc.catalog import CATALOG_URL, cells_in_bbox, parse_catalog
 from chartpack.enc.fetch import fetch_cells
 from chartpack.enc.reader import read_cell
 from chartpack.enc.tiles import build_enc_mbtiles
-from chartpack.pack.assemble import assemble_bathy_pack
+from chartpack.pack.archive import archive_pack
+from chartpack.pack.assemble import assemble_bathy_pack, assemble_charts_pack
+from chartpack.pack.check import check_pack
+from chartpack.pack.manifest import describe_pack, write_manifest
 from chartpack.region import load_region
-
-SUBCOMMANDS = (
-    "fetch-enc",
-    "build-enc",
-    "fetch-bathy",
-    "build-bathy",
-    "check",
-    "manifest",
-    "archive",
-    "render",
-    "cells",
-)
-
-
-def _not_implemented(args: argparse.Namespace) -> int:
-    raise NotImplementedError(args.command)
 
 
 def _load_catalog(cache: Path):
@@ -85,8 +73,39 @@ def _build_enc(args: argparse.Namespace) -> int:
     region = load_region(args.region)
     names = [n for band in sorted(region.cells) for n in region.cells[band]]
     cells = [read_cell(_newest_cached_zip(args.cache, name)) for name in names]
-    out = build_enc_mbtiles(cells, args.out / "enc.mbtiles", region=region, work=args.work)
-    print(out)
+    enc = build_enc_mbtiles(cells, args.work / "enc.mbtiles", region=region, work=args.work / "tippecanoe")
+    print(_finish(assemble_charts_pack(region, enc, args.out), region))
+    return 0
+
+
+def _finish(root: Path, region) -> Path:
+    """Write the manifest, the last step of a build: a built pack is always complete."""
+    pack, sources, notice = describe_pack(root)
+    write_manifest(root, pack=pack, region=region, sources=sources, notice=notice, built=datetime.now(timezone.utc))
+    return root
+
+
+def _manifest(args: argparse.Namespace) -> int:
+    _finish(args.packdir, load_region(args.region))
+    return 0
+
+
+def _check(args: argparse.Namespace) -> int:
+    zips = None
+    if args.enc_cache:
+        manifest = json.loads((args.packdir / "manifest.json").read_text())
+        zips = [args.enc_cache / "enc" / f"{s['cell']}-{s['edtn']}.{s['updn']}.zip"
+                for s in manifest["sources"] if manifest["pack"] == "charts"]
+    errors = check_pack(args.packdir, enc_zips=zips)
+    for error in errors:
+        print(error)
+    return 1 if errors else 0
+
+
+def _archive(args: argparse.Namespace) -> int:
+    tar, sums = archive_pack(args.packdir, args.out)
+    print(tar)
+    print(sums)
     return 0
 
 
@@ -147,7 +166,7 @@ def _build_bathy(args: argparse.Namespace) -> int:
 
     bathy = build_bathy_mbtiles(contours, bands, coverage, args.work / "bathy.mbtiles", region=region,
                                 work=args.work / "tippecanoe", cudem_tiles=tiles)
-    print(assemble_bathy_pack(region, bathy, dem, args.out))
+    print(_finish(assemble_bathy_pack(region, bathy, dem, args.out), region))
     return 0
 
 
@@ -167,10 +186,6 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="chartpack")
     parser.add_argument("--version", action="store_true")
     sub = parser.add_subparsers(dest="command")
-    for name in SUBCOMMANDS:
-        if name in ("fetch-enc", "cells", "build-enc", "render", "fetch-bathy", "build-bathy"):
-            continue
-        sub.add_parser(name).set_defaults(func=_not_implemented)
     p = sub.add_parser("fetch-enc")
     p.add_argument("region", type=Path)
     p.add_argument("--cache", type=Path, required=True)
@@ -191,6 +206,18 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--cache", type=Path, required=True)
     p.add_argument("--work", type=Path, required=True)
     p.set_defaults(func=_build_bathy)
+    p = sub.add_parser("manifest")
+    p.add_argument("packdir", type=Path, metavar="PACKDIR")
+    p.add_argument("--region", type=Path, required=True, help="region file the pack was built from")
+    p.set_defaults(func=_manifest)
+    p = sub.add_parser("check")
+    p.add_argument("packdir", type=Path, metavar="PACKDIR")
+    p.add_argument("--enc-cache", type=Path, help="download cache holding the ENC zips, for the hazard and coverage checks")
+    p.set_defaults(func=_check)
+    p = sub.add_parser("archive")
+    p.add_argument("packdir", type=Path, metavar="PACKDIR")
+    p.add_argument("out", type=Path)
+    p.set_defaults(func=_archive)
     p = sub.add_parser("render")
     p.add_argument("packdirs", type=Path, nargs="+", metavar="PACKDIR")
     p.add_argument("--views", type=Path, required=True, help="region file whose render views are drawn")
