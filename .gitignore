@@ -3,3 +3,10 @@ build/
 .cache/
 .claude/
 build-*/
+chartpack/.venv/
+chartpack/work/
+chartpack/cache/
+chartpack/dist/
+chartpack/**/__pycache__/
+chartpack/src/*.egg-info/
+chartpack/.pytest_cache/

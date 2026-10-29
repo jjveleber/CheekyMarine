@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "chartpack"
+version = "0.1.0"
+description = "Build MBTiles chart packs from NOAA ENC cells and bathymetry grids"
+requires-python = ">=3.12"
+dependencies = [
+    "numpy==2.4.6",
+    "contourpy==1.4.0",
+    "shapely==2.2.0",
+    "scipy==1.17.1",
+    "Pillow==13.0.0",
+    "freetype-py==2.5.1",
+]
+
+[project.optional-dependencies]
+dev = ["pytest==9.0.3", "mapbox-vector-tile==2.2.0"]
+render = ["playwright==1.64.1"]
+
+[project.scripts]
+chartpack = "chartpack.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "online: needs network (set CHARTPACK_ONLINE=1)",
+    "render: needs Playwright and Chromium",
+]

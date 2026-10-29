@@ -16,6 +16,8 @@ cmake --build build -j
 ctest --test-dir build --output-on-failure
 ```
 
+The chart pack tool (`chartpack`, Python) is built and tested separately: see [chartpack/README.md](chartpack/README.md).
+
 ## Running n2kd
 
 ```

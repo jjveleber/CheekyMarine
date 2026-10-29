@@ -1,0 +1,19 @@
+chartpack Python dependencies (all permissive licences, no GPL or LGPL):
+
+  numpy 2.4.6               BSD-3-Clause (bundled parts: 0BSD, MIT, Zlib, CC0-1.0)
+  contourpy 1.4.0           BSD-3-Clause
+  shapely 2.2.0             BSD-3-Clause
+  scipy 1.17.1              BSD-3-Clause
+  Pillow 13.0.0             MIT-CMU
+  freetype-py 2.5.1         BSD
+  pytest 9.0.3 (dev)        MIT
+  mapbox-vector-tile 2.2.0 (dev)  MIT
+  playwright 1.64.1 (render)      Apache-2.0
+
+Transitive dependencies of mapbox-vector-tile (dev): protobuf (BSD-3-Clause),
+pyclipper (MIT).
+
+System tools, not bundled:
+
+  GDAL (apt python3-gdal)   MIT
+  tippecanoe 2.79.0 (felt)  BSD-2-Clause
