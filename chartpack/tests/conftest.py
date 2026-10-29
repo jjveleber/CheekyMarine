@@ -133,3 +133,8 @@ def symbols_dir() -> Path:
 @pytest.fixture
 def fonts_dir() -> Path:
     return ROOT / "fonts"
+
+
+@pytest.fixture
+def chartpack_dir() -> Path:
+    return ROOT

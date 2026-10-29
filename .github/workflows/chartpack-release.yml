@@ -1,0 +1,122 @@
+name: chartpack-release
+
+# Builds, checks and publishes one pack per tag: charts-<region>-vX.Y.Z or bathy-<region>-vX.Y.Z.
+# The tag must equal the pack's version in chartpack/regions/<region>.toml (scripts/check-pack-tag.sh).
+#
+# Dev-machine fallback: if the build job exceeds the runner (time, memory or disk), build locally,
+# run `chartpack check` and `chartpack archive`, and attach the tar and SHA256SUMS to a GitHub release
+# for the tag by hand. `chartpack check` still runs on the unpacked tar, so the verdict is the same.
+
+on:
+  push:
+    tags: ['charts-*', 'bathy-*']
+
+permissions:
+  contents: read
+
+env:
+  TIPPECANOE_TAG: "2.79.0"
+
+jobs:
+  version:
+    runs-on: ubuntu-24.04
+    outputs:
+      pack: ${{ steps.tag.outputs.pack }}
+      region: ${{ steps.tag.outputs.region }}
+      version: ${{ steps.tag.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check the tag against the region file
+        id: tag
+        run: |
+          line="$(chartpack/scripts/check-pack-tag.sh "${GITHUB_REF_NAME}")"
+          echo "$line"
+          # "PACK=charts REGION=x VERSION=1.0.0" becomes the outputs pack, region and version.
+          echo "$line" | tr ' ' '\n' | sed -E 's/^PACK=/pack=/; s/^REGION=/region=/; s/^VERSION=/version=/' >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: version
+    runs-on: ubuntu-24.04
+    env:
+      PACK: ${{ needs.version.outputs.pack }}
+      REGION: ${{ needs.version.outputs.region }}
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install system packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gdal-bin python3-gdal g++ make zlib1g-dev libsqlite3-dev
+
+      - name: Cache tippecanoe
+        id: tippecanoe-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.local/bin/tippecanoe
+            ~/.local/bin/tile-join
+          key: tippecanoe-${{ env.TIPPECANOE_TAG }}-ubuntu-24.04
+
+      - name: Build tippecanoe
+        if: steps.tippecanoe-cache.outputs.cache-hit != 'true'
+        run: chartpack/scripts/install-tippecanoe.sh
+
+      - name: Create venv and install
+        working-directory: chartpack
+        run: |
+          python3 -m venv --system-site-packages .venv
+          .venv/bin/pip install -e .
+
+      - name: Fetch and build the charts pack
+        if: env.PACK == 'charts'
+        working-directory: chartpack
+        run: |
+          export PATH="$HOME/.local/bin:$PATH"
+          .venv/bin/chartpack fetch-enc "regions/${REGION}.toml" --cache cache
+          .venv/bin/chartpack fetch-seabed "regions/${REGION}.toml" --cache cache
+          .venv/bin/chartpack build-enc "regions/${REGION}.toml" work/charts --cache cache --work work/enc
+
+      - name: Fetch and build the bathy pack
+        if: env.PACK == 'bathy'
+        working-directory: chartpack
+        run: |
+          export PATH="$HOME/.local/bin:$PATH"
+          .venv/bin/chartpack fetch-enc "regions/${REGION}.toml" --cache cache
+          .venv/bin/chartpack fetch-bathy "regions/${REGION}.toml" --cache cache
+          .venv/bin/chartpack build-bathy "regions/${REGION}.toml" work/bathy --cache cache --work work/bathy-tmp
+
+      - name: Check the pack
+        working-directory: chartpack
+        run: |
+          .venv/bin/chartpack check "work/${PACK}/${PACK}-${REGION}-${VERSION}" --enc-cache cache
+
+      - name: Archive the pack
+        working-directory: chartpack
+        run: |
+          .venv/bin/chartpack archive "work/${PACK}/${PACK}-${REGION}-${VERSION}" dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pack
+          path: |
+            chartpack/dist/${{ needs.version.outputs.pack }}-${{ needs.version.outputs.region }}-${{ needs.version.outputs.version }}.tar
+            chartpack/dist/SHA256SUMS
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: pack
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            *.tar
+            SHA256SUMS
+          generate_release_notes: true

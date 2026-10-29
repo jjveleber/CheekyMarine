@@ -45,3 +45,24 @@ jobs:
         run: |
           export PATH="$HOME/.local/bin:$PATH"
           .venv/bin/pytest -q
+
+      # CI-only tool (ISC licence), not shipped. Checks the generated styles against the MapLibre style
+      # spec, which the unit tests do not do. The 26.4.4 release is pinned exactly.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Validate generated styles against the MapLibre style spec
+        working-directory: chartpack
+        run: |
+          mkdir -p work/ci-styles
+          .venv/bin/python -c "
+          import json
+          from chartpack.style.fish import fish_style
+          from chartpack.style.nav import nav_style
+          from chartpack.style.palette import PALETTES
+          for p in PALETTES:
+              for name, fn in (('nav', nav_style), ('fish', fish_style)):
+                  json.dump(fn(p), open(f'work/ci-styles/{name}-{p}.json', 'w'))
+          "
+          npx --yes -p @maplibre/maplibre-gl-style-spec@26.4.4 gl-style-validate work/ci-styles/*.json

@@ -19,6 +19,10 @@ System tools, not bundled:
   GDAL (apt python3-gdal)   MIT
   tippecanoe 2.79.0 (felt)  BSD-2-Clause
 
+CI-only tool, run through npx in .github/workflows/chartpack-ci.yml, never bundled or shipped:
+
+  @maplibre/maplibre-gl-style-spec 26.4.4 (gl-style-validate)  ISC
+
 Bottom composition data from the U.S. Geological Survey (fetch-seabed), licence gate
 (spec 6.10), metadata read 2026-10-29. Each passes as a US Government work in the public domain:
 
