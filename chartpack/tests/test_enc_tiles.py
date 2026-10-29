@@ -188,6 +188,8 @@ def test_metadata(enc_pack, fixtures_dir):
     assert json.loads(md["cheekymarine:sources"]) == [
         {"cell": "US4WA1HK", "edtn": meta.edtn, "updn": meta.updn, "isdt": meta.isdt}
     ]
+    valdco = json.loads(md["cheekymarine:valdco"])
+    assert valdco and valdco == sorted(valdco, key=float) and len(set(valdco)) == len(valdco)
     assert {l["id"] for l in json.loads(md["json"])["vector_layers"]} == {l.name for l in LAYERS}
 
 

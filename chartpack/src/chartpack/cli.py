@@ -72,12 +72,24 @@ def _build_enc(args: argparse.Namespace) -> int:
     return 0
 
 
+def _render(args: argparse.Namespace) -> int:
+    from chartpack.render.render import render_views
+
+    if args.styles:
+        styles = args.styles.split(",")
+    else:
+        styles = sorted({p.stem for pack in args.packdirs for p in (pack / "styles").glob("*.json")})
+    for path in render_views(args.packdirs, load_region(args.views).views, styles, args.out):
+        print(path)
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="chartpack")
     parser.add_argument("--version", action="store_true")
     sub = parser.add_subparsers(dest="command")
     for name in SUBCOMMANDS:
-        if name in ("fetch-enc", "cells", "build-enc"):
+        if name in ("fetch-enc", "cells", "build-enc", "render"):
             continue
         sub.add_parser(name).set_defaults(func=_not_implemented)
     p = sub.add_parser("fetch-enc")
@@ -90,6 +102,12 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--cache", type=Path, required=True)
     p.add_argument("--work", type=Path, required=True)
     p.set_defaults(func=_build_enc)
+    p = sub.add_parser("render")
+    p.add_argument("packdirs", type=Path, nargs="+", metavar="PACKDIR")
+    p.add_argument("--views", type=Path, required=True, help="region file whose render views are drawn")
+    p.add_argument("--styles", help="comma-separated style names (default: every styles/*.json)")
+    p.add_argument("--out", type=Path, required=True)
+    p.set_defaults(func=_render)
     p = sub.add_parser("cells")
     p.add_argument("region", type=Path)
     p.add_argument("--band", type=int, required=True)

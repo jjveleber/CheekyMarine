@@ -162,7 +162,8 @@ def _hazards(p: dict, depths: Depths) -> list[dict]:
     plain = ["match", ["get", "class"], "UWTROC", rock, "WRECKS", wreck, "obstruction"]
     return [
         {"id": "hazard", "type": "symbol", "source": "enc", "source-layer": "hazard",
-         "layout": {"icon-image": plain, "icon-allow-overlap": True}},
+         "layout": {"icon-image": plain, "icon-allow-overlap": True},
+         "paint": {"icon-color": p["CHBLK"]}},
         {"id": "hazard-danger", "type": "symbol", "source": "enc", "source-layer": "hazard",
          "filter": depth_filter("hazard-danger", depths),
          "layout": {"icon-image": "isolated-danger", "icon-allow-overlap": True},

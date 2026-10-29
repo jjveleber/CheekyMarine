@@ -35,3 +35,24 @@ Tests marked `online` need network and run only with `CHARTPACK_ONLINE=1`. Tests
 marked `render` need Playwright and Chromium and are skipped otherwise.
 
 Licences of Python dependencies are listed in `NOTICE`.
+
+## Pack contract
+
+A charts pack is a directory `charts-<region>-<version>/` holding `enc.mbtiles`,
+`styles/*.json`, `sprites/`, `glyphs/`, `README.md` and `NOTICE`.
+
+- Style source names are `enc` (and, in later packs, `bathy` and `dem`). Each source
+  has `"url": "mbtiles://<name>"`, resolved to the `<name>.mbtiles` file in the pack.
+- `sprite` is `pack://sprites/<name>` and `glyphs` is `pack://glyphs/{fontstack}/{range}.pbf`.
+  The app rewrites these three things (source URLs, sprite, glyphs) and nothing else.
+- Depth thresholds appear only in the `filter` of the layers named `depare-deep`,
+  `depare-medium`, `depare-shallow`, `depare-vshallow`, `depcnt-safety`, `soundg-shallow`,
+  `soundg-deep` and `hazard-danger`. `metadata.cheekymarine` in each style records the
+  thresholds (`depths`), the drawn `safety_contour_m`, `units` and `palette`.
+- MBTiles metadata carries `cheekymarine:schema` (currently 1), `cheekymarine:pack`,
+  `cheekymarine:region`, `cheekymarine:version`, `cheekymarine:sources` (the ENC cells
+  with edition, update and issue date), `cheekymarine:valdco` and `cheekymarine:built`.
+- Depth values are stored in the tiles in metres as charted; feet and rounding happen
+  only in style expressions.
+- Data is derived from NOAA ENC. It is not an official chart and is not certified for
+  navigation. The app must show that notice with the pack.

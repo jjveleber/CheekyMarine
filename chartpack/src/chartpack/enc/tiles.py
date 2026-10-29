@@ -18,6 +18,7 @@ ENC_METADATA_KEYS = (
     "cheekymarine:region",
     "cheekymarine:version",
     "cheekymarine:sources",
+    "cheekymarine:valdco",
     "cheekymarine:built",
 )
 
@@ -91,6 +92,7 @@ def build_enc_mbtiles(
             {"cell": meta.name, "edtn": meta.edtn, "updn": meta.updn, "isdt": meta.isdt}
             for meta, _ in sorted(cells, key=lambda c: c[0].name)
         ]
+        valdco = sorted({f.props["VALDCO"] for f in by_layer["depcnt"] if "VALDCO" in f.props}, key=float)
         w, s, e, n = region.bbox
         m.set_metadata({
             "name": f"charts-{region.name}",
@@ -104,6 +106,7 @@ def build_enc_mbtiles(
             "cheekymarine:region": region.name,
             "cheekymarine:version": region.charts_version,
             "cheekymarine:sources": json.dumps(sources),
+            "cheekymarine:valdco": json.dumps(valdco),
             "cheekymarine:built": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         })
         m.delete_metadata(["generator_options"])  # holds the temp work paths

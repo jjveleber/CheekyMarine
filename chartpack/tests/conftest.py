@@ -90,6 +90,20 @@ def enc_pack_path(tmp_path_factory) -> Path:
     return build_enc_mbtiles(cells, base / "enc.mbtiles", region=region, work=base / "work")
 
 
+@pytest.fixture(scope="session")
+def test_region():
+    from chartpack.region import load_region
+
+    return load_region(ROOT / "regions" / "test-cell.toml")
+
+
+@pytest.fixture(scope="session")
+def charts_pack_root(test_region, enc_pack_path, tmp_path_factory) -> Path:
+    from chartpack.pack.assemble import assemble_charts_pack
+
+    return assemble_charts_pack(test_region, enc_pack_path, tmp_path_factory.mktemp("charts_pack"))
+
+
 @pytest.fixture
 def symbols_dir() -> Path:
     return ROOT / "symbols"

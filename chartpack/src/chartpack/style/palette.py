@@ -19,7 +19,7 @@ _DAY = {
     "CHMGD": "#C800C8",  # magenta chart ink (cables, pipelines, routes)
     "CHWHT": "#FFFFFF",  # white chart ink (white navaids)
     "SNDG1": "#000000",  # soundings at or shallower than the safety depth
-    "SNDG2": "#7A8690",  # soundings deeper than the safety depth
+    "SNDG2": "#4A5560",  # soundings deeper than the safety depth
     "LITRD": "#E2231A",  # red lights and navaids
     "LITGN": "#1A9E3F",  # green lights and navaids
     "LITYW": "#E9C400",  # yellow lights and navaids
@@ -46,7 +46,7 @@ _NIGHT = {
     "CHMGD": "#A000A0",  # magenta chart ink (cables, pipelines, routes)
     "CHWHT": "#C0C0C0",  # white chart ink (white navaids)
     "SNDG1": "#C0C0C0",  # soundings at or shallower than the safety depth
-    "SNDG2": "#7A8690",  # soundings deeper than the safety depth
+    "SNDG2": "#98A4AE",  # soundings deeper than the safety depth
     "LITRD": "#B01C14",  # red lights and navaids
     "LITGN": "#157F32",  # green lights and navaids
     "LITYW": "#B89A00",  # yellow lights and navaids

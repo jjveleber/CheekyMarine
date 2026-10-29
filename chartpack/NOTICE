@@ -9,6 +9,7 @@ chartpack Python dependencies (all permissive licences, no GPL or LGPL):
   pytest 9.0.3 (dev)        MIT
   mapbox-vector-tile 2.2.0 (dev)  MIT
   playwright 1.64.1 (render)      Apache-2.0
+  maplibre-gl 6.14.0 (vendored in src/chartpack/render/vendor/, used by the render tool)  BSD-3-Clause
 
 Transitive dependencies of mapbox-vector-tile (dev): protobuf (BSD-3-Clause),
 pyclipper (MIT).
