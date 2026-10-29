@@ -45,7 +45,7 @@ EXPECTED = {
                 "unconsolidated mineral substrate": None},
     "tacoma": {"boulder": "Blds", "bedrock": "Rk", "anthropogenic rock rubble": None, "sandy cobble mix": None},
     "burien": {"mud": "M", "unconsolidated mineral substrate": None, "cobbley sandy mud": "M.S.Cb",
-               "sandy cobble": "Cb.S", "bedrock": "Rk", "slightly cobbley sand": "S.Cb"},
+               "sandy cobble": "Cb.S", "bedrock": "Rk", "slightly cobbley sand": "S"},
 }
 
 

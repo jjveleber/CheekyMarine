@@ -102,8 +102,8 @@ ABBREVIATIONS: dict[str, tuple[str, str]] = {
 
 # usSEABED (USGS DS 182) FolkCode -> (label, Folk class name as the DS 182 metadata defines it). The Folk
 # noun is the main constituent and comes first (Chart No. 1 J 12.2), then each adjective from the noun
-# outward. A "slightly gravelly" (g) class (under 5 % gravel) is labelled by its main classes only, with
-# no G (ruling R26). H (hard ground) is the hard qualifier alone, as ENC NATQUA 10 alone reads "h".
+# outward. A "slightly X" class, here "slightly gravelly" (g) with under 5 % gravel, is labelled by its
+# main classes only: the slight constituent is never emitted (ruling R26, any source). H (hard ground) is the hard qualifier alone, as ENC NATQUA 10 alone reads "h".
 FOLK: dict[str, tuple[str, str]] = {
     "M": ("M", "mud"),
     "S": ("S", "sand"),
@@ -124,7 +124,7 @@ FOLK: dict[str, tuple[str, str]] = {
 }
 
 # USGS CMECS substrate name (lower case; the name is its own meaning) -> label, main constituent first
-# as in FOLK. Names
+# and no "slightly X" constituent, as in FOLK (R26). Names
 # left out have no label: a level that does not say which grain dominates ("gravelly", "slightly
 # gravelly", "gravel mix", "cobble mix", "cobbley", "slightly cobbley", the fine and coarse unconsolidated
 # subclasses, the unconsolidated mineral class), and those with no Chart No. 1 term ("megaclast",
@@ -141,15 +141,15 @@ CMECS: dict[str, str] = {
     "sandy mud": "M.S",
     "gravelly sand": "S.G",
     "gravelly mud": "M.G",
-    "slightly gravelly sand": "S.G",
-    "slightly gravelly mud": "M.G",
-    "slightly gravelly muddy sand": "S.M.G",
+    "slightly gravelly sand": "S",
+    "slightly gravelly mud": "M",
+    "slightly gravelly muddy sand": "S.M",
     "sandy gravel": "G.S",
     "sandy cobble": "Cb.S",
     "muddy cobble": "Cb.M",
     "muddy sandy cobble": "Cb.S.M",
     "cobbley sand": "S.Cb",
-    "slightly cobbley sand": "S.Cb",
+    "slightly cobbley sand": "S",
     "cobbley sandy mud": "M.S.Cb",
 }
 

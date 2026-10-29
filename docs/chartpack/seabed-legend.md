@@ -54,8 +54,9 @@ weed or kelp feature with no category reads `Wd` (J 13.1, weed including kelp).
 ## USGS survey classes
 
 The same abbreviations label the USGS sources, main constituent first. usSEABED (USGS Data Series 182)
-samples carry a Folk grain-size class; a "slightly gravelly" class (under 5 % gravel) reads as its
-main classes only. A class not listed here keeps its raw value in the tile and has no label.
+samples carry a Folk grain-size class. A "slightly gravelly" or "slightly cobbley" class, from either
+source, reads as its main classes only. A class not listed here keeps its raw value in the tile and
+has no label.
 
 | Folk code | Folk class | Label |
 |---|---|---|
@@ -94,13 +95,13 @@ as an outline with no label.
 | sandy mud | M.S |
 | gravelly sand | S.G |
 | gravelly mud | M.G |
-| slightly gravelly sand | S.G |
-| slightly gravelly mud | M.G |
-| slightly gravelly muddy sand | S.M.G |
+| slightly gravelly sand | S |
+| slightly gravelly mud | M |
+| slightly gravelly muddy sand | S.M |
 | sandy gravel | G.S |
 | sandy cobble | Cb.S |
 | muddy cobble | Cb.M |
 | muddy sandy cobble | Cb.S.M |
 | cobbley sand | S.Cb |
-| slightly cobbley sand | S.Cb |
+| slightly cobbley sand | S |
 | cobbley sandy mud | M.S.Cb |

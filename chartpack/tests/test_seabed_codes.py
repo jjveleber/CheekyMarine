@@ -84,6 +84,11 @@ def test_usgs_labels_main_constituent_first():
     # ruling R26: slightly gravelly (g) classes (under 5 % gravel) are labelled by their main classes only
     assert {c: folk_label(c) for c in ("(g)M", "(g)S", "(g)mS", "(g)sM")} == {
         "(g)M": "M", "(g)S": "S", "(g)mS": "S.M", "(g)sM": "M.S"}
+    # R26 covers every "slightly X" class of any source: the slight constituent is never emitted
+    assert {n: cmecs_label(n) for n in ("slightly gravelly sand", "slightly gravelly mud",
+                                        "slightly gravelly muddy sand", "slightly cobbley sand")} == {
+        "slightly gravelly sand": "S", "slightly gravelly mud": "M", "slightly gravelly muddy sand": "S.M",
+        "slightly cobbley sand": "S"}
     assert cmecs_label("muddy sand") == "S.M" and cmecs_label("bedrock") == "Rk" and cmecs_label("boulder") == "Blds"
     assert cmecs_label("Sandy cobble") == cmecs_label("sandy cobble") == "Cb.S"  # Admiralty Inlet capitalises one
     # a CMECS level that does not say which grain dominates gets no label
