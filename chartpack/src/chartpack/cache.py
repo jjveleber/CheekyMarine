@@ -22,22 +22,21 @@ def download(
     part = dest.with_name(dest.name + ".part")
     request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
-            length = response.headers.get("Content-Length")
-            received = 0
-            with part.open("wb") as f:
-                while chunk := response.read(1 << 16):
-                    f.write(chunk)
-                    received += len(chunk)
+        try:
+            with urllib.request.urlopen(request, timeout=timeout) as response:
+                length = response.headers.get("Content-Length")
+                received = 0
+                with part.open("wb") as f:
+                    while chunk := response.read(1 << 16):
+                        f.write(chunk)
+                        received += len(chunk)
+        except Exception as e:  # URLError, HTTPError, IncompleteRead, timeouts, OSError
+            raise DownloadError(f"{url}: {e}") from e
         if length is not None and received != int(length):
             raise DownloadError(f"{url}: got {received} bytes, Content-Length said {length}")
         if expected_size is not None and received != expected_size:
             raise DownloadError(f"{url}: got {received} bytes, expected {expected_size}")
         part.rename(dest)
-    except DownloadError:
-        part.unlink(missing_ok=True)
-        raise
-    except Exception as e:  # URLError, HTTPError, IncompleteRead, timeouts, OSError
-        part.unlink(missing_ok=True)
-        raise DownloadError(f"{url}: {e}") from e
+    finally:
+        part.unlink(missing_ok=True)  # no-op after a successful rename
     return dest

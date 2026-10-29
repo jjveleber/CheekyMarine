@@ -22,8 +22,11 @@ def _edition(zf: zipfile.ZipFile, name: str) -> int:
         path = Path(tmp) / f"{name}.000"
         path.write_bytes(zf.read(f"ENC_ROOT/{name}/{name}.000"))
         ds = gdal.OpenEx(str(path), gdal.OF_VECTOR)
-        feature = ds.GetLayerByName("DSID").GetNextFeature()
-        return int(feature.GetField("DSID_EDTN"))
+        try:
+            feature = ds.GetLayerByName("DSID").GetNextFeature()
+            return int(feature.GetField("DSID_EDTN"))
+        finally:
+            feature = ds = None  # release the file before the temp dir goes
 
 
 def check_zip_layout(zip_path: Path, name: str) -> tuple[int, int]:
@@ -48,6 +51,15 @@ def check_zip_layout(zip_path: Path, name: str) -> tuple[int, int]:
         return _edition(zf, name), highest
 
 
+def _verify(path: Path, info: CellInfo) -> None:
+    """Raise CellError or BadZipFile unless the zip matches the catalog entry."""
+    if path.stat().st_size != info.zip_size:
+        raise CellError(f"{info.name}: {path} is {path.stat().st_size} bytes, catalog says {info.zip_size}")
+    edtn, updn = check_zip_layout(path, info.name)
+    if (edtn, updn) != (info.edtn, info.updn):
+        raise CellError(f"{info.name}: zip is {edtn}.{updn}, catalog says {info.edtn}.{info.updn}")
+
+
 def fetch_cells(names: list[str], catalog: dict[str, CellInfo], cache_dir: Path) -> list[Path]:
     paths = []
     for name in names:
@@ -55,14 +67,15 @@ def fetch_cells(names: list[str], catalog: dict[str, CellInfo], cache_dir: Path)
             raise CellError(f"{name}: not in the ENC catalog")
         info = catalog[name]
         path = Path(cache_dir) / "enc" / f"{name}-{info.edtn}.{info.updn}.zip"
+        if path.exists():
+            try:
+                _verify(path, info)
+            except (CellError, zipfile.BadZipFile):
+                path.unlink()  # damaged after download: refetch
         if not path.exists():
             download(info.zip_url, path, expected_size=info.zip_size)
             try:
-                edtn, updn = check_zip_layout(path, name)
-                if (edtn, updn) != (info.edtn, info.updn):
-                    raise CellError(
-                        f"{name}: zip is {edtn}.{updn}, catalog says {info.edtn}.{info.updn}"
-                    )
+                _verify(path, info)
             except Exception:
                 path.unlink(missing_ok=True)
                 raise
