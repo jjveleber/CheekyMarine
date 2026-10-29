@@ -38,12 +38,13 @@ def depth_filter(layer: str, depths: Depths, safety_contour_m: float | None = No
         "depcnt-safety": ["==", _num("VALDCO"), safety_contour],
         "soundg-shallow": ["<", _num("depth"), depths.safety_m],
         "soundg-deep": [">=", _num("depth"), depths.safety_m],
-        # unknown or shallower than safety depth, or awash/dry/covers-and-uncovers (WATLEV 1, 2, 4, 5)
+        # unknown or shallower than safety depth, or awash/dry/covers-and-uncovers (WATLEV 1, 2, 4, 5);
+        # WATLEV is an int in the tiles and `in` does not coerce, so the literals are ints
         "hazard-danger": [
             "any",
             ["!", ["has", "VALSOU"]],
             ["<", _num("VALSOU"), depths.safety_m],
-            ["in", ["get", "WATLEV"], ["literal", ["1", "2", "4", "5"]]],
+            ["in", ["coalesce", ["get", "WATLEV"], 0], ["literal", [1, 2, 4, 5]]],
         ],
     }
     return filters[layer]

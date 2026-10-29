@@ -33,7 +33,42 @@ def test_depth_filters():
     d = Depths()
     assert depth_filter("depare-deep", d) == [">=", ["to-number", ["get", "DRVAL1"]], 9.144]
     assert depth_filter("depare-vshallow", d) == ["<", ["to-number", ["get", "DRVAL1"]], 1.8288]
-    assert depth_filter("hazard-danger", d) == ["any", ["!", ["has", "VALSOU"]], ["<", ["to-number", ["get", "VALSOU"]], 3.048], ["in", ["get", "WATLEV"], ["literal", ["1", "2", "4", "5"]]]]
+    assert depth_filter("hazard-danger", d) == ["any", ["!", ["has", "VALSOU"]], ["<", ["to-number", ["get", "VALSOU"]], 3.048], ["in", ["coalesce", ["get", "WATLEV"], 0], ["literal", [1, 2, 4, 5]]]]  # ints: the reader stores S-57 enumerations as ints
+
+
+def _ev(e, props):
+    """Tiny evaluator for the expression subset used by the hazard-danger filter."""
+    if not isinstance(e, list):
+        return e
+    op, a = e[0], e[1:]
+    if op == "literal":
+        return a[0]
+    if op == "get":
+        return props.get(a[0])
+    if op == "has":
+        return a[0] in props
+    if op == "coalesce":
+        return next((v for v in (_ev(x, props) for x in a) if v is not None), None)
+    if op == "to-number":
+        return float(_ev(a[0], props))
+    if op == "any":  # short-circuits like MapLibre, so to-number never sees a missing VALSOU
+        return any(_ev(x, props) for x in a)
+    vals = [_ev(x, props) for x in a]
+    if op == "!":
+        return not vals[0]
+    if op == "<":
+        return vals[0] < vals[1]
+    if op == "in":
+        return vals[0] in vals[1]
+    raise NotImplementedError(op)
+
+
+def test_hazard_danger_filter_behaviour():
+    f = depth_filter("hazard-danger", Depths())
+    assert _ev(f, {"WATLEV": 1, "VALSOU": "20"}) is True
+    assert _ev(f, {"WATLEV": 3, "VALSOU": "20"}) is False
+    assert _ev(f, {"WATLEV": 3}) is True
+    assert _ev(f, {"WATLEV": 3, "VALSOU": "2"}) is True
 
 
 def test_feet_labels():
