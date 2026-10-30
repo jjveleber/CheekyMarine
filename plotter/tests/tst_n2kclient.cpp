@@ -113,7 +113,7 @@ private slots:
     }
     // Review Focus 1: a half line at disconnect is never parsed; the client reconnects and data resumes.
     void halfLineAtDisconnectDroppedThenReconnect() {
-        const int reconnectMs = 100;
+        const int reconnectMs = 500;
         N2kClient c(path(), 5000, reconnectMs);
         QSignalSpy vs(&c, &N2kClient::vessel), cs(&c, &N2kClient::connectionChanged);
         c.start();
@@ -124,23 +124,24 @@ private slots:
         send(kVesselLine.left(kVesselLine.size() - 10));
         QTest::qWait(50);
         m_peer->disconnectFromServer();
+        QElapsedTimer t;
+        t.start();
         QTRY_COMPARE_WITH_TIMEOUT(cs.count(), 2, 10000);
         QCOMPARE(cs.last().first().toBool(), false);
         QCOMPARE(vs.count(), 1);
-        // The server is still listening: the client reconnects within reconnectMs + 500 ms (of the
-        // disconnect; generous CI headroom is added to the wait, the bound is asserted separately).
+        // The server is still listening: the client must reconnect within reconnectMs + 500 ms of the
+        // disconnect (timer started just before waiting for it, so the bound only gets stricter).
         m_peer = nullptr;
-        QElapsedTimer t;
-        t.start();
         QVERIFY(accept());
         const qint64 took = t.elapsed();
-        QVERIFY2(took < reconnectMs + 500 + 3000, qPrintable(QString("reconnect took %1 ms").arg(took)));
+        QVERIFY2(took < reconnectMs + 500, qPrintable(QString("reconnect took %1 ms").arg(took)));
         send(kHello + kVesselLine);
         QTRY_COMPARE_WITH_TIMEOUT(vs.count(), 2, 10000);
         QCOMPARE(cs.last().first().toBool(), true);
     }
     void reconnectAfterServerRestart() {
-        N2kClient c(path(), 5000, 100);
+        const int reconnectMs = 500;
+        N2kClient c(path(), 5000, reconnectMs);
         QSignalSpy vs(&c, &N2kClient::vessel), cs(&c, &N2kClient::connectionChanged);
         c.start();
         QVERIFY(accept());
@@ -152,10 +153,13 @@ private slots:
         m_peer->disconnectFromServer();
         QTRY_COMPARE_WITH_TIMEOUT(cs.count(), 2, 10000);
         QCOMPARE(vs.count(), 1);
-        QTest::qWait(300);  // several failed reconnect attempts
+        QTest::qWait(1200);  // a couple of failed reconnect attempts
         listen();
+        QElapsedTimer t;
+        t.start();
         m_peer = nullptr;
         QVERIFY(accept());
+        QVERIFY2(t.elapsed() < reconnectMs + 500, qPrintable(QString("reconnect took %1 ms").arg(t.elapsed())));
         send(kHello + kVesselLine);
         QTRY_COMPARE_WITH_TIMEOUT(vs.count(), 2, 10000);
         QCOMPARE(cs.last().first().toBool(), true);
