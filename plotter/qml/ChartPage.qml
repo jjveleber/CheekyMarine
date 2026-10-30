@@ -1,39 +1,36 @@
 import QtQuick
 import QtQuick.Controls.Basic
 
-// The chart: map, mode toggle, zoom, recenter, "No position" chip and the pack notice.
+// The chart: map, overlay slots, mode toggle, zoom, recenter, "No position" chip and the pack
+// notice. Bars that are on (Top, Bottom, Left, Right) shrink the chart viewport; the corners float
+// over the chart. The notice is the bottom line, under a bottom bar. In edit mode every slot is
+// shown outlined (the bars as if on, so nothing overlaps) and tapping one opens the slot editor.
 Item {
     id: page
     required property QtObject chart   // ChartController
     required property Item chartMap    // MapLibreChartMap, created in main.cpp
+    required property var slotsModel   // SlotsModel
+    property bool editing: false
 
-    // Temporary physical sizing from Screen (px per mm); Task 12 switches to Units.mm and BigButton.
-    readonly property real mm: Screen.pixelDensity > 0 ? Screen.pixelDensity : 3.8
-    readonly property real buttonSize: Math.max(48, 15 * mm)
-    readonly property real margin: 3 * mm
+    // Sizes of the bars that take room from the chart (set by the bar slots themselves).
+    property real topInset: 0
+    property real bottomInset: 0
+    property real leftInset: 0
+    property real rightInset: 0
+    readonly property real margin: Units.mm(1.5)
 
-    // A button in the Theme colours (Task 12 replaces it with BigButton).
-    component ThemedButton: Button {
-        id: button
-        contentItem: Text {
-            text: button.text
-            font: button.font
-            color: button.enabled ? Theme.buttonText : Theme.disabledText
-            horizontalAlignment: Text.AlignHCenter
-            verticalAlignment: Text.AlignVCenter
-            elide: Text.ElideRight
-        }
-        background: Rectangle {
-            radius: button.height / 8
-            color: !button.enabled ? Theme.disabledButton : button.down ? Theme.buttonDown : Theme.button
-            border.color: Theme.buttonBorder
-            border.width: 1
-        }
-    }
+    objectName: "chartPage"
 
     Item {
         id: mapArea
-        anchors.fill: parent
+        objectName: "mapArea"
+        anchors {
+            fill: parent
+            topMargin: page.topInset
+            bottomMargin: page.bottomInset > 0 ? page.bottomInset + noticeBar.height : 0
+            leftMargin: page.leftInset
+            rightMargin: page.rightInset
+        }
         function zoomBy(factor, point) {
             if (page.chart.follow) page.chart.zoomBy(Math.log2(factor))
             else page.chartMap.scaleBy(factor, point)
@@ -80,72 +77,153 @@ Item {
         }
     }
 
-    ThemedButton {
-        anchors { left: parent.left; top: parent.top; margins: page.margin }
-        height: page.buttonSize
-        width: Math.max(page.buttonSize * 2.5, implicitWidth)
-        font.pixelSize: 4 * page.mm
-        enabled: page.chart.fishAvailable
-        text: !page.chart.fishAvailable ? "No fishing chart installed"
-                                         : (page.chart.mode === "fish" ? "Fishing" : "Navigation")
-        onClicked: page.chart.mode = page.chart.mode === "fish" ? "nav" : "fish"
-    }
-
-    Column {
-        anchors { right: parent.right; verticalCenter: parent.verticalCenter; margins: page.margin }
-        spacing: page.margin
-        ThemedButton {
-            width: page.buttonSize; height: page.buttonSize
-            font.pixelSize: 8 * page.mm
-            text: "+"
-            onClicked: page.chart.zoomIn()
-        }
-        ThemedButton {
-            width: page.buttonSize; height: page.buttonSize
-            font.pixelSize: 8 * page.mm
-            text: "−"
-            onClicked: page.chart.zoomOut()
-        }
-    }
-
-    ThemedButton {
-        anchors { horizontalCenter: parent.horizontalCenter; bottom: noticeBar.top; margins: page.margin }
-        visible: !page.chart.follow
-        height: page.buttonSize
-        width: Math.max(page.buttonSize * 2.5, implicitWidth)
-        font.pixelSize: 5 * page.mm
-        text: "Recenter"
-        onClicked: page.chart.recenter()
-    }
-
-    Rectangle {
-        anchors { horizontalCenter: parent.horizontalCenter; top: parent.top; margins: page.margin }
-        visible: page.chart.noPosition
-        radius: height / 2
-        color: Theme.alertBackground
-        width: chipText.implicitWidth + 6 * page.mm
-        height: chipText.implicitHeight + 2 * page.mm
-        Label {
-            id: chipText
-            anchors.centerIn: parent
-            text: "No position"
-            color: Theme.alertText
-            font.pixelSize: 5 * page.mm
-            font.bold: true
+    // Where corners and chart controls go: the map area, above the notice when no bottom bar is on.
+    Item {
+        id: cornerArea
+        anchors {
+            top: mapArea.top
+            left: mapArea.left
+            right: mapArea.right
+            bottom: page.bottomInset > 0 ? mapArea.bottom : noticeBar.top
+            margins: page.margin
         }
     }
 
     Rectangle {
         id: noticeBar
         anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
-        height: noticeText.implicitHeight + page.mm
+        height: noticeText.implicitHeight + Units.mm(1)
         color: Theme.noticeBackground
         Label {
             id: noticeText
             anchors.centerIn: parent
+            width: Math.min(implicitWidth, parent.width)
+            elide: Text.ElideRight
             text: page.chart.notice
             color: Theme.noticeText
-            font.pixelSize: Math.max(11, 2.5 * page.mm)
+            font.pixelSize: Units.mm(2.8)
         }
+    }
+
+    Repeater {
+        model: page.slotsModel
+        SlotView {
+            id: slotView
+            // Model roles (not required properties: SlotView declares these names itself).
+            slotId: model.slotId
+            on: model.on
+            field: model.field
+            fieldLabel: model.fieldLabel
+            size: model.size
+            formatted: model.formatted
+            unit: model.unit
+            readonly property bool takesRoom: on || page.editing
+
+            editing: page.editing
+            onClicked: page.slotEditorFor(slotView)
+
+            // The bars span their edge; Left and Right sit between the Top and Bottom bars.
+            width: horizontalBar ? Math.max(implicitWidth, page.width) : implicitWidth
+            height: verticalBar ? Math.max(implicitHeight, page.height - page.topInset - page.bottomInset - noticeBar.height)
+                                : implicitHeight
+            x: slotId === "Left" ? 0
+             : slotId === "Right" ? page.width - width
+             : slotId === "TL" || slotId === "BL" ? cornerArea.x
+             : slotId === "TR" || slotId === "BR" ? cornerArea.x + cornerArea.width - width
+             : 0
+            y: slotId === "Top" ? 0
+             : slotId === "Bottom" ? noticeBar.y - height
+             : verticalBar ? page.topInset
+             : slotId === "TL" || slotId === "TR" ? cornerArea.y
+             : cornerArea.y + cornerArea.height - height
+
+            Binding { when: slotView.slotId === "Top"; target: page; property: "topInset"; value: slotView.takesRoom ? slotView.height : 0 }
+            Binding { when: slotView.slotId === "Bottom"; target: page; property: "bottomInset"; value: slotView.takesRoom ? slotView.height : 0 }
+            Binding { when: slotView.slotId === "Left"; target: page; property: "leftInset"; value: slotView.takesRoom ? slotView.width : 0 }
+            Binding { when: slotView.slotId === "Right"; target: page; property: "rightInset"; value: slotView.takesRoom ? slotView.width : 0 }
+        }
+    }
+
+    function slotEditorFor(s) {
+        editor.slotId = s.slotId
+        editor.title = "Overlay " + s.slotId
+        editor.on = s.on
+        editor.field = s.field
+        editor.size = s.size
+        editor.open()
+    }
+
+    BigButton {
+        objectName: "modeButton"
+        anchors { horizontalCenter: cornerArea.horizontalCenter; bottom: cornerArea.bottom }
+        visible: !page.editing
+        width: Math.max(implicitWidth, Units.mm(30))
+        enabled: page.chart.fishAvailable
+        text: !page.chart.fishAvailable ? "No fishing chart installed"
+                                         : (page.chart.mode === "fish" ? "Fishing" : "Navigation")
+        onClicked: page.chart.mode = page.chart.mode === "fish" ? "nav" : "fish"
+    }
+
+    BigButton {
+        objectName: "recenterButton"
+        anchors { horizontalCenter: cornerArea.horizontalCenter; bottom: cornerArea.bottom; bottomMargin: Units.mm(14) }
+        visible: !page.chart.follow && !page.editing
+        width: Math.max(implicitWidth, Units.mm(30))
+        text: "Recenter"
+        onClicked: page.chart.recenter()
+    }
+
+    Column {
+        anchors { right: cornerArea.right; verticalCenter: cornerArea.verticalCenter }
+        visible: !page.editing
+        spacing: Units.mm(1.5)
+        BigButton {
+            objectName: "zoomInButton"
+            font.pixelSize: Units.mm(8)
+            text: "+"
+            onClicked: page.chart.zoomIn()
+        }
+        BigButton {
+            objectName: "zoomOutButton"
+            font.pixelSize: Units.mm(8)
+            text: "−"
+            onClicked: page.chart.zoomOut()
+        }
+    }
+
+    Rectangle {
+        anchors { horizontalCenter: cornerArea.horizontalCenter; top: cornerArea.top }
+        visible: page.chart.noPosition && !page.editing
+        radius: height / 2
+        color: Theme.alertBackground
+        width: chipText.implicitWidth + Units.mm(6)
+        height: chipText.implicitHeight + Units.mm(2)
+        Label {
+            id: chipText
+            anchors.centerIn: parent
+            text: "No position"
+            color: Theme.alertText
+            font.pixelSize: Units.mm(5)
+            font.bold: true
+        }
+    }
+
+    BigButton {
+        objectName: "editDoneButton"
+        anchors { horizontalCenter: cornerArea.horizontalCenter; verticalCenter: cornerArea.verticalCenter }
+        visible: page.editing
+        width: Math.max(implicitWidth, Units.mm(40))
+        text: "Done editing"
+        onClicked: page.editing = false
+    }
+
+    SlotEditor {
+        id: editor
+        property string slotId: ""
+        anchors.fill: parent
+        fieldChoices: page.slotsModel.fieldChoices
+        onOnChosen: (on) => page.slotsModel.setSlot(slotId, on, editor.field, editor.size)
+        onFieldChosen: (f) => page.slotsModel.setSlot(slotId, editor.on, f, editor.size)
+        onSizeChosen: (s) => page.slotsModel.setSlot(slotId, editor.on, editor.field, s)
     }
 }

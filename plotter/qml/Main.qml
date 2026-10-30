@@ -1,27 +1,119 @@
 import QtQuick
 import QtQuick.Controls.Basic
+import QtQuick.Layouts
+import CheekyMarine as CM
 
+// The app shell: the no-data banner over the pages, the tab bar on the right edge, the boot splash.
 ApplicationWindow {
     id: root
     required property QtObject chart              // ChartController
     required property Item chartMap               // MapLibreChartMap
     required property QtObject paletteController  // PaletteController
+    required property QtObject settings           // Settings
+    required property QtObject vessel             // VesselModel
+    required property QtObject appInfo            // AppInfo
+    required property var slotsModel              // SlotsModel
+    required property var numbersModel            // NumbersModel
+    // chart, numbers, tracks, settings or about
+    property string page: "chart"
 
     width: 1024
     height: 600
     visible: true
     title: "CheekyMarine"
     color: Theme.background
+    font.family: Units.fontFamily
 
-    Binding {
-        target: Theme
-        property: "palette"
-        value: root.paletteController.palette
+    Binding { target: Theme; property: "palette"; value: root.paletteController.palette }
+    Binding { target: Units; property: "windowWidth"; value: root.width }
+    Binding { target: Units; property: "windowHeight"; value: root.height }
+    Binding { target: Units; property: "diagonalIn"; value: root.settings.panelDiagonalIn }
+
+    readonly property var pages: ["chart", "numbers", "tracks", "settings", "about"]
+
+    RowLayout {
+        anchors.fill: parent
+        spacing: 0
+
+        ColumnLayout {
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            spacing: 0
+
+            NoDataBanner {
+                Layout.fillWidth: true
+                live: root.vessel.live
+                schemaMismatch: root.appInfo.schemaMismatch
+            }
+
+            StackLayout {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                currentIndex: Math.max(0, root.pages.indexOf(root.page))
+
+                ChartPage {
+                    id: chartPage
+                    chart: root.chart
+                    chartMap: root.chartMap
+                    slotsModel: root.slotsModel
+                }
+                NumbersPage {
+                    model: root.numbersModel
+                }
+                // Task 15 replaces this with the tracks page.
+                Item {
+                    objectName: "tracksPage"
+                    Label {
+                        anchors.centerIn: parent
+                        text: "Track recording is not available yet."
+                        color: Theme.text
+                        font.pixelSize: Units.mm(5)
+                    }
+                }
+                // Task 13 replaces this with the settings page.
+                Item {
+                    objectName: "settingsPage"
+                    Column {
+                        anchors { left: parent.left; top: parent.top; margins: Units.mm(4) }
+                        spacing: Units.mm(3)
+                        BigButton {
+                            objectName: "editOverlaysButton"
+                            width: Units.mm(60)
+                            text: "Edit overlays"
+                            onClicked: {
+                                chartPage.editing = true
+                                root.page = "chart"
+                            }
+                        }
+                        BigButton {
+                            objectName: "aboutButton"
+                            width: Units.mm(60)
+                            text: "About"
+                            onClicked: root.page = "about"
+                        }
+                    }
+                }
+                AboutPage {
+                    appInfo: root.appInfo
+                    onBack: root.page = "settings"
+                }
+            }
+        }
+
+        CM.TabBar { // ours, not the Controls TabBar
+            Layout.fillHeight: true
+            current: root.page === "about" ? "settings" : root.page
+            paletteMode: root.settings.paletteMode
+            onPageSelected: (p) => root.page = p
+            onPaletteCycled: {
+                const modes = ["auto", "day", "dusk", "night"]
+                root.settings.paletteMode = modes[(modes.indexOf(root.settings.paletteMode) + 1) % modes.length]
+            }
+        }
     }
 
-    ChartPage {
+    Splash {
         anchors.fill: parent
-        chart: root.chart
-        chartMap: root.chartMap
+        appInfo: root.appInfo
     }
 }

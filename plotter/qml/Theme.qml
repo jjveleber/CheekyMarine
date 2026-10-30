@@ -19,7 +19,12 @@ QtObject {
         noticeBackground: "#c0ffffff",
         noticeText: "#000000",
         alertBackground: "#c62828",
-        alertText: "#ffffff"
+        alertText: "#ffffff",
+        buttonSelected: "#c8dcf5",
+        slotBackground: "#d8ffffff",
+        slotText: "#000000",
+        slotLabel: "#404040",
+        editOutline: "#0060c0"
     })
     readonly property var dusk: ({
         background: "#303036",
@@ -33,7 +38,12 @@ QtObject {
         noticeBackground: "#c0202024",
         noticeText: "#d8d8d8",
         alertBackground: "#a51c1c",
-        alertText: "#ffffff"
+        alertText: "#ffffff",
+        buttonSelected: "#55607a",
+        slotBackground: "#d8202024",
+        slotText: "#ffffff",
+        slotLabel: "#b0b0b8",
+        editOutline: "#60a0ff"
     })
     readonly property var night: ({
         background: "#000000",
@@ -47,7 +57,12 @@ QtObject {
         noticeBackground: "#c0000000",
         noticeText: "#a00000",
         alertBackground: "#500000",
-        alertText: "#ff2020"
+        alertText: "#ff2020",
+        buttonSelected: "#500000",
+        slotBackground: "#d8000000",
+        slotText: "#ff2020",
+        slotLabel: "#a00000",
+        editOutline: "#ff0000"
     })
 
     readonly property var current: palette === "night" ? night : palette === "dusk" ? dusk : day
@@ -64,4 +79,9 @@ QtObject {
     readonly property color noticeText: current.noticeText
     readonly property color alertBackground: current.alertBackground
     readonly property color alertText: current.alertText
+    readonly property color buttonSelected: current.buttonSelected
+    readonly property color slotBackground: current.slotBackground
+    readonly property color slotText: current.slotText
+    readonly property color slotLabel: current.slotLabel
+    readonly property color editOutline: current.editOutline
 }

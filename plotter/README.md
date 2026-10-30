@@ -64,6 +64,9 @@ options of `cheekyplotter` (not in `--help`):
 - `--palette auto|day|dusk|night`: writes the palette mode setting at start (it persists in the
   data dir). The default `auto` follows the sun at the boat; the fixture log starts at night.
 - `--mode nav|fish`: writes the chart mode setting at start (persists too).
+- `--slots default|all`: writes the overlay slots at start: the defaults, or the defaults with all
+  eight slots on (persists too).
+- `--page chart|numbers|tracks|settings|about`: the page shown first (not stored).
 - `--screenshot PATH --screenshot-after-ms N`: saves a grab of the window N ms after start;
   repeatable, paired in order.
 

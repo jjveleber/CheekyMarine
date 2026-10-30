@@ -28,7 +28,12 @@ add_library(plottercore STATIC
     src/core/ChartMap.h
     src/core/ChartController.cpp
     src/core/Sun.cpp
-    src/core/PaletteController.cpp)
+    src/core/PaletteController.cpp
+    src/core/Units.cpp
+    src/core/Slots.cpp
+    src/core/NumbersModel.cpp
+    src/core/AppInfo.cpp
+    src/core/Recovery.cpp)
 set_target_properties(plottercore PROPERTIES AUTOMOC ON)
 target_include_directories(plottercore PUBLIC
     ${CMAKE_CURRENT_BINARY_DIR}/generated
@@ -60,19 +65,27 @@ plotter_add_test(tst_geo tests/tst_geo.cpp)
 plotter_add_test(tst_overlays tests/tst_overlays.cpp)
 plotter_add_test(tst_chartcontroller tests/tst_chartcontroller.cpp)
 plotter_add_test(tst_sun tests/tst_sun.cpp)
+plotter_add_test(tst_slots tests/tst_slots.cpp)
+plotter_add_test(tst_appshell tests/tst_appshell.cpp)
 # Icons.cpp is app code with no MapLibre dependency; the night icon rule is checked on its pixels.
 plotter_add_test(tst_palette tests/tst_palette.cpp src/app/Icons.cpp)
 
 # Linking Qt6::Sql and QMapLibre directly puts Qt's lib dir and the QMapLibre lib dir in the
 # automatic build RPATH, so libQMapLibre.so resolves libQt6Sql without LD_LIBRARY_PATH.
 # The QML module CheekyMarine is a static library so the QuickTest runner can import it too.
-set_source_files_properties(qml/Theme.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
+set_source_files_properties(qml/Theme.qml qml/Units.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 qt_add_library(plotterqml STATIC)
 qt_add_qml_module(plotterqml
     URI CheekyMarine
     VERSION 1.0
-    QML_FILES qml/Main.qml qml/ChartPage.qml qml/Theme.qml)
-target_link_libraries(plotterqml PRIVATE Qt6::Quick Qt6::QuickControls2)
+    QML_FILES qml/Main.qml qml/ChartPage.qml qml/Theme.qml qml/Units.qml qml/BigButton.qml qml/TabBar.qml
+        qml/Splash.qml qml/SlotView.qml qml/SlotEditor.qml qml/NumbersPage.qml qml/AboutPage.qml
+        qml/NoDataBanner.qml qml/RecoveryScreen.qml
+    SOURCES src/qml/PanelMath.h
+    RESOURCES fonts/NotoSans-Regular.ttf fonts/NotoSans-Bold.ttf)
+target_link_libraries(plotterqml PRIVATE plottercore Qt6::Quick Qt6::QuickControls2)
+# The generated type registration includes PanelMath.h by its bare name.
+target_include_directories(plotterqml PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src/qml)
 
 qt_add_executable(cheekyplotter src/app/main.cpp src/app/MapLibreChartMap.cpp src/app/Icons.cpp)
 target_link_libraries(cheekyplotter PRIVATE plottercore plotterqmlplugin Qt6::Quick Qt6::QuickControls2 Qt6::Sql
@@ -84,7 +97,8 @@ target_link_options(cheekyplotter PRIVATE -Wl,--disable-new-dtags)
 
 # QuickTest runner: runs every tests/qml/tst_*.qml against the CheekyMarine module, offscreen.
 add_executable(tst_qml tests/qml/tst_qml.cpp)
-target_link_libraries(tst_qml PRIVATE plotterqmlplugin Qt6::QuickTest Qt6::Quick Qt6::QuickControls2)
+set_target_properties(tst_qml PROPERTIES AUTOMOC ON)
+target_link_libraries(tst_qml PRIVATE plotterqmlplugin plottercore Qt6::QuickTest Qt6::Quick Qt6::QuickControls2)
 target_compile_definitions(tst_qml PRIVATE QUICK_TEST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/qml")
 add_test(NAME tst_qml COMMAND tst_qml)
 set_tests_properties(tst_qml PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
