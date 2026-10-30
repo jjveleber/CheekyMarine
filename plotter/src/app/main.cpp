@@ -85,7 +85,7 @@ int main(int argc, char* argv[]) {
     QCommandLineParser cli;
     cli.addHelpOption();
     QCommandLineOption socketOpt("socket", "n2kd JSON socket.", "path", "/run/cheekymarine/n2k.sock");
-    QCommandLineOption packsOpt("packs", "Directory of installed chart and bathy packs.", "dir", appData + "/packs");
+    QCommandLineOption packsOpt("packs", "Directory of installed chart and bathy packs (default <data dir>/packs).", "dir");
     QCommandLineOption dataOpt("data", "Directory for plotter.db.", "dir", appData);
     QCommandLineOption windowOpt("window", "Window size, WxH (for example 1024x600).", "WxH");
     // Dev and checkpoint aids: save a window grab N ms after start. Repeatable; paired in order.
@@ -192,7 +192,8 @@ int main(int argc, char* argv[]) {
         slotsModel.setSlotConfigs(all);
     }
 
-    const QList<PackInfo> packs = PackCatalog::scan(cli.value(packsOpt));
+    const QString packsDir = cli.isSet(packsOpt) ? cli.value(packsOpt) : cli.value(dataOpt) + "/packs";
+    const QList<PackInfo> packs = PackCatalog::scan(packsDir);
     for (const PackInfo& p : packs)
         if (!p.refused.isEmpty()) qWarning() << "pack refused:" << p.dir << p.refused;
     AppInfo appInfo(packs);
