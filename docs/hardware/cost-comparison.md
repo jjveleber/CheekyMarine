@@ -1,20 +1,29 @@
-# Hardware cost: DIY unit vs a second Garmin
+# Hardware cost: DIY, off-the-shelf, or networked Garmin
 
 Prices were read from product pages on 2026-10-29 (bench carts) and 2026-10-30 (everything else). They are US prices before tax and shipping unless marked. Nothing has been bought yet. Prices move often, so recheck before ordering.
 
 ## Summary
 
-| Option | Where it mounts | Total before tax | Shows Garmin sonar/radar |
+Three options:
+
+1. **DIY Pi unit at the main helm.** Charts plus NMEA 2000 data (depth, speed, heading, AIS). No sonar.
+2. **Off-the-shelf NMEA 2000 plotter at the main helm.** Same job as the DIY unit: charts plus NMEA 2000 data, no Garmin sonar or radar. This is the like-for-like comparison.
+3. **Networked Garmin at the rear helm.** Joins the 943xsv on the Garmin Marine Network, so it also shows the 943xsv's sonar and the Fantom radar where the owner stands to fish.
+
+| Option | Pick | Size, touch | Total before tax |
 |---|---|---|---|
-| **DIY Pi unit** (10.1", 1000 nit) | Main helm, beside the 943xsv | **$790.05** ($833.24 with tax and shipping on the bench carts) | No |
-| Garmin GPSMAP 743 (7"), networked | Rear helm | **$1,564.96** | Yes |
-| Garmin GPSMAP 943 (9"), networked | Rear helm | **$1,864.96** | Yes |
-| Garmin GPSMAP 1243 (12"), networked | Rear helm | $3,164.96 | Yes |
-| Garmin ECHOMAP UHD2 74sv / 94sv, not networked | Rear helm | $1,069.97 / $1,369.97 | No |
+| 1. DIY | Pi 5 + 4D Systems 1000-nit panel | 10.1", 1280x800, touch | **$790.05** ($833.24 with tax and shipping on the bench carts) |
+| 2. Off the shelf, cheapest | Raymarine Element 7 S | 7", buttons only | $609.97 |
+| 2. Off the shelf, cheapest touch | Lowrance Elite FS 7 | 7", touch | **$829.97** |
+| 2. Off the shelf, cheapest 9" touch | Simrad GO9 XSE | 9", 800x480, touch | **$894.97** |
+| 2. Off the shelf, Garmin | ECHOMAP UHD2 74sv / 94sv | 7" / 9", touch | $1,064.97 / $1,364.97 |
+| 3. Networked, 7" | Garmin GPSMAP 743 | 7", touch | **$1,564.96** |
+| 3. Networked, 9" | Garmin GPSMAP 943 | 9", touch | **$1,864.96** |
+| 3. Networked, 12" | Garmin GPSMAP 1243 | 12", touch | $3,164.96 |
 
-The DIY unit is about **$775 cheaper than a networked 7" Garmin** and about **$1,075 cheaper than a 9"**. The difference buys sonar and radar at the rear helm, IPX7 sealing, a warranty, and no build work.
+Like for like (option 1 vs option 2), the DIY unit is about the same price as a 7" touch plotter and about $105 under the cheapest 9" touch unit, with a bigger, sharper screen. The store-bought units are brighter (1200 to 1500 nits where published), IPX7 sealed, under warranty, and need no build work. The DIY unit's edge is the 10.1" 1280x800 screen, the fishing chart (NCEI bathymetry, bottom composition), and owning the software. Option 3 costs about $775 to $1,075 more than the DIY unit, and that money buys sonar and radar at the rear helm.
 
-## DIY Pi unit
+## Option 1: DIY Pi unit at the main helm
 
 ### Bench kit (3 carts, priced 2026-10-29)
 
@@ -66,7 +75,35 @@ Alternatives seen: finished sunlight-readable monitors instead of the bare 4D pa
 - **Enclosure depth.** The 16 mm display plus the 45 mm Pi stack is tight inside a 90 mm box. The deeper 1554XA2GY (120 mm) is not priced yet.
 - **Tariffs.** Digi-Key shows "tariff may apply" on the Pi, the EAO button, the TVS diode and others. The amount appears only in the cart.
 
-## Second Garmin at the rear helm
+## Option 2: off-the-shelf NMEA 2000 plotter at the main helm
+
+Same spot and same job as the DIY unit. Each total adds a [Garmin NMEA 2000 T-connector](https://www.garmin.com/en-US/p/pn/010-11078-00) ($29.99, 010-11078-00, ships in 5 to 8 weeks) and a [2 m drop cable](https://www.garmin.com/en-US/p/pn/010-11076-00) ($34.99, 010-11076-00): $64.98. No box checked includes either. Any brand's standard Micro-C T and drop work.
+
+| Unit | Size | Touch | Nits | Unit price | Add-ons | Total | Source |
+|---|---|---|---|---|---|---|---|
+| Raymarine Element 7 S, LightHouse N. America charts (E70531-00-102) | 7" | No, buttons | 1500 | $544.99 | $64.98 | **$609.97** | [Raymarine](https://www.raymarine.com/en-us/our-products/chartplotters/element/element-s), list price, dealer stock not shown |
+| Lowrance Elite FS 7, no transducer, C-MAP Contour+ (000-15703-001) | 7" | Yes | over 1200 | $764.99 | $64.98 | **$829.97** | [Defender](https://www.defender.com/en_us/lowrance-elite-fs-7-multifunction-display-with-c-map-contour), in stock |
+| Raymarine Element 9 HV, LightHouse N. America charts (E70534-00-102) | 9" | No, buttons | not found | $786.99 | $64.98 | $851.97 | [Defender](https://www.defender.com/en_us/raymarine-element-9-hv-sonar-gps-display), out of stock |
+| Simrad GO9 XSE, C-MAP Discover, HDI transducer included (000-16293-001) | 9" | Yes | 1200 | $829.99 | $64.98 | **$894.97** | [Defender](https://www.defender.com/en_us/simrad-go9-xse-multifunction-display-with-c-map-discover-chart-navico-9-pin-high-speed-skimmer-none), in stock |
+| Simrad GO7 XSR, no transducer, C-MAP Discover (000-14078-002) | 7" | Yes | 1200 | $919.99 | $64.98 | $984.97 | [Defender](https://www.defender.com/en_us/simrad-go7-xsr-multifunction-display-with-c-map-discover-chart-c-map-discover-chart-without-transducer), in stock |
+| Humminbird HELIX 7 CHIRP MEGA DI GPS G4N, control head only (411640-1CHO) | 7" | No, buttons | not found | $749.99 | $64.98 + N2K adapter $32.99 + CoastMaster card $149.99 | $997.95 | [Defender](https://www.defender.com/en_us/humminbird-helix-7-chirp-mega-di-gps-g4n-fishfinder), in stock |
+| B&G Vulcan 7, basemap only (000-14082-001) | 7" | Yes | 1200 | $789.99 | $64.98 + C-MAP Discover card $159.00 | $1,013.97 | [Defender](https://www.defender.com/en_us/b-g-vulcan7r-multifunction-display-7-radar-display-000-14082-001), in stock |
+| Lowrance Elite FS 9, no transducer, C-MAP Contour+ (000-15707-001) | 9" | Yes | over 1200 | $969.99 | $64.98 | $1,034.97 | [Defender](https://www.defender.com/en_us/lowrance-elite-fs-9-multifunction-display-with-c-map-contour), in stock |
+| Garmin ECHOMAP UHD2 74sv, no transducer, US Coastal GN+ (010-02685-00) | 7" | Yes, plus keys | not published | $999.99 | $64.98 | $1,064.97 | [Garmin](https://www.garmin.com/en-US/p/796418/pn/010-02685-00/) |
+| B&G Vulcan 9, C-MAP Discover (000-13214-009) | 9" | Yes | not found | $1,019.99 | $64.98 | $1,084.97 | [Defender](https://www.defender.com/en_us/b-g-vulcan-9-chartplotter-with-c-map-discover-charts-000-13214-009), in stock |
+| Humminbird XPLORE 9, control head only, CoastMaster included | 9" | Yes, plus keys | not found | $1,199.99 | $64.98 | $1,264.97 | [Defender](https://www.defender.com/en_us/humminbird-xplore-cho-fishfinder), out of stock |
+| Garmin ECHOMAP UHD2 94sv, no transducer, US Coastal GN+ (010-02689-00) | 9" | Yes, plus keys | not published | $1,299.99 | $64.98 | $1,364.97 | [Garmin](https://www.garmin.com/en-US/p/796274/pn/010-02689-00/) |
+
+Gotchas:
+
+- **Garmin.** Nothing under $999.99 has NMEA 2000. The ECHOMAP UHD2 cv models (72cv at $649.99) have no N2K port. ECHOMAP units can't join the Garmin Marine Network either, so they never show the 943xsv's sonar.
+- **Raymarine.** Element units have buttons, no touch. The Element 7 S price is Raymarine's list price; no preferred seller had it in stock. Its N2K lead is a female DeviceNet pigtail, so check connector genders when ordering the drop.
+- **Simrad.** The GO9 XSE bundle with a transducer is cheaper than the no-transducer GO9 ($1,129.99). The transducer isn't needed. The GO9 and the Elite FS 9 are only 800x480 on a 9" screen.
+- **Humminbird.** HELIX needs the $32.99 AS QD NMEA 2000 adapter (720114-1). Defender lists it for HELIX 8 and up; confirm HELIX 7 support with Humminbird. The CoastMaster card price is from a search result only. XPLORE N2K support is inferred from compatible drop cables; its spec sheet couldn't be loaded.
+- **Lowrance.** The Eagle has no N2K. Lowrance still lists the older Elite-7 Ti² ($449) and HDS Carbon 9 ($899), but no seller carries them.
+- **Not checked.** West Marine and Humminbird's own site blocked automated page loads.
+
+## Option 3: networked Garmin at the rear helm
 
 The boat is a Hewescraft 240 OceanPro with a hard top and an extended transom. The rear helm is partly covered and about 10 to 20 ft of cable from the main helm.
 
@@ -95,21 +132,12 @@ The [x3 GPSMAP](https://www.garmin.com/en-US/p/697231/) boxes include a bail mou
 
 The 1243 has two network ports and could be daisy-chained without the GMS 10. That would mean running the radar cable to the rear helm, and Garmin does not clearly say whether a powered-off display passes traffic through, so it is not priced that way here. There is no 10" x3 unit. The 10" GPSMAP 1022 is keyed only (no touch) and comes with a basemap only.
 
-### Not networked, for reference
-
-[ECHOMAP UHD2](https://www.garmin.com/en-US/p/762374/) units cannot join the Garmin Marine Network (Garmin's ECHOMAP installation manual says its network port is not compatible). Like the DIY unit, they show charts and NMEA 2000 data only. Their boxes include no NMEA 2000 T-connector or drop cable.
-
-| Option | Unit | N2K T ($29.99) + 6 m drop ($39.99) | Total |
-|---|---|---|---|
-| ECHOMAP UHD2 74sv, 7", US Coastal GN+ (010-02685-00) | $999.99 | $69.98 | $1,069.97 |
-| ECHOMAP UHD2 94sv, 9", US Coastal GN+ (010-02689-00) | $1,299.99 | $69.98 | $1,369.97 |
-
 ### Used market
 
 Unverified (eBay blocked page loads; prices from search results): used 943xsv about $1,000 to $1,200, used 1243xsv about $2,100. A used networked unit still needs the $364.97 in network parts.
 
 ## What the difference buys
 
-A networked GPSMAP at the rear helm shows the 943xsv's live sonar and the Fantom radar (with overlay and MARPA) where the owner stands to fish. It also shares waypoints and routes, has its own GPS as a backup, and is IPX7.
+**Option 1 vs option 2.** Close on price. The store-bought unit is brighter, sealed, under warranty, and ready today. The DIY unit has the bigger, sharper screen, the fishing chart, and software the owner controls, but it still has to be built (device image, enclosure) and comes with no warranty.
 
-The DIY unit can never show Garmin sonar or radar, because those streams are proprietary to the Garmin Marine Network. It fixes the same problem the other way: the new screen takes the chart, so the 943xsv runs full-screen sonar at the main helm. It also gives the fishing chart (NCEI bathymetry, bottom composition), the owner's own software, and room for later layers.
+**Option 3.** A networked GPSMAP at the rear helm shows the 943xsv's live sonar and the Fantom radar (with overlay and MARPA) where the owner stands to fish. It also shares waypoints and routes, has its own GPS as a backup, and is IPX7. Options 1 and 2 can never show Garmin sonar or radar, because those streams are proprietary to the Garmin Marine Network. They fix the same problem the other way: the new screen takes the chart, so the 943xsv runs full-screen sonar at the main helm.
