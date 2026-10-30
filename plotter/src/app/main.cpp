@@ -206,10 +206,8 @@ int main(int argc, char* argv[]) {
     QQmlEngine::setObjectOwnership(mapItem.get(), QQmlEngine::CppOwnership);
     ChartController chart(mapItem->port(), settings, vessel, ais, packs);
     mapItem->setZoomRange(chart.minZoom(), chart.maxZoom());
-    // The active track always draws, the others when shown.
-    const auto showTracks = [&] { chart.setTracks(tracksController.shown()); };
-    QObject::connect(&tracksController, &TracksController::shownChanged, &chart, showTracks);
-    showTracks();
+    // The active track always draws, the finished ones when shown.
+    bindTracks(chart, tracksController);
 
     // --sheet ais: select the first AIS target that arrives (a dev aid, like the other hidden options).
     if (cli.value(sheetOpt) == "ais") {

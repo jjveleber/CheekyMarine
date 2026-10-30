@@ -9,7 +9,8 @@
 // Source and image ids shared with the chart controller (Task 10). Layers filter on the `kind` property.
 namespace OverlayIds {
 inline constexpr const char* kOwnSource = "cm-own";
-inline constexpr const char* kTracksSource = "cm-tracks";
+inline constexpr const char* kTracksSource = "cm-tracks";        // finished visible tracks
+inline constexpr const char* kActiveTrackSource = "cm-track-active"; // the track being recorded
 inline constexpr const char* kAisSource = "cm-ais";
 inline constexpr const char* kBoatImage = "cm-boat";
 inline constexpr const char* kAisImageA = "cm-ais-a";

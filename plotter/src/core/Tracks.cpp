@@ -61,6 +61,16 @@ bool TrackStore::append(qint64 id, const QList<TrackPoint>& points) {
         db.rollback();
         return false;
     }
+    const auto it = m_totals.find(id);
+    if (it != m_totals.end()) {
+        for (const TrackPoint& p : points) {
+            const LatLon ll{p.lat, p.lon};
+            if (it->points > 0)
+                it->distanceM += distanceM(it->last, ll);
+            it->last = ll;
+            ++it->points;
+        }
+    }
     return true;
 }
 
@@ -80,10 +90,19 @@ QList<TrackInfo> TrackStore::list() {
         out.append(t);
     }
     for (TrackInfo& t : out) {
-        const QList<LatLon> pts = points(t.id);
-        t.points = int(pts.size());
-        for (qsizetype i = 1; i < pts.size(); ++i)
-            t.distanceM += distanceM(pts[i - 1], pts[i]);
+        auto it = m_totals.find(t.id);
+        if (it == m_totals.end()) {
+            const QList<LatLon> pts = points(t.id);
+            Totals totals;
+            totals.points = int(pts.size());
+            for (qsizetype i = 1; i < pts.size(); ++i)
+                totals.distanceM += distanceM(pts[i - 1], pts[i]);
+            if (!pts.isEmpty())
+                totals.last = pts.last();
+            it = m_totals.insert(t.id, totals);
+        }
+        t.points = it->points;
+        t.distanceM = it->distanceM;
     }
     return out;
 }
@@ -125,6 +144,7 @@ void TrackStore::remove(qint64 id) {
         qWarning() << "cannot delete a track:" << db.lastError().text();
         db.rollback();
     }
+    m_totals.remove(id); // read again if the track is still there
 }
 
 TrackRecorder::TrackRecorder(TrackStore& store, Settings& settings, std::function<double()> nowS, QObject* parent)
@@ -216,18 +236,11 @@ TracksController::TracksController(TrackStore& store, TrackRecorder& recorder, Q
     refresh();
 }
 
-QList<QList<LatLon>> TracksController::shown() const {
-    QList<QList<LatLon>> out = m_others;
-    if (!m_activePoints.isEmpty())
-        out.append(m_activePoints);
-    return out;
-}
-
 void TracksController::refresh() {
     const qint64 active = m_recorder.activeId();
     m_shownActive = active;
-    m_rows.clear();
-    m_others.clear();
+    QVariantList rows;
+    QList<qint64> finishedIds;
     for (const TrackInfo& t : m_store.list()) {
         QVariantMap row;
         row[QStringLiteral("id")] = t.id;
@@ -237,12 +250,22 @@ void TracksController::refresh() {
         row[QStringLiteral("points")] = t.points;
         row[QStringLiteral("visible")] = t.visible;
         row[QStringLiteral("active")] = t.id == active;
-        m_rows.append(row);
+        rows.append(row);
         if (t.visible && t.id != active)
-            m_others.append(m_store.points(t.id));
+            finishedIds.append(t.id);
     }
-    emit tracksChanged();
-    emit shownChanged();
+    if (rows != m_rows) {
+        m_rows = rows;
+        emit tracksChanged();
+    }
+    // Finished tracks never change, so their lines are read again only when the set changes.
+    if (finishedIds != m_finishedIds) {
+        m_finishedIds = finishedIds;
+        m_finished.clear();
+        for (qint64 id : finishedIds)
+            m_finished.append(m_store.points(id));
+        emit finishedChanged();
+    }
 }
 
 void TracksController::setVisible(qint64 id, bool visible) {
@@ -260,7 +283,6 @@ void TracksController::remove(qint64 id) {
 void TracksController::onActive(const QList<LatLon>& points) {
     m_activePoints = points;
     if (m_recorder.activeId() != m_shownActive)
-        refresh(); // a track began or recording stopped: the others change too
-    else
-        emit shownChanged();
+        refresh(); // a track began or recording stopped: the finished ones change too
+    emit activeChanged();
 }

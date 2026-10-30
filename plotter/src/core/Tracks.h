@@ -3,6 +3,7 @@
 #include "Settings.h"
 #include "Store.h"
 #include "VesselState.h"
+#include <QHash>
 #include <QList>
 #include <QObject>
 #include <QString>
@@ -33,14 +34,23 @@ public:
     // Adds the points in one transaction and moves `ended` to the last one's time. False (nothing
     // written) on a database error.
     bool append(qint64 id, const QList<TrackPoint>& points);
-    // Newest first. The distance is summed over the stored points.
+    // Newest first. The distance is summed over the stored points. A track's points are read once;
+    // after that its count and distance are kept here and extended by append, so a refresh does not
+    // load every point of every track.
     QList<TrackInfo> list();
     QList<LatLon> points(qint64 id);
     void setVisible(qint64 id, bool visible);
     void remove(qint64 id);
 
 private:
+    struct Totals {
+        int points = 0;
+        double distanceM = 0;
+        LatLon last;
+    };
+
     Store& m_store;
+    QHash<qint64, Totals> m_totals;
 };
 
 // Turns vessel updates into stored track points (rules in the plotter spec, 6.13).
@@ -85,7 +95,8 @@ private:
 };
 
 // What the tracks page and the chart see: rows with show/hide and delete, and the lines to draw
-// (the active track always, the others when visible).
+// (the active track always, the finished ones when visible). The two are separate so a kept point
+// re-sends only the active track; the finished ones change only with the set or a visibility.
 class TracksController : public QObject {
     Q_OBJECT
     Q_PROPERTY(QVariantList tracks READ tracks NOTIFY tracksChanged)
@@ -93,7 +104,10 @@ public:
     TracksController(TrackStore& store, TrackRecorder& recorder, QObject* parent = nullptr);
 
     QVariantList tracks() const { return m_rows; }
-    QList<QList<LatLon>> shown() const;
+    // The visible tracks other than the active one.
+    QList<QList<LatLon>> finished() const { return m_finished; }
+    // The active track, written and buffered points; empty when not recording.
+    QList<LatLon> active() const { return m_activePoints; }
 
     // Reloads the rows (the active track's counts include only written points).
     Q_INVOKABLE void refresh();
@@ -103,7 +117,8 @@ public:
 
 signals:
     void tracksChanged();
-    void shownChanged();
+    void finishedChanged();
+    void activeChanged();
 
 private:
     void onActive(const QList<LatLon>& points);
@@ -111,7 +126,8 @@ private:
     TrackStore& m_store;
     TrackRecorder& m_recorder;
     QVariantList m_rows;
-    QList<QList<LatLon>> m_others; // visible tracks other than the active one
+    QList<qint64> m_finishedIds; // the tracks in m_finished, in order
+    QList<QList<LatLon>> m_finished;
     QList<LatLon> m_activePoints;
     qint64 m_shownActive = 0;
 };

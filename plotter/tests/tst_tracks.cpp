@@ -230,6 +230,50 @@ private slots:
         QCOMPARE(l[0].started, 1000.0);
         QCOMPARE(l[0].ended, 1010.0);
     }
+    // list() keeps each track's distance and point count; appends extend them, and the totals
+    // still equal the sum over the stored points.
+    void listDistanceStaysTheSumAfterAppends() {
+        Rig r;
+        const qint64 id = r.tracks->create(1000), other = r.tracks->create(900);
+        auto pt = [](double t, double lat) {
+            TrackPoint p;
+            p.t = t; p.lat = lat; p.lon = -122.23;
+            return p;
+        };
+        QVERIFY(r.tracks->append(id, {pt(1000, 47.98), pt(1010, 47.99)}));
+        QVERIFY(r.tracks->append(other, {pt(900, 47.0), pt(901, 47.01)}));
+        QCOMPARE(r.tracks->list()[0].points, 2);
+        QVERIFY(r.tracks->append(id, {pt(1020, 48.0), pt(1030, 48.02)}));
+        QVERIFY(r.tracks->append(id, {pt(1040, 48.03)}));
+        const auto l = r.tracks->list();
+        QCOMPARE(l[0].id, id);
+        const QList<LatLon> pts = r.tracks->points(id);
+        double sum = 0;
+        for (qsizetype i = 1; i < pts.size(); ++i) sum += distanceM(pts[i - 1], pts[i]);
+        QCOMPARE(l[0].points, 5);
+        QVERIFY(std::abs(l[0].distanceM - sum) <= 1e-6);
+        QCOMPARE(l[0].ended, 1040.0);
+        QVERIFY(std::abs(l[1].distanceM - distanceM({47.0, -122.23}, {47.01, -122.23})) <= 1e-6);
+        QCOMPARE(l[1].points, 2);
+    }
+    // list() does not reload the points of tracks it has seen: with the points table gone it still
+    // reports the stored totals.
+    void listDoesNotReloadPoints() {
+        Rig r;
+        const qint64 id = r.tracks->create(1000);
+        TrackPoint a, b;
+        a.t = 1000; a.lat = 47.98; a.lon = -122.23;
+        b.t = 1010; b.lat = 47.99; b.lon = -122.23;
+        QVERIFY(r.tracks->append(id, {a, b}));
+        const double d = r.tracks->list()[0].distanceM;
+        QVERIFY(d > 1000);
+        QSqlQuery q(r.store->db());
+        QVERIFY(q.exec("ALTER TABLE track_points RENAME TO track_points_off"));
+        const auto l = r.tracks->list();
+        QVERIFY(q.exec("ALTER TABLE track_points_off RENAME TO track_points"));
+        QCOMPARE(l[0].points, 2);
+        QCOMPARE(l[0].distanceM, d);
+    }
     void createNamesTheTrackInLocalTimeAndListsNewestFirst() {
         Rig r;
         const double t1 = 1.7e9, t2 = 1.7e9 + 86400;
@@ -325,22 +369,52 @@ private slots:
     void controllerShowsActiveAlwaysAndOthersWhenVisible() {
         Rig r(true, 1, 0);
         TracksController c(*r.tracks, *r.rec);
-        QSignalSpy shown(&c, &TracksController::shownChanged);
+        QSignalSpy finished(&c, &TracksController::finishedChanged);
         // Track one, two points; then a gap and track two.
         r.feed(0, 47.0); r.feed(1, 47.001);
         r.feed(1000, 48.0); r.feed(1001, 48.001);
         r.rec->flush();
         c.refresh();
         QCOMPARE(c.tracks().size(), 2);
-        QCOMPARE(c.shown().size(), 2);
+        QCOMPARE(c.finished().size(), 1);
+        QCOMPARE(c.active().size(), 2);
         const qint64 first = c.tracks().at(1).toMap()["id"].toLongLong();
+        const auto before = finished.size();
         c.setVisible(first, false);
-        QCOMPARE(c.shown().size(), 1);
-        QCOMPARE(c.shown()[0].size(), 2);
+        QCOMPARE(c.finished().size(), 0);
+        QCOMPARE(finished.size(), before + 1); // a visibility change rebuilds the finished tracks
+        c.setVisible(first, true);
+        QCOMPARE(c.finished().size(), 1);
+        QCOMPARE(c.finished()[0].size(), 2);
+        QCOMPARE(finished.size(), before + 2);
         // Hiding the active track does not hide it.
         c.setVisible(r.rec->activeId(), false);
-        QCOMPARE(c.shown().size(), 1);
-        QVERIFY(shown.size() >= 2);
+        QCOMPARE(c.active().size(), 2);
+        QCOMPARE(c.finished().size(), 1);
+    }
+    // The cost of a kept point must not grow with history: only the active track changes.
+    void keptPointDoesNotRebuildFinishedTracks() {
+        Rig r(true, 1, 0);
+        TracksController c(*r.tracks, *r.rec);
+        r.feed(0, 47.0); r.feed(1, 47.001);
+        r.feed(1000, 48.0);
+        QCOMPARE(c.finished().size(), 1);
+        QSignalSpy finished(&c, &TracksController::finishedChanged);
+        QSignalSpy active(&c, &TracksController::activeChanged);
+        r.feed(1001, 48.001);
+        r.feed(1002, 48.002);
+        QCOMPARE(finished.size(), 0);
+        QCOMPARE(active.size(), 2);
+        QCOMPARE(c.active().size(), 3);
+        r.rec->flush();
+        c.refresh(); // the tracks page refreshes every 5 s
+        c.refresh();
+        QCOMPARE(finished.size(), 0);
+        // Recording off: the active track joins the finished ones.
+        r.settings->setTrackRecording(false);
+        QCOMPARE(finished.size(), 1);
+        QCOMPARE(c.finished().size(), 2);
+        QCOMPARE(c.active().size(), 0);
     }
     void controllerRowsCarryTheDisplayFields() {
         Rig r(true, 1, 0);
@@ -372,8 +446,9 @@ private slots:
         Rig r(true, 1, 0);
         TracksController c(*r.tracks, *r.rec);
         r.feed(0, 47.0); r.feed(1, 47.001);
-        r.feed(2000, 48.0); // a new track: the first one is now an "other"
-        QCOMPARE(c.shown().size(), 2);
+        r.feed(2000, 48.0); // a new track: the first one is now finished
+        QCOMPARE(c.finished().size(), 1);
+        QCOMPARE(c.active().size(), 1);
     }
 
     // Review Focus 4: SIGKILL a recording child after 25 synthetic seconds of points; the database

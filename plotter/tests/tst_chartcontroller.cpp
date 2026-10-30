@@ -3,6 +3,7 @@
 #include "core/Overlays.h"
 #include "core/Settings.h"
 #include "core/Store.h"
+#include "core/Tracks.h"
 #include "core/VesselModel.h"
 #include <QDir>
 #include <QFile>
@@ -19,7 +20,8 @@ constexpr double kPi = 3.14159265358979323846;
 const QList<double> kValdco{0, 0.9, 1.8, 3.6, 5, 5.4, 9.1, 10, 18.2, 20, 27.4, 30};
 const QStringList kImageIds{OverlayIds::kBoatImage, OverlayIds::kAisImageA, OverlayIds::kAisImageB,
                             OverlayIds::kAisImageHollow};
-const QSet<QString> kSources{OverlayIds::kTracksSource, OverlayIds::kAisSource, OverlayIds::kOwnSource};
+const QSet<QString> kSources{OverlayIds::kTracksSource, OverlayIds::kActiveTrackSource, OverlayIds::kAisSource,
+                             OverlayIds::kOwnSource};
 
 QJsonValue json(const QByteArray& text) { return QJsonDocument::fromJson("[" + text + "]").array().at(0); }
 
@@ -169,13 +171,13 @@ VesselState boat() {
     return v;
 }
 
-// The runtime overlays are complete: images, three sources, layers above all style layers in the
-// order tracks, ais, own, and the depcnt-safety filter.
+// The runtime overlays are complete: images, four sources, layers above all style layers in the
+// order tracks, active track, ais, own, and the depcnt-safety filter.
 void checkOverlays(const FakeChartMap& map) {
     for (const QString& id : kImageIds) QVERIFY2(map.images.contains(id), qPrintable(id));
     QCOMPARE(QSet<QString>(map.sources.keyBegin(), map.sources.keyEnd()), kSources);
     const int nStyle = styleLayerCount(map.styles.last());
-    QVERIFY(map.layerIds.size() >= nStyle + 6);
+    QVERIFY(map.layerIds.size() >= nStyle + 7);
     QStringList runtimeSources;
     for (int i = nStyle; i < map.layerIds.size(); ++i) {
         const QString src = map.layerSrc.value(map.layerIds[i]);
@@ -185,7 +187,8 @@ void checkOverlays(const FakeChartMap& map) {
     QCOMPARE(map.layerIds.size() - nStyle, map.layerSrc.size()); // no runtime layer below a style layer
     QStringList order = runtimeSources;
     order.removeDuplicates();
-    QCOMPARE(order, QStringList({OverlayIds::kTracksSource, OverlayIds::kAisSource, OverlayIds::kOwnSource}));
+    QCOMPARE(order, QStringList({OverlayIds::kTracksSource, OverlayIds::kActiveTrackSource, OverlayIds::kAisSource,
+                                 OverlayIds::kOwnSource}));
     QCOMPARE(QSet<QString>(map.layerIds.begin(), map.layerIds.end()).size(), map.layerIds.size());
 }
 } // namespace
@@ -287,7 +290,7 @@ private slots:
         QTest::ignoreMessage(QtWarningMsg, QRegularExpression("^ChartController: depth filters not applied:"));
         r.map.loaded();
         QVERIFY(r.map.filters.isEmpty());
-        QCOMPARE(r.map.sources.size(), 3); // the overlays are still there
+        QCOMPARE(r.map.sources.size(), 4); // the overlays are still there
     }
 
     void paletteReloadReaddsRuntimeSources() {
@@ -565,6 +568,57 @@ private slots:
         QCOMPARE(r.map.sources.value(OverlayIds::kTracksSource)["features"].toArray().size(), 1);
     }
 
+    // A kept point re-sends only the active track; the finished tracks go to the map when the set
+    // or a visibility changes, and both survive a style reload.
+    void keptPointSendsOnlyTheActiveTrack() {
+        Rig r;
+        QVERIFY(r.settings);
+        r.settings->setTrackRecording(true);
+        r.settings->setTrackIntervalS(1);
+        r.settings->setTrackMinDistanceM(0);
+        r.make();
+        r.map.loaded();
+        TrackStore store(*r.store);
+        double now = 0;
+        TrackRecorder rec(store, *r.settings, [&now] { return now; });
+        TracksController tracks(store, rec);
+        bindTracks(*r.ctrl, tracks);
+        const auto feed = [&](double t, double lat) {
+            now = t;
+            VesselState s = boat();
+            s.t = t;
+            s.lat = lat;
+            rec.onVessel(s);
+        };
+        const auto features = [&](const char* source) {
+            return r.map.sources.value(source)["features"].toArray().size();
+        };
+        feed(0, 47.0);
+        feed(1, 47.001);
+        feed(1000, 48.0); // a gap: the first track is finished
+        QCOMPARE(features(OverlayIds::kTracksSource), 1);
+        const int finishedCalls = r.map.count(QStringLiteral("geojson:") + OverlayIds::kTracksSource);
+        const int activeCalls = r.map.count(QStringLiteral("geojson:") + OverlayIds::kActiveTrackSource);
+        feed(1001, 48.001);
+        feed(1002, 48.002);
+        QCOMPARE(r.map.count(QStringLiteral("geojson:") + OverlayIds::kTracksSource), finishedCalls);
+        QCOMPARE(r.map.count(QStringLiteral("geojson:") + OverlayIds::kActiveTrackSource), activeCalls + 2);
+        QCOMPARE(features(OverlayIds::kActiveTrackSource), 1);
+        tracks.refresh(); // the tracks page's 5 s refresh
+        QCOMPARE(r.map.count(QStringLiteral("geojson:") + OverlayIds::kTracksSource), finishedCalls);
+        const qint64 first = tracks.tracks().at(1).toMap()["id"].toLongLong();
+        tracks.setVisible(first, false);
+        QCOMPARE(r.map.count(QStringLiteral("geojson:") + OverlayIds::kTracksSource), finishedCalls + 1);
+        QCOMPARE(features(OverlayIds::kTracksSource), 0);
+        tracks.setVisible(first, true);
+        QCOMPARE(features(OverlayIds::kTracksSource), 1);
+        r.ctrl->setPalette("night");
+        r.map.loaded(); // a reload drops runtime sources; both come back
+        QCOMPARE(features(OverlayIds::kTracksSource), 1);
+        QCOMPARE(features(OverlayIds::kActiveTrackSource), 1);
+        QCOMPARE(r.map.layerSrc.value("cm-track-active-line"), QString(OverlayIds::kActiveTrackSource));
+    }
+
     // Three fixture targets: A at (47.990, -122.250), B 3 px right of A, C far away.
     static QList<AisTarget> fixtureTargets() {
         AisTarget a, b, c;
@@ -718,6 +772,7 @@ private slots:
         QCOMPARE(colourOf("cm-own-cog"), overlayColours("night").cog.name());
         QCOMPARE(colourOf("cm-ais-vector"), overlayColours("night").aisVector.name());
         QCOMPARE(colourOf("cm-tracks-line"), overlayColours("night").track.name());
+        QCOMPARE(colourOf("cm-track-active-line"), overlayColours("night").track.name());
     }
 
     // Images handed over before a palette change are the ones re-added after the reload.

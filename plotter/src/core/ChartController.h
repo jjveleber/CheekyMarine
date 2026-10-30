@@ -13,6 +13,7 @@
 class Settings;
 class VesselModel;
 class AisModel;
+class TracksController;
 
 // Chart page logic: picks and loads the style, keeps the runtime overlays (tracks, AIS, own ship)
 // and depth filters on the map across style reloads, and drives the follow camera.
@@ -56,7 +57,10 @@ public:
 
     // Runtime images by id (OverlayIds), added now if a style is loaded and after every load.
     void setImages(const QHash<QString, QImage>& images);
+    // The finished visible tracks (cm-tracks) and the track being recorded (cm-track-active): a
+    // kept point re-sends only the active one.
     void setTracks(const QList<QList<LatLon>>& tracks);
+    void setActiveTrack(const QList<LatLon>& points);
 
     // Changes the zoom by `log2Delta` (clamped to minZoom..maxZoom) and, when following, re-applies
     // the camera so the boat keeps its place. Pinch and wheel use it while following.
@@ -110,6 +114,11 @@ private:
     bool m_ready = false;       // runtime sources and layers are on the map
     QHash<QString, QImage> m_images;
     QList<QList<LatLon>> m_tracks;
+    QList<LatLon> m_activeTrack;
     quint32 m_selectedMmsi = 0;
     QVariantMap m_aisSelection;
 };
+
+// Draws `tracks` on `chart` now and whenever its finished or active lines change. Both must outlive
+// the connections (the app declares them in main).
+void bindTracks(ChartController& chart, TracksController& tracks);

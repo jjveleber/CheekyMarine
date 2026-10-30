@@ -5,6 +5,7 @@
 #include "core/Overlays.h"
 #include "core/Settings.h"
 #include "core/StyleLoader.h"
+#include "core/Tracks.h"
 #include "core/VesselModel.h"
 #include <QDebug>
 #include <QFile>
@@ -28,10 +29,14 @@ QJsonObject line(QJsonObject layer, const QColor& colour) {
     return layer;
 }
 
-// Runtime layers, bottom first: tracks, AIS, own ship (topmost), in the palette's overlay colours.
+// Runtime layers, bottom first: tracks, active track, AIS, own ship (topmost), in the palette's overlay colours.
 QList<QJsonObject> runtimeLayers(const OverlayColours& c) {
     return {
         line(parse(R"({"id":"cm-tracks-line","type":"line","source":"cm-tracks",
+            "filter":["==",["get","kind"],"track"],
+            "layout":{"line-join":"round","line-cap":"round"},
+            "paint":{"line-width":2.5}})"), c.track),
+        line(parse(R"({"id":"cm-track-active-line","type":"line","source":"cm-track-active",
             "filter":["==",["get","kind"],"track"],
             "layout":{"line-join":"round","line-cap":"round"},
             "paint":{"line-width":2.5}})"), c.track),
@@ -143,6 +148,20 @@ void ChartController::setTracks(const QList<QList<LatLon>>& tracks) {
     if (m_ready) m_map.setGeoJson(OverlayIds::kTracksSource, tracksGeoJson(m_tracks));
 }
 
+void ChartController::setActiveTrack(const QList<LatLon>& points) {
+    m_activeTrack = points;
+    if (m_ready) m_map.setGeoJson(OverlayIds::kActiveTrackSource, tracksGeoJson({m_activeTrack}));
+}
+
+void bindTracks(ChartController& chart, TracksController& tracks) {
+    QObject::connect(&tracks, &TracksController::finishedChanged, &chart,
+                     [&chart, &tracks] { chart.setTracks(tracks.finished()); });
+    QObject::connect(&tracks, &TracksController::activeChanged, &chart,
+                     [&chart, &tracks] { chart.setActiveTrack(tracks.active()); });
+    chart.setTracks(tracks.finished());
+    chart.setActiveTrack(tracks.active());
+}
+
 void ChartController::zoomIn() { zoomBy(1); }
 void ChartController::zoomOut() { zoomBy(-1); }
 
@@ -194,6 +213,7 @@ void ChartController::onStyleLoaded() {
     m_loadPending = false;
     for (auto it = m_images.cbegin(); it != m_images.cend(); ++it) m_map.addImage(it.key(), it.value());
     m_map.setGeoJson(OverlayIds::kTracksSource, tracksGeoJson(m_tracks));
+    m_map.setGeoJson(OverlayIds::kActiveTrackSource, tracksGeoJson({m_activeTrack}));
     m_map.setGeoJson(OverlayIds::kAisSource, aisGeoJson(m_ais.targets(), m_vessel.state()));
     m_map.setGeoJson(OverlayIds::kOwnSource, ownShipGeoJson(m_vessel.state()));
     for (const QJsonObject& layer : runtimeLayers(overlayColours(m_palette))) m_map.addLayer(layer);
