@@ -11,7 +11,13 @@ find_package(QMapLibre REQUIRED COMPONENTS Core)
 configure_file(src/core/Version.h.in ${CMAKE_CURRENT_BINARY_DIR}/generated/plotter/Version.h @ONLY)
 
 # All application logic lives here so tests can link it.
-add_library(plottercore STATIC src/core/Placeholder.cpp)
+add_library(plottercore STATIC
+    src/core/Placeholder.cpp
+    src/core/N2kParse.cpp
+    src/core/N2kClient.cpp
+    src/core/VesselModel.cpp
+    src/core/AisModel.cpp)
+set_target_properties(plottercore PROPERTIES AUTOMOC ON)
 target_include_directories(plottercore PUBLIC
     ${CMAKE_CURRENT_BINARY_DIR}/generated
     ${CMAKE_CURRENT_SOURCE_DIR}/src)
@@ -30,6 +36,8 @@ function(plotter_add_test name)
 endfunction()
 
 plotter_add_test(tst_version tests/tst_version.cpp)
+plotter_add_test(tst_n2kparse tests/tst_n2kparse.cpp)
+plotter_add_test(tst_n2kclient tests/tst_n2kclient.cpp)
 
 # Linking Qt6::Sql and QMapLibre directly puts Qt's lib dir and the QMapLibre lib dir in the
 # automatic build RPATH, so libQMapLibre.so resolves libQt6Sql without LD_LIBRARY_PATH.
