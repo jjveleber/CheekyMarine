@@ -29,6 +29,10 @@ class ChartController : public QObject {
     Q_PROPERTY(bool noPosition READ noPosition NOTIFY noPositionChanged)
     Q_PROPERTY(double minZoom READ minZoom CONSTANT)
     Q_PROPERTY(double maxZoom READ maxZoom CONSTANT)
+    // The AIS target shown on the AisSheet: strings {mmsi, name, cls, sog, cog, range, bearing, posAge}
+    // ("--" for a missing value); empty when none is selected. Follows the target as it moves and
+    // is cleared when it disappears.
+    Q_PROPERTY(QVariantMap aisSelection READ aisSelection NOTIFY aisSelectionChanged)
 
 public:
     // All references must outlive the controller. Loads the style for Settings::chartMode at once.
@@ -61,6 +65,14 @@ public:
     Q_INVOKABLE void zoomOut();
     Q_INVOKABLE void recenter();
 
+    // MMSI (as uint) of the nearest AIS target whose screen position is within `radiusPx` of `px`
+    // (item pixels); an invalid QVariant when there is none.
+    Q_INVOKABLE QVariant targetAt(QPointF px, double radiusPx) const;
+    // Selects targetAt(px, radiusPx), or leaves the selection alone on a miss.
+    Q_INVOKABLE void selectAt(QPointF px, double radiusPx);
+    Q_INVOKABLE void clearTarget();
+    QVariantMap aisSelection() const { return m_aisSelection; }
+
 signals:
     void modeChanged();
     void orientationChanged();
@@ -68,6 +80,7 @@ signals:
     void followChanged();
     void noticeChanged();
     void noPositionChanged();
+    void aisSelectionChanged();
 
 private:
     void loadStyle();
@@ -75,6 +88,7 @@ private:
     void applyDepthFilters();
     void onVessel();
     void pushAis();
+    void refreshSelection();
     void applyCamera();
 
     ChartMap& m_map;
@@ -94,4 +108,6 @@ private:
     bool m_ready = false;       // runtime sources and layers are on the map
     QHash<QString, QImage> m_images;
     QList<QList<LatLon>> m_tracks;
+    quint32 m_selectedMmsi = 0;
+    QVariantMap m_aisSelection;
 };

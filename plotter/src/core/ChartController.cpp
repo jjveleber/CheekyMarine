@@ -1,5 +1,6 @@
 #include "core/ChartController.h"
 #include "core/AisModel.h"
+#include "core/Fields.h"
 #include "core/DepthFilters.h"
 #include "core/Overlays.h"
 #include "core/Settings.h"
@@ -240,11 +241,80 @@ void ChartController::onVessel() {
         emit noPositionChanged();
     }
     if (m_ready) m_map.setGeoJson(OverlayIds::kOwnSource, ownShipGeoJson(s));
+    refreshSelection(); // range and bearing are from the own ship
     applyCamera();
 }
 
 void ChartController::pushAis() {
     if (m_ready) m_map.setGeoJson(OverlayIds::kAisSource, aisGeoJson(m_ais.targets(), m_vessel.state()));
+    refreshSelection();
+}
+
+QVariant ChartController::targetAt(QPointF px, double radiusPx) const {
+    QVariant best;
+    double bestD = radiusPx;
+    for (const AisTarget& t : m_ais.targets()) {
+        if (!t.lat || !t.lon) continue;
+        const QPointF d = m_map.toScreen(*t.lat, *t.lon) - px;
+        const double dist = std::hypot(d.x(), d.y());
+        if (dist <= bestD) {
+            bestD = dist;
+            best = t.mmsi;
+        }
+    }
+    return best;
+}
+
+void ChartController::selectAt(QPointF px, double radiusPx) {
+    const QVariant hit = targetAt(px, radiusPx);
+    if (!hit.isValid()) return;
+    m_selectedMmsi = hit.toUInt();
+    refreshSelection();
+}
+
+void ChartController::clearTarget() {
+    m_selectedMmsi = 0;
+    refreshSelection();
+}
+
+// Rebuilds the sheet's values from the selected target; an unknown MMSI (gone) clears the selection.
+void ChartController::refreshSelection() {
+    QVariantMap sel;
+    if (m_selectedMmsi != 0) {
+        const QList<AisTarget> targets = m_ais.targets();
+        const auto it = std::find_if(targets.cbegin(), targets.cend(),
+                                     [this](const AisTarget& t) { return t.mmsi == m_selectedMmsi; });
+        if (it == targets.cend()) {
+            m_selectedMmsi = 0;
+        } else {
+            const AisTarget& t = *it;
+            const QString missing = QStringLiteral("--");
+            VesselState v; // the target's motion, formatted like the own-ship fields (speed in knots)
+            v.sogMs = t.sogMs;
+            v.cogRad = t.cogRad;
+            UnitPrefs knots;
+            knots.speed = SpeedUnit::Knots;
+            QString range = missing, bearing = missing;
+            const VesselState& own = m_vessel.state();
+            if (t.lat && t.lon && own.lat && own.lon) {
+                const LatLon from{*own.lat, *own.lon}, to{*t.lat, *t.lon};
+                range = QString::number(std::round(distanceM(from, to) / 1852.0 * 10.0) / 10.0, 'f', 1);
+                bearing = QStringLiteral("%1").arg(static_cast<int>(std::round(bearingDeg(from, to))) % 360, 3, 10,
+                                                   QLatin1Char('0'));
+            }
+            sel = {{"mmsi", QString::number(t.mmsi)},
+                   {"name", t.name.isEmpty() ? QStringLiteral("Unknown") : t.name},
+                   {"cls", t.cls.isEmpty() ? missing : t.cls},
+                   {"sog", formatValue(Field::Sog, v, knots)},
+                   {"cog", formatValue(Field::Cog, v, knots)},
+                   {"range", range},
+                   {"bearing", bearing},
+                   {"posAge", t.posAge ? QStringLiteral("%1 s").arg(static_cast<long long>(std::round(*t.posAge))) : missing}};
+        }
+    }
+    if (sel == m_aisSelection) return;
+    m_aisSelection = sel;
+    emit aisSelectionChanged();
 }
 
 void ChartController::applyCamera() {

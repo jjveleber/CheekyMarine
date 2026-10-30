@@ -58,6 +58,10 @@ Item {
                 last = activeTranslation
             }
         }
+        // A tap (not a pan) picks the nearest AIS target within 8 mm; a miss changes nothing.
+        TapHandler {
+            onTapped: (eventPoint) => page.chart.selectAt(eventPoint.position, Units.mm(8))
+        }
         PinchHandler {
             target: null
             minimumPointCount: 2
@@ -225,6 +229,13 @@ Item {
         width: Math.max(implicitWidth, Units.mm(40))
         text: "Done editing"
         onClicked: page.editing = false
+    }
+
+    AisSheet {
+        id: aisSheet
+        anchors { horizontalCenter: cornerArea.horizontalCenter; top: cornerArea.top; topMargin: Units.mm(14) }
+        info: page.chart.aisSelection
+        onClosed: page.chart.clearTarget()
     }
 
     LegendSheet {

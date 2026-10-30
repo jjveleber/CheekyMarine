@@ -22,6 +22,10 @@ TestCase {
         property var legend: [{ abbr: "Blds", meaning: "boulders", kind: "type" },
                               { abbr: "Cb", meaning: "cobbles", kind: "type" },
                               { abbr: "Sh", meaning: "shells", kind: "type" }]
+        property var aisSelection: ({})
+        property var selected: []
+        function selectAt(p, r) { selected.push(r) }
+        function clearTarget() { aisSelection = ({}) }
         function zoomIn() {}
         function zoomOut() {}
         function zoomBy(d) {}
@@ -172,6 +176,29 @@ TestCase {
         const rec = createTemporaryObject(recoveryComp, testCase, { width: data.w, height: data.h, recovery: fixture.recovery })
         verify(rec, "RecoveryScreen")
         compare(checkBigButtons(rec), 2) // Start fresh, and Try again for an Io error
+    }
+
+    function test_aisSheet() {
+        Units.windowWidth = 1280
+        Units.windowHeight = 800
+        const chart = createTemporaryObject(chartPageComp, testCase, {
+            width: 1280 - Units.mm(17), height: 800,
+            chart: chartStub, chartMap: createTemporaryObject(mapStub, testCase), slotsModel: fixture.slotsModel })
+        const sheet = byName(chart, "aisSheet")
+        verify(sheet, "aisSheet")
+        verify(!sheet.visible)
+        chartStub.aisSelection = { mmsi: "367000001", name: "SEA QUEEN", cls: "A", sog: "10.0", cog: "090",
+                                   range: "1.0", bearing: "307", posAge: "12 s" }
+        verify(sheet.visible)
+        const values = findAll(sheet, it => it.objectName === "aisValue").map(it => it.text)
+        verify(values.indexOf("SEA QUEEN") >= 0, "name")
+        verify(values.indexOf("367000001") >= 0, "mmsi")
+        compare(values.length, 8)
+        compare(checkBigButtons(sheet), 1) // the Close button only
+        const close = byName(sheet, "aisCloseButton")
+        verify(close)
+        close.clicked()
+        verify(!sheet.visible)
     }
 
     function test_legendSheet() {

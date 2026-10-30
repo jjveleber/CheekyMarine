@@ -526,6 +526,116 @@ private slots:
         QCOMPARE(r.map.sources.value(OverlayIds::kTracksSource)["features"].toArray().size(), 1);
     }
 
+    // Three fixture targets: A at (47.990, -122.250), B 3 px right of A, C far away.
+    static QList<AisTarget> fixtureTargets() {
+        AisTarget a, b, c;
+        a.mmsi = 367000001;
+        a.cls = "A";
+        a.name = "SEA QUEEN";
+        a.lat = 47.99;
+        a.lon = -122.25;
+        a.sogMs = 5.144444;
+        a.cogRad = kPi / 2;
+        a.posAge = 12;
+        b.mmsi = 367000002;
+        b.cls = "B";
+        b.lat = 47.99;
+        b.lon = -122.2497;
+        c.mmsi = 367000003;
+        c.cls = "A";
+        c.lat = 48.05;
+        c.lon = -122.30;
+        return {a, b, c};
+    }
+
+    void aisFeedsThreePointsClearsOnEmptyAndNotLive() {
+        Rig r;
+        QVERIFY(r.settings);
+        r.make();
+        r.map.loaded();
+        r.ais.setTargets(fixtureTargets());
+        const auto features = r.map.sources.value(OverlayIds::kAisSource)["features"].toArray();
+        int points = 0;
+        for (const auto& f : features)
+            if (f.toObject()["properties"].toObject()["kind"].toString() == "ais") ++points;
+        QCOMPARE(points, 3);
+        r.ais.setTargets({});
+        QVERIFY(r.map.sources.value(OverlayIds::kAisSource)["features"].toArray().isEmpty());
+        r.ais.setTargets(fixtureTargets());
+        QVERIFY(!r.map.sources.value(OverlayIds::kAisSource)["features"].toArray().isEmpty());
+        r.ais.setLive(false);
+        QVERIFY(r.map.sources.value(OverlayIds::kAisSource)["features"].toArray().isEmpty());
+    }
+
+    void targetAtPicksTheNearestWithinTheRadius() {
+        Rig r;
+        QVERIFY(r.settings);
+        r.make();
+        r.map.loaded();
+        r.ais.setTargets(fixtureTargets());
+        const QPointF a = r.map.toScreen(47.99, -122.25); // B is 3 px to its right
+        // 2 px right of A: A is 2 px away, B is 1 px away, so B.
+        QCOMPARE(r.ctrl->targetAt(a + QPointF(2, 0), 5).toUInt(), 367000002u);
+        QCOMPARE(r.ctrl->targetAt(a + QPointF(-1, 0), 5).toUInt(), 367000001u);
+        // Only B is inside a 2 px radius of a point 4 px right of A.
+        QCOMPARE(r.ctrl->targetAt(a + QPointF(4, 0), 2).toUInt(), 367000002u);
+        QVERIFY(!r.ctrl->targetAt(a + QPointF(0, 50), 8).isValid());
+        QVERIFY(!r.ctrl->targetAt(QPointF(0, 0), 8).isValid());
+        r.ais.setTargets({});
+        QVERIFY(!r.ctrl->targetAt(a, 8).isValid());
+    }
+
+    void selectedTargetCarriesFormattedValuesAndTracksUpdates() {
+        Rig r;
+        QVERIFY(r.settings);
+        r.make();
+        r.map.loaded();
+        r.vessel.setState(boat());
+        r.ais.setTargets(fixtureTargets());
+        QVERIFY(r.ctrl->aisSelection().isEmpty());
+        const QPointF a = r.map.toScreen(47.99, -122.25);
+        r.ctrl->selectAt(a + QPointF(-1, 0), 5);
+        QVariantMap s = r.ctrl->aisSelection();
+        QCOMPARE(s["mmsi"].toString(), QString("367000001"));
+        QCOMPARE(s["name"].toString(), QString("SEA QUEEN"));
+        QCOMPARE(s["cls"].toString(), QString("A"));
+        QCOMPARE(s["sog"].toString(), QString("10.0"));
+        QCOMPARE(s["cog"].toString(), QString("090"));
+        QCOMPARE(s["posAge"].toString(), QString("12 s"));
+        QCOMPARE(s["range"].toString(), QString("1.0")); // 1.1 km north, 1.5 km west
+        QCOMPARE(s["bearing"].toString(), QString("307")); // NW of own ship
+        // The target keeps moving: the selection follows it.
+        QList<AisTarget> moved = fixtureTargets();
+        moved[0].sogMs = 2.572222;
+        r.ais.setTargets(moved);
+        QCOMPARE(r.ctrl->aisSelection()["sog"].toString(), QString("5.0"));
+        // A target with no name or position shows Unknown and "--".
+        QList<AisTarget> bare = fixtureTargets();
+        bare[0].name.clear();
+        bare[0].lat.reset();
+        bare[0].lon.reset();
+        bare[0].sogMs.reset();
+        bare[0].posAge.reset();
+        r.ais.setTargets(bare);
+        s = r.ctrl->aisSelection();
+        QCOMPARE(s["name"].toString(), QString("Unknown"));
+        QCOMPARE(s["range"].toString(), QString("--"));
+        QCOMPARE(s["bearing"].toString(), QString("--"));
+        QCOMPARE(s["sog"].toString(), QString("--"));
+        QCOMPARE(s["posAge"].toString(), QString("--"));
+        // The target disappears: the sheet closes.
+        r.ais.setTargets({});
+        QVERIFY(r.ctrl->aisSelection().isEmpty());
+        // A miss clears nothing selected; clearTarget closes.
+        r.ais.setTargets(fixtureTargets());
+        r.ctrl->selectAt(a, 5);
+        QVERIFY(!r.ctrl->aisSelection().isEmpty());
+        r.ctrl->clearTarget();
+        QVERIFY(r.ctrl->aisSelection().isEmpty());
+        r.ctrl->selectAt(QPointF(0, 0), 5);
+        QVERIFY(r.ctrl->aisSelection().isEmpty());
+    }
+
     // The first camera can come while the viewport has no height yet; a resize re-applies it so
     // the boat lands in the lower third without waiting for the next vessel update.
     void viewportResizeReappliesFollowCamera() {
