@@ -41,9 +41,10 @@ class SynthN2kTest(unittest.TestCase):
         cls.ais = [l for l in lines if l["type"] == "ais"]
 
     def near(self, s, key=None):
-        """The vessel line closest to s seconds after the start (with a non-null key if given)."""
-        c = [v for v in self.vessel if key is None or v[key] is not None]
-        return min(c, key=lambda v: abs(v["t"] - (T0 + s)))
+        """The first vessel line at or after s+1 seconds. n2kd publishes a tick before the frames
+        stamped at the same time, so that line carries the values of the frames stamped s."""
+        c = [v for v in self.vessel if v["t"] >= T0 + s + 1 - 1e-6 and (key is None or v[key] is not None)]
+        return c[0]
 
     def test_deterministic(self):
         self.assertTrue(self.deterministic)
@@ -54,13 +55,13 @@ class SynthN2kTest(unittest.TestCase):
 
     def test_sog(self):
         v = self.near(60, "sog")
-        self.assertLess(abs(v["t"] - (T0 + 60)), 2)
+        self.assertLess(v["t"] - (T0 + 61), 1)
         self.assertLess(abs(v["sog"] - 3.0866), 0.01)
 
     def test_depth(self):
         v = self.near(75, "depth")
-        self.assertLess(abs(v["t"] - (T0 + 75)), 2)
-        self.assertLess(abs(v["depth"] - (30 + 25 * math.sin(2 * math.pi * 75 / 300))), 0.01)
+        self.assertLess(v["t"] - (T0 + 76), 1)
+        self.assertLess(abs(v["depth"] - (30 + 25 * math.sin(2 * math.pi * 75 / 300))), 0.006)
         self.assertEqual(v["depthOffset"], -0.3)
 
     def test_heading_reference(self):
