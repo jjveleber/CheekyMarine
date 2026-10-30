@@ -58,4 +58,6 @@ linuxbrew libraries; configure and build with
 The `plotter` job in `.github/workflows/plotter-ci.yml` runs the steps above on ubuntu-24.04. It
 caches `~/Qt` and the installed maplibre prefix (keyed on the hash of `scripts/build-maplibre-qt.sh`,
 which holds the pinned commit); the 8.5 GB source checkout is never cached. A cache miss prints
-`df -h` and frees disk space first. Free disk observed on a cache miss: see the first run's log.
+`df -h` and frees disk space first. Observed on the first (cache miss) run: 84 GB free before and
+101 GB free after removing dotnet, android and ghc, so the 8.5 GB checkout fits either way. A cache
+miss takes about 17 minutes in total (the maplibre build step alone about 15).
