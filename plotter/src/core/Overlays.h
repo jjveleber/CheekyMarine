@@ -1,6 +1,7 @@
 #pragma once
 #include "Geo.h"
 #include "VesselState.h"
+#include <QColor>
 #include <QJsonObject>
 #include <QList>
 
@@ -25,3 +26,10 @@ QJsonObject tracksGeoJson(const QList<QList<LatLon>>& tracks);
 // "aisvec" LineString (6 min of travel). rot = heading, else COG, else 0 (AIS angles are true).
 // `own` is currently unused (reserved for CPA styling).
 QJsonObject aisGeoJson(const QList<AisTarget>& targets, const VesselState& own);
+
+// Colours of the runtime overlays (icons and lines) for a palette ("day", "dusk", "night"; anything
+// else gives day). Night uses reds and black only: no channel but red above 0x20, as in Theme.qml.
+struct OverlayColours {
+    QColor boatFill, boatOutline, aisFill, aisOutline, heading, cog, aisVector, track;
+};
+OverlayColours overlayColours(const QString& palette);

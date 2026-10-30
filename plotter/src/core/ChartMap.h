@@ -35,4 +35,5 @@ public:
 signals:
     void styleLoaded();
     void userGesture(); // a pan by the user (zoom gestures keep follow mode)
+    void viewportChanged(); // the viewport size changed (viewportHeight() is the new one)
 };

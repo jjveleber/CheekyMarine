@@ -149,8 +149,10 @@ void MapLibreChartMap::scaleBy(double factor, QPointF centre) {
 
 void MapLibreChartMap::geometryChange(const QRectF& newGeometry, const QRectF& oldGeometry) {
     QQuickItem::geometryChange(newGeometry, oldGeometry);
-    if (newGeometry.size() != oldGeometry.size() && newGeometry.width() >= 1 && newGeometry.height() >= 1)
+    if (newGeometry.size() != oldGeometry.size() && newGeometry.width() >= 1 && newGeometry.height() >= 1) {
         m_map->resize(newGeometry.size().toSize()); // so camera maths sees the real viewport at once
+        emit m_port.viewportChanged();               // the follow camera's lower-third offset depends on it
+    }
     update();
 }
 

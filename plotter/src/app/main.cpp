@@ -4,6 +4,7 @@
 #include "core/ChartController.h"
 #include "core/N2kClient.h"
 #include "core/PackCatalog.h"
+#include "core/PaletteController.h"
 #include "core/Settings.h"
 #include "core/Store.h"
 #include "core/VesselModel.h"
@@ -12,6 +13,7 @@
 #include <QDebug>
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
+#include <QtQml/qqmlextensionplugin.h>
 #include <QQuickWindow>
 #include <QRegularExpression>
 #include <QSGRendererInterface>
@@ -19,6 +21,8 @@
 #include <QStandardPaths>
 #include <QTimer>
 #include <memory>
+
+Q_IMPORT_QML_PLUGIN(CheekyMarinePlugin)
 
 int main(int argc, char* argv[]) {
     // The MapLibre library is built with the OpenGL renderer only.
@@ -36,9 +40,14 @@ int main(int argc, char* argv[]) {
     // Dev and checkpoint aids: save a window grab N ms after start. Repeatable; paired in order.
     QCommandLineOption shotOpt("screenshot", "Save a window grab to PATH.", "path");
     QCommandLineOption shotAfterOpt("screenshot-after-ms", "Delay for the matching --screenshot.", "ms");
+    // Dev and checkpoint aids: write Settings::paletteMode / chartMode at start (they persist).
+    QCommandLineOption paletteOpt("palette", "Set the palette mode: auto, day, dusk or night.", "mode");
+    QCommandLineOption modeOpt("mode", "Set the chart mode: nav or fish.", "mode");
     shotOpt.setFlags(QCommandLineOption::HiddenFromHelp);
     shotAfterOpt.setFlags(QCommandLineOption::HiddenFromHelp);
-    cli.addOptions({socketOpt, packsOpt, dataOpt, windowOpt, shotOpt, shotAfterOpt});
+    paletteOpt.setFlags(QCommandLineOption::HiddenFromHelp);
+    modeOpt.setFlags(QCommandLineOption::HiddenFromHelp);
+    cli.addOptions({socketOpt, packsOpt, dataOpt, windowOpt, shotOpt, shotAfterOpt, paletteOpt, modeOpt});
     cli.process(app);
 
     QSize windowSize;
@@ -55,6 +64,15 @@ int main(int argc, char* argv[]) {
         qCritical() << "each --screenshot needs a --screenshot-after-ms";
         return 2;
     }
+    const QStringList paletteModes{"auto", "day", "dusk", "night"}, chartModes{"nav", "fish"};
+    if (cli.isSet(paletteOpt) && !paletteModes.contains(cli.value(paletteOpt))) {
+        qCritical() << "--palette wants auto, day, dusk or night, got" << cli.value(paletteOpt);
+        return 2;
+    }
+    if (cli.isSet(modeOpt) && !chartModes.contains(cli.value(modeOpt))) {
+        qCritical() << "--mode wants nav or fish, got" << cli.value(modeOpt);
+        return 2;
+    }
 
     auto store = Store::open(cli.value(dataOpt));
     if (!store) { // Task 12 replaces this with the recovery screen.
@@ -62,6 +80,8 @@ int main(int argc, char* argv[]) {
         return 1;
     }
     Settings settings(**store);
+    if (cli.isSet(paletteOpt)) settings.setPaletteMode(cli.value(paletteOpt));
+    if (cli.isSet(modeOpt)) settings.setChartMode(cli.value(modeOpt));
 
     VesselModel vessel;
     AisModel ais;
@@ -83,12 +103,22 @@ int main(int argc, char* argv[]) {
     ChartController chart(mapItem->port(), settings, vessel, ais, packs);
     // Temporary physical size from the screen; Task 12 switches to Units.
     const double pxPerMm = QGuiApplication::primaryScreen()->physicalDotsPerInch() / 25.4;
-    chart.setImages(chartIcons(pxPerMm));
     mapItem->setZoomRange(chart.minZoom(), chart.maxZoom());
+
+    // The palette drives the chart style, the icons and (in Main.qml) the Theme. Icons first, so the
+    // style reload that setPalette starts re-adds them in the new colours.
+    PaletteController palette(settings, vessel, [] { return QDateTime::currentDateTimeUtc(); });
+    const auto applyPalette = [&] {
+        chart.setImages(chartIcons(pxPerMm, palette.palette()));
+        chart.setPalette(palette.palette());
+    };
+    applyPalette();
+    QObject::connect(&palette, &PaletteController::paletteChanged, &chart, applyPalette);
 
     QQmlApplicationEngine engine;
     engine.setInitialProperties({{"chart", QVariant::fromValue(&chart)},
-                                 {"chartMap", QVariant::fromValue(static_cast<QQuickItem*>(mapItem.get()))}});
+                                 {"chartMap", QVariant::fromValue(static_cast<QQuickItem*>(mapItem.get()))},
+                                 {"paletteController", QVariant::fromValue(&palette)}});
     engine.loadFromModule("CheekyMarine", "Main");
     if (engine.rootObjects().isEmpty()) return 1;
     auto* window = qobject_cast<QQuickWindow*>(engine.rootObjects().constFirst());

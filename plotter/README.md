@@ -4,8 +4,10 @@ Qt 6 / QML chart plotter app (`cheekyplotter`). It is an optional CMake subproje
 only includes it with `-DCM_BUILD_PLOTTER=ON`, so the n2kd build and its tests are unaffected.
 
 - `plottercore`: static library with all application logic (tests link it).
-- `cheekyplotter`: the app (QML module `CheekyMarine`).
+- `plotterqml`: the QML module `CheekyMarine` (static, so the QuickTest runner imports it too).
+- `cheekyplotter`: the app.
 - `tests/`: Qt Test executables, added with `plotter_add_test(NAME SOURCES...)`.
+- `tests/qml/`: QML tests; the `tst_qml` QuickTest runner runs every `tst_*.qml` there, offscreen.
 - `fonts/`: Noto Sans (OFL), copied from `chartpack/fonts`.
 
 The plotter has its own version, `PLOTTER_VERSION` in `plotter/CMakeLists.txt`, independent of the
@@ -52,6 +54,21 @@ maplibre lib dir (derived from the linked targets), so `libQMapLibre.so` finds `
 Dev machine trap: if your shell has linuxbrew in `PATH`/`LD_LIBRARY_PATH`, CMake can pick up
 linuxbrew libraries; configure and build with
 `env -u LD_LIBRARY_PATH PATH=$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin`.
+
+## Dev run
+
+`plotter/tools/run-dev.sh [FIXTURE] [extra cheekyplotter args...]` replays an N2K log through n2kd
+and starts the app on it (see the script header for `CM_PACKS_DIR`). Hidden dev and checkpoint
+options of `cheekyplotter` (not in `--help`):
+
+- `--palette auto|day|dusk|night`: writes the palette mode setting at start (it persists in the
+  data dir). The default `auto` follows the sun at the boat; the fixture log starts at night.
+- `--mode nav|fish`: writes the chart mode setting at start (persists too).
+- `--screenshot PATH --screenshot-after-ms N`: saves a grab of the window N ms after start;
+  repeatable, paired in order.
+
+For example `plotter/tools/run-dev.sh "" --palette dusk --mode fish` (an empty first argument
+means the default fixture).
 
 ## CI
 

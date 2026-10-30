@@ -1,5 +1,5 @@
 import QtQuick
-import QtQuick.Controls
+import QtQuick.Controls.Basic
 
 // The chart: map, mode toggle, zoom, recenter, "No position" chip and the pack notice.
 Item {
@@ -11,6 +11,25 @@ Item {
     readonly property real mm: Screen.pixelDensity > 0 ? Screen.pixelDensity : 3.8
     readonly property real buttonSize: Math.max(48, 15 * mm)
     readonly property real margin: 3 * mm
+
+    // A button in the Theme colours (Task 12 replaces it with BigButton).
+    component ThemedButton: Button {
+        id: button
+        contentItem: Text {
+            text: button.text
+            font: button.font
+            color: button.enabled ? Theme.buttonText : Theme.disabledText
+            horizontalAlignment: Text.AlignHCenter
+            verticalAlignment: Text.AlignVCenter
+            elide: Text.ElideRight
+        }
+        background: Rectangle {
+            radius: button.height / 8
+            color: !button.enabled ? Theme.disabledButton : button.down ? Theme.buttonDown : Theme.button
+            border.color: Theme.buttonBorder
+            border.width: 1
+        }
+    }
 
     Item {
         id: mapArea
@@ -61,7 +80,7 @@ Item {
         }
     }
 
-    Button {
+    ThemedButton {
         anchors { left: parent.left; top: parent.top; margins: page.margin }
         height: page.buttonSize
         width: Math.max(page.buttonSize * 2.5, implicitWidth)
@@ -75,13 +94,13 @@ Item {
     Column {
         anchors { right: parent.right; verticalCenter: parent.verticalCenter; margins: page.margin }
         spacing: page.margin
-        Button {
+        ThemedButton {
             width: page.buttonSize; height: page.buttonSize
             font.pixelSize: 8 * page.mm
             text: "+"
             onClicked: page.chart.zoomIn()
         }
-        Button {
+        ThemedButton {
             width: page.buttonSize; height: page.buttonSize
             font.pixelSize: 8 * page.mm
             text: "−"
@@ -89,7 +108,7 @@ Item {
         }
     }
 
-    Button {
+    ThemedButton {
         anchors { horizontalCenter: parent.horizontalCenter; bottom: noticeBar.top; margins: page.margin }
         visible: !page.chart.follow
         height: page.buttonSize
@@ -103,14 +122,14 @@ Item {
         anchors { horizontalCenter: parent.horizontalCenter; top: parent.top; margins: page.margin }
         visible: page.chart.noPosition
         radius: height / 2
-        color: "#c62828"
+        color: Theme.alertBackground
         width: chipText.implicitWidth + 6 * page.mm
         height: chipText.implicitHeight + 2 * page.mm
         Label {
             id: chipText
             anchors.centerIn: parent
             text: "No position"
-            color: "white"
+            color: Theme.alertText
             font.pixelSize: 5 * page.mm
             font.bold: true
         }
@@ -120,12 +139,12 @@ Item {
         id: noticeBar
         anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
         height: noticeText.implicitHeight + page.mm
-        color: "#b0ffffff"
+        color: Theme.noticeBackground
         Label {
             id: noticeText
             anchors.centerIn: parent
             text: page.chart.notice
-            color: "black"
+            color: Theme.noticeText
             font.pixelSize: Math.max(11, 2.5 * page.mm)
         }
     }

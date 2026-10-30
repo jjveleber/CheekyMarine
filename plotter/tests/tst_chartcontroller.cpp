@@ -41,6 +41,8 @@ public:
     QHash<QString, QJsonValue> filters;
     QHash<QString, QJsonObject> sources;
     QSet<QString> images;
+    QHash<QString, QImage> imageData;   // last image added per id
+    QHash<QString, QJsonObject> layers; // runtime layers added since the last style load
     QList<Camera> cameras;
 
     void setStyleJson(const QByteArray& style) override {
@@ -53,6 +55,7 @@ public:
         filters.clear();
         sources.clear();
         images.clear();
+        layers.clear();
         if (syncStyleLoaded) emit styleLoaded();
     }
     void setLayerFilter(const QString& layer, const QJsonValue& filter) override {
@@ -63,15 +66,17 @@ public:
         calls << "geojson:" + source;
         sources[source] = fc;
     }
-    void addImage(const QString& id, const QImage&) override {
+    void addImage(const QString& id, const QImage& image) override {
         calls << "image:" + id;
         images << id;
+        imageData[id] = image;
     }
     void addLayer(const QJsonObject& layer) override {
         const QString id = layer["id"].toString();
         calls << "layer:" + id;
         layerIds << id;
         layerSrc[id] = layer["source"].toString();
+        layers[id] = layer;
     }
     void setCamera(double lat, double lon, double zoom, double bearing) override {
         cameras << Camera{lat, lon, zoom, bearing};
@@ -86,6 +91,10 @@ public:
 
     void loaded() { emit styleLoaded(); }
     void gesture() { emit userGesture(); }
+    void resize(double h) {
+        height = h;
+        emit viewportChanged();
+    }
     int count(const QString& call) const { return static_cast<int>(calls.count(call)); }
 };
 
@@ -515,6 +524,72 @@ private slots:
         r.map.loaded(); // survive a reload
         QCOMPARE(r.map.sources.value(OverlayIds::kAisSource)["features"].toArray().size(), 1);
         QCOMPARE(r.map.sources.value(OverlayIds::kTracksSource)["features"].toArray().size(), 1);
+    }
+
+    // The first camera can come while the viewport has no height yet; a resize re-applies it so
+    // the boat lands in the lower third without waiting for the next vessel update.
+    void viewportResizeReappliesFollowCamera() {
+        Rig r;
+        QVERIFY(r.settings);
+        r.map.height = 0;
+        r.make();
+        r.map.loaded();
+        VesselState v = boat();
+        v.hdgRad = 0.5;
+        r.vessel.setState(v);
+        QVERIFY(!r.map.cameras.isEmpty());
+        QVERIFY(distanceM({r.map.cameras.last().lat, r.map.cameras.last().lon}, {47.98, -122.23}) < 0.01);
+        const auto n = r.map.cameras.size();
+        r.map.resize(600);
+        QCOMPARE(r.map.cameras.size(), n + 1);
+        const auto c = r.map.cameras.last();
+        const double bearing = 0.5 * 180.0 / kPi;
+        const LatLon want = destination({47.98, -122.23}, bearing, 600.0 / 6 * metresPerPixel(47.98, c.zoom));
+        QVERIFY2(distanceM({c.lat, c.lon}, want) < 0.5, qPrintable(QString::number(distanceM({c.lat, c.lon}, want))));
+        r.ctrl->setFollow(false);
+        const auto m = r.map.cameras.size();
+        r.map.resize(800); // not following: the camera is the user's
+        QCOMPARE(r.map.cameras.size(), m);
+    }
+
+    // Runtime line colours follow the palette (night is red only).
+    void paletteSetsRuntimeLineColours() {
+        Rig r;
+        QVERIFY(r.settings);
+        r.make();
+        r.map.loaded();
+        const auto colourOf = [&](const char* layer) {
+            return r.map.layers.value(layer)["paint"].toObject()["line-color"].toString();
+        };
+        QCOMPARE(colourOf("cm-own-heading"), overlayColours("day").heading.name());
+        r.ctrl->setPalette("night");
+        r.map.loaded();
+        QCOMPARE(colourOf("cm-own-heading"), overlayColours("night").heading.name());
+        QCOMPARE(colourOf("cm-own-cog"), overlayColours("night").cog.name());
+        QCOMPARE(colourOf("cm-ais-vector"), overlayColours("night").aisVector.name());
+        QCOMPARE(colourOf("cm-tracks-line"), overlayColours("night").track.name());
+    }
+
+    // Images handed over before a palette change are the ones re-added after the reload.
+    void paletteReloadReaddsNewImages() {
+        Rig r;
+        QVERIFY(r.settings);
+        r.make();
+        r.map.loaded();
+        QHash<QString, QImage> red;
+        for (const QString& id : kImageIds) {
+            QImage img(8, 8, QImage::Format_ARGB32_Premultiplied);
+            img.fill(QColor(0xc0, 0, 0));
+            red[id] = img;
+        }
+        r.ctrl->setImages(red);
+        r.ctrl->setPalette("night");
+        QVERIFY(r.map.images.isEmpty());
+        r.map.loaded();
+        for (const QString& id : kImageIds) {
+            QVERIFY2(r.map.images.contains(id), qPrintable(id));
+            QCOMPARE(r.map.imageData.value(id).pixelColor(4, 4).rgb(), QColor(0xc0, 0, 0).rgb());
+        }
     }
 };
 

@@ -40,17 +40,24 @@ std::optional<double> cogDeg(const VesselState& v) {
 
 QJsonObject parse(const char* json) { return QJsonDocument::fromJson(json).object(); }
 
-// Runtime layers, bottom first: tracks, AIS, own ship (topmost). Colours are placeholders until the
-// palettes of Task 11.
-QList<QJsonObject> runtimeLayers() {
+// A line layer with its paint line-color set.
+QJsonObject line(QJsonObject layer, const QColor& colour) {
+    QJsonObject paint = layer[QStringLiteral("paint")].toObject();
+    paint[QStringLiteral("line-color")] = colour.name();
+    layer[QStringLiteral("paint")] = paint;
+    return layer;
+}
+
+// Runtime layers, bottom first: tracks, AIS, own ship (topmost), in the palette's overlay colours.
+QList<QJsonObject> runtimeLayers(const OverlayColours& c) {
     return {
-        parse(R"({"id":"cm-tracks-line","type":"line","source":"cm-tracks",
+        line(parse(R"({"id":"cm-tracks-line","type":"line","source":"cm-tracks",
             "filter":["==",["get","kind"],"track"],
             "layout":{"line-join":"round","line-cap":"round"},
-            "paint":{"line-color":"#b000b0","line-width":2.5}})"),
-        parse(R"({"id":"cm-ais-vector","type":"line","source":"cm-ais",
+            "paint":{"line-width":2.5}})"), c.track),
+        line(parse(R"({"id":"cm-ais-vector","type":"line","source":"cm-ais",
             "filter":["==",["get","kind"],"aisvec"],
-            "paint":{"line-color":"#000000","line-width":1.5}})"),
+            "paint":{"line-width":1.5}})"), c.aisVector),
         parse(R"({"id":"cm-ais-icon","type":"symbol","source":"cm-ais",
             "filter":["==",["get","kind"],"ais"],
             "layout":{"icon-image":["case",["get","hollow"],"cm-ais-hollow",
@@ -58,12 +65,12 @@ QList<QJsonObject> runtimeLayers() {
                       "icon-size":["case",["all",["get","hollow"],["==",["get","cls"],"B"]],0.75,1],
                       "icon-rotate":["get","rot"],"icon-rotation-alignment":"map",
                       "icon-allow-overlap":true,"icon-ignore-placement":true}})"),
-        parse(R"({"id":"cm-own-heading","type":"line","source":"cm-own",
+        line(parse(R"({"id":"cm-own-heading","type":"line","source":"cm-own",
             "filter":["==",["get","kind"],"heading"],
-            "paint":{"line-color":"#000000","line-width":1.5}})"),
-        parse(R"({"id":"cm-own-cog","type":"line","source":"cm-own",
+            "paint":{"line-width":1.5}})"), c.heading),
+        line(parse(R"({"id":"cm-own-cog","type":"line","source":"cm-own",
             "filter":["==",["get","kind"],"cog"],
-            "paint":{"line-color":"#000000","line-width":3,"line-dasharray":[2,1]}})"),
+            "paint":{"line-width":3,"line-dasharray":[2,1]}})"), c.cog),
         parse(R"({"id":"cm-own-boat","type":"symbol","source":"cm-own",
             "filter":["==",["get","kind"],"boat"],
             "layout":{"icon-image":"cm-boat","icon-rotate":["get","rot"],
@@ -89,6 +96,7 @@ ChartController::ChartController(ChartMap& map, Settings& settings, VesselModel&
     // Connect before the first load: the real map emits styleLoaded inside setStyleJson.
     connect(&m_map, &ChartMap::styleLoaded, this, &ChartController::onStyleLoaded);
     connect(&m_map, &ChartMap::userGesture, this, [this] { setFollow(false); });
+    connect(&m_map, &ChartMap::viewportChanged, this, &ChartController::applyCamera);
     connect(&m_settings, &Settings::shallowMChanged, this, &ChartController::applyDepthFilters);
     connect(&m_settings, &Settings::safetyMChanged, this, &ChartController::applyDepthFilters);
     connect(&m_settings, &Settings::deepMChanged, this, &ChartController::applyDepthFilters);
@@ -205,7 +213,7 @@ void ChartController::onStyleLoaded() {
     m_map.setGeoJson(OverlayIds::kTracksSource, tracksGeoJson(m_tracks));
     m_map.setGeoJson(OverlayIds::kAisSource, aisGeoJson(m_ais.targets(), m_vessel.state()));
     m_map.setGeoJson(OverlayIds::kOwnSource, ownShipGeoJson(m_vessel.state()));
-    for (const QJsonObject& layer : runtimeLayers()) m_map.addLayer(layer);
+    for (const QJsonObject& layer : runtimeLayers(overlayColours(m_palette))) m_map.addLayer(layer);
     m_ready = true;
     applyDepthFilters();
 }
