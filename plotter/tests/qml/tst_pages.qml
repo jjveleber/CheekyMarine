@@ -19,6 +19,9 @@ TestCase {
         property string mode: "nav"
         property string notice: "NOAA ENC data. Not certified for navigation."
         property bool noPosition: false
+        property var legend: [{ abbr: "Blds", meaning: "boulders", kind: "type" },
+                              { abbr: "Cb", meaning: "cobbles", kind: "type" },
+                              { abbr: "Sh", meaning: "shells", kind: "type" }]
         function zoomIn() {}
         function zoomOut() {}
         function zoomBy(d) {}
@@ -169,6 +172,30 @@ TestCase {
         const rec = createTemporaryObject(recoveryComp, testCase, { width: data.w, height: data.h, recovery: fixture.recovery })
         verify(rec, "RecoveryScreen")
         compare(checkBigButtons(rec), 2) // Start fresh, and Try again for an Io error
+    }
+
+    function test_legendSheet() {
+        Units.windowWidth = 1280
+        Units.windowHeight = 800
+        const chart = createTemporaryObject(chartPageComp, testCase, {
+            width: 1280 - Units.mm(17), height: 800,
+            chart: chartStub, chartMap: createTemporaryObject(mapStub, testCase), slotsModel: fixture.slotsModel })
+        const sheet = byName(chart, "legendSheet")
+        verify(sheet, "legendSheet")
+        verify(!sheet.visible)
+        const open = byName(chart, "legendButton")
+        verify(open && open.isBigButton)
+        open.clicked()
+        verify(sheet.visible)
+        const rows = findAll(sheet, it => it.objectName === "legendRow")
+        compare(rows.length, chartStub.legend.length)
+        for (const r of rows)
+            verify(r.height >= Units.mm(12), "row height")
+        checkBigButtons(sheet)
+        const close = byName(sheet, "legendCloseButton")
+        verify(close)
+        close.clicked()
+        verify(!sheet.visible)
     }
 
     function test_allSlotsOnFitWithoutOverlap_data() { return sizes() }

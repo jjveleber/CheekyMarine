@@ -85,6 +85,9 @@ ChartController::ChartController(ChartMap& map, Settings& settings, VesselModel&
     : QObject(parent), m_map(map), m_settings(settings), m_vessel(vessel), m_ais(ais) {
     m_charts = PackCatalog::best(packs, u"charts");
     if (m_charts) {
+        for (const LegendEntry& e : m_charts->legend)
+            m_legend.append(QVariantMap{{QStringLiteral("abbr"), e.abbr}, {QStringLiteral("meaning"), e.meaning},
+                                        {QStringLiteral("kind"), e.kind}});
         m_bathy = PackCatalog::best(packs, u"bathy", m_charts->region);
         m_minZoom = m_charts->minZoom >= 0 ? m_charts->minZoom : kFallbackMinZoom;
         m_maxZoom = m_charts->maxZoom >= 0 ? m_charts->maxZoom + kOverzoom : kFallbackMaxZoom;

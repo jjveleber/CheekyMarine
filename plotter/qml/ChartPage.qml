@@ -208,6 +208,16 @@ Item {
         }
     }
 
+    // Left edge, mid-height: clear of the corner slots (top and bottom of the corner area), the
+    // zoom column (right) and the centre buttons.
+    BigButton {
+        objectName: "legendButton"
+        anchors { left: cornerArea.left; verticalCenter: cornerArea.verticalCenter }
+        visible: !page.editing
+        text: "Legend"
+        onClicked: legendSheet.visible = true
+    }
+
     BigButton {
         objectName: "editDoneButton"
         anchors { horizontalCenter: cornerArea.horizontalCenter; verticalCenter: cornerArea.verticalCenter }
@@ -215,6 +225,14 @@ Item {
         width: Math.max(implicitWidth, Units.mm(40))
         text: "Done editing"
         onClicked: page.editing = false
+    }
+
+    LegendSheet {
+        id: legendSheet
+        anchors.fill: parent
+        entries: page.chart.legend
+        visible: false
+        onClosed: visible = false
     }
 
     SlotEditor {

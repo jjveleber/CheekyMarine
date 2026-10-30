@@ -111,6 +111,40 @@ private slots:
         QCOMPARE(l[0].maxZoom, 16);
         QVERIFY(QFileInfo(l[0].dir).isDir());
     }
+    void legendReadFromFixture() {
+        QTemporaryDir t;
+        makePack(t.path(), "charts", "puget-north", "1.0.0");
+        QVERIFY(QFile::copy(QStringLiteral(PLOTTER_FIXTURES "/legend.json"),
+                            t.path() + "/charts-puget-north-1.0.0/legend.json"));
+        const auto l = PackCatalog::scan(t.path());
+        QCOMPARE(l.size(), 1);
+        QVERIFY(l[0].refused.isEmpty());
+        QCOMPARE(l[0].legend.size(), 23);
+        bool found = false;
+        for (const LegendEntry& e : l[0].legend)
+            if (e.abbr == "Blds") {
+                found = true;
+                QCOMPARE(e.meaning, QString("boulders"));
+                QCOMPARE(e.kind, QString("type"));
+            }
+        QVERIFY(found);
+    }
+    void legendSchemaTwoIsEmpty() {
+        QTemporaryDir t;
+        makePack(t.path(), "charts", "puget-north", "1.0.0");
+        touch(t.path() + "/charts-puget-north-1.0.0/legend.json",
+              R"({"schema": 2, "entries": [{"abbr": "Blds", "meaning": "boulders", "kind": "type"}]})");
+        const auto l = PackCatalog::scan(t.path());
+        QVERIFY(l[0].refused.isEmpty());
+        QVERIFY(l[0].legend.isEmpty());
+    }
+    void legendMissingOrBrokenIsEmpty() {
+        QTemporaryDir t;
+        makePack(t.path(), "charts", "puget-north", "1.0.0");
+        QVERIFY(PackCatalog::scan(t.path())[0].legend.isEmpty());
+        touch(t.path() + "/charts-puget-north-1.0.0/legend.json", "not json");
+        QVERIFY(PackCatalog::scan(t.path())[0].legend.isEmpty());
+    }
     void zoomAbsent() {
         QTemporaryDir t;
         Opts o;

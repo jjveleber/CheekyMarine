@@ -5,6 +5,11 @@
 #include <QVersionNumber>
 #include <optional>
 
+// One row of a charts pack's legend.json: a seabed or chart abbreviation.
+struct LegendEntry {
+    QString abbr, meaning, kind;
+};
+
 // One installed chart or bathy pack. `refused` empty means usable; otherwise it is the reason
 // shown on the About page.
 struct PackInfo {
@@ -16,6 +21,7 @@ struct PackInfo {
     QList<double> valdco; // charts only, ascending
     int minZoom = -1;     // charts only, from enc.mbtiles metadata; -1 when absent
     int maxZoom = -1;
+    QList<LegendEntry> legend; // charts only, from legend.json; empty when absent, unreadable or schema != 1
     QString refused;
 };
 

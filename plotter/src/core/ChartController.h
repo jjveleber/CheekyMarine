@@ -7,6 +7,7 @@
 #include <QJsonObject>
 #include <QList>
 #include <QObject>
+#include <QVariantList>
 #include <optional>
 
 class Settings;
@@ -23,6 +24,8 @@ class ChartController : public QObject {
     Q_PROPERTY(bool follow READ follow WRITE setFollow NOTIFY followChanged)
     Q_PROPERTY(bool fishAvailable READ fishAvailable CONSTANT)
     Q_PROPERTY(QString notice READ notice NOTIFY noticeChanged)
+    // The charts pack's legend: list of {abbr, meaning, kind}; empty without a pack or legend.json.
+    Q_PROPERTY(QVariantList legend READ legend CONSTANT)
     Q_PROPERTY(bool noPosition READ noPosition NOTIFY noPositionChanged)
     Q_PROPERTY(double minZoom READ minZoom CONSTANT)
     Q_PROPERTY(double maxZoom READ maxZoom CONSTANT)
@@ -42,6 +45,7 @@ public:
     void setFollow(bool follow);
     bool fishAvailable() const { return m_bathy.has_value(); }
     QString notice() const { return m_notice; }
+    QVariantList legend() const { return m_legend; }
     bool noPosition() const { return m_noPosition; }
     double minZoom() const { return m_minZoom; }
     double maxZoom() const { return m_maxZoom; }
@@ -82,6 +86,7 @@ private:
     QString m_palette = QStringLiteral("day");
     bool m_follow = true;
     QString m_notice;
+    QVariantList m_legend;
     bool m_noPosition = true;
     double m_minZoom = 0, m_maxZoom = 22;
     QJsonObject m_style;       // the style being shown (or loading)

@@ -84,7 +84,7 @@ qt_add_qml_module(plotterqml
     VERSION 1.0
     QML_FILES qml/Main.qml qml/ChartPage.qml qml/Theme.qml qml/Units.qml qml/BigButton.qml qml/TabBar.qml
         qml/Splash.qml qml/SlotView.qml qml/SlotEditor.qml qml/NumbersPage.qml qml/AboutPage.qml
-        qml/NoDataBanner.qml qml/RecoveryScreen.qml qml/SettingsPage.qml qml/LockOverlay.qml qml/TracksPage.qml
+        qml/NoDataBanner.qml qml/RecoveryScreen.qml qml/SettingsPage.qml qml/LockOverlay.qml qml/TracksPage.qml qml/LegendSheet.qml
     SOURCES src/qml/PanelMath.h
     RESOURCES fonts/NotoSans-Regular.ttf fonts/NotoSans-Bold.ttf)
 target_link_libraries(plotterqml PRIVATE plottercore Qt6::Quick Qt6::QuickControls2)

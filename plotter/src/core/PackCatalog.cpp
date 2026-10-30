@@ -65,6 +65,23 @@ bool readMetadata(const QString& path, QList<double>& valdco, int& minZoom, int&
     return ok;
 }
 
+// legend.json entries; empty unless the file parses and has schema 1.
+QList<LegendEntry> readLegend(const QString& path) {
+    QList<LegendEntry> out;
+    QFile f(path);
+    if (!f.open(QIODevice::ReadOnly))
+        return out;
+    const QJsonDocument d = QJsonDocument::fromJson(f.readAll());
+    if (!d.isObject() || d.object().value(QStringLiteral("schema")).toInt(-1) != 1)
+        return out;
+    for (const QJsonValue& v : d.object().value(QStringLiteral("entries")).toArray()) {
+        const QJsonObject o = v.toObject();
+        out.append({o.value(QStringLiteral("abbr")).toString(), o.value(QStringLiteral("meaning")).toString(),
+                    o.value(QStringLiteral("kind")).toString()});
+    }
+    return out;
+}
+
 bool hasStyles(const QString& dir) {
     return !QDir(dir + QStringLiteral("/styles")).entryList({QStringLiteral("*.json")}, QDir::Files).isEmpty();
 }
@@ -127,6 +144,8 @@ QList<PackInfo> PackCatalog::scan(const QString& dir) {
                 p.minZoom = p.maxZoom = -1;
                 p.refused = QStringLiteral("enc.mbtiles unreadable");
             }
+            if (p.refused.isEmpty() && p.kind == QLatin1String("charts"))
+                p.legend = readLegend(p.dir + QStringLiteral("/legend.json"));
         }
         out.append(p);
     }
