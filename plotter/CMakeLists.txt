@@ -42,3 +42,10 @@ target_link_libraries(cheekyplotter PRIVATE plottercore Qt6::Quick Qt6::QuickCon
 # The linker drops Qt6::Sql (nothing in the app uses it directly) and RUNPATH is not searched for the
 # dependencies of libQMapLibre.so, so emit a classic RPATH, which is.
 target_link_options(cheekyplotter PRIVATE -Wl,--disable-new-dtags)
+
+# Synthetic N2K generator test: replays the generated scenario through the real n2kd.
+if(TARGET n2kd)
+    find_package(Python3 REQUIRED COMPONENTS Interpreter)
+    add_test(NAME synth_n2k COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_CURRENT_SOURCE_DIR}/tools/test_synth_n2k.py)
+    set_tests_properties(synth_n2k PROPERTIES ENVIRONMENT "N2KD=$<TARGET_FILE:n2kd>")
+endif()
