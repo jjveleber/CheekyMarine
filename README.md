@@ -20,6 +20,10 @@ ctest --test-dir build --output-on-failure
 
 `chartpack` (Python) builds the chart packs the plotter draws: a charts pack (NOAA ENC cells with USGS bottom composition, for navigation) and a bathy pack (depth contours and terrain, for fishing), as MBTiles with MapLibre styles. Packs are released by `charts-<region>-vX.Y.Z` and `bathy-<region>-vX.Y.Z` tags, separately from the `v*` n2kd releases. It is built and tested separately: see [chartpack/README.md](chartpack/README.md).
 
+## Plotter
+
+`plotter/` is the Qt 6 Quick chart plotter (`cheekyplotter`): charts, own ship, AIS, tracks, numbers, touch lock. It is an optional build (`-DCM_BUILD_PLOTTER=ON`), separate from the n2kd build above. Build, run, command line, settings and data location: see [plotter/README.md](plotter/README.md).
+
 ## Running n2kd
 
 ```

@@ -13,6 +13,22 @@ only includes it with `-DCM_BUILD_PLOTTER=ON`, so the n2kd build and its tests a
 The plotter has its own version, `PLOTTER_VERSION` in `plotter/CMakeLists.txt`, independent of the
 n2kd version.
 
+## What it does
+
+A touch UI for a 10 inch panel (the diagonal is a setting) with a tab bar on the right edge:
+
+- Chart: charts pack for navigation, bathy pack for fishing, own ship with follow and orientation,
+  up to eight configurable overlay slots, AIS targets (tap one for its sheet), and a seabed legend
+  sheet from the "Legend" button.
+- Numbers: big readouts (depth and speed by default).
+- Tracks: records the boat's track (off by default), lists saved tracks, shows or hides them on the chart.
+- Settings: units, depth thresholds, palette (auto follows the sun, or day, dusk, night), chart
+  mode, touch lock timeout, panel size, overlay editing. About shows versions and installed packs.
+- Touch lock: the padlock in the tab bar locks the screen (it also locks after the timeout); hold
+  the padlock for 1.5 s to unlock.
+- A no-data banner when n2kd is not running or sends nothing, and a recovery screen when
+  `plotter.db` cannot be opened.
+
 ## Prerequisites
 
 Ubuntu 24.04 packages:
@@ -55,6 +71,45 @@ Dev machine trap: if your shell has linuxbrew in `PATH`/`LD_LIBRARY_PATH`, CMake
 linuxbrew libraries; configure and build with
 `env -u LD_LIBRARY_PATH PATH=$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin`.
 
+## Command line
+
+`cheekyplotter [--socket PATH] [--packs DIR] [--data DIR] [--window WxH]`:
+
+- `--socket`: the n2kd JSON socket, default `/run/cheekymarine/n2k.sock`.
+- `--packs`: directory holding the installed charts and bathy packs, default `<data dir>/packs`.
+- `--data`: directory for `plotter.db`.
+- `--window`: window size, for example `1280x800`.
+
+## Data location
+
+Everything the app stores is one SQLite file, `plotter.db` (settings and recorded tracks), in the
+data directory: `--data`, else Qt's app data location for `cheekyplotter`, which is
+`~/.local/share/cheekyplotter/` on Linux. The default packs directory is `packs/` inside it. If the
+file is corrupt, not ours, or from a newer major version, the recovery screen offers to move it
+aside (it is renamed, not deleted) and start fresh.
+
+## Settings
+
+Stored in `plotter.db`, changed in the Settings page. Defaults:
+
+| Key | Default | Values |
+|-----|---------|--------|
+| `depthUnit` | `ft` | `ft`, `m`, `fm` |
+| `speedUnit` | `kn` | `kn`, `mph`, `kmh` |
+| `tempUnit` | `F` | `F`, `C` |
+| `applyDepthOffset` | on | transducer offset applied to depth |
+| `shallowM`, `safetyM`, `deepM` | 1.8288, 3.048, 9.144 m (6, 10, 30 ft) | 0.5 to 60 m, shallow < safety < deep |
+| `orientation` | `head` | `north`, `head`, `course` |
+| `paletteMode` | `auto` | `auto`, `day`, `dusk`, `night` |
+| `chartMode` | `nav` | `nav`, `fish` |
+| `touchLockTimeoutS` | 120 | seconds, 0 for never |
+| `panelDiagonalIn` | 10.1 | inches, sizes the touch targets |
+| `trackRecording` | off | |
+| `trackIntervalS` | 5 | seconds between track points |
+| `trackMinDistanceM` | 10 | metres moved before a new point |
+| `slots` | TL depth (large), TR speed over ground (large), the rest off | the eight overlay slots |
+| `bigNumbers` | `depth`, `sog` | fields on the Numbers page |
+
 ## Dev run
 
 `plotter/tools/run-dev.sh [FIXTURE] [extra cheekyplotter args...]` replays an N2K log through n2kd
@@ -67,6 +122,8 @@ options of `cheekyplotter` (not in `--help`):
 - `--slots default|all`: writes the overlay slots at start: the defaults, or the defaults with all
   eight slots on (persists too).
 - `--page chart|numbers|tracks|settings|about`: the page shown first (not stored).
+- `--sheet legend|ais`: opens the seabed legend sheet, or selects the first AIS target that arrives
+  and so opens its sheet (not stored).
 - `--lock`: starts with the touch lock on (hold the padlock for 1.5 s to unlock).
 - `--record`: turns track recording on at start (it persists in the data dir).
 - `--screenshot PATH --screenshot-after-ms N`: saves a grab of the window N ms after start;
@@ -74,6 +131,18 @@ options of `cheekyplotter` (not in `--help`):
 
 For example `plotter/tools/run-dev.sh "" --palette dusk --mode fish` (an empty first argument
 means the default fixture).
+
+The final walkthrough renders (every page, day and night, 1280x800) are in
+`docs/plotter/renders/final/`, named `<page>-<day|night>-1280x800.png`. They come from
+`plotter/tools/run-dev.sh "" --palette P --window 1280x800 --screenshot FILE --screenshot-after-ms N`
+plus `--page`, `--sheet`, `--lock` or `--record` as needed. The no-data banner is the app run
+without n2kd (`nodata-*.png`); the recovery screen is `--data` pointing at a directory whose
+`plotter.db` is junk (`recovery-*.png`).
+
+## Licences
+
+See `THIRD_PARTY_NOTICES` at the repository root: Qt 6 (LGPL-3.0, dynamic), maplibre-native-qt core
+(BSD-2-Clause), Noto Sans (OFL-1.1) and what `libQMapLibre.so` compiles in.
 
 ## CI
 

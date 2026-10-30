@@ -2,6 +2,7 @@ Third-party components used by n2kd
 ===================================
 
 The chartpack tool and the chart packs it builds have their own list: see chartpack/NOTICE.
+The chart plotter (cheekyplotter) is listed in the section "Third-party components used by the plotter" below.
 
 nlohmann/json v3.12.0
   License: MIT (full text below and in nlohmann_json-LICENSE.MIT)
@@ -45,3 +46,73 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+
+Third-party components used by the plotter
+==========================================
+
+Qt 6 (Core, Gui, Qml, Quick, Network, Sql, OpenGL, Quick Controls)
+  License: LGPL-3.0 (full text: https://www.gnu.org/licenses/lgpl-3.0.html)
+  Source: https://download.qt.io (installed with aqtinstall, version 6.8.3)
+  Linked dynamically, unmodified, so it can be replaced by another build of the same Qt 6 version.
+
+maplibre-native-qt (core library only, libQMapLibre.so)
+  License: BSD-2-Clause
+  Source: https://github.com/maplibre/maplibre-native-qt (commit pinned in scripts/build-maplibre-qt.sh)
+  Built from source by scripts/build-maplibre-qt.sh. Only src/core is built. Its LGPL-3.0 QML
+  bindings (Qt Location plugin, src/location) are not built, so they are not part of the plotter.
+  The rows below are what the built library compiles in or includes (from
+  docs/plotter/spike-findings.md).
+
+MapLibre Native (inside libQMapLibre.so)
+  License: BSD-2-Clause
+  Source: https://github.com/maplibre/maplibre-native
+
+ICU 61.1 (vendored subset, inside libQMapLibre.so)
+  License: Unicode / ICU licence
+
+nunicode (inside libQMapLibre.so)
+  License: MIT
+
+parsedate, from curl (inside libQMapLibre.so)
+  License: curl licence (MIT-style)
+
+csscolorparser (inside libQMapLibre.so)
+  License: MIT
+
+maplibre-tile-spec C++ (mlt-cpp, inside libQMapLibre.so)
+  License: MIT or Apache-2.0, at your option (vendor/maplibre-tile-spec/README.md: "All code is dual
+  licensed under Apache License v2.0 and MIT license, at your option"; texts in its LICENSE-MIT and
+  LICENSE-APACHE).
+  Its LICENSE-CC0 (CC0 1.0 Universal, public domain dedication) covers that project's documentation
+  and specification content, not the code that is built.
+  Source: https://github.com/maplibre/maplibre-tile-spec
+
+FastPFOR (inside libQMapLibre.so)
+  License: Apache-2.0
+
+Header-only code compiled into libQMapLibre.so:
+  PMTiles                                    BSD-3-Clause
+  Boost (headers)                            BSL-1.0
+  expected-lite, unique_resource             BSL-1.0
+  earcut.hpp, polylabel, eternal, shelf-pack-cpp, geojson-vt-cpp, cheap-ruler-cpp, kdbush.hpp,
+  supercluster.hpp, vector-tile, geojson.hpp, geometry.hpp   ISC
+  protozero                                  BSD-2-Clause (parts Apache-2.0, from folly)
+  variant, mapbox-base                       BSD-3-Clause
+  wagyu (with Clipper-derived code)          BSL-1.0
+  RapidJSON                                  MIT
+  unordered_dense                            MIT
+
+zlib
+  License: Zlib
+  Linked dynamically from the system.
+
+Noto Sans v2.015 (Regular, Bold; plotter/fonts/)
+  License: SIL Open Font License 1.1 (full text in plotter/fonts/OFL.txt)
+  Source: https://github.com/notofonts/latin-greek-cyrillic (release NotoSans-v2.015)
+  Bundled unmodified in the app.
+
+Qt Test is used only to build and run the tests and is not distributed.
+
+Not built, so no entry: FreeType and HarfBuzz (vendored by MapLibre Native but off in the Qt build), the
+maplibre-native-qt Qt Location plugin, sqlite (the plotter uses QtSql), FSST, SIMD Everywhere.
