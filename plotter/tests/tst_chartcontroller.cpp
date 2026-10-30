@@ -399,6 +399,44 @@ private slots:
         QVERIFY(c.lon > -122.23);
     }
 
+    // Spec 6.6: magnetic heading without variation is not a true heading; head-up uses COG, else north.
+    void headUpMagneticWithoutVariationUsesCog() {
+        Rig r;
+        QVERIFY(r.settings);
+        r.make();
+        VesselState v = boat();
+        v.hdgRad = 1.0;
+        v.hdgRef = "Magnetic";
+        v.cogRad = kPi / 2;
+        v.sogMs = 3;
+        r.vessel.setState(v);
+        QVERIFY(!r.map.cameras.isEmpty());
+        QVERIFY2(std::abs(r.map.cameras.last().bearing - 90.0) < 1e-6,
+                 qPrintable(QString::number(r.map.cameras.last().bearing)));
+        v.sogMs = 0.1;
+        r.vessel.setState(v);
+        QCOMPARE(r.map.cameras.last().bearing, 0.0);
+        v.hdgRef.clear(); // no reference: not true either
+        v.variationRad = 0.2731;
+        r.vessel.setState(v);
+        QCOMPARE(r.map.cameras.last().bearing, 0.0);
+    }
+
+    void courseUpSlowMagneticWithoutVariationIsNorth() {
+        Rig r;
+        QVERIFY(r.settings);
+        r.settings->setOrientation("course");
+        r.make();
+        VesselState v = boat();
+        v.cogRad = kPi / 2;
+        v.sogMs = 0.1;
+        v.hdgRad = 1.0;
+        v.hdgRef = "Magnetic";
+        r.vessel.setState(v);
+        QVERIFY(!r.map.cameras.isEmpty());
+        QCOMPARE(r.map.cameras.last().bearing, 0.0);
+    }
+
     void courseUpSlowUsesHeading() {
         Rig r;
         QVERIFY(r.settings);
@@ -408,6 +446,7 @@ private slots:
         v.cogRad = kPi / 2;
         v.sogMs = 0.1;
         v.hdgRad = 1.0;
+        v.hdgRef = "True";
         r.vessel.setState(v);
         QVERIFY(!r.map.cameras.isEmpty());
         QVERIFY(std::abs(r.map.cameras.last().bearing - 180.0 / kPi) < 1e-6);
@@ -646,6 +685,7 @@ private slots:
         r.map.loaded();
         VesselState v = boat();
         v.hdgRad = 0.5;
+        v.hdgRef = "True";
         r.vessel.setState(v);
         QVERIFY(!r.map.cameras.isEmpty());
         QVERIFY(distanceM({r.map.cameras.last().lat, r.map.cameras.last().lon}, {47.98, -122.23}) < 0.01);

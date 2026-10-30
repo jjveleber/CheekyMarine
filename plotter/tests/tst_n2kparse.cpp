@@ -53,6 +53,22 @@ private slots:
         QVERIFY(!v->lat);
         QVERIFY(!v->lon);
     }
+    // The contract is "True", "Magnetic" or null; anything else is no reference (not true).
+    void hdgRefOutsideContractIsNull() {
+        QJsonObject o = obj(kVessel);
+        o["hdgRef"] = "Compass";
+        auto v = parseVessel(o);
+        QVERIFY(v.has_value());
+        QVERIFY(v->hdgRef.isEmpty());
+        o["hdgRef"] = "True";
+        v = parseVessel(o);
+        QVERIFY(v.has_value());
+        QCOMPARE(v->hdgRef, QString("True"));
+        o["hdgRef"] = QJsonValue::Null;
+        v = parseVessel(o);
+        QVERIFY(v.has_value());
+        QVERIFY(v->hdgRef.isEmpty());
+    }
     void unknownKeyIgnored() {
         QJsonObject o = obj(kVessel);
         o["foo"] = 1;

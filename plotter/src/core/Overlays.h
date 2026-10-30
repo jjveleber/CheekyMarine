@@ -4,6 +4,7 @@
 #include <QColor>
 #include <QJsonObject>
 #include <QList>
+#include <optional>
 
 // Source and image ids shared with the chart controller (Task 10). Layers filter on the `kind` property.
 namespace OverlayIds {
@@ -16,9 +17,18 @@ inline constexpr const char* kAisImageB = "cm-ais-b";
 inline constexpr const char* kAisImageHollow = "cm-ais-hollow";
 }
 
+// Spec 6.6. True heading in degrees [0, 360): the heading when hdgRef is "True", heading + variation
+// when "Magnetic" with a variation; otherwise none (a magnetic heading without variation, or one with
+// no reference, is not shown or used as true).
+std::optional<double> trueHeadingDeg(const VesselState& v);
+// COG in degrees [0, 360) when SOG is above 0.5 kn (0.2572 m/s); none slower, where COG is noise.
+std::optional<double> cogDeg(const VesselState& v);
+
 // Conventions: GeoJSON coordinates are [lon, lat]; `rot` is degrees in [0, 360), true; every LineString
 // starts at the vessel position. The 50 km heading line is a 2-point great-circle chord (adequate at
-// chart zooms). Own ship features: kind "boat" (Point, rot), "heading", "cog" (LineStrings).
+// chart zooms). Own ship features: kind "boat" (Point, rot), "heading", "cog" (LineStrings). The boat's
+// rot is trueHeadingDeg, else cogDeg, else 0, like the head-up camera; heading and cog lines only
+// when those are known.
 QJsonObject ownShipGeoJson(const VesselState& v);
 // One LineString (kind "track") per track with at least 2 points.
 QJsonObject tracksGeoJson(const QList<QList<LatLon>>& tracks);

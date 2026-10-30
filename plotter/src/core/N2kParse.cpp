@@ -98,7 +98,9 @@ std::expected<VesselState, QString> parseVessel(const QJsonObject &o) {
     const auto ref = o.find("hdgRef");
     if (ref == o.end()) return bad("hdgRef", "missing");
     if (!ref->isNull() && !ref->isString()) return bad("hdgRef", "not a string");
-    v.hdgRef = ref->toString();
+    // Anything outside the contract ("True", "Magnetic" or null) is no reference.
+    if (ref->toString() == QLatin1String("True") || ref->toString() == QLatin1String("Magnetic"))
+        v.hdgRef = ref->toString();
     return v;
 }
 

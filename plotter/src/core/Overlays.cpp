@@ -38,23 +38,30 @@ QJsonObject collection(const QJsonArray& features)
 }
 }
 
+std::optional<double> trueHeadingDeg(const VesselState& v)
+{
+    if (!v.hdgRad) return std::nullopt;
+    if (v.hdgRef == QLatin1String("True")) return degNorm(*v.hdgRad);
+    if (v.hdgRef == QLatin1String("Magnetic") && v.variationRad) return degNorm(*v.hdgRad + *v.variationRad);
+    return std::nullopt; // magnetic without variation, or no reference: not known to be true
+}
+
+std::optional<double> cogDeg(const VesselState& v)
+{
+    if (v.cogRad && v.sogMs && *v.sogMs > kMinCogSogMs) return degNorm(*v.cogRad);
+    return std::nullopt;
+}
+
 QJsonObject ownShipGeoJson(const VesselState& v)
 {
     QJsonArray fs;
     if (!v.lat || !v.lon) return collection(fs);
     const LatLon pos{*v.lat, *v.lon};
 
-    std::optional<double> hdgTrue;
-    if (v.hdgRad) {
-        double h = *v.hdgRad;
-        if (v.hdgRef == QLatin1String("Magnetic") && v.variationRad) h += *v.variationRad;
-        hdgTrue = h;
-    }
-    const double rot = hdgTrue ? degNorm(*hdgTrue) : (v.cogRad ? degNorm(*v.cogRad) : 0.0);
-    fs.append(point(pos, QJsonObject{{"kind", "boat"}, {"rot", rot}}));
-    if (hdgTrue) fs.append(line(pos, destination(pos, degNorm(*hdgTrue), kHeadingLineM), "heading"));
-    if (v.cogRad && v.sogMs && *v.sogMs > kMinCogSogMs)
-        fs.append(line(pos, destination(pos, degNorm(*v.cogRad), *v.sogMs * kCogSecs), "cog"));
+    const std::optional<double> hdg = trueHeadingDeg(v), cog = cogDeg(v);
+    fs.append(point(pos, QJsonObject{{"kind", "boat"}, {"rot", hdg.or_else([&] { return cog; }).value_or(0.0)}}));
+    if (hdg) fs.append(line(pos, destination(pos, *hdg, kHeadingLineM), "heading"));
+    if (cog) fs.append(line(pos, destination(pos, *cog, *v.sogMs * kCogSecs), "cog"));
     return collection(fs);
 }
 

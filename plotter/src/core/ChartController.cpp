@@ -14,30 +14,9 @@
 #include <cmath>
 
 namespace {
-constexpr double kPi = 3.14159265358979323846;
-constexpr double kMinCogSogMs = 0.2572; // 0.5 kn: below this COG is noise
 constexpr double kStartZoom = 13;
 constexpr double kOverzoom = 2;
 constexpr double kFallbackMinZoom = 0, kFallbackMaxZoom = 22; // pack without zoom metadata
-
-double degNorm(double radians) {
-    double d = std::fmod(radians * 180.0 / kPi, 360.0);
-    if (d < 0) d += 360.0;
-    if (d >= 360.0) d = 0.0;
-    return d;
-}
-
-std::optional<double> trueHeadingDeg(const VesselState& v) {
-    if (!v.hdgRad) return std::nullopt;
-    double h = *v.hdgRad;
-    if (v.hdgRef == QLatin1String("Magnetic") && v.variationRad) h += *v.variationRad;
-    return degNorm(h);
-}
-
-std::optional<double> cogDeg(const VesselState& v) {
-    if (v.cogRad && v.sogMs && *v.sogMs > kMinCogSogMs) return degNorm(*v.cogRad);
-    return std::nullopt;
-}
 
 QJsonObject parse(const char* json) { return QJsonDocument::fromJson(json).object(); }
 

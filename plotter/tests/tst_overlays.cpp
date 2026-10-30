@@ -69,7 +69,45 @@ private slots:
         VesselState v = base();
         QCOMPARE(rotOf(byKind(ownShipGeoJson(v), "boat")[0]), 0.0);
         v.cogRad = kPi / 2;
+        v.sogMs = 3.0;
         QVERIFY(std::fabs(rotOf(byKind(ownShipGeoJson(v), "boat")[0]) - 90.0) < 1e-9);
+    }
+    // Without heading the boat turns to COG only above 0.5 kn, like the COG vector and the head-up
+    // camera; slower, COG is noise and the icon points north (the camera's bearing then).
+    void rotIgnoresCogWhenSlow()
+    {
+        VesselState v = base();
+        v.cogRad = kPi / 2;
+        QCOMPARE(rotOf(byKind(ownShipGeoJson(v), "boat")[0]), 0.0); // no SOG
+        v.sogMs = 0.1;
+        QCOMPARE(rotOf(byKind(ownShipGeoJson(v), "boat")[0]), 0.0);
+        v.sogMs = 0.2572;
+        QCOMPARE(rotOf(byKind(ownShipGeoJson(v), "boat")[0]), 0.0);
+        v.sogMs = 0.26;
+        QVERIFY(std::fabs(rotOf(byKind(ownShipGeoJson(v), "boat")[0]) - 90.0) < 1e-9);
+    }
+    // Spec 6.6: a magnetic heading is true only with variation. Without it there is no true
+    // heading: no heading line, and the boat turns to COG (gated) like the camera.
+    void magneticWithoutVariationIsNoHeading()
+    {
+        VesselState v = base();
+        v.hdgRad = 1.0;
+        v.hdgRef = "Magnetic";
+        QCOMPARE(byKind(ownShipGeoJson(v), "heading").size(), 0);
+        QCOMPARE(rotOf(byKind(ownShipGeoJson(v), "boat")[0]), 0.0);
+        v.cogRad = kPi / 2;
+        v.sogMs = 3.0;
+        QCOMPARE(byKind(ownShipGeoJson(v), "heading").size(), 0);
+        QVERIFY(std::fabs(rotOf(byKind(ownShipGeoJson(v), "boat")[0]) - 90.0) < 1e-9);
+    }
+    // A heading with no reference (null hdgRef) is not known to be true either.
+    void headingWithoutReferenceIsNoHeading()
+    {
+        VesselState v = base();
+        v.hdgRad = 1.0;
+        v.variationRad = 0.2731;
+        QCOMPARE(byKind(ownShipGeoJson(v), "heading").size(), 0);
+        QCOMPARE(rotOf(byKind(ownShipGeoJson(v), "boat")[0]), 0.0);
     }
     void headingLine50km()
     {
