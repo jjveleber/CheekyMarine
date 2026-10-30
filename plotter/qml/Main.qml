@@ -15,6 +15,7 @@ ApplicationWindow {
     required property var slotsModel              // SlotsModel
     required property var numbersModel            // NumbersModel
     required property QtObject touchLock          // TouchLock
+    required property QtObject tracksController   // TracksController
     // chart, numbers, tracks, settings or about
     property string page: "chart"
 
@@ -61,15 +62,9 @@ ApplicationWindow {
                 NumbersPage {
                     model: root.numbersModel
                 }
-                // Task 15 replaces this with the tracks page.
-                Item {
-                    objectName: "tracksPage"
-                    Label {
-                        anchors.centerIn: parent
-                        text: "Track recording is not available yet."
-                        color: Theme.text
-                        font.pixelSize: Units.mm(5)
-                    }
+                TracksPage {
+                    tracks: root.tracksController
+                    settings: root.settings
                 }
                 SettingsPage {
                     settings: root.settings
@@ -92,6 +87,7 @@ ApplicationWindow {
             Layout.fillHeight: true
             current: root.page === "about" ? "settings" : root.page
             paletteMode: root.settings.paletteMode
+            recording: root.settings.trackRecording
             onPageSelected: (p) => root.page = p
             onLockRequested: root.touchLock.lockNow()
             onPaletteCycled: {

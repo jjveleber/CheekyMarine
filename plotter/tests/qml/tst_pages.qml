@@ -45,6 +45,7 @@ TestCase {
     Component { id: bannerComp; NoDataBanner {} }
     Component { id: slotComp; SlotView {} }
     Component { id: settingsComp; SettingsPage {} }
+    Component { id: tracksComp; TracksPage {} }
 
     function sizes() {
         return [{ tag: "1024x600", w: 1024, h: 600, ppm: 4.626 }, { tag: "1280x800", w: 1280, h: 800, ppm: 5.884 }]
@@ -91,7 +92,7 @@ TestCase {
             chart: chartStub, chartMap: createTemporaryObject(mapStub, testCase), paletteController: paletteStub,
             settings: fixture.settings, vessel: fixture.vessel, appInfo: fixture.appInfo,
             slotsModel: fixture.slotsModel, numbersModel: fixture.numbersModel,
-            touchLock: fixture.touchLock
+            touchLock: fixture.touchLock, tracksController: fixture.tracksController
         })
         verify(main, "Main")
         tryCompare(main, "width", w)
@@ -460,5 +461,105 @@ TestCase {
         const a = hold.mapToItem(main.contentItem, 0, 0), b = button.mapToItem(main.contentItem, 0, 0)
         verify(Math.abs(a.x - b.x) < 1 && Math.abs(a.y - b.y) < 1, "hold at " + a.x + "," + a.y + " button at " + b.x + "," + b.y)
         verify(hold.width >= Units.mm(12) - 0.5 && hold.height >= Units.mm(12) - 0.5)
+    }
+
+    function makeTracks(w, h) {
+        const page = createTemporaryObject(tracksComp, testCase,
+                                           { width: w, height: h, tracks: fixture.tracksController, settings: fixture.settings })
+        verify(page, "TracksPage")
+        return page
+    }
+    function rowTexts(row) {
+        return findAll(row, it => it.text !== undefined && it.visible).map(it => it.text).join(" | ")
+    }
+
+    function test_tracksConstructsEmptyAndWithRows_data() { return sizes() }
+    function test_tracksConstructsEmptyAndWithRows(data) {
+        Units.windowWidth = data.w
+        Units.windowHeight = data.h
+        const page = makeTracks(data.w - Units.mm(17), data.h)
+        verify(byName(page, "recordButton"))
+        verify(byName(page, "noTracks").visible, "empty state")
+        fixture.addTrack(1.7e9)
+        fixture.addTrack(1.7e9 + 86400)
+        compare(findAll(page, it => it.objectName === "trackRow").length, 2)
+        verify(!byName(page, "noTracks").visible)
+        checkBigButtons(page)
+    }
+
+    function test_tracksRecordButtonTogglesTheSetting() {
+        const page = makeTracks(1200, 800)
+        const b = byName(page, "recordButton")
+        compare(fixture.settings.trackRecording, false)
+        compare(b.text, "Start recording")
+        mouseClick(b)
+        compare(fixture.settings.trackRecording, true)
+        compare(b.text, "Stop recording")
+        mouseClick(b)
+        compare(fixture.settings.trackRecording, false)
+    }
+
+    function test_tracksRowShowsNameDurationAndNauticalMiles() {
+        const page = makeTracks(1200, 800)
+        fixture.addTrack(1.7e9) // 10 minutes, about 1112 m = 0.6 nm
+        const row = byName(page, "trackRow")
+        verify(row, "row")
+        const text = rowTexts(row)
+        verify(text.indexOf("0.6 nm") >= 0, text)
+        verify(text.indexOf("10 min") >= 0, text)
+        verify(/\d{4}-\d{2}-\d{2} \d{2}:\d{2}/.test(text), text)
+    }
+
+    function test_tracksShowHideToggle() {
+        const page = makeTracks(1200, 800)
+        const id = fixture.addTrack(1.7e9)
+        const toggle = byName(page, "trackToggle")
+        compare(toggle.text, "Hide")
+        mouseClick(toggle)
+        compare(fixture.tracksController.tracks[0].visible, false)
+        compare(fixture.tracksController.tracks[0].id, id)
+        compare(byName(page, "trackToggle").text, "Show")
+        mouseClick(byName(page, "trackToggle"))
+        compare(fixture.tracksController.tracks[0].visible, true)
+    }
+
+    function test_tracksDeleteAsksFirstInPage() {
+        const page = makeTracks(1200, 800)
+        fixture.addTrack(1.7e9)
+        const confirm = byName(page, "confirmDelete")
+        verify(!confirm.visible)
+        mouseClick(byName(page, "trackDelete"))
+        verify(confirm.visible, "confirm shown")
+        verify(byName(confirm, "confirmYes").width >= Units.mm(12) - 0.5)
+        mouseClick(byName(confirm, "confirmNo"))
+        verify(!confirm.visible)
+        compare(fixture.tracksController.tracks.length, 1)
+        mouseClick(byName(page, "trackDelete"))
+        mouseClick(byName(confirm, "confirmYes"))
+        verify(!confirm.visible)
+        compare(fixture.tracksController.tracks.length, 0)
+        verify(byName(page, "noTracks").visible)
+    }
+
+    function test_tracksTabShowsThePageInMain() {
+        const main = makeMain(1024, 600)
+        byName(main.contentItem, "splash").visible = false
+        mouseClick(byName(main.contentItem, "tab-tracks"))
+        verify(byName(main.contentItem, "tracksPage").visible)
+        verify(byName(main.contentItem, "recordButton"))
+    }
+
+    function test_tabBarRecordIndicatorFollowsTheSetting() {
+        const main = makeMain(1024, 600)
+        const ind = byName(main.contentItem, "recordIndicator")
+        verify(ind, "indicator")
+        verify(!ind.visible)
+        fixture.settings.trackRecording = true
+        verify(ind.visible)
+        const tab = byName(main.contentItem, "tab-tracks")
+        verify(ind.width < Units.mm(4) && ind.height < Units.mm(4))
+        const a = ind.mapToItem(main.contentItem, 0, 0), t = tab.mapToItem(main.contentItem, 0, 0)
+        verify(a.x >= t.x && a.x + ind.width <= t.x + tab.width && a.y >= t.y && a.y + ind.height <= t.y + tab.height,
+               "indicator sits inside the Tracks tab: it adds no height to the tab column")
     }
 }

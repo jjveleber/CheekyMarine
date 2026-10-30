@@ -7,7 +7,9 @@
 #include "core/Slots.h"
 #include "core/Store.h"
 #include "core/TouchLock.h"
+#include "core/Tracks.h"
 #include "core/VesselModel.h"
+#include <QDateTime>
 #include <QQmlContext>
 #include <QQmlEngine>
 #include <QTemporaryDir>
@@ -26,6 +28,7 @@ class Fixture : public QObject {
     Q_PROPERTY(QObject* appInfo READ appInfo CONSTANT)
     Q_PROPERTY(QObject* recovery READ recovery CONSTANT)
     Q_PROPERTY(QObject* touchLock READ touchLock CONSTANT)
+    Q_PROPERTY(QObject* tracksController READ tracksController CONSTANT)
 
 public:
     QObject* settings() const { return m_settings.get(); }
@@ -35,6 +38,7 @@ public:
     QObject* appInfo() const { return m_appInfo.get(); }
     QObject* recovery() const { return m_recovery.get(); }
     QObject* touchLock() { return &m_lock; }
+    QObject* tracksController() const { return m_tracksController.get(); }
 
     // Default settings, no data, no daemon state.
     Q_INVOKABLE void reset() {
@@ -45,6 +49,9 @@ public:
         m_settings->setDepths(1.8288, 3.048, 9.144);
         m_settings->setPanelDiagonalIn(10.1);
         m_settings->setOrientation("head");
+        m_settings->setTrackRecording(false);
+        for (const TrackInfo& t : m_trackStore->list()) m_trackStore->remove(t.id);
+        m_tracksController->refresh();
         m_lock.setTimeoutS(0);
         m_lock.holdEnd();
         if (m_lock.locked()) { // unlock the way the user does
@@ -53,6 +60,16 @@ public:
         }
         m_vessel.setLive(false);
         m_appInfo->setDaemonVersion(QString());
+    }
+    // A stored track of two points about 1.1 km apart, ten minutes long; returns its id.
+    Q_INVOKABLE qint64 addTrack(double started) {
+        const qint64 id = m_trackStore->create(started);
+        TrackPoint a, b;
+        a.t = started; a.lat = 47.98; a.lon = -122.23;
+        b.t = started + 600; b.lat = 47.99; b.lon = -122.23;
+        m_trackStore->append(id, {a, b});
+        m_tracksController->refresh();
+        return id;
     }
     // Moves the lock's clock on and polls it, as the 100 ms timer does.
     Q_INVOKABLE void advance(int ms) {
@@ -78,6 +95,9 @@ public slots:
         m_settings = std::make_unique<Settings>(*m_store);
         m_slots = std::make_unique<SlotsModel>(*m_settings, m_vessel);
         m_numbers = std::make_unique<NumbersModel>(*m_settings, m_vessel);
+        m_trackStore = std::make_unique<TrackStore>(*m_store);
+        m_recorder = std::make_unique<TrackRecorder>(*m_trackStore, *m_settings, [] { return QDateTime::currentSecsSinceEpoch() * 1.0; });
+        m_tracksController = std::make_unique<TracksController>(*m_trackStore, *m_recorder);
         PackInfo charts;
         charts.kind = "charts";
         charts.region = "puget-north";
@@ -97,6 +117,9 @@ public slots:
     // Before the application goes: the store needs it to close.
     void cleanupTestCase() {
         m_recovery.reset();
+        m_tracksController.reset();
+        m_recorder.reset();
+        m_trackStore.reset();
         m_appInfo.reset();
         m_numbers.reset();
         m_slots.reset();
@@ -113,6 +136,9 @@ private:
     TouchLock m_lock{[this] { return m_nowMs; }};
     std::unique_ptr<SlotsModel> m_slots;
     std::unique_ptr<NumbersModel> m_numbers;
+    std::unique_ptr<TrackStore> m_trackStore;
+    std::unique_ptr<TrackRecorder> m_recorder;
+    std::unique_ptr<TracksController> m_tracksController;
     std::unique_ptr<AppInfo> m_appInfo;
     std::unique_ptr<Recovery> m_recovery;
 };

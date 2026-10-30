@@ -12,6 +12,7 @@
 #include "core/Slots.h"
 #include "core/Store.h"
 #include "core/TouchLock.h"
+#include "core/Tracks.h"
 #include "core/Units.h"
 #include "core/VesselModel.h"
 
@@ -96,10 +97,11 @@ int main(int argc, char* argv[]) {
     QCommandLineOption slotsOpt("slots", "Set the overlay slots: default or all.", "set");
     QCommandLineOption pageOpt("page", "Page shown first: chart, numbers, tracks, settings or about.", "page");
     QCommandLineOption lockOpt("lock", "Start with the touch lock on.");
-    for (QCommandLineOption* o : {&shotOpt, &shotAfterOpt, &paletteOpt, &modeOpt, &slotsOpt, &pageOpt, &lockOpt})
+    QCommandLineOption recordOpt("record", "Turn track recording on at start (it persists).");
+    for (QCommandLineOption* o : {&shotOpt, &shotAfterOpt, &paletteOpt, &modeOpt, &slotsOpt, &pageOpt, &lockOpt, &recordOpt})
         o->setFlags(QCommandLineOption::HiddenFromHelp);
     cli.addOptions(
-        {socketOpt, packsOpt, dataOpt, windowOpt, shotOpt, shotAfterOpt, paletteOpt, modeOpt, slotsOpt, pageOpt, lockOpt});
+        {socketOpt, packsOpt, dataOpt, windowOpt, shotOpt, shotAfterOpt, paletteOpt, modeOpt, slotsOpt, pageOpt, lockOpt, recordOpt});
     cli.process(app);
 
     QSize windowSize;
@@ -149,6 +151,7 @@ int main(int argc, char* argv[]) {
     Settings settings(*store);
     if (cli.isSet(paletteOpt)) settings.setPaletteMode(cli.value(paletteOpt));
     if (cli.isSet(modeOpt)) settings.setChartMode(cli.value(modeOpt));
+    if (cli.isSet(recordOpt)) settings.setTrackRecording(true);
 
     VesselModel vessel;
     AisModel ais;
@@ -158,6 +161,17 @@ int main(int argc, char* argv[]) {
     QObject::connect(&client, &N2kClient::connectionChanged, &ais, &AisModel::setLive);
     QObject::connect(&client, &N2kClient::vessel, &vessel, &VesselModel::setState);
     QObject::connect(&client, &N2kClient::ais, &ais, &AisModel::setTargets);
+
+    // Recording follows the setting; the vessel feeds it. The timer writes a buffer a quiet data
+    // feed would leave waiting. Declared before the engine and the chart so they go first.
+    TrackStore trackStore(*store);
+    TrackRecorder recorder(trackStore, settings, [] { return QDateTime::currentMSecsSinceEpoch() / 1000.0; });
+    TracksController tracksController(trackStore, recorder);
+    QObject::connect(&vessel, &VesselModel::changed, &recorder, [&] { recorder.onVessel(vessel.state()); });
+    QTimer recorderTimer;
+    recorderTimer.setInterval(5000);
+    QObject::connect(&recorderTimer, &QTimer::timeout, &recorder, &TrackRecorder::tick);
+    recorderTimer.start();
 
     SlotsModel slotsModel(settings, vessel);
     NumbersModel numbersModel(settings, vessel);
@@ -182,6 +196,10 @@ int main(int argc, char* argv[]) {
     QQmlEngine::setObjectOwnership(mapItem.get(), QQmlEngine::CppOwnership);
     ChartController chart(mapItem->port(), settings, vessel, ais, packs);
     mapItem->setZoomRange(chart.minZoom(), chart.maxZoom());
+    // The active track always draws, the others when shown.
+    const auto showTracks = [&] { chart.setTracks(tracksController.shown()); };
+    QObject::connect(&tracksController, &TracksController::shownChanged, &chart, showTracks);
+    showTracks();
 
     // Icons are sized like the QML Units: from the window size and the panel diagonal setting.
     QQuickWindow* window = nullptr;
@@ -230,6 +248,7 @@ int main(int argc, char* argv[]) {
                                  {"slotsModel", QVariant::fromValue(&slotsModel)},
                                  {"numbersModel", QVariant::fromValue(&numbersModel)},
                                  {"touchLock", QVariant::fromValue(&touchLock)},
+                                 {"tracksController", QVariant::fromValue(&tracksController)},
                                  {"page", cli.isSet(pageOpt) ? cli.value(pageOpt) : QStringLiteral("chart")}});
     engine.loadFromModule("CheekyMarine", "Main");
     if (engine.rootObjects().isEmpty()) {

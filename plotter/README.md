@@ -68,6 +68,7 @@ options of `cheekyplotter` (not in `--help`):
   eight slots on (persists too).
 - `--page chart|numbers|tracks|settings|about`: the page shown first (not stored).
 - `--lock`: starts with the touch lock on (hold the padlock for 1.5 s to unlock).
+- `--record`: turns track recording on at start (it persists in the data dir).
 - `--screenshot PATH --screenshot-after-ms N`: saves a grab of the window N ms after start;
   repeatable, paired in order.
 
