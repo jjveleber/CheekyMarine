@@ -33,7 +33,8 @@ add_library(plottercore STATIC
     src/core/Slots.cpp
     src/core/NumbersModel.cpp
     src/core/AppInfo.cpp
-    src/core/Recovery.cpp)
+    src/core/Recovery.cpp
+    src/core/TouchLock.cpp)
 set_target_properties(plottercore PROPERTIES AUTOMOC ON)
 target_include_directories(plottercore PUBLIC
     ${CMAKE_CURRENT_BINARY_DIR}/generated
@@ -67,6 +68,7 @@ plotter_add_test(tst_chartcontroller tests/tst_chartcontroller.cpp)
 plotter_add_test(tst_sun tests/tst_sun.cpp)
 plotter_add_test(tst_slots tests/tst_slots.cpp)
 plotter_add_test(tst_appshell tests/tst_appshell.cpp)
+plotter_add_test(tst_touchlock tests/tst_touchlock.cpp)
 # Icons.cpp is app code with no MapLibre dependency; the night icon rule is checked on its pixels.
 plotter_add_test(tst_palette tests/tst_palette.cpp src/app/Icons.cpp)
 
@@ -80,7 +82,7 @@ qt_add_qml_module(plotterqml
     VERSION 1.0
     QML_FILES qml/Main.qml qml/ChartPage.qml qml/Theme.qml qml/Units.qml qml/BigButton.qml qml/TabBar.qml
         qml/Splash.qml qml/SlotView.qml qml/SlotEditor.qml qml/NumbersPage.qml qml/AboutPage.qml
-        qml/NoDataBanner.qml qml/RecoveryScreen.qml qml/SettingsPage.qml
+        qml/NoDataBanner.qml qml/RecoveryScreen.qml qml/SettingsPage.qml qml/LockOverlay.qml
     SOURCES src/qml/PanelMath.h
     RESOURCES fonts/NotoSans-Regular.ttf fonts/NotoSans-Bold.ttf)
 target_link_libraries(plotterqml PRIVATE plottercore Qt6::Quick Qt6::QuickControls2)

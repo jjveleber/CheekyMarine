@@ -6,6 +6,7 @@
 #include "core/Settings.h"
 #include "core/Slots.h"
 #include "core/Store.h"
+#include "core/TouchLock.h"
 #include "core/VesselModel.h"
 #include <QQmlContext>
 #include <QQmlEngine>
@@ -24,6 +25,7 @@ class Fixture : public QObject {
     Q_PROPERTY(QObject* numbersModel READ numbersModel CONSTANT)
     Q_PROPERTY(QObject* appInfo READ appInfo CONSTANT)
     Q_PROPERTY(QObject* recovery READ recovery CONSTANT)
+    Q_PROPERTY(QObject* touchLock READ touchLock CONSTANT)
 
 public:
     QObject* settings() const { return m_settings.get(); }
@@ -32,6 +34,7 @@ public:
     QObject* numbersModel() const { return m_numbers.get(); }
     QObject* appInfo() const { return m_appInfo.get(); }
     QObject* recovery() const { return m_recovery.get(); }
+    QObject* touchLock() { return &m_lock; }
 
     // Default settings, no data, no daemon state.
     Q_INVOKABLE void reset() {
@@ -42,8 +45,19 @@ public:
         m_settings->setDepths(1.8288, 3.048, 9.144);
         m_settings->setPanelDiagonalIn(10.1);
         m_settings->setOrientation("head");
+        m_lock.setTimeoutS(0);
+        m_lock.holdEnd();
+        if (m_lock.locked()) { // unlock the way the user does
+            m_lock.holdStart();
+            advance(TouchLock::kHoldMs);
+        }
         m_vessel.setLive(false);
         m_appInfo->setDaemonVersion(QString());
+    }
+    // Moves the lock's clock on and polls it, as the 100 ms timer does.
+    Q_INVOKABLE void advance(int ms) {
+        m_nowMs += ms;
+        m_lock.poll();
     }
     // Live data with the given depth (metres) and SOG (m/s); other fields absent.
     Q_INVOKABLE void setVessel(double depthM, double sogMs) {
@@ -95,6 +109,8 @@ private:
     std::unique_ptr<Store> m_store;
     std::unique_ptr<Settings> m_settings;
     VesselModel m_vessel;
+    qint64 m_nowMs = 1000000;
+    TouchLock m_lock{[this] { return m_nowMs; }};
     std::unique_ptr<SlotsModel> m_slots;
     std::unique_ptr<NumbersModel> m_numbers;
     std::unique_ptr<AppInfo> m_appInfo;

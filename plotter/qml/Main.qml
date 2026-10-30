@@ -14,6 +14,7 @@ ApplicationWindow {
     required property QtObject appInfo            // AppInfo
     required property var slotsModel              // SlotsModel
     required property var numbersModel            // NumbersModel
+    required property QtObject touchLock          // TouchLock
     // chart, numbers, tracks, settings or about
     property string page: "chart"
 
@@ -86,15 +87,24 @@ ApplicationWindow {
         }
 
         CM.TabBar { // ours, not the Controls TabBar
+            id: tabBar
+            opacity: root.touchLock.locked ? 0.45 : 1
             Layout.fillHeight: true
             current: root.page === "about" ? "settings" : root.page
             paletteMode: root.settings.paletteMode
             onPageSelected: (p) => root.page = p
+            onLockRequested: root.touchLock.lockNow()
             onPaletteCycled: {
                 const modes = ["auto", "day", "dusk", "night"]
                 root.settings.paletteMode = modes[(modes.indexOf(root.settings.paletteMode) + 1) % modes.length]
             }
         }
+    }
+
+    LockOverlay {
+        anchors.fill: parent
+        lock: root.touchLock
+        anchorItem: tabBar.lockButton
     }
 
     Splash {

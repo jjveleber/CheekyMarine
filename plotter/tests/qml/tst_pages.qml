@@ -90,7 +90,8 @@ TestCase {
             width: w, height: h,
             chart: chartStub, chartMap: createTemporaryObject(mapStub, testCase), paletteController: paletteStub,
             settings: fixture.settings, vessel: fixture.vessel, appInfo: fixture.appInfo,
-            slotsModel: fixture.slotsModel, numbersModel: fixture.numbersModel
+            slotsModel: fixture.slotsModel, numbersModel: fixture.numbersModel,
+            touchLock: fixture.touchLock
         })
         verify(main, "Main")
         tryCompare(main, "width", w)
@@ -419,5 +420,45 @@ TestCase {
         waitForRendering(byName(main.contentItem, "settingsPage"))
         tap(byName(main.contentItem, "aboutButton"))
         compare(main.page, "about")
+    }
+
+    function test_lockSwallowsTouchesAndLongPressUnlocks() {
+        const main = makeMain(1024, 600)
+        byName(main.contentItem, "splash").visible = false
+        const overlay = byName(main.contentItem, "lockOverlay")
+        verify(!overlay.visible, "no overlay while unlocked")
+        mouseClick(byName(main.contentItem, "lockButton"))
+        verify(fixture.touchLock.locked, "the Lock button locks")
+        verify(overlay.visible)
+        mouseClick(byName(main.contentItem, "tab-numbers"))
+        compare(main.page, "chart")
+        mouseClick(byName(main.contentItem, "paletteButton"))
+        compare(fixture.settings.paletteMode, "auto")
+
+        const hold = byName(overlay, "lockHold")
+        mousePress(hold)
+        fixture.advance(1000)
+        verify(fixture.touchLock.holdProgress > 0.6 && fixture.touchLock.holdProgress < 0.7, "ring at " + fixture.touchLock.holdProgress)
+        mouseRelease(hold)
+        compare(fixture.touchLock.holdProgress, 0)
+        verify(fixture.touchLock.locked, "a short press does not unlock")
+
+        mousePress(hold)
+        fixture.advance(1500)
+        mouseRelease(hold)
+        verify(!fixture.touchLock.locked, "1.5 s unlocks")
+        verify(!overlay.visible)
+        mouseClick(byName(main.contentItem, "tab-numbers"))
+        compare(main.page, "numbers")
+    }
+
+    function test_lockHoldTargetIsOverTheLockButton() {
+        const main = makeMain(1024, 600)
+        fixture.touchLock.lockNow()
+        const hold = byName(main.contentItem, "lockHold")
+        const button = byName(main.contentItem, "lockButton")
+        const a = hold.mapToItem(main.contentItem, 0, 0), b = button.mapToItem(main.contentItem, 0, 0)
+        verify(Math.abs(a.x - b.x) < 1 && Math.abs(a.y - b.y) < 1, "hold at " + a.x + "," + a.y + " button at " + b.x + "," + b.y)
+        verify(hold.width >= Units.mm(12) - 0.5 && hold.height >= Units.mm(12) - 0.5)
     }
 }

@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Controls.Basic
 
 // The right edge: page tabs (Chart, Numbers, Tracks, Settings), then the global controls: touch
-// lock (Task 14 wires it), palette cycle (auto, day, dusk, night), and two reserved spaces
+// lock, palette cycle (auto, day, dusk, night), and two reserved spaces
 // (brightness, MOB).
 Rectangle {
     id: bar
@@ -11,6 +11,7 @@ Rectangle {
     signal pageSelected(string page)
     signal paletteCycled()
     signal lockRequested()
+    readonly property Item lockButton: lockBtn
 
     readonly property real tab: Units.mm(15)
     objectName: "tabBar"
@@ -41,6 +42,7 @@ Rectangle {
         Item { width: 1; height: Units.mm(2) }
 
         BigButton {
+            id: lockBtn
             objectName: "lockButton"
             width: bar.tab
             font.pixelSize: Units.mm(2.9)

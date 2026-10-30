@@ -11,10 +11,12 @@
 #include "core/Settings.h"
 #include "core/Slots.h"
 #include "core/Store.h"
+#include "core/TouchLock.h"
 #include "core/Units.h"
 #include "core/VesselModel.h"
 
 #include <QCommandLineParser>
+#include <QDateTime>
 #include <QDebug>
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
@@ -93,10 +95,11 @@ int main(int argc, char* argv[]) {
     // on; they persist) and choose the page shown first (not stored).
     QCommandLineOption slotsOpt("slots", "Set the overlay slots: default or all.", "set");
     QCommandLineOption pageOpt("page", "Page shown first: chart, numbers, tracks, settings or about.", "page");
-    for (QCommandLineOption* o : {&shotOpt, &shotAfterOpt, &paletteOpt, &modeOpt, &slotsOpt, &pageOpt})
+    QCommandLineOption lockOpt("lock", "Start with the touch lock on.");
+    for (QCommandLineOption* o : {&shotOpt, &shotAfterOpt, &paletteOpt, &modeOpt, &slotsOpt, &pageOpt, &lockOpt})
         o->setFlags(QCommandLineOption::HiddenFromHelp);
     cli.addOptions(
-        {socketOpt, packsOpt, dataOpt, windowOpt, shotOpt, shotAfterOpt, paletteOpt, modeOpt, slotsOpt, pageOpt});
+        {socketOpt, packsOpt, dataOpt, windowOpt, shotOpt, shotAfterOpt, paletteOpt, modeOpt, slotsOpt, pageOpt, lockOpt});
     cli.process(app);
 
     QSize windowSize;
@@ -198,6 +201,18 @@ int main(int argc, char* argv[]) {
     applyPalette();
     QObject::connect(&palette, &PaletteController::paletteChanged, &chart, applyPalette);
 
+    // The lock follows the timeout setting live. poll() runs every 100 ms; the window filter below
+    // reports touches as activity.
+    TouchLock touchLock([] { return QDateTime::currentMSecsSinceEpoch(); });
+    touchLock.setTimeoutS(settings.touchLockTimeoutS());
+    QObject::connect(&settings, &Settings::touchLockTimeoutSChanged, &touchLock,
+                     [&] { touchLock.setTimeoutS(settings.touchLockTimeoutS()); });
+    QTimer lockTimer;
+    lockTimer.setInterval(TouchLock::kPollMs);
+    QObject::connect(&lockTimer, &QTimer::timeout, &touchLock, &TouchLock::poll);
+    lockTimer.start();
+    if (cli.isSet(lockOpt)) touchLock.lockNow();
+
     QQmlApplicationEngine engine;
     QObject::connect(
         &engine, &QQmlApplicationEngine::objectCreationFailed, &app,
@@ -214,6 +229,7 @@ int main(int argc, char* argv[]) {
                                  {"appInfo", QVariant::fromValue(&appInfo)},
                                  {"slotsModel", QVariant::fromValue(&slotsModel)},
                                  {"numbersModel", QVariant::fromValue(&numbersModel)},
+                                 {"touchLock", QVariant::fromValue(&touchLock)},
                                  {"page", cli.isSet(pageOpt) ? cli.value(pageOpt) : QStringLiteral("chart")}});
     engine.loadFromModule("CheekyMarine", "Main");
     if (engine.rootObjects().isEmpty()) {
@@ -225,6 +241,7 @@ int main(int argc, char* argv[]) {
         qCritical() << "the main QML is not a window";
         return 1;
     }
+    window->installEventFilter(new TouchActivityFilter(&touchLock, window));
     if (windowSize.isValid()) window->resize(windowSize);
     const auto resizeIcons = [&] { chart.setImages(chartIcons(iconPxPerMm(), palette.palette())); };
     resizeIcons();
