@@ -19,6 +19,7 @@
 #include <QCommandLineParser>
 #include <QDateTime>
 #include <QDebug>
+#include <QElapsedTimer>
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
 #include <QtQml/qqmlextensionplugin.h>
@@ -239,8 +240,10 @@ int main(int argc, char* argv[]) {
     QObject::connect(&palette, &PaletteController::paletteChanged, &chart, applyPalette);
 
     // The lock follows the timeout setting live. poll() runs every 100 ms; the window filter below
-    // reports touches as activity.
-    TouchLock touchLock([] { return QDateTime::currentMSecsSinceEpoch(); });
+    // reports touches as activity. The clock is monotonic: the wall clock steps when GPS or NTP corrects it.
+    QElapsedTimer lockClock;
+    lockClock.start();
+    TouchLock touchLock([&lockClock] { return lockClock.elapsed(); });
     touchLock.setTimeoutS(settings.touchLockTimeoutS());
     QObject::connect(&settings, &Settings::touchLockTimeoutSChanged, &touchLock,
                      [&] { touchLock.setTimeoutS(settings.touchLockTimeoutS()); });
