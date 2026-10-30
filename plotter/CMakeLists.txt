@@ -17,7 +17,9 @@ add_library(plottercore STATIC
     src/core/N2kClient.cpp
     src/core/VesselModel.cpp
     src/core/AisModel.cpp
-    src/core/Fields.cpp)
+    src/core/Fields.cpp
+    src/core/Store.cpp
+    src/core/Settings.cpp)
 set_target_properties(plottercore PROPERTIES AUTOMOC ON)
 target_include_directories(plottercore PUBLIC
     ${CMAKE_CURRENT_BINARY_DIR}/generated
@@ -40,6 +42,8 @@ plotter_add_test(tst_version tests/tst_version.cpp)
 plotter_add_test(tst_n2kparse tests/tst_n2kparse.cpp)
 plotter_add_test(tst_n2kclient tests/tst_n2kclient.cpp)
 plotter_add_test(tst_fields tests/tst_fields.cpp)
+plotter_add_test(tst_store tests/tst_store.cpp)
+plotter_add_test(tst_settings tests/tst_settings.cpp)
 
 # Linking Qt6::Sql and QMapLibre directly puts Qt's lib dir and the QMapLibre lib dir in the
 # automatic build RPATH, so libQMapLibre.so resolves libQt6Sql without LD_LIBRARY_PATH.
