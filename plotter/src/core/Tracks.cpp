@@ -136,8 +136,17 @@ TrackRecorder::~TrackRecorder() {
     flush();
 }
 
+void TrackRecorder::dropUnwritten() {
+    if (m_buffer.isEmpty())
+        return;
+    // The write failed and the track is about to change: these points belong to the old track.
+    qWarning() << "dropping" << m_buffer.size() << "unwritten track points";
+    m_buffer.clear();
+}
+
 void TrackRecorder::startTrack(double t) {
     flush();
+    dropUnwritten();
     m_active = m_store.create(t);
     m_last.reset();
     m_activePoints.clear();
@@ -193,6 +202,7 @@ void TrackRecorder::recordingChanged() {
     if (m_settings.trackRecording())
         return;
     flush();
+    dropUnwritten();
     m_active = 0;
     m_last.reset();
     m_lastPosT.reset();

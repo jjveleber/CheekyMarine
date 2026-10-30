@@ -29,6 +29,7 @@
 #include <QScreen>
 #include <QStandardPaths>
 #include <QTimer>
+#include <chrono>
 #include <memory>
 
 Q_IMPORT_QML_PLUGIN(CheekyMarinePlugin)
@@ -165,7 +166,9 @@ int main(int argc, char* argv[]) {
     // Recording follows the setting; the vessel feeds it. The timer writes a buffer a quiet data
     // feed would leave waiting. Declared before the engine and the chart so they go first.
     TrackStore trackStore(*store);
-    TrackRecorder recorder(trackStore, settings, [] { return QDateTime::currentMSecsSinceEpoch() / 1000.0; });
+    TrackRecorder recorder(trackStore, settings, [] { // monotonic: the wall clock steps when GPS or NTP corrects it
+                                 return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
+                             });
     TracksController tracksController(trackStore, recorder);
     QObject::connect(&vessel, &VesselModel::changed, &recorder, [&] { recorder.onVessel(vessel.state()); });
     QTimer recorderTimer;

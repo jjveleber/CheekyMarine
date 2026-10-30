@@ -290,6 +290,38 @@ private slots:
         QCOMPARE(r.tracks->points(a).size(), 0);
     }
 
+    // A failed write must not let its points land in another track or in track_id 0.
+    void failedWriteNeverMovesPointsToAnotherTrack() {
+        Rig r(true, 1, 0);
+        const QRegularExpression failed("cannot write track points"), dropped("dropping (\\d+) unwritten");
+        QSqlQuery q(r.store->db());
+        QVERIFY(q.exec("ALTER TABLE track_points RENAME TO track_points_off")); // writes now fail
+        r.feed(0, 47.0);
+        r.feed(1, 47.001);
+        const qint64 first = r.rec->activeId();
+        QTest::ignoreMessage(QtWarningMsg, failed);
+        r.rec->flush();
+        QTest::ignoreMessage(QtWarningMsg, failed); // the flush that starts the next track
+        QTest::ignoreMessage(QtWarningMsg, dropped);
+        r.feed(2000, 48.0);
+        const qint64 second = r.rec->activeId();
+        QVERIFY(second != first);
+        QVERIFY(q.exec("ALTER TABLE track_points_off RENAME TO track_points"));
+        r.rec->flush();
+        QCOMPARE(r.stored(first), 0);
+        QCOMPARE(r.stored(second), 1);
+        // Recording off after a failed write: nothing is orphaned.
+        QVERIFY(q.exec("ALTER TABLE track_points RENAME TO track_points_off"));
+        r.feed(2001, 48.001);
+        QTest::ignoreMessage(QtWarningMsg, failed);
+        QTest::ignoreMessage(QtWarningMsg, dropped);
+        r.settings->setTrackRecording(false);
+        QVERIFY(q.exec("ALTER TABLE track_points_off RENAME TO track_points"));
+        QCOMPARE(r.rows("track_points"), 1);
+        QVERIFY(q.exec("SELECT count(*) FROM track_points WHERE track_id = 0") && q.next());
+        QCOMPARE(q.value(0).toInt(), 0);
+    }
+
     void controllerShowsActiveAlwaysAndOthersWhenVisible() {
         Rig r(true, 1, 0);
         TracksController c(*r.tracks, *r.rec);

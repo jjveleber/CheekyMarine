@@ -51,7 +51,7 @@ public:
     static constexpr double kWriteIntervalS = 30;
     static constexpr int kWriteBatch = 20;
 
-    // nowS: the wall clock in seconds, for the write interval only; point times come from the vessel.
+    // nowS: a monotonic clock in seconds (only differences are used), for the write interval only; point times come from the vessel.
     TrackRecorder(TrackStore& store, Settings& settings, std::function<double()> nowS, QObject* parent = nullptr);
     ~TrackRecorder() override;
 
@@ -71,6 +71,7 @@ signals:
 private:
     void recordingChanged();
     void startTrack(double t);
+    void dropUnwritten();
 
     TrackStore& m_store;
     Settings& m_settings;
