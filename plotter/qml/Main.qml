@@ -18,6 +18,7 @@ ApplicationWindow {
     required property QtObject tracksController   // TracksController
     // chart, numbers, tracks, settings or about
     property string page: "chart"
+    property bool legendOpen: false // dev option --sheet legend
 
     width: 1024
     height: 600
@@ -58,6 +59,7 @@ ApplicationWindow {
                     chart: root.chart
                     chartMap: root.chartMap
                     slotsModel: root.slotsModel
+                    Component.onCompleted: if (root.legendOpen) openLegend()
                 }
                 NumbersPage {
                     model: root.numbersModel

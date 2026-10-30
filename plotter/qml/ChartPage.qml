@@ -148,6 +148,8 @@ Item {
         }
     }
 
+    function openLegend() { legendSheet.visible = true }
+
     function slotEditorFor(s) {
         editor.slotId = s.slotId
         editor.title = "Overlay " + s.slotId

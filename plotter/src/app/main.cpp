@@ -97,12 +97,13 @@ int main(int argc, char* argv[]) {
     // on; they persist) and choose the page shown first (not stored).
     QCommandLineOption slotsOpt("slots", "Set the overlay slots: default or all.", "set");
     QCommandLineOption pageOpt("page", "Page shown first: chart, numbers, tracks, settings or about.", "page");
+    QCommandLineOption sheetOpt("sheet", "Open a sheet on the chart page: legend or ais.", "sheet");
     QCommandLineOption lockOpt("lock", "Start with the touch lock on.");
     QCommandLineOption recordOpt("record", "Turn track recording on at start (it persists).");
-    for (QCommandLineOption* o : {&shotOpt, &shotAfterOpt, &paletteOpt, &modeOpt, &slotsOpt, &pageOpt, &lockOpt, &recordOpt})
+    for (QCommandLineOption* o : {&shotOpt, &shotAfterOpt, &paletteOpt, &modeOpt, &slotsOpt, &pageOpt, &sheetOpt, &lockOpt, &recordOpt})
         o->setFlags(QCommandLineOption::HiddenFromHelp);
     cli.addOptions(
-        {socketOpt, packsOpt, dataOpt, windowOpt, shotOpt, shotAfterOpt, paletteOpt, modeOpt, slotsOpt, pageOpt, lockOpt, recordOpt});
+        {socketOpt, packsOpt, dataOpt, windowOpt, shotOpt, shotAfterOpt, paletteOpt, modeOpt, slotsOpt, pageOpt, sheetOpt, lockOpt, recordOpt});
     cli.process(app);
 
     QSize windowSize;
@@ -135,6 +136,11 @@ int main(int argc, char* argv[]) {
     const QStringList pages{"chart", "numbers", "tracks", "settings", "about"};
     if (cli.isSet(pageOpt) && !pages.contains(cli.value(pageOpt))) {
         qCritical() << "--page wants one of" << pages << "got" << cli.value(pageOpt);
+        return 2;
+    }
+
+    if (cli.isSet(sheetOpt) && cli.value(sheetOpt) != "legend" && cli.value(sheetOpt) != "ais") {
+        qCritical() << "--sheet wants legend or ais, got" << cli.value(sheetOpt);
         return 2;
     }
 
@@ -204,6 +210,16 @@ int main(int argc, char* argv[]) {
     QObject::connect(&tracksController, &TracksController::shownChanged, &chart, showTracks);
     showTracks();
 
+    // --sheet ais: select the first AIS target that arrives (a dev aid, like the other hidden options).
+    if (cli.value(sheetOpt) == "ais") {
+        auto once = std::make_shared<QMetaObject::Connection>();
+        *once = QObject::connect(&ais, &QAbstractItemModel::modelReset, &chart, [&chart, &ais, once] {
+            if (ais.targets().isEmpty()) return;
+            chart.selectMmsi(ais.targets().constFirst().mmsi);
+            QObject::disconnect(*once);
+        });
+    }
+
     // Icons are sized like the QML Units: from the window size and the panel diagonal setting.
     QQuickWindow* window = nullptr;
     const auto iconPxPerMm = [&] {
@@ -252,7 +268,8 @@ int main(int argc, char* argv[]) {
                                  {"numbersModel", QVariant::fromValue(&numbersModel)},
                                  {"touchLock", QVariant::fromValue(&touchLock)},
                                  {"tracksController", QVariant::fromValue(&tracksController)},
-                                 {"page", cli.isSet(pageOpt) ? cli.value(pageOpt) : QStringLiteral("chart")}});
+                                 {"page", cli.isSet(pageOpt) ? cli.value(pageOpt) : QStringLiteral("chart")},
+                                 {"legendOpen", cli.value(sheetOpt) == "legend"}});
     engine.loadFromModule("CheekyMarine", "Main");
     if (engine.rootObjects().isEmpty()) {
         qCritical() << "the main QML failed to load";

@@ -71,6 +71,8 @@ public:
     // Selects targetAt(px, radiusPx), or leaves the selection alone on a miss.
     Q_INVOKABLE void selectAt(QPointF px, double radiusPx);
     Q_INVOKABLE void clearTarget();
+    // Selects the target with this MMSI (dev option --sheet ais); a gone MMSI clears the selection.
+    void selectMmsi(quint32 mmsi) { m_selectedMmsi = mmsi; refreshSelection(); }
     QVariantMap aisSelection() const { return m_aisSelection; }
 
 signals:
