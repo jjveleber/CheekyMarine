@@ -24,7 +24,9 @@ add_library(plottercore STATIC
     src/core/StyleLoader.cpp
     src/core/DepthFilters.cpp
     src/core/Geo.cpp
-    src/core/Overlays.cpp)
+    src/core/Overlays.cpp
+    src/core/ChartMap.h
+    src/core/ChartController.cpp)
 set_target_properties(plottercore PROPERTIES AUTOMOC ON)
 target_include_directories(plottercore PUBLIC
     ${CMAKE_CURRENT_BINARY_DIR}/generated
@@ -54,15 +56,17 @@ plotter_add_test(tst_styleloader tests/tst_styleloader.cpp)
 plotter_add_test(tst_depthfilters tests/tst_depthfilters.cpp)
 plotter_add_test(tst_geo tests/tst_geo.cpp)
 plotter_add_test(tst_overlays tests/tst_overlays.cpp)
+plotter_add_test(tst_chartcontroller tests/tst_chartcontroller.cpp)
 
 # Linking Qt6::Sql and QMapLibre directly puts Qt's lib dir and the QMapLibre lib dir in the
 # automatic build RPATH, so libQMapLibre.so resolves libQt6Sql without LD_LIBRARY_PATH.
-qt_add_executable(cheekyplotter src/app/main.cpp)
+qt_add_executable(cheekyplotter src/app/main.cpp src/app/MapLibreChartMap.cpp src/app/Icons.cpp)
 qt_add_qml_module(cheekyplotter
     URI CheekyMarine
     VERSION 1.0
-    QML_FILES qml/Main.qml)
+    QML_FILES qml/Main.qml qml/ChartPage.qml)
 target_link_libraries(cheekyplotter PRIVATE plottercore Qt6::Quick Qt6::QuickControls2 Qt6::Sql QMapLibre::Core)
+set_target_properties(cheekyplotter PROPERTIES AUTOMOC ON)
 # The linker drops Qt6::Sql (nothing in the app uses it directly) and RUNPATH is not searched for the
 # dependencies of libQMapLibre.so, so emit a classic RPATH, which is.
 target_link_options(cheekyplotter PRIVATE -Wl,--disable-new-dtags)

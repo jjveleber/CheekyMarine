@@ -1,0 +1,90 @@
+#pragma once
+#include "core/ChartMap.h"
+#include "core/Geo.h"
+#include "core/PackCatalog.h"
+#include <QHash>
+#include <QImage>
+#include <QJsonObject>
+#include <QList>
+#include <QObject>
+#include <optional>
+
+class Settings;
+class VesselModel;
+class AisModel;
+
+// Chart page logic: picks and loads the style, keeps the runtime overlays (tracks, AIS, own ship)
+// and depth filters on the map across style reloads, and drives the follow camera.
+class ChartController : public QObject {
+    Q_OBJECT
+    Q_PROPERTY(QString mode READ mode WRITE setMode NOTIFY modeChanged)
+    Q_PROPERTY(QString orientation READ orientation WRITE setOrientation NOTIFY orientationChanged)
+    Q_PROPERTY(QString palette READ palette WRITE setPalette NOTIFY paletteChanged)
+    Q_PROPERTY(bool follow READ follow WRITE setFollow NOTIFY followChanged)
+    Q_PROPERTY(bool fishAvailable READ fishAvailable CONSTANT)
+    Q_PROPERTY(QString notice READ notice NOTIFY noticeChanged)
+    Q_PROPERTY(bool noPosition READ noPosition NOTIFY noPositionChanged)
+    Q_PROPERTY(double minZoom READ minZoom CONSTANT)
+    Q_PROPERTY(double maxZoom READ maxZoom CONSTANT)
+
+public:
+    // All references must outlive the controller. Loads the style for Settings::chartMode at once.
+    ChartController(ChartMap& map, Settings& settings, VesselModel& vessel, AisModel& ais, QList<PackInfo> packs,
+                    QObject* parent = nullptr);
+
+    QString mode() const { return m_mode; }
+    void setMode(const QString& mode); // "nav" or "fish"; "fish" is refused without a bathy pack
+    QString orientation() const;
+    void setOrientation(const QString& orientation); // writes Settings::orientation
+    QString palette() const { return m_palette; }
+    void setPalette(const QString& palette); // "day", "dusk" or "night"
+    bool follow() const { return m_follow; }
+    void setFollow(bool follow);
+    bool fishAvailable() const { return m_bathy.has_value(); }
+    QString notice() const { return m_notice; }
+    bool noPosition() const { return m_noPosition; }
+    double minZoom() const { return m_minZoom; }
+    double maxZoom() const { return m_maxZoom; }
+
+    // Runtime images by id (OverlayIds), added now if a style is loaded and after every load.
+    void setImages(const QHash<QString, QImage>& images);
+    void setTracks(const QList<QList<LatLon>>& tracks);
+
+    Q_INVOKABLE void zoomIn();
+    Q_INVOKABLE void zoomOut();
+    Q_INVOKABLE void recenter();
+
+signals:
+    void modeChanged();
+    void orientationChanged();
+    void paletteChanged();
+    void followChanged();
+    void noticeChanged();
+    void noPositionChanged();
+
+private:
+    void loadStyle();
+    void onStyleLoaded();
+    void applyDepthFilters();
+    void onVessel();
+    void pushAis();
+    void applyCamera();
+    void stepZoom(double delta);
+
+    ChartMap& m_map;
+    Settings& m_settings;
+    VesselModel& m_vessel;
+    AisModel& m_ais;
+    std::optional<PackInfo> m_charts, m_bathy;
+    QString m_mode = QStringLiteral("nav");
+    QString m_palette = QStringLiteral("day");
+    bool m_follow = true;
+    QString m_notice;
+    bool m_noPosition = true;
+    double m_minZoom = 0, m_maxZoom = 22;
+    QJsonObject m_style;       // the style being shown (or loading)
+    bool m_loadPending = false; // a setStyleJson whose styleLoaded has not arrived yet
+    bool m_ready = false;       // runtime sources and layers are on the map
+    QHash<QString, QImage> m_images;
+    QList<QList<LatLon>> m_tracks;
+};
