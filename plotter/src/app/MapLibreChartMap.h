@@ -33,7 +33,7 @@ private:
 
 // QMapLibre::Map rendered in a QQuickItem (spike answer 5): the map draws into its own FBO on the
 // scene graph thread and the texture is shown without a copy. The only code that touches MapLibre.
-// Gestures live in ChartPage.qml, which calls moveBy/scaleBy and emits userGesture().
+// Gestures live in ChartPage.qml, which calls moveBy/scaleBy and emits userGesture() on a pan.
 class MapLibreChartMap : public QQuickItem {
     Q_OBJECT
 public:

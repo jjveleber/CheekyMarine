@@ -34,5 +34,5 @@ public:
 
 signals:
     void styleLoaded();
-    void userGesture(); // pan, pinch or rotate by the user
+    void userGesture(); // a pan by the user (zoom gestures keep follow mode)
 };

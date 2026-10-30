@@ -152,16 +152,16 @@ void ChartController::setTracks(const QList<QList<LatLon>>& tracks) {
     if (m_ready) m_map.setGeoJson(OverlayIds::kTracksSource, tracksGeoJson(m_tracks));
 }
 
-void ChartController::zoomIn() { stepZoom(1); }
-void ChartController::zoomOut() { stepZoom(-1); }
+void ChartController::zoomIn() { zoomBy(1); }
+void ChartController::zoomOut() { zoomBy(-1); }
 
 void ChartController::recenter() {
     if (m_follow) applyCamera();
     else setFollow(true);
 }
 
-void ChartController::stepZoom(double delta) {
-    m_map.setZoom(std::clamp(m_map.zoom() + delta, m_minZoom, m_maxZoom));
+void ChartController::zoomBy(double log2Delta) {
+    m_map.setZoom(std::clamp(m_map.zoom() + log2Delta, m_minZoom, m_maxZoom));
     applyCamera(); // the lower-third offset depends on the zoom
 }
 

@@ -440,6 +440,37 @@ private slots:
         QCOMPARE(r.map.cameras.last().zoom, 6.0);
     }
 
+    void zoomWhileFollowingKeepsBoatPlacement() {
+        Rig r;
+        QVERIFY(r.settings);
+        r.make();
+        VesselState v = boat();
+        v.cogRad = kPi / 2;
+        v.sogMs = 3;
+        r.vessel.setState(v); // head-up falls back to COG 90
+        r.map.zoomValue = 13;
+        const auto placedAt = [&](double zoom) {
+            return destination({47.98, -122.23}, 90.0, 600.0 / 6 * metresPerPixel(47.98, zoom));
+        };
+        for (const auto& step : {std::pair{1.5, 14.5}, std::pair{10.0, 18.0}, std::pair{-1.0, 17.0}}) {
+            const auto n = r.map.cameras.size();
+            if (step.first == -1.0) r.ctrl->zoomOut();
+            else r.ctrl->zoomBy(step.first);
+            QVERIFY(r.ctrl->follow());
+            QCOMPARE(r.map.cameras.size(), n + 1);
+            const auto c = r.map.cameras.last();
+            QCOMPARE(c.zoom, step.second);
+            QVERIFY(std::abs(c.bearing - 90.0) < 1e-6);
+            QVERIFY(distanceM({c.lat, c.lon}, placedAt(step.second)) < 0.5);
+        }
+        r.ctrl->zoomIn(); // at 17
+        QVERIFY(r.ctrl->follow());
+        QCOMPARE(r.map.cameras.last().zoom, 18.0);
+        QVERIFY(distanceM({r.map.cameras.last().lat, r.map.cameras.last().lon}, placedAt(18)) < 0.5);
+        r.ctrl->zoomBy(-20);
+        QCOMPARE(r.map.cameras.last().zoom, 6.0);
+    }
+
     void zoomRangeFallbackWithoutMetadata() {
         Rig r(true, false, -1, -1);
         QVERIFY(r.settings);

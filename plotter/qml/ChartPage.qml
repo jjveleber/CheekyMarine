@@ -15,12 +15,18 @@ Item {
     Item {
         id: mapArea
         anchors.fill: parent
+        function zoomBy(factor, point) {
+            if (page.chart.follow) page.chart.zoomBy(Math.log2(factor))
+            else page.chartMap.scaleBy(factor, point)
+        }
+
         Component.onCompleted: {
             page.chartMap.parent = mapArea
             page.chartMap.anchors.fill = mapArea
         }
 
-        // Gestures are ours, not the map item's: each one stops follow mode.
+        // Gestures are ours, not the map item's. Only a pan stops follow mode; while following, zoom
+        // goes through the controller so the boat keeps its place, else it scales about the point.
         DragHandler {
             target: null
             minimumPointCount: 1
@@ -41,23 +47,17 @@ Item {
             minimumPointCount: 2
             rotationAxis.enabled: false
             property real last: 1
-            onActiveChanged: {
-                last = 1
-                if (active) page.chartMap.userGesture()
-            }
+            onActiveChanged: last = 1
             onActiveScaleChanged: {
                 if (!active) return
-                page.chartMap.scaleBy(activeScale / last, centroid.position)
+                mapArea.zoomBy(activeScale / last, centroid.position)
                 last = activeScale
             }
         }
         WheelHandler {
             target: null
             acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
-            onWheel: (event) => {
-                page.chartMap.userGesture()
-                page.chartMap.scaleBy(Math.pow(2, event.angleDelta.y / 240), Qt.point(event.x, event.y))
-            }
+            onWheel: (event) => mapArea.zoomBy(Math.pow(2, event.angleDelta.y / 240), Qt.point(event.x, event.y))
         }
     }
 

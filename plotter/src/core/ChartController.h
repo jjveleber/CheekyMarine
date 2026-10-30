@@ -50,6 +50,9 @@ public:
     void setImages(const QHash<QString, QImage>& images);
     void setTracks(const QList<QList<LatLon>>& tracks);
 
+    // Changes the zoom by `log2Delta` (clamped to minZoom..maxZoom) and, when following, re-applies
+    // the camera so the boat keeps its place. Pinch and wheel use it while following.
+    Q_INVOKABLE void zoomBy(double log2Delta);
     Q_INVOKABLE void zoomIn();
     Q_INVOKABLE void zoomOut();
     Q_INVOKABLE void recenter();
@@ -69,7 +72,6 @@ private:
     void onVessel();
     void pushAis();
     void applyCamera();
-    void stepZoom(double delta);
 
     ChartMap& m_map;
     Settings& m_settings;
