@@ -39,6 +39,9 @@ public:
         m_settings->setBigNumbers({"depth", "sog"});
         m_settings->setPaletteMode("auto");
         m_settings->setDepthUnit("ft");
+        m_settings->setDepths(1.8288, 3.048, 9.144);
+        m_settings->setPanelDiagonalIn(10.1);
+        m_settings->setOrientation("head");
         m_vessel.setLive(false);
         m_appInfo->setDaemonVersion(QString());
     }

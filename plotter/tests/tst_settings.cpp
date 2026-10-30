@@ -133,6 +133,7 @@ private slots:
         Settings s(**st);
         QSignalSpy sp1(&s, &Settings::shallowMChanged), sp2(&s, &Settings::safetyMChanged), sp3(&s, &Settings::deepMChanged);
         QVERIFY(!s.setDepths(a, b, c));
+        QVERIFY(!Settings::depthsProblem(a, b, c).isEmpty());
         QCOMPARE(s.shallowM(), 1.8288);
         QCOMPARE(s.safetyM(), 3.048);
         QCOMPARE(s.deepM(), 9.144);

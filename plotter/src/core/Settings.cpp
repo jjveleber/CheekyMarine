@@ -74,7 +74,7 @@ std::optional<QJsonValue> fromText(const QString& s) {
 }
 
 bool depthsValid(double a, double b, double c) {
-    return a >= Settings::kMinDepthM && c <= Settings::kMaxDepthM && a < b && b < c;
+    return Settings::depthsProblem(a, b, c).isEmpty();
 }
 
 } // namespace
@@ -142,6 +142,18 @@ bool Settings::put(const QString& key, const QJsonValue& v) {
         return false;
     m_v.insert(key, v);
     return true;
+}
+
+QString Settings::depthsProblem(double a, double b, double c) {
+    if (a < kMinDepthM)
+        return QStringLiteral("Depths must be at least %1 m.").arg(kMinDepthM);
+    if (c > kMaxDepthM)
+        return QStringLiteral("Depths must be at most %1 m.").arg(kMaxDepthM);
+    if (!(a < b))
+        return QStringLiteral("Shallow must be less than safety.");
+    if (!(b < c))
+        return QStringLiteral("Safety must be less than deep.");
+    return QString();
 }
 
 bool Settings::setDepths(double shallow, double safety, double deep) {

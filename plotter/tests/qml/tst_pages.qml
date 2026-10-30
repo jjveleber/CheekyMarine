@@ -44,6 +44,7 @@ TestCase {
     Component { id: recoveryComp; RecoveryScreen {} }
     Component { id: bannerComp; NoDataBanner {} }
     Component { id: slotComp; SlotView {} }
+    Component { id: settingsComp; SettingsPage {} }
 
     function sizes() {
         return [{ tag: "1024x600", w: 1024, h: 600, ppm: 4.626 }, { tag: "1280x800", w: 1280, h: 800, ppm: 5.884 }]
@@ -139,7 +140,8 @@ TestCase {
         const main = makeMain(1024, 600)
         byName(main.contentItem, "splash").visible = false
         mouseClick(byName(main.contentItem, "tab-settings"))
-        mouseClick(byName(main.contentItem, "editOverlaysButton"))
+        waitForRendering(byName(main.contentItem, "settingsPage"))
+        tap(byName(main.contentItem, "editOverlaysButton"))
         compare(main.page, "chart")
         const chart = byName(main.contentItem, "chartPage")
         verify(chart.editing)
@@ -284,5 +286,138 @@ TestCase {
         compare(fixture.settings.bigNumbers, ["depth", "cog", "cog", "stw"])
         tryCompare(page, "cellCount", 4)
         compare(findAll(page, it => it.objectName.startsWith("cell-") && it.visible).length, 4)
+    }
+
+    function makeSettings() {
+        const page = createTemporaryObject(settingsComp, testCase, { width: 1200, height: 800, settings: fixture.settings })
+        verify(page, "SettingsPage")
+        return page
+    }
+    // Scrolls every Flickable above `item` so the item is on screen, then clicks it.
+    function tap(item) {
+        verify(item, "nothing to tap")
+        for (let a = item.parent; a; a = a.parent) {
+            if (a.contentItem !== undefined && a.contentY !== undefined) {
+                const p = item.mapToItem(a, 0, 0)
+                if (p.y < 0 || p.y + item.height > a.height)
+                    a.contentY = Math.max(0, Math.min(a.contentHeight - a.height, a.contentY + p.y - Units.mm(2)))
+            }
+        }
+        mouseClick(item)
+    }
+    function pick(page, row, choice) {
+        tap(byName(page, row))
+        waitForRendering(byName(page, "settingsList")) // the list lays out on the next frame
+        tap(byName(page, "choice-" + choice))
+    }
+
+    function test_settingsConstructs_data() { return sizes() }
+    function test_settingsConstructs(data) {
+        Units.windowWidth = data.w
+        Units.windowHeight = data.h
+        const page = createTemporaryObject(settingsComp, testCase, { width: data.w - Units.mm(17), height: data.h, settings: fixture.settings })
+        verify(page, "SettingsPage")
+        checkBigButtons(page)
+        verify(byName(page, "editOverlaysButton"))
+        verify(byName(page, "aboutButton"))
+    }
+
+    function test_settingsInvalidDepthShowsReasonAndIsNotSaved() {
+        const page = makeSettings()
+        const deep = fixture.settings.deepM
+        verify(fixture.settings.setDepths(1.8288, deep - 0.3048, deep)) // safety is deep minus 1 ft
+        const before = fixture.settings.safetyM
+        verify(!byName(page, "depthError").visible)
+        tap(byName(page, "safetyPlus"))
+        compare(fixture.settings.safetyM, before)
+        verify(byName(page, "depthError").visible)
+        compare(byName(page, "depthError").text, "Safety must be less than deep.")
+        tap(byName(page, "safetyMinus"))
+        verify(fixture.settings.safetyM < before)
+        verify(!byName(page, "depthError").visible)
+    }
+
+    function test_settingsDepthStepFollowsUnit() {
+        const page = makeSettings()
+        compare(byName(page, "shallowValue").text, "6 ft")
+        tap(byName(page, "shallowPlus"))
+        compare(byName(page, "shallowValue").text, "7 ft")
+        fuzzyCompare(fixture.settings.shallowM, 7 * 0.3048, 1e-6)
+        pick(page, "row-depthUnit", "m")
+        compare(fixture.settings.depthUnit, "m")
+        verify(byName(page, "safetyValue").text.endsWith(" m"), byName(page, "safetyValue").text)
+        const m0 = fixture.settings.deepM
+        tap(byName(page, "deepPlus"))
+        fuzzyCompare(fixture.settings.deepM, m0 + 0.5, 1e-6)
+        pick(page, "row-depthUnit", "fm")
+        verify(byName(page, "safetyValue").text.endsWith(" fm"))
+        const f0 = fixture.settings.deepM
+        tap(byName(page, "deepMinus"))
+        fuzzyCompare(fixture.settings.deepM, f0 - 0.9144, 1e-6)
+    }
+
+    function test_settingsDepthLimits() {
+        const page = makeSettings()
+        verify(fixture.settings.setDepths(0.5, 1.0, 60.0))
+        tap(byName(page, "deepPlus"))
+        compare(fixture.settings.deepM, 60.0)
+        verify(byName(page, "depthError").visible)
+        tap(byName(page, "shallowMinus"))
+        compare(fixture.settings.shallowM, 0.5)
+    }
+
+    function test_settingsChoiceRows_data() {
+        return [
+            { row: "row-speedUnit", choice: "kmh", key: "speedUnit", want: "kmh" },
+            { row: "row-tempUnit", choice: "C", key: "tempUnit", want: "C" },
+            { row: "row-orientation", choice: "north", key: "orientation", want: "north" },
+            { row: "row-orientation", choice: "course", key: "orientation", want: "course" },
+            { row: "row-paletteMode", choice: "night", key: "paletteMode", want: "night" },
+            { row: "row-touchLock", choice: "0", key: "touchLockTimeoutS", want: 0 },
+            { row: "row-touchLock", choice: "30", key: "touchLockTimeoutS", want: 30 },
+            { row: "row-touchLock", choice: "300", key: "touchLockTimeoutS", want: 300 },
+            { row: "row-trackInterval", choice: "30", key: "trackIntervalS", want: 30 },
+            { row: "row-trackDistance", choice: "25", key: "trackMinDistanceM", want: 25 }
+        ]
+    }
+    function test_settingsChoiceRows(data) {
+        const page = makeSettings()
+        pick(page, data.row, data.choice)
+        compare(fixture.settings[data.key], data.want)
+        verify(!byName(page, "settingsList").visible)
+    }
+
+    function test_settingsOffsetToggleAndDiagonal() {
+        const page = makeSettings()
+        const on = fixture.settings.applyDepthOffset
+        tap(byName(page, "row-applyOffset"))
+        compare(fixture.settings.applyDepthOffset, !on)
+        compare(byName(page, "diagonalValue").text, "10.1 in")
+        tap(byName(page, "diagonalPlus"))
+        compare(fixture.settings.panelDiagonalIn, 10.2)
+        tap(byName(page, "diagonalMinus"))
+        tap(byName(page, "diagonalMinus"))
+        compare(fixture.settings.panelDiagonalIn, 10.0)
+        fixture.settings.panelDiagonalIn = 7.0
+        tap(byName(page, "diagonalMinus"))
+        compare(fixture.settings.panelDiagonalIn, 7.0)
+        fixture.settings.panelDiagonalIn = 15.0
+        tap(byName(page, "diagonalPlus"))
+        compare(fixture.settings.panelDiagonalIn, 15.0)
+    }
+
+    function test_settingsShowsChartDepthNote() {
+        const page = makeSettings()
+        verify(findAll(page, it => it.text === "Chart depths are in feet").length === 1)
+    }
+
+    function test_settingsTabInMain() {
+        const main = makeMain(1024, 600)
+        byName(main.contentItem, "splash").visible = false
+        mouseClick(byName(main.contentItem, "tab-settings"))
+        verify(byName(main.contentItem, "settingsPage").visible)
+        waitForRendering(byName(main.contentItem, "settingsPage"))
+        tap(byName(main.contentItem, "aboutButton"))
+        compare(main.page, "about")
     }
 }

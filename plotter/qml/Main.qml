@@ -70,28 +70,13 @@ ApplicationWindow {
                         font.pixelSize: Units.mm(5)
                     }
                 }
-                // Task 13 replaces this with the settings page.
-                Item {
-                    objectName: "settingsPage"
-                    Column {
-                        anchors { left: parent.left; top: parent.top; margins: Units.mm(4) }
-                        spacing: Units.mm(3)
-                        BigButton {
-                            objectName: "editOverlaysButton"
-                            width: Units.mm(60)
-                            text: "Edit overlays"
-                            onClicked: {
-                                chartPage.editing = true
-                                root.page = "chart"
-                            }
-                        }
-                        BigButton {
-                            objectName: "aboutButton"
-                            width: Units.mm(60)
-                            text: "About"
-                            onClicked: root.page = "about"
-                        }
+                SettingsPage {
+                    settings: root.settings
+                    onEditOverlays: {
+                        chartPage.editing = true
+                        root.page = "chart"
                     }
+                    onShowAbout: root.page = "about"
                 }
                 AboutPage {
                     appInfo: root.appInfo

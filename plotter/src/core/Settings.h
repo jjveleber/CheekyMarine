@@ -77,6 +77,9 @@ public:
     // kMinDepthM <= shallow < safety < deep <= kMaxDepthM.
     Q_INVOKABLE bool setDepths(double shallowM, double safetyM, double deepM);
 
+    // Why setDepths would refuse these values (unit-free text), or an empty string if it would accept them.
+    Q_INVOKABLE static QString depthsProblem(double shallowM, double safetyM, double deepM);
+
     UnitPrefs unitPrefs() const;
 
 signals:
