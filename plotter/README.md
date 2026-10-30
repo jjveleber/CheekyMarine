@@ -1,0 +1,61 @@
+# CheekyMarine plotter
+
+Qt 6 / QML chart plotter app (`cheekyplotter`). It is an optional CMake subproject: the root build
+only includes it with `-DCM_BUILD_PLOTTER=ON`, so the n2kd build and its tests are unaffected.
+
+- `plottercore`: static library with all application logic (tests link it).
+- `cheekyplotter`: the app (QML module `CheekyMarine`).
+- `tests/`: Qt Test executables, added with `plotter_add_test(NAME SOURCES...)`.
+- `fonts/`: Noto Sans (OFL), copied from `chartpack/fonts`.
+
+The plotter has its own version, `PLOTTER_VERSION` in `plotter/CMakeLists.txt`, independent of the
+n2kd version.
+
+## Prerequisites
+
+Ubuntu 24.04 packages:
+
+```bash
+sudo apt-get install -y ninja-build libgl1-mesa-dev libxkbcommon-dev libicu-dev \
+    libcurl4-openssl-dev libuv1-dev libsqlite3-dev zlib1g-dev libpng-dev libjpeg-dev libwebp-dev \
+    libxcb-cursor0
+```
+
+Qt 6.8.3 (plain `pip install --user` is blocked by PEP 668, so use pipx; no `-m` modules needed):
+
+```bash
+pipx install aqtinstall
+aqt install-qt linux desktop 6.8.3 linux_gcc_64 -O ~/Qt
+```
+
+maplibre-native-qt at the pinned commit, installed into `~/.local/maplibre-qt` (the script is
+`scripts/build-maplibre-qt.sh`; see `docs/plotter/spike-findings.md` for why this commit and these
+options). The first run clones the source into `~/.cache/cheekymarine/maplibre-native-qt`, which
+needs about 8.5 GB of free disk plus the build tree (the clone takes longer than the build):
+
+```bash
+CMAKE_PREFIX_PATH=$HOME/Qt/6.8.3/gcc_64 scripts/build-maplibre-qt.sh ~/.local/maplibre-qt
+```
+
+## Configure, build, test
+
+```bash
+cmake -S . -B build-plotter -G Ninja -DCM_BUILD_PLOTTER=ON \
+    -DCMAKE_PREFIX_PATH="$HOME/Qt/6.8.3/gcc_64;$HOME/.local/maplibre-qt"
+cmake --build build-plotter
+ctest --test-dir build-plotter --output-on-failure
+```
+
+`cheekyplotter` runs without `LD_LIBRARY_PATH`: its build RPATH contains Qt's lib dir and the
+maplibre lib dir (derived from the linked targets), so `libQMapLibre.so` finds `libQt6Sql`.
+
+Dev machine trap: if your shell has linuxbrew in `PATH`/`LD_LIBRARY_PATH`, CMake can pick up
+linuxbrew libraries; configure and build with
+`env -u LD_LIBRARY_PATH PATH=$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin`.
+
+## CI
+
+The `plotter` job in `.github/workflows/plotter-ci.yml` runs the steps above on ubuntu-24.04. It
+caches `~/Qt` and the installed maplibre prefix (keyed on the hash of `scripts/build-maplibre-qt.sh`,
+which holds the pinned commit); the 8.5 GB source checkout is never cached. A cache miss prints
+`df -h` and frees disk space first. Free disk observed on a cache miss: see the first run's log.

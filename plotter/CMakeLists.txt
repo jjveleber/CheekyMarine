@@ -1,0 +1,44 @@
+cmake_minimum_required(VERSION 3.25)
+
+# The app's semver, independent of the root project's (n2kd) version.
+set(PLOTTER_VERSION 0.1.0)
+
+find_package(Qt6 6.5 REQUIRED COMPONENTS Core Gui Network Sql Quick QuickControls2 Test QuickTest)
+qt_standard_project_setup(REQUIRES 6.5)
+qt_policy(SET QTP0004 NEW)
+find_package(QMapLibre REQUIRED COMPONENTS Core)
+
+configure_file(src/core/Version.h.in ${CMAKE_CURRENT_BINARY_DIR}/generated/plotter/Version.h @ONLY)
+
+# All application logic lives here so tests can link it.
+add_library(plottercore STATIC src/core/Placeholder.cpp)
+target_include_directories(plottercore PUBLIC
+    ${CMAKE_CURRENT_BINARY_DIR}/generated
+    ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(plottercore PUBLIC Qt6::Core Qt6::Gui Qt6::Network Qt6::Sql)
+
+# plotter_add_test(NAME SOURCES...): Qt Test executable linked to plottercore, run by ctest.
+function(plotter_add_test name)
+    add_executable(${name} ${ARGN})
+    target_link_libraries(${name} PRIVATE plottercore Qt6::Test)
+    target_compile_definitions(${name} PRIVATE
+        PLOTTER_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures"
+        PLOTTER_EXPECTED_VERSION="${PLOTTER_VERSION}")
+    set_target_properties(${name} PROPERTIES AUTOMOC ON)
+    add_test(NAME ${name} COMMAND ${name})
+    set_tests_properties(${name} PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+endfunction()
+
+plotter_add_test(tst_version tests/tst_version.cpp)
+
+# Linking Qt6::Sql and QMapLibre directly puts Qt's lib dir and the QMapLibre lib dir in the
+# automatic build RPATH, so libQMapLibre.so resolves libQt6Sql without LD_LIBRARY_PATH.
+qt_add_executable(cheekyplotter src/app/main.cpp)
+qt_add_qml_module(cheekyplotter
+    URI CheekyMarine
+    VERSION 1.0
+    QML_FILES qml/Main.qml)
+target_link_libraries(cheekyplotter PRIVATE plottercore Qt6::Quick Qt6::QuickControls2 Qt6::Sql QMapLibre::Core)
+# The linker drops Qt6::Sql (nothing in the app uses it directly) and RUNPATH is not searched for the
+# dependencies of libQMapLibre.so, so emit a classic RPATH, which is.
+target_link_options(cheekyplotter PRIVATE -Wl,--disable-new-dtags)
