@@ -66,12 +66,14 @@ From the parent spec, restated because this plan is where they are won or lost:
 
 ### 6.2 Qt and MapLibre on the dev machine and the Pi (my call)
 
-- Dev machine: Qt 6.8 LTS installed with aqtinstall into `~/Qt` (desktop gcc_64, modules qtlocation and qtpositioning), documented in `plotter/README.md`. CI does the same, cached.
+- Dev machine: Qt 6.8 LTS installed with aqtinstall into `~/Qt` (desktop gcc_64, no extra modules: no Qt Location or Positioning, owner decided 2026-10-29 after the spike; aqtinstall installed with `pipx install aqtinstall`), documented in `plotter/README.md`. CI does the same, cached.
 - maplibre-native-qt: built from source by a script (`scripts/build-maplibre-qt.sh`) into a prefix, pinned to a commit hash recorded in the script (v3.0.0 is from 2024; main is active and heading to 4.0; the spike picks the pin). Shared libraries. CI caches the prefix by the pinned hash.
-- Pi: Raspberry Pi OS trixie, Qt 6.8 from apt, maplibre-native-qt built on the Pi (or in an arm64 trixie container) with the same script. The private Qt Location headers missing from Debian's package are supplied as the maplibre-native-qt build docs describe.
+- Pi: Raspberry Pi OS trixie, Qt 6.8 from apt, maplibre-native-qt built on the Pi (or in an arm64 trixie container) with the same script. Qt Location is not needed, so no private headers and no `qt6-location-dev`; the Pi needs `libqt6sql6-sqlite` at run time and `libqt6opengl6-dev` to build.
 - How the app is cross-built and shipped to the Pi for good is plan 4.
 
 ### 6.3 First task: the MapLibre spike (parent 8, risk 1)
+
+Answers (Task 1): all six questions are answered in `docs/plotter/spike-findings.md` (done 2026-10-29, owner checkpoint 1 approved). In short: `mbtiles://` URLs, `file://` sprites and glyphs, runtime filters and runtime GeoJSON work; the API is `QMapLibre::Map` in a custom `QQuickItem` (answer 5), with no rendered-feature query.
 
 Before any feature work, a throwaway spike answers, in writing, in the plan's ledger:
 
@@ -107,12 +109,12 @@ QML pages bind to the models; no logic in QML beyond layout and bindings.
 - Chart depth units (my call): the pack styles draw soundings and contour labels in feet (`metadata.cheekymarine.units`), and the pack contract does not let the app rewrite label expressions. The depth unit setting changes the overlay slots and big numbers only; the settings screen says "Chart depths are in feet". Metres on the chart would need a pack contract change and new packs, a later decision.
 - Palette: day, dusk, night select `nav-<palette>` or `fish-<palette>`. A palette or mode change reloads the style, keeps camera and runtime layers (own boat, track, AIS are re-added after load), and re-applies the depth filters.
 - Notice: the current style's `metadata.cheekymarine.notice` is shown as a small, always-visible line at the bottom edge of the chart, under any bottom banner slot. It is not dismissable (the notices say "not certified for navigation"; my call that it stays visible).
-- Legend: a button on the chart page opens a sheet listing `legend.json` entries (abbreviation, meaning, kind), large rows, searchable by scrolling only (no keyboard on the boat). Tapping a seabed label on the chart and getting its meaning directly is desirable if the chosen MapLibre API exposes rendered-feature queries; the spike says whether it does.
+- Legend: a button on the chart page opens a sheet listing `legend.json` entries (abbreviation, meaning, kind), large rows, searchable by scrolling only (no keyboard on the boat). There is no tap-to-lookup on the chart: the spike found the MapLibre Qt API has no rendered-feature query (owner decided 2026-10-29, checkpoint 1 approved; it could return by exposing `queryRenderedFeatures` upstream).
 
 ### 6.6 Chart page behaviour (my calls unless marked)
 
-- Orientation: north-up default; course-up as a setting (uses COG when SOG > 0.5 kn, else heading if present, else stays north-up).
-- Follow mode on by default: boat kept at the screen centre (or lower third in course-up). Any pan turns follow off and shows a large "Recenter" button.
+- Orientation: head-up default (owner decided 2026-10-29: "I generally run in head up mode, not North up."); three settings values: north-up, head-up, course-up. Head-up uses true heading (magnetic + variation), else COG when SOG > 0.5 kn, else bearing 0. Course-up uses COG when SOG > 0.5 kn, else heading if present, else stays north-up.
+- Follow mode on by default: boat kept at the screen centre (or lower third in head-up and course-up). Any pan turns follow off and shows a large "Recenter" button.
 - Zoom: pinch, plus large + and - buttons (wet fingers pinch badly). Zoom range limited to the packs' range plus 2 overzoom.
 - Own boat: a boat icon at the GNSS position rotated to heading if present, else COG; a heading line to the screen edge; a COG vector of length equal to 2 minutes at SOG (my call, setting later if wanted). No boat icon without a position; a "No position" chip instead.
 - Mode toggle Navigation / Fishing: one large button, always visible on the chart page, labelled with the mode it is in.
@@ -171,14 +173,14 @@ Parent 6.2 says the daemon writes the track log. n2kd's socket is one-way, so st
 ### 6.15 Owner checkpoints (my call)
 
 1. After the spike: written answers to 6.3 and a short screen recording or screenshots of the chart in the spike.
-2. Chart page with own boat, both modes, three palettes: screenshots at both resolutions.
+2. Chart page with own boat, both modes, three palettes: screenshots at both resolutions. Taken at the end of plan Task 11, once the palettes exist (owner decided 2026-10-29).
 3. Overlay slots and big numbers: screenshots, especially digit sizes against the 15 ft target.
 4. Whole app before the PR is marked ready.
 
 ## 7. Risks
 
 - maplibre-native-qt MBTiles through the Qt platform, runtime filters, runtime GeoJSON (spike 6.3). Highest risk; first task.
-- Qt Location dependency: the Qt Location `Map` path drags Qt Location and its private headers; the custom `QQuickItem` path avoids that but is more code. Spike decides.
+- Qt Location dependency: resolved by the spike (owner decided 2026-10-29). The adapter is a custom `QQuickItem` over `QMapLibre::Map`; no Qt Location or Positioning is needed on the dev machine or the Pi.
 - Pi 5 performance with EGLFS and the full packs, especially Fishing mode's hillshade from `dem.mbtiles`. No Pi yet (owner, 2026-10-29); feature work proceeds on the dev machine and the Pi measurement is done the day the hardware arrives. Until then this risk is open.
 - Building maplibre-native-qt is slow (tens of minutes); CI caching is required or every push pays it.
 - Large-digit sizing depends on the panel's real size; the setting covers both candidates, the bench test in plan 5 confirms.
