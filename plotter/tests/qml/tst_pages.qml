@@ -726,6 +726,61 @@ TestCase {
         compare(main.page, "numbers")
     }
 
+    // A finger tap at the item's centre: the touch path, as on the panel (not the mouse path).
+    function touchTap(item) {
+        verify(item, "nothing to tap")
+        touchEvent(item).press(0, item, item.width / 2, item.height / 2).commit()
+        touchEvent(item).release(0, item, item.width / 2, item.height / 2).commit()
+    }
+    function pinchOut(item) {
+        const cx = item.width / 2, cy = item.height / 2
+        touchEvent(item).press(0, item, cx - 50, cy).press(1, item, cx + 50, cy).commit()
+        for (let i = 1; i <= 10; ++i)
+            touchEvent(item).move(0, item, cx - 50 - 10 * i, cy).move(1, item, cx + 50 + 10 * i, cy).commit()
+        touchEvent(item).release(0, item, cx - 150, cy).release(1, item, cx + 150, cy).commit()
+    }
+
+    // The same through touch: taps on the tabs and palette, a pinch and a wheel turn on the chart
+    // all stop at the lock; a finger hold on the padlock unlocks, and then they all work.
+    function test_lockSwallowsTouchPinchAndWheel() {
+        const main = makeMain(1024, 600)
+        byName(main.contentItem, "splash").visible = false
+        const map = byName(main.contentItem, "mapArea")
+        waitForRendering(main.contentItem)
+        touchTap(byName(main.contentItem, "lockButton"))
+        verify(fixture.touchLock.locked, "a tap on Lock locks")
+        touchTap(byName(main.contentItem, "tab-numbers"))
+        compare(main.page, "chart")
+        touchTap(byName(main.contentItem, "paletteButton"))
+        compare(fixture.settings.paletteMode, "auto")
+        pinchOut(map)
+        compare(chartStub.zooms.length, 0, "no pinch zoom while locked")
+        mouseWheel(map, map.width / 2, map.height / 2, 0, 120)
+        compare(chartStub.zooms.length, 0, "no wheel zoom while locked")
+        touchEvent(map).press(0, map, 300, 300).commit()
+        for (let i = 1; i <= 10; ++i)
+            touchEvent(map).move(0, map, 300 + 12 * i, 300).commit()
+        touchEvent(map).release(0, map, 420, 300).commit()
+        compare(main.chartMap.gestures, 0, "no pan while locked: follow stays on")
+        compare(main.chartMap.moves, 0)
+        compare(main.chartMap.scales.length, 0)
+
+        const hold = byName(main.contentItem, "lockHold")
+        touchEvent(hold).press(0, hold, hold.width / 2, hold.height / 2).commit()
+        fixture.advance(1500)
+        touchEvent(hold).release(0, hold, hold.width / 2, hold.height / 2).commit()
+        verify(!fixture.touchLock.locked, "a 1.5 s finger hold unlocks")
+
+        touchTap(byName(main.contentItem, "paletteButton"))
+        compare(fixture.settings.paletteMode, "day")
+        mouseWheel(map, map.width / 2, map.height / 2, 0, 120)
+        compare(chartStub.zooms.length, 1, "the wheel zooms once unlocked")
+        pinchOut(map)
+        verify(chartStub.zooms.length > 1, "the pinch zooms once unlocked")
+        touchTap(byName(main.contentItem, "tab-numbers"))
+        compare(main.page, "numbers")
+    }
+
     function test_lockHoldTargetIsOverTheLockButton() {
         const main = makeMain(1024, 600)
         fixture.touchLock.lockNow()

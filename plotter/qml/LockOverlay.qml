@@ -35,6 +35,8 @@ Item {
         mouseEnabled: true
         minimumTouchPoints: 1
         maximumTouchPoints: 10
+        // Past the drag threshold the touch points would be free for the chart's pan and pinch to take.
+        onGestureStarted: (gesture) => gesture.grab()
     }
     WheelHandler { }
 
