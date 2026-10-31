@@ -21,6 +21,9 @@ struct Opts {
     bool zoomMeta = true;        // minzoom and maxzoom rows
     bool garbageMbtiles = false; // enc.mbtiles is not SQLite
     bool valdcoJunk = false;     // valdco is not a JSON array
+    bool valdcoRow = true;       // write the cheekymarine:valdco row
+    QString valdco;              // non-empty: the valdco row's value
+    QJsonValue schemaValue = QJsonValue::Undefined; // defined: the manifest's schema, overriding `schema`
 };
 
 void touch(const QString& path, const QByteArray& data = {}) {
@@ -49,8 +52,10 @@ void makeMbtiles(const QString& path, const Opts& o) {
                 q.addBindValue(v);
                 QVERIFY(q.exec());
             };
-            put("cheekymarine:valdco", o.valdcoJunk ? QStringLiteral("not json")
-                                                    : QStringLiteral("[\"5\",\"0\",\"0.9\",\"1.8\",\"3.6\"]"));
+            if (o.valdcoRow)
+                put("cheekymarine:valdco", o.valdcoJunk          ? QStringLiteral("not json")
+                                           : !o.valdco.isEmpty() ? o.valdco
+                                                                 : QStringLiteral("[\"5\",\"0\",\"0.9\",\"1.8\",\"3.6\"]"));
             if (o.zoomMeta) {
                 put("minzoom", QStringLiteral("6"));
                 put("maxzoom", QStringLiteral("16"));
@@ -69,7 +74,8 @@ void makePack(const QString& root, const QString& kind, const QString& region, c
     if (o.manifest) {
         QJsonObject m{{"pack", kind}, {"region", region},
                       {"version", o.manifestVersion.isEmpty() ? version : o.manifestVersion},
-                      {"schema", o.schema}, {"notice", "Notice for " + kind}};
+                      {"schema", o.schemaValue.isUndefined() ? QJsonValue(o.schema) : o.schemaValue},
+                      {"notice", "Notice for " + kind}};
         touch(dir + "/manifest.json", QJsonDocument(m).toJson());
     }
     if (o.styles)
@@ -270,6 +276,43 @@ private slots:
         o.valdcoJunk = true;
         makePack(t.path(), "charts", "puget-north", "1.0.0", o);
         QCOMPARE(PackCatalog::scan(t.path())[0].refused, QString("enc.mbtiles unreadable"));
+    }
+    void valdcoRowMissingIsEmptyNotRefused() {
+        QTemporaryDir t;
+        Opts o;
+        o.valdcoRow = false;
+        makePack(t.path(), "charts", "puget-north", "1.0.0", o);
+        const auto l = PackCatalog::scan(t.path());
+        QVERIFY(l[0].refused.isEmpty());
+        QVERIFY(l[0].valdco.isEmpty());
+    }
+    void valdcoNonNumericEntryRefused() {
+        QTemporaryDir t;
+        Opts o;
+        o.valdco = QStringLiteral("[\"a\"]");
+        makePack(t.path(), "charts", "puget-north", "1.0.0", o);
+        QCOMPARE(PackCatalog::scan(t.path())[0].refused, QString("enc.mbtiles unreadable"));
+    }
+    void schemaNotANumberRefused_data() {
+        QTest::addColumn<QJsonValue>("schema");
+        QTest::newRow("string") << QJsonValue("1");
+        QTest::newRow("null") << QJsonValue(QJsonValue::Null);
+        QTest::newRow("object") << QJsonValue(QJsonObject{});
+    }
+    void schemaNotANumberRefused() {
+        QFETCH(QJsonValue, schema);
+        QTemporaryDir t;
+        Opts o;
+        o.schemaValue = schema;
+        makePack(t.path(), "charts", "puget-north", "1.0.0", o);
+        QCOMPARE(PackCatalog::scan(t.path())[0].refused, QString("schema is not a number"));
+    }
+    void schemaMissingRefused() {
+        QTemporaryDir t;
+        makePack(t.path(), "charts", "puget-north", "1.0.0");
+        const QString mf = t.path() + "/charts-puget-north-1.0.0/manifest.json";
+        touch(mf, R"({"pack": "charts", "region": "puget-north", "version": "1.0.0"})");
+        QCOMPARE(PackCatalog::scan(t.path())[0].refused, QString("schema missing"));
     }
     void strayEntriesIgnored() {
         QTemporaryDir t;

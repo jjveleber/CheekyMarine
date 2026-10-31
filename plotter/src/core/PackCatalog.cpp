@@ -118,9 +118,13 @@ QList<PackInfo> PackCatalog::scan(const QString& dir) {
         }
         const QJsonObject mo = doc.object();
         p.notice = mo.value(QStringLiteral("notice")).toString();
-        const int schema = mo.value(QStringLiteral("schema")).toInt(-1);
-        if (schema != 1) {
-            p.refused = QStringLiteral("schema %1 not supported").arg(schema);
+        const QJsonValue schema = mo.value(QStringLiteral("schema"));
+        if (schema.isUndefined()) {
+            p.refused = QStringLiteral("schema missing");
+        } else if (!schema.isDouble()) {
+            p.refused = QStringLiteral("schema is not a number");
+        } else if (schema.toDouble() != 1) {
+            p.refused = QStringLiteral("schema %1 not supported").arg(schema.toDouble());
         } else if (mo.value(QStringLiteral("pack")).toString() != p.kind
                    || mo.value(QStringLiteral("region")).toString() != p.region
                    || mo.value(QStringLiteral("version")).toString() != m.captured(3)) {
