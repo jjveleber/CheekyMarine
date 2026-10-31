@@ -1,5 +1,6 @@
 #include "core/DepthFilters.h"
 #include <QJsonArray>
+#include <algorithm>
 #include <cmath>
 
 namespace {
@@ -55,6 +56,13 @@ struct Mapper {
         if (a.isEmpty()) return v;
         if (a[0].isString() && a[0].toString() == QLatin1String("literal")) return v; // data, not a depth test
         const bool cmp = a.size() == 3 && a[0].isString() && isComparison(a[0].toString());
+        // A numeric literal next to a depth read outside a plain comparison may be a threshold the
+        // rule cannot map; refuse rather than draw a stale depth.
+        if (!cmp && error.isEmpty() && readsDepth(v) &&
+            std::any_of(a.begin() + 1, a.end(), [](const QJsonValue& e) { return e.isDouble(); }))
+            error = QStringLiteral("layer %1: depth read in '%2' with a numeric literal, only a plain comparison "
+                                   "can be mapped")
+                        .arg(layer, a[0].toString());
         for (int i = 1; i < a.size(); ++i) {
             if (cmp && a[i].isDouble() && readsDepth(a[i == 1 ? 2 : 1])) a[i] = mapLiteral(a[i].toDouble());
             else a[i] = walk(a[i]);
@@ -98,7 +106,9 @@ std::expected<QHash<QString, QJsonValue>, QString> depthFilters(const QJsonObjec
     for (const auto& idv : depths.value(QStringLiteral("layers")).toArray()) {
         const QString id = idv.toString();
         auto it = byId.constFind(id);
-        if (it == byId.constEnd()) continue;
+        if (it == byId.constEnd())
+            return std::unexpected(
+                QStringLiteral("layer %1 is in metadata.cheekymarine.depths.layers but not in the style").arg(id));
         m.layer = id;
         m.error.clear();
         const QJsonValue mapped = m.walk(it->value(QStringLiteral("filter")));

@@ -46,8 +46,13 @@ private slots:
         QCOMPARE(safetyContour({}, 3.048), 3.048);
     }
 
-    void navDayTarget() {
-        const QJsonObject s = load("nav-day");
+    void navTarget_data() {
+        QTest::addColumn<QString>("name");
+        for (const char* n : {"nav-day", "nav-dusk", "nav-night"}) QTest::newRow(n) << QString(n);
+    }
+    void navTarget() {
+        QFETCH(QString, name);
+        const QJsonObject s = load(name);
         auto r = depthFilters(s, {1.5, 4.0, 12.0}, 5);
         QVERIFY2(r.has_value(), errText(r).constData());
         QCOMPARE(r->size(), 9);
@@ -111,6 +116,42 @@ private slots:
         auto r = depthFilters(s, {1.5, 4.0, 12.0}, 5);
         QVERIFY(!r.has_value());
         QVERIFY2(r.error().contains("depare-deep") && r.error().contains("7.7"), errText(r).constData());
+    }
+
+    void safetyContourValueOutsideDepcntSafetyErrors() {
+        // 3.6 is the style's safety_contour_m; only depcnt-safety may carry it.
+        const QJsonObject s = withFilter(load("nav-day"), "soundg-deep",
+                                         json(R"([">=",["to-number",["get","depth"]],3.6])"));
+        auto r = depthFilters(s, {1.5, 4.0, 12.0}, 5);
+        QVERIFY(!r.has_value());
+        QVERIFY2(r.error().contains("soundg-deep") && r.error().contains("3.6"), errText(r).constData());
+    }
+
+    void depthReadOutsidePlainComparisonErrors_data() {
+        QTest::addColumn<QByteArray>("filter");
+        QTest::newRow("step") << QByteArray(R"(["step",["to-number",["get","depth"]],false,3.048,true])");
+        QTest::newRow("match") << QByteArray(R"(["match",["get","DRVAL1"],9.144,true,false])");
+        QTest::newRow("arithmetic") << QByteArray(R"(["<",["+",["get","VALSOU"],1],3.048])");
+        QTest::newRow("4-arg comparison") << QByteArray(R"(["<",["get","depth"],3.048,["collator",{}]])");
+        QTest::newRow("to-number default") << QByteArray(R"([">=",["to-number",["get","depth"],0],3.048])");
+    }
+    void depthReadOutsidePlainComparisonErrors() {
+        QFETCH(QByteArray, filter);
+        const QJsonObject s = withFilter(load("nav-day"), "soundg-deep", json(filter));
+        auto r = depthFilters(s, {1.5, 4.0, 12.0}, 5);
+        QVERIFY(!r.has_value());
+        QVERIFY2(r.error().contains("soundg-deep"), errText(r).constData());
+    }
+
+    void listedLayerMissingFromStyleErrors() {
+        QJsonObject s = load("nav-day");
+        QJsonArray layers;
+        for (const auto& l : s["layers"].toArray())
+            if (l.toObject()["id"].toString() != "depare-medium") layers.append(l);
+        s["layers"] = layers;
+        auto r = depthFilters(s, {1.5, 4.0, 12.0}, 5);
+        QVERIFY(!r.has_value());
+        QVERIFY2(r.error().contains("depare-medium"), errText(r).constData());
     }
 
     void literalOnLeftSideIsMapped() {
