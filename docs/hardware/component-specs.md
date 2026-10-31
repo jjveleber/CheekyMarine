@@ -193,6 +193,21 @@ Leave open: Manufacturer, Breakdown Voltage (it follows from the working voltage
 | Electrolytic capacitor | 100 to 220 µF, 50 V, 105 °C, 2000 h or more at 105 °C, ripple current 1 A or more | Datasheet voltage, temperature, "load life", "ripple current" |
 | Damping | An LC filter in front of a switching regulator can ring or oscillate unless it is damped. Preferred build: a low-ESR electrolytic with a 0.33 ohm, 1/2 W resistor in series (the resistor doesn't drift with cold; every relay close puts a short pulse of a few tens of mJ through it). Or an electrolytic whose own ESR is 0.3 to 0.5 ohm at room temperature, knowing that cold raises ESR 2 to 3 times and thins the margin on a cold crank. Not a polymer part on its own: its ESR is too low | Datasheet "ESR" or "impedance" at 100 kHz; bench check at the lowest input (7 V) with the buck and the display regulator both loaded: no ringing on the buck input, buck output steady on a load step |
 
+**Inductor: Mouser filters** (Passive Components > Inductors, Chokes & Coils > Power Inductors - Leaded, mouser.com/c/passive-components/inductors-chokes-coils/power-inductors-leaded/, read 2026-10-31)
+
+| Mouser filter | Set to | Must-have it covers |
+|---|---|---|
+| Shielding | Shielded | Inductor type |
+| Inductance | 10 uH (Mouser writes microhenries as uH) | Inductor value |
+| Saturation Current | 6 A and every larger value | Inductor saturation current |
+| Maximum DC Current | 4 A and every larger value | Inductor heating current; confirm on the datasheet it is the heating (Irms) rating and check its derating at 85 °C |
+| Maximum DC Resistance | 20 mOhms and every smaller value | Inductor resistance |
+| Maximum Operating Temperature | + 125 C and every larger value | Inductor type (rated to 125 °C) |
+| Termination Style | Radial, Through Hole (also tick the misspelled "Throgh Hole") | Leaded part for a hand-wired board |
+| Packaging | Bulk, Cut Tape, Tray, Tube (not Reel) | |
+
+Leave open: Manufacturer, Package / Case, Tolerance, Q Minimum, Self Resonant Frequency, Termination, Mounting Style, the size filters, Core Material, Qualification, Series. Type can stay open too, but skip results typed Common Mode Choke, AC Line Filter or Ground Wire Choke: those aren't series power inductors.
+
 **Nice to have**
 
 - An automotive load-dump rated TVS (SM8S class, 6600 W, AEC-Q101) instead of a 1500 W part. A 1500 W TVS handles switching spikes, not a full alternator load dump.

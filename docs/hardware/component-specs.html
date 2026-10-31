@@ -635,6 +635,72 @@ ringing on the buck input, buck output steady on a load step</td>
 </tr>
 </tbody>
 </table>
+<p><strong>Inductor: Mouser filters</strong> (Passive Components &gt;
+Inductors, Chokes &amp; Coils &gt; Power Inductors - Leaded,
+mouser.com/c/passive-components/inductors-chokes-coils/power-inductors-leaded/,
+read 2026-10-31)</p>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Mouser filter</th>
+<th>Set to</th>
+<th>Must-have it covers</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Shielding</td>
+<td>Shielded</td>
+<td>Inductor type</td>
+</tr>
+<tr class="even">
+<td>Inductance</td>
+<td>10 uH (Mouser writes microhenries as uH)</td>
+<td>Inductor value</td>
+</tr>
+<tr class="odd">
+<td>Saturation Current</td>
+<td>6 A and every larger value</td>
+<td>Inductor saturation current</td>
+</tr>
+<tr class="even">
+<td>Maximum DC Current</td>
+<td>4 A and every larger value</td>
+<td>Inductor heating current; confirm on the datasheet it is the heating
+(Irms) rating and check its derating at 85 °C</td>
+</tr>
+<tr class="odd">
+<td>Maximum DC Resistance</td>
+<td>20 mOhms and every smaller value</td>
+<td>Inductor resistance</td>
+</tr>
+<tr class="even">
+<td>Maximum Operating Temperature</td>
+<td>+ 125 C and every larger value</td>
+<td>Inductor type (rated to 125 °C)</td>
+</tr>
+<tr class="odd">
+<td>Termination Style</td>
+<td>Radial, Through Hole (also tick the misspelled “Throgh Hole”)</td>
+<td>Leaded part for a hand-wired board</td>
+</tr>
+<tr class="even">
+<td>Packaging</td>
+<td>Bulk, Cut Tape, Tray, Tube (not Reel)</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<p>Leave open: Manufacturer, Package / Case, Tolerance, Q Minimum, Self
+Resonant Frequency, Termination, Mounting Style, the size filters, Core
+Material, Qualification, Series. Type can stay open too, but skip
+results typed Common Mode Choke, AC Line Filter or Ground Wire Choke:
+those aren’t series power inductors.</p>
 <p><strong>Nice to have</strong></p>
 <ul>
 <li>An automotive load-dump rated TVS (SM8S class, 6600 W, AEC-Q101)
