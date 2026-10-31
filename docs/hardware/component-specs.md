@@ -32,7 +32,7 @@ Owner rules this revision follows (2026-10-31):
    |                                               |       [20] heat sink
  [4d] RELAY  <------- coil -----------+          [3] UNIT ON/OFF SWITCH
    |  (open = nothing draws           |            |       (in the sense wire)
-   |   from the battery)              |          [4b] SENSE INPUT (optocoupler)
+   |   from the battery)              |          [4b] SENSE TVS + INPUT (opto)
    |                                  |            |
    +--[2] TVS across + and -        [4c] CONTROLLER  <-- powered by the sense
    |                                  |   ^             wire or the relay output
@@ -87,7 +87,7 @@ What happens when the main battery switch (or the unit's own switch) goes off: t
 | 16 | Enclosure | IP65 or better, UV stable, 75 mm or more inside depth | $63.22 |
 | 17 | Mount | Holds about 2 kg on a dash shelf, no suction | $64.49 |
 | 18 | Glands | IP68, clamp range fits each cable | $1.92 (2) |
-| 19 | Wire | Tinned marine 3-conductor feed, 16 or 14 AWG by length | $21.93 |
+| 19 | Wire | Tinned marine 3-conductor feed, 16, 14 or 12 AWG by length | $21.93 |
 | 20 | Heat sink | 1.5 °C/W or better, natural convection, anodized | not priced |
 
 ## Power budget
@@ -101,7 +101,7 @@ The numbers every power part below is sized from.
 | Display, reference panel at 1000 nit | 12 V | 0.65 A | 4D datasheet, 10.1" 1280x800 table |
 | **Whole unit** | 12 V | **about 3.2 A** | |
 | **Whole unit, battery sagging to 10.5 V** | 10.5 V | **about 3.6 A** | |
-| **Unit off, main switch on or off** | 12 V | **zero** | relay open; the controller, TVS, buck and display all sit after it (part 4) |
+| **Unit off, main switch on or off** | 12 V | **zero** | relay open; TVS, buck and display sit after it, and the controller is powered only from the sense wire or the relay output (part 4). Soft power (part 3) would add a few mA from the switched side while the boat is on |
 
 Typical draw while charting is well below this; the worst case is what the fuse, relay, buck and wire must carry. With the unit off, nothing draws from the battery.
 
@@ -124,7 +124,7 @@ Heat in the box: everything above ends up as heat inside the enclosure. In dayli
 | Fuse type | Blade (ATO/ATC) so spares from the boat's kit fit | Product title or datasheet "ATO", "ATC", "blade" |
 | Fuse rating | 7.5 A, 32 V DC | Printed on the fuse; datasheet "voltage rating" |
 | Holder current rating | 15 A or more | Holder datasheet "rated current" |
-| Holder wire size | Leads or terminals that match the feed: 16 or 14 AWG (part 19) | Datasheet "wire gauge" or lead spec |
+| Holder wire size | Leads or terminals that match the feed: 16, 14 or 12 AWG (part 19) | Datasheet "wire gauge" or lead spec |
 | Sealing | Cover that closes over the fuse; IP67 if it sits near the battery or in the bilge area | Product page; a cap or lid in the photo, IP rating |
 | Location | Within 7 in of the source connection (ABYC E-11) | Install rule, not a product spec |
 
@@ -178,6 +178,7 @@ Heat in the box: everything above ends up as heat inside the enclosure. In dayli
 
 - Must be after the fuse (part 1), so a shorted TVS blows the fuse, and after the relay, so its leakage stops when the unit is off.
 - Its clamp voltage sets what everything downstream must survive: 30 V for the controller's regulator, the buck, and the display.
+- It doesn't protect the sense wire, which reaches the controller without passing the relay; that wire has its own TVS (part 4b).
 
 **Reference, not a requirement.** Littelfuse 1.5KE20A: 17.1 V standoff, 27.7 V clamp, 1500 W, unidirectional, $1.06, Digi-Key, 2026-10-30.
 
@@ -226,9 +227,9 @@ What happens, step by step:
 1. Main switch off (or the unit switch, part 3): the sense wire drops.
 2. After 2 s with no sense (longer than an engine-start dip), the controller sets a "power going away" line to the Pi and holds it until the relay opens. It is a level, not a pulse, so a Pi that is still booting reads it when its service starts. The display stays on through the shutdown, which is fine because the battery is still connected.
 3. The Pi shuts down, set to finish within about 60 s (services get a 30 s stop limit, plan 4), and signals "halted": its 3.3 V rail drops when it powers off after halt, or a GPIO goes high (which one works on the Pi 5 is a bench check).
-4. The controller opens the relay. If the Pi never signals, the firmware opens it after about 3 minutes, and a hardware timer opens it after about 4 minutes even if the controller has hung. The buck, the display and the controller itself lose power; nothing draws from the battery.
+4. The controller opens the relay. If the Pi never signals, the firmware opens it after about 3 minutes, and a hardware timer opens it after 3.5 to 6 minutes even if the controller has hung. The buck, the display and the controller itself lose power; nothing draws from the battery.
 5. If the sense wire is live again (it came back during the shutdown), the controller is still powered from it: it keeps the relay open for at least 2 s, then closes it, and the Pi boots. If not, everything stays dead until the main switch comes back on.
-6. If the Pi halts on its own while the boat is on (a software power-off, or after an update), the controller sees "halted" with sense present and power-cycles it the same way, so the Pi reboots. The way to turn the unit off is the switch.
+6. If the Pi halts on its own while the boat is on (a software power-off, or after an update), the controller power-cycles it the same way, so the Pi reboots. It acts only on a change from running to halted after the Pi has been seen running (3.3 V present for at least 10 s), never on the Pi simply being off at power-up, and it gives up after 3 power-cycles in 10 minutes (then it leaves the unit off until the switch is cycled), so it can't loop. The way to turn the unit off is the switch.
 
 It has four pieces:
 
@@ -240,10 +241,10 @@ It has four pieces:
 | Battery | The house battery (owner confirmed the boat has one). Until the diagram shows the house battery is kept apart from engine starting, assume a crank dips it | Wiring diagram |
 | Fuse | At the source, within 7 in of the battery or standby bus (ABYC E-11), sized per part 1 | Install rule |
 | ABYC | Check the feed against ABYC E-11's list of loads allowed ahead of the battery switch; if it isn't covered, it is a deliberate departure (recorded below) | ABYC E-11 text |
-| Labels | "Always live" label at the fuse, on the cable at both ends, and inside the box: the box stays live for up to about 3 minutes after the main switch goes off | Install rule |
+| Labels | "Always live" label at the fuse, on the cable at both ends, and inside the box: the box stays live for up to about 6 minutes after the main switch goes off | Install rule |
 | Wire | Per part 19: 16 AWG up to a 10 ft run, 14 AWG for 10 to 20 ft, 12 AWG for 20 to 25 ft | Measure the run |
 
-**4b. Sense input.** Turns the switched 12 V into a signal for the controller and the Pi, with 12 V kept off their pins.
+**4b. Sense input.** Turns the switched 12 V into a signal for the controller, with 12 V kept off its pins. The Pi never reads sense; it only gets "power going away" from the controller.
 
 | Spec | Requirement | How to check |
 |---|---|---|
@@ -253,24 +254,26 @@ It has four pieces:
 | Surge clamp | Its own small TVS (600 W class, 15 to 18 V standoff) where the sense wire enters the box: the main TVS sits after the relay and can't protect this wire | Datasheet, as for part 2 |
 | Threshold | On above about 8 V, off below about 5 V (a resistor and a zener or a divider set this) | Circuit values; bench check with the bench supply |
 | Sense current | About 5 mA into the optocoupler LED at 12 V | Resistor value |
-| LED current at 30 V | Half the optocoupler LED's absolute maximum or less (use a current-limiting part, or size the resistor for 30 V) | Optocoupler datasheet "IF absolute maximum" |
-| Output to the Pi | Open-collector, with its pull-up taken from the Pi's 3.3 V, so it can't power the Pi when the Pi is off | Circuit |
+| LED current at 30 V | Half the optocoupler LED's absolute maximum or less. With a 5 mA design point and an 8 V threshold, a plain resistor gives about 27 mA at 30 V, so a current-limiting part (constant-current diode or transistor) is required | Optocoupler datasheet "IF absolute maximum" |
+| Output | To the controller only, open-collector, pulled up from the controller's own 3.3 V (the controller must read sense when the Pi is off: every cold start and every restart) | Circuit |
 | Sense wire fuse | 1 A at the switched source, or tap an existing fused switched circuit | Install rule |
 | Sense source | A circuit that stays live while the engine cranks (the helm panel's main feed after the battery switch). Not an ignition or accessory circuit: those drop for the whole crank, and every slow start would become a reboot | Wiring diagram |
+| Sense goes to 0 V | With the main switch off, the tap reads 0 V on a meter. A device with its own unswitched feed can hold a switched bus up, and the unit would never shut down | Meter, main switch off, everything else as normal |
 | Input survival | 30 V on the sense wire, behind the sense TVS | Resistor power rating at 30 V |
 
 **4c. Controller.** A small microcontroller running the sequence above. It is powered from the sense wire (after the on/off switch) or from the relay output, through two diodes, so it is unpowered whenever the unit is off. The diode from the sense wire is a low-leakage silicon diode (not a Schottky, whose leakage rises steeply with heat and could hold a dead sense wire high). We write the firmware; it gets flashed once over USB.
 
 | Spec | Requirement | How to check |
 |---|---|---|
-| Inputs | Sense (from 4b), Pi "halted" | Pin count: 4 or more free I/O |
+| Inputs | Sense (from 4b), Pi "halted" (or the Pi's 3.3 V through a divider) | Pin count: 4 or more free I/O |
 | Outputs | Relay coil drive (4d), "power going away" to a Pi GPIO | Same |
 | Logic levels | 3.3 V. Lines to the Pi go through series resistors (about 1 kOhm) and are driven low or released whenever the Pi's 3.3 V is absent, so they can't power a Pi that is off | Board spec; circuit |
 | Power | From 12 V (sense wire or relay output, diode-ORed) through a regulator rated for 30 V | Regulator datasheet "absolute maximum" |
-| Relay drive | One output through a transistor to the relay coil, with a flyback diode. The transistor's control input has a pull-down, so the coil is off at reset and whenever the controller isn't driving it | Circuit |
-| Watchdog | Hardware watchdog and brown-out reset enabled | Microcontroller datasheet |
-| Hardware time limit | A hardware timer (RC or one-shot) on the coil drive: once the sense wire drops, the coil can stay on for at most about 4 minutes, whatever the firmware does. A hung controller can't keep the unit on the battery | Circuit; bench test |
-| Firmware rule | Drive the coil only while sense is on, or during one time-limited shutdown (firmware limit about 3 minutes) | Firmware review |
+| Coil logic | In hardware, not firmware alone: coil on when (sense present AND the controller isn't requesting a power-cycle) OR (the controller is holding for a shutdown AND the hardware timer hasn't expired). Both controller lines have pull-downs. So a controller reset or hang never cuts the Pi while the boat is on, and can't keep the unit on the battery after it's off | Circuit; bench test |
+| Relay drive | Through a transistor to the coil, with a flyback diode | Circuit |
+| Watchdog | Hardware watchdog and brown-out reset enabled (with the coil logic above, a reset while the boat is on doesn't cut power) | Microcontroller datasheet |
+| Hardware timer | Separate from the microcontroller: a timer or counter IC (not a long RC on an electrolytic, whose leakage can stop it firing). Reads sense from the 12 V side through its own divider, resets only while sense is present, gives a clean on/off output, and expires 3.5 to 6 minutes after sense drops across its tolerances. It can't chatter: once the contacts open with sense absent, nothing powers the coil | Circuit; bench test hangs the controller |
+| Firmware rule | Hold for a shutdown only once per sense drop, and give up after about 3 minutes (always shorter than the hardware timer's 3.5-minute minimum) | Firmware review |
 | Programming | USB, with a free toolchain | Product page |
 | Temperature | Rated to +85 °C | Datasheet |
 
@@ -281,7 +284,9 @@ It has four pieces:
 | Type | Electromechanical, normally open (SPST-NO), non-latching, 12 V coil | Datasheet "contact form", "coil voltage" |
 | Contacts | 10 A or more at 14 V DC (resistive); 16 A or more preferred for start-up surge | Datasheet "contact rating", DC |
 | Coil power | 0.6 W or less (it is heat inside the box while the unit runs) | Datasheet "coil power" or coil resistance (12 V squared over ohms) |
-| Must-operate voltage | At 70 °C, at or below the lowest coil voltage while the unit runs: the house battery's low point minus about 1 V of diode and wiring drop. For a house battery that engine starts don't reach, that is about 10 V at the coil. If a crank does reach it, the low point is the crank dip (often 9 V or less), which needs a high-sensitivity coil (70% or lower must-operate) and a crank test | Datasheet "must operate" (in % of nominal at 20 °C) plus its temperature rise, about 0.4% per °C |
+| Must-operate voltage (closing) | Closes at a resting battery, hot: 75% of nominal or lower at 20 °C. Must-operate rises about 0.4% per °C, so 75% (9.0 V) becomes about 10.8 V at 70 °C, under the about 11.2 V the coil gets from a 12.2 V battery after the silicon sense diode and wiring (1.0 V or so). 70% or lower gives more margin | Datasheet "must operate" in % of nominal at 20 °C |
+| Staying closed (cranks) | Accepted by test, not datasheet: with the box hot, dip the supply to the crank low point and check the relay holds. Datasheets don't guarantee holding below must-operate. If it fails, choose a more sensitive coil (a 9 V crank dip needs about 56% at 70 °C) | Bench crank test |
+| Diodes | The diode from the relay output to the coil supply can be a Schottky (saves about 0.4 V while holding; its leakage is harmless there). The one from the sense wire stays silicon (4c) | Circuit |
 | Maximum coil voltage | 15 V or more continuous at 70 °C (charging runs 14.8 V) | Datasheet "maximum continuous coil voltage" |
 | Sealing | Sealed (RT III, "wash tight") or flux-proof inside the sealed box | Datasheet |
 | Temperature | Rated to +70 °C or higher | Datasheet |
@@ -660,7 +665,7 @@ Alternatives considered (2026-10-31):
 - Input voltage against part 6 and the buck (part 5).
 - Its HDMI connector type sets the video cable (part 14); its touch port type sets the touch cable (part 15).
 - Outline plus a sealing border sets the enclosure lid size; depth plus the Pi stack sets the enclosure depth (part 16).
-- If the touch port also carries power, the display will likely draw from the Pi's USB even when it has 12 V. Use a USB power-blocking adapter (data only, VBUS cut) on the touch cable, or confirm with the maker that it doesn't.
+- If the touch port also carries power, the display draws from the Pi's USB even when it has 12 V. A USB power-blocking adapter (data only, VBUS cut) on the touch cable is required (part 15); with the 4D panel it is required regardless.
 
 **Reference, not a requirement.** 4D Systems 4DHDMI-101-1280-800-CT-EAR-1000, $147.95, Digi-Key, 2026-10-30 (4 in stock). Per 4D's datasheet R1.3: IPS, 1280x800, 1000 cd/m2, capacitive touch glass optically bonded, metal mounting tabs, mini-HDMI (HDMI 1.4), DDC supported, one USB-C port for touch and 5 V power (4.8 to 5.2 V, 1700 mA; the datasheet says this port "parallels the power", so backfeed is likely), 12 V barrel jack (650 mA, "12.0 V typ", no maximum given), -20 to +70 °C operating, -30 to +80 °C storage. RS lists 15.98 mm depth. Its power button is on an optional button board that isn't included. Open: 12 V maximum, power-on behavior, native orientation (see open questions). Variant to price: 4DHDMI-101-1280-800-CT-CLB-1000 (cover lens bezel).
 
@@ -848,7 +853,7 @@ Alternatives considered (2026-10-31):
 
 **Fits with**
 
-- 16 or 14 AWG is protected by the 7.5 A fuse (part 1) with lots of margin.
+- 16, 14 or 12 AWG is protected by the 7.5 A fuse (part 1) with lots of margin.
 - The reference wire is single conductor; buy 3-conductor jacketed cable for the feed instead.
 - Cable outside diameter sets the gland (part 18).
 
@@ -916,7 +921,7 @@ Before ordering the boat parts, these have to agree with each other:
 6. **Enclosure size.** Inside depth 75 mm or more; display outline plus at least 15 mm per side; room beside the Pi for the micro-HDMI and USB-C plugs; a back-wall area for the heat sink and the mount.
 7. **Connector types.** Display's HDMI type matches the video cable; display's touch port matches the touch cable, with VBUS blocked; drop cable is male at the tee.
 8. **GPIO budget.** CAN HAT: 0, 1, 13, 16, 17, 18, 19, 20, 21, 22. Controller: "power going away" in and "halted" out on two other pins.
-9. **Current.** Fuse 7.5 A, relay contacts 10 A or more, buck 5 A, wire 16 or 14 AWG, against a 3.6 A worst case at 10.5 V. Off draw zero.
+9. **Current.** Fuse 7.5 A, relay contacts 10 A or more, buck 5 A, wire 16, 14 or 12 AWG, against a 3.6 A worst case at 10.5 V. Off draw zero.
 10. **Heat.** 15 to 18 W out of the box at 0.8 °C/W or better (part 20).
 
 ## Departures from the design spec
@@ -939,11 +944,11 @@ This doc changes some lines of `docs/superpowers/specs/2026-10-28-cheekymarine-d
 - **Standby power near the helm.** Owner is checking the boat's wiring diagrams for an existing standby (unswitched) circuit at the helm. If there is none, run a new fused feed from the battery side of the main switch (part 19 sets the gauge by length).
 - **House battery standby point.** Standby power comes from the house battery (owner, 2026-10-31); find its battery-side connection on the diagram.
 - **Sense source.** Which switched circuit at the helm the sense wire taps: one that stays live while cranking, not ignition or accessory (it needs a 1 A fuse).
-- **Does cranking reach the house battery?** The boat has a main engine and a kicker. If the house battery is kept apart from starting, the relay rule is easy; if not, it needs a high-sensitivity coil and a crank test (part 4d).
+- **Does cranking reach the house battery?** The boat has a main engine and a kicker. If the house battery is kept apart from starting, a standard 75% coil should hold; if not, the crank test decides, and a more sensitive coil may be needed (part 4d).
 - **Relay and controller.** Pick a relay that meets part 4d (coil 0.6 W or less) and a controller board.
 - **Display 12 V maximum.** 4D gives "12.0 V typ" with no maximum. Without a stated 30 V maximum, add a display regulator (part 6).
 - **Display power-on.** Does the 4D panel come on by itself when powered? Its power button is on a board that isn't included.
-- **Display USB power backfeed.** 4D's datasheet suggests the touch port also takes power. Ask 4D, or plan on a USB power blocker.
+- **Display USB power backfeed.** 4D's datasheet says the touch port also takes power, so the USB power blocker (part 15) is on the buy list.
 - **Display orientation.** 4D's drawing shows a portrait panel; Digi-Key lists 1280x800. Confirm the HDMI board outputs landscape.
 - **CAN HAT standoff height.** Waveshare doesn't state what standoffs ship with the 27338 or whether they clear the Active Cooler. Check on arrival; buy 16 mm M2.5 standoffs and a header extender if needed.
 - **CAN HAT isolation voltage.** Not published. Optional question to Waveshare.
