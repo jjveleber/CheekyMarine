@@ -141,6 +141,17 @@ A charts pack is a directory `charts-<region>-<version>/` holding `enc.mbtiles`,
   the red dotted ring round a hazard that is awash, drying, of unknown depth or shallower than
   the safety depth; `hazard-danger-outline` draws a line or area hazard's outline red on the same
   rule.
+- The app moves the depth thresholds to the boat's settings by rewriting the depth layers' filters,
+  and refuses the pack when it cannot:
+  1. every id in `depths.layers` must be a layer in the style;
+  2. a threshold must be a plain binary comparison (`<`, `<=`, `>`, `>=` or `==`) between a depth
+     read (`["get", F]` with F one of `DRVAL1`, `VALDCO`, `VALSOU`, `depth`) and a numeric literal,
+     such as `["<", ["get", "DRVAL1"], 6]`. Any other expression that reads a depth field beside a
+     numeric literal, or beside a raw array or `["literal", ...]` holding one, refuses the pack,
+     even when the number is not a threshold (for example `["case", ["<", ["get", "DRVAL1"], 6], 1, 0]`
+     or `["to-number", ["get", "depth"], 0]`);
+  3. each such literal must equal one of the recorded `shallow_m`, `safety_m` or `deep_m`
+     (or `safety_contour_m` in `depcnt-safety`).
 - MBTiles metadata carries `cheekymarine:schema` (currently 1), `cheekymarine:pack`,
   `cheekymarine:region`, `cheekymarine:version`, `cheekymarine:sources` (the ENC cells
   with edition, update and issue date), `cheekymarine:valdco`, `cheekymarine:seabed` (the
