@@ -646,7 +646,11 @@ dead until the main switch comes back on.</li>
 power-off, or after an update), the controller power-cycles it the same
 way, so the Pi reboots. It acts only on a change from running to halted
 after the Pi has been seen running (3.3 V present for at least 10 s),
-never on the Pi simply being off at power-up, and it gives up after 3
+and only once the 3.3 V has been absent for at least 5 s (so a plain
+reboot’s blip, if the Pi 5 has one, doesn’t count; bench check), never
+on the Pi simply being off at power-up. If the Pi’s 3.3 V doesn’t appear
+within 60 s of the relay closing, it power-cycles once (a Pi left halted
+with its 5 V up). These cycles count toward the cap: it gives up after 3
 power-cycles in 10 minutes (then it leaves the unit off until the switch
 is cycled), so it can’t loop. The way to turn the unit off is the
 switch.</li>
@@ -830,8 +834,10 @@ flashed once over USB.</p>
 <tbody>
 <tr class="odd">
 <td>Inputs</td>
-<td>Sense (from 4b), Pi “halted” (or the Pi’s 3.3 V through a
-divider)</td>
+<td>Sense (from 4b), and the Pi’s 3.3 V through a divider (required:
+“seen running” in step 6 needs it, since a halted-GPIO reads low both
+when the Pi runs and when it is off). A halted GPIO is optional on
+top</td>
 <td>Pin count: 4 or more free I/O</td>
 </tr>
 <tr class="even">
@@ -855,12 +861,19 @@ regulator rated for 30 V</td>
 <tr class="odd">
 <td>Coil logic</td>
 <td>In hardware, not firmware alone: coil on when (sense present AND the
-controller isn’t requesting a power-cycle) OR (the controller is holding
-for a shutdown AND the hardware timer hasn’t expired). Both controller
-lines have pull-downs. So a controller reset or hang never cuts the Pi
-while the boat is on, and can’t keep the unit on the battery after it’s
-off</td>
-<td>Circuit; bench test</td>
+controller isn’t requesting a power-cycle) OR (the controller’s hold
+line is on AND the hardware timer hasn’t expired). The hold line is on
+continuously from boot whenever the relay is closed and no power-cycle
+is running, so it is already on at the instant sense drops (a relay
+releases in milliseconds). A power-cycle drops the hold line and raises
+the cycle request together. Both controller lines have pull-downs. The
+sense term’s rising edge is delayed about 2 s in hardware (falling edge
+immediate), so the relay always stays open at least 2 s even if the
+controller is unpowered when sense returns. Result: a controller reset
+or hang never cuts the Pi while the boat is on, and can’t keep the unit
+on the battery after it’s off</td>
+<td>Circuit; bench test: switch sense off with the Pi running and check
+it shuts down cleanly</td>
 </tr>
 <tr class="even">
 <td>Relay drive</td>
@@ -876,26 +889,35 @@ above, a reset while the boat is on doesn’t cut power)</td>
 <tr class="even">
 <td>Hardware timer</td>
 <td>Separate from the microcontroller: a timer or counter IC (not a long
-RC on an electrolytic, whose leakage can stop it firing). Reads sense
-from the 12 V side through its own divider, resets only while sense is
-present, gives a clean on/off output, and expires 3.5 to 6 minutes after
-sense drops across its tolerances. It can’t chatter: once the contacts
-open with sense absent, nothing powers the coil</td>
+RC on an electrolytic, whose leakage can stop it firing). Held reset
+while sense is present and expires 3.5 to 6 minutes after sense drops,
+across its tolerances, with a clean on/off output. It can’t chatter:
+once the contacts open with sense absent, nothing powers the coil</td>
 <td>Circuit; bench test hangs the controller</td>
 </tr>
 <tr class="odd">
+<td>One sense signal</td>
+<td>The controller, the coil logic and the timer reset all use the same
+Schmitt-buffered signal from the optocoupler (8 V “on” threshold), so a
+back-fed sense wire sitting at a few volts reads “off” everywhere. The
+gates, the timer and the optocoupler’s pull-up run from the controller’s
+diode-ORed supply</td>
+<td>Circuit</td>
+</tr>
+<tr class="even">
 <td>Firmware rule</td>
-<td>Hold for a shutdown only once per sense drop, and give up after
+<td>Hold line on from boot while the relay is closed. After sense drops,
+keep holding until the Pi signals halted, then release; give up after
 about 3 minutes (always shorter than the hardware timer’s 3.5-minute
 minimum)</td>
 <td>Firmware review</td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td>Programming</td>
 <td>USB, with a free toolchain</td>
 <td>Product page</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td>Temperature</td>
 <td>Rated to +85 °C</td>
 <td>Datasheet</td>
@@ -938,11 +960,11 @@ ohms)</td>
 </tr>
 <tr class="even">
 <td>Must-operate voltage (closing)</td>
-<td>Closes at a resting battery, hot: 75% of nominal or lower at 20 °C.
-Must-operate rises about 0.4% per °C, so 75% (9.0 V) becomes about 10.8
-V at 70 °C, under the about 11.2 V the coil gets from a 12.2 V battery
-after the silicon sense diode and wiring (1.0 V or so). 70% or lower
-gives more margin</td>
+<td>70% of nominal or lower at 20 °C (8.4 V). Must-operate rises about
+0.4% per °C, so that becomes about 10.1 V at 70 °C. The coil gets the
+battery minus about 1.2 V (silicon sense diode, wiring, driver
+transistor), so it closes hot down to about 11.3 V at the battery. A 75%
+coil would need about 12.0 V, too close to a half-charged battery</td>
 <td>Datasheet “must operate” in % of nominal at 20 °C</td>
 </tr>
 <tr class="odd">
@@ -2577,8 +2599,8 @@ the sense wire taps: one that stays live while cranking, not ignition or
 accessory (it needs a 1 A fuse).</li>
 <li><strong>Does cranking reach the house battery?</strong> The boat has
 a main engine and a kicker. If the house battery is kept apart from
-starting, a standard 75% coil should hold; if not, the crank test
-decides, and a more sensitive coil may be needed (part 4d).</li>
+starting, a 70% coil should hold; if not, the crank test decides, and a
+more sensitive coil may be needed (part 4d).</li>
 <li><strong>Relay and controller.</strong> Pick a relay that meets part
 4d (coil 0.6 W or less) and a controller board.</li>
 <li><strong>Display 12 V maximum.</strong> 4D gives “12.0 V typ” with no
