@@ -1,0 +1,959 @@
+import QtQuick
+import QtTest
+import CheekyMarine
+
+// Pages construct without warnings at both panel sizes, every BigButton is at least 12 mm both
+// ways, the no-data banner text, slot digit size, slot editing and the numbers page cells.
+TestCase {
+    id: testCase
+    name: "Pages"
+    width: 1280
+    height: 800
+    visible: true // TestCase is invisible by default, and so would be everything created in it
+    when: windowShown
+
+    QtObject {
+        id: chartStub
+        property bool follow: true
+        property bool fishAvailable: true
+        property string mode: "nav"
+        property string notice: "NOAA ENC data. Not certified for navigation."
+        property bool noPosition: false
+        readonly property var fullLegend: [{ abbr: "Blds", meaning: "boulders", kind: "type" },
+                                           { abbr: "Cb", meaning: "cobbles", kind: "type" },
+                                           { abbr: "Sh", meaning: "shells", kind: "type" },
+                                           { abbr: "bk", meaning: "broken", kind: "qualifier" }]
+        property var legend: fullLegend
+        property var aisSelection: ({})
+        property var selected: [] // selectAt calls: {x, y, r}
+        function selectAt(p, r) { selected.push({ x: p.x, y: p.y, r: r }) }
+        function clearTarget() { aisSelection = ({}) }
+        function zoomIn() {}
+        function zoomOut() {}
+        property var zooms: [] // zoomBy calls: log2 deltas
+        function zoomBy(d) { zooms.push(d) }
+        function recenter() { follow = true }
+    }
+    QtObject {
+        id: paletteStub
+        property string palette: "day"
+    }
+
+    Component {
+        id: mapStub
+        Item {
+            signal userGesture()
+            property int gestures: 0
+            property int moves: 0
+            property var scales: [] // scaleBy factors
+            onUserGesture: gestures++
+            function moveBy(p) { moves++ }
+            function scaleBy(f, p) { scales.push(f) }
+        }
+    }
+    Component { id: mainComp; Main {} }
+    Component { id: chartPageComp; ChartPage {} }
+    Component { id: numbersPageComp; NumbersPage {} }
+    Component { id: aboutPageComp; AboutPage {} }
+    Component { id: recoveryComp; RecoveryScreen {} }
+    Component { id: bannerComp; NoDataBanner {} }
+    Component { id: slotComp; SlotView {} }
+    Component { id: settingsComp; SettingsPage {} }
+    Component { id: tracksComp; TracksPage {} }
+
+    function sizes() {
+        return [{ tag: "1024x600", w: 1024, h: 600, ppm: 4.626 }, { tag: "1280x800", w: 1280, h: 800, ppm: 5.884 }]
+    }
+
+    function init() {
+        failOnWarning(/.*/)
+        fixture.reset()
+        chartStub.legend = chartStub.fullLegend
+        chartStub.follow = true
+        chartStub.noPosition = false
+        chartStub.selected = []
+        chartStub.zooms = []
+        Units.windowWidth = 1280
+        Units.windowHeight = 800
+        Units.diagonalIn = 10.1
+    }
+
+    // Every item under `root` (depth first) for which pred holds.
+    function findAll(root, pred) {
+        let out = []
+        const stack = [root]
+        while (stack.length > 0) {
+            const it = stack.pop()
+            if (pred(it)) out.push(it)
+            for (let i = 0; i < it.children.length; ++i) stack.push(it.children[i])
+        }
+        return out
+    }
+    function byName(root, name) {
+        const l = findAll(root, it => it.objectName === name)
+        return l.length > 0 ? l[0] : null
+    }
+
+    function checkBigButtons(root) {
+        const buttons = findAll(root, it => it.isBigButton === true)
+        verify(buttons.length > 0, "no BigButton found")
+        const min = Units.mm(12) - 0.5
+        for (const b of buttons) {
+            verify(b.width >= min && b.height >= min,
+                   "BigButton '" + b.text + "' (" + b.objectName + ") is " + b.width + "x" + b.height + ", min " + min)
+        }
+        return buttons.length
+    }
+
+    function makeMain(w, h) {
+        const main = createTemporaryObject(mainComp, testCase, {
+            width: w, height: h,
+            chart: chartStub, chartMap: createTemporaryObject(mapStub, testCase), paletteController: paletteStub,
+            settings: fixture.settings, vessel: fixture.vessel, appInfo: fixture.appInfo,
+            slotsModel: fixture.slotsModel, numbersModel: fixture.numbersModel,
+            touchLock: fixture.touchLock, tracksController: fixture.tracksController
+        })
+        verify(main, "Main")
+        tryCompare(main, "width", w)
+        return main
+    }
+
+    function test_mainConstructs_data() { return sizes() }
+    function test_mainConstructs(data) {
+        const main = makeMain(data.w, data.h)
+        compare(Units.windowWidth, data.w)
+        compare(Units.windowHeight, data.h)
+        fuzzyCompare(Units.pxPerMm, data.ppm, 0.001)
+        // All pages exist in the stack, so the walk covers them.
+        for (const n of ["chartPage", "numbersPage", "tracksPage", "settingsPage", "aboutPage", "tabBar", "splash"])
+            verify(byName(main.contentItem, n), n)
+        checkBigButtons(main.contentItem)
+    }
+
+    function test_tabsAre15mm() {
+        const main = makeMain(1024, 600)
+        const tabs = findAll(main.contentItem, it => it.isBigButton === true && it.objectName.startsWith("tab-"))
+        compare(tabs.length, 4)
+        for (const t of tabs) verify(t.width >= Units.mm(15) - 0.5 && t.height >= Units.mm(15) - 0.5, t.objectName)
+        const bar = byName(main.contentItem, "tabBar")
+        tryVerify(() => Math.abs(bar.mapToItem(main.contentItem, 0, 0).x + bar.width - main.width) < 0.5,
+                  1000, "tab bar on the right edge")
+    }
+
+    // A small panel diagonal leaves the column short of room: every tab and control stays inside
+    // the window at full size (the reserved spaces give way first). At 10.1 in they are kept.
+    function test_tabBarFitsTheWindow_data() {
+        let out = []
+        for (const s of sizes())
+            for (const d of [7, 10.1])
+                out.push({ tag: s.tag + " " + d + " in", w: s.w, h: s.h, diag: d })
+        return out
+    }
+    function test_tabBarFitsTheWindow(data) {
+        fixture.settings.panelDiagonalIn = data.diag
+        const main = makeMain(data.w, data.h)
+        compare(Units.diagonalIn, data.diag)
+        const bar = byName(main.contentItem, "tabBar")
+        waitForRendering(bar)
+        const buttons = findAll(bar, it => it.isBigButton === true)
+        compare(buttons.length, 6)
+        checkBigButtons(bar)
+        for (const t of buttons.filter(b => b.objectName.startsWith("tab-")))
+            verify(t.height >= Units.mm(15) - 0.5, t.objectName)
+        const reserved = ["reservedBrightness", "reservedMob"].map(n => byName(bar, n)).filter(it => it.visible)
+        for (const b of buttons.concat(reserved)) {
+            const p = b.mapToItem(main.contentItem, 0, 0)
+            verify(p.y >= 0 && p.y + b.height <= main.height + 0.5,
+                   b.objectName + " at " + Math.round(p.y) + ".." + Math.round(p.y + b.height) + ", window " + main.height)
+        }
+        if (data.diag === 10.1)
+            verify(byName(bar, "reservedBrightness").visible && byName(bar, "reservedMob").visible, "reserved spaces kept")
+    }
+
+    function test_tabsSwitchPagesAndPaletteCycles() {
+        const main = makeMain(1024, 600)
+        byName(main.contentItem, "splash").visible = false
+        mouseClick(byName(main.contentItem, "tab-numbers"))
+        compare(main.page, "numbers")
+        verify(byName(main.contentItem, "numbersPage").visible)
+        compare(fixture.settings.paletteMode, "auto")
+        const pal = byName(main.contentItem, "paletteButton")
+        mouseClick(pal)
+        compare(fixture.settings.paletteMode, "day")
+        mouseClick(pal)
+        mouseClick(pal)
+        compare(fixture.settings.paletteMode, "night")
+        mouseClick(pal)
+        compare(fixture.settings.paletteMode, "auto")
+    }
+
+    function test_editOverlaysFromSettings() {
+        const main = makeMain(1024, 600)
+        byName(main.contentItem, "splash").visible = false
+        mouseClick(byName(main.contentItem, "tab-settings"))
+        waitForRendering(byName(main.contentItem, "settingsPage"))
+        tap(byName(main.contentItem, "editOverlaysButton"))
+        compare(main.page, "chart")
+        const chart = byName(main.contentItem, "chartPage")
+        verify(chart.editing)
+        mouseClick(byName(chart, "editDoneButton"))
+        verify(!chart.editing)
+    }
+
+    function test_pagesConstruct_data() { return sizes() }
+    function test_pagesConstruct(data) {
+        Units.windowWidth = data.w
+        Units.windowHeight = data.h
+        const props = { width: data.w - Units.mm(17), height: data.h }
+        const chart = createTemporaryObject(chartPageComp, testCase, Object.assign({
+            chart: chartStub, chartMap: createTemporaryObject(mapStub, testCase), slotsModel: fixture.slotsModel }, props))
+        verify(chart, "ChartPage")
+        checkBigButtons(chart)
+        const numbers = createTemporaryObject(numbersPageComp, testCase, Object.assign({ model: fixture.numbersModel }, props))
+        verify(numbers, "NumbersPage")
+        checkBigButtons(numbers)
+        const about = createTemporaryObject(aboutPageComp, testCase, Object.assign({ appInfo: fixture.appInfo }, props))
+        verify(about, "AboutPage")
+        checkBigButtons(about)
+        const rec = createTemporaryObject(recoveryComp, testCase, { width: data.w, height: data.h, recovery: fixture.recovery })
+        verify(rec, "RecoveryScreen")
+        compare(checkBigButtons(rec), 2) // Start fresh, and Try again for an Io error
+    }
+
+    function test_aisSheet() {
+        Units.windowWidth = 1280
+        Units.windowHeight = 800
+        const chart = createTemporaryObject(chartPageComp, testCase, {
+            width: 1280 - Units.mm(17), height: 800,
+            chart: chartStub, chartMap: createTemporaryObject(mapStub, testCase), slotsModel: fixture.slotsModel })
+        const sheet = byName(chart, "aisSheet")
+        verify(sheet, "aisSheet")
+        verify(!sheet.visible)
+        chartStub.aisSelection = { mmsi: "367000001", name: "SEA QUEEN", cls: "A", sog: "10.0", cog: "090",
+                                   range: "1.0", bearing: "307", posAge: "12 s" }
+        verify(sheet.visible)
+        const values = findAll(sheet, it => it.objectName === "aisValue").map(it => it.text)
+        verify(values.indexOf("SEA QUEEN") >= 0, "name")
+        verify(values.indexOf("367000001") >= 0, "mmsi")
+        compare(values.length, 8)
+        compare(checkBigButtons(sheet), 1) // the Close button only
+        const close = byName(sheet, "aisCloseButton")
+        verify(close)
+        close.clicked()
+        verify(!sheet.visible)
+    }
+
+    function test_legendSheet() {
+        Units.windowWidth = 1280
+        Units.windowHeight = 800
+        const chart = createTemporaryObject(chartPageComp, testCase, {
+            width: 1280 - Units.mm(17), height: 800,
+            chart: chartStub, chartMap: createTemporaryObject(mapStub, testCase), slotsModel: fixture.slotsModel })
+        const sheet = byName(chart, "legendSheet")
+        verify(sheet, "legendSheet")
+        verify(!sheet.visible)
+        const open = byName(chart, "legendButton")
+        verify(open && open.isBigButton)
+        open.clicked()
+        verify(sheet.visible)
+        const rows = findAll(sheet, it => it.objectName === "legendRow")
+        compare(rows.length, chartStub.legend.length)
+        for (const r of rows)
+            verify(r.height >= Units.mm(12), "row height")
+        // The kind reads as a word, not the legend.json key.
+        compare(findAll(sheet, it => it.objectName === "legendKind").map(it => it.text).sort(),
+                ["Qualifier", "Type", "Type", "Type"])
+        checkBigButtons(sheet)
+        const close = byName(sheet, "legendCloseButton")
+        verify(close)
+        close.clicked()
+        verify(!sheet.visible)
+    }
+
+    // A tap on the chart (mouse, and touch as on the panel) reaches selectAt with the point in map
+    // area coordinates, the ones the map's pixelForCoordinate uses, and an 8 mm radius. The Top and
+    // Left bars are on, so the map area is offset from the page and page coordinates would differ.
+    function test_chartTapSelectsAtMapAreaPoint() {
+        fixture.slotsModel.setSlot("Top", true, "time", "small")
+        fixture.slotsModel.setSlot("Left", true, "stw", "medium")
+        const chart = createTemporaryObject(chartPageComp, testCase, {
+            width: 1280 - Units.mm(17), height: 800,
+            chart: chartStub, chartMap: createTemporaryObject(mapStub, testCase), slotsModel: fixture.slotsModel })
+        waitForRendering(chart)
+        const map = byName(chart, "mapArea")
+        verify(map.x > 0 && map.y > 0, "map area offset by the bars")
+        mouseClick(map, 300, 250)
+        touchEvent(map).press(0, map, 400, 350).commit()
+        touchEvent(map).release(0, map, 400, 350).commit()
+        const want = [{ x: 300, y: 250 }, { x: 400, y: 350 }]
+        compare(chartStub.selected.length, want.length)
+        for (let i = 0; i < want.length; ++i) {
+            const got = chartStub.selected[i], what = JSON.stringify(got)
+            verify(Math.abs(got.x - want[i].x) < 1 && Math.abs(got.y - want[i].y) < 1, what)
+            fuzzyCompare(got.r, Units.mm(8), 1e-6)
+        }
+    }
+
+    // R25: wheel and pinch while following zoom through the controller (about the boat) and keep
+    // follow; not following, they scale the map about the point. Only a pan ends follow.
+    function test_chartZoomGesturesKeepFollow() {
+        const mapItem = createTemporaryObject(mapStub, testCase)
+        const chart = createTemporaryObject(chartPageComp, testCase, {
+            width: 1280 - Units.mm(17), height: 800, chart: chartStub, chartMap: mapItem, slotsModel: fixture.slotsModel })
+        waitForRendering(chart)
+        const map = byName(chart, "mapArea")
+        mouseWheel(map, 300, 300, 0, 120)
+        compare(chartStub.zooms.length, 1)
+        fuzzyCompare(chartStub.zooms[0], 0.5, 1e-9)
+        touchEvent(map).press(0, map, 300, 300).press(1, map, 400, 300).commit()
+        for (let i = 1; i <= 10; ++i)
+            touchEvent(map).move(0, map, 300 - 10 * i, 300).move(1, map, 400 + 10 * i, 300).commit()
+        touchEvent(map).release(0, map, 200, 300).release(1, map, 500, 300).commit()
+        verify(chartStub.zooms.length > 1, "pinch zooms through the controller")
+        verify(chartStub.zooms.slice(1).every(d => d > 0), "spreading fingers zooms in")
+        compare(mapItem.gestures, 0)
+        compare(mapItem.scales.length, 0)
+
+        chartStub.follow = false
+        const n = chartStub.zooms.length
+        mouseWheel(map, 300, 300, 0, -120)
+        compare(mapItem.scales.length, 1)
+        fuzzyCompare(mapItem.scales[0], Math.pow(2, -0.5), 1e-9)
+        compare(chartStub.zooms.length, n)
+
+        chartStub.follow = true
+        mouseDrag(map, 300, 300, 120, 0)
+        compare(mapItem.gestures, 1, "a pan ends follow")
+        verify(mapItem.moves > 0)
+    }
+
+    // No legend (no pack, or no legend.json): no button that would open a blank sheet.
+    function test_legendButtonHiddenWhenLegendEmpty() {
+        const chart = createTemporaryObject(chartPageComp, testCase, {
+            width: 1280 - Units.mm(17), height: 800,
+            chart: chartStub, chartMap: createTemporaryObject(mapStub, testCase), slotsModel: fixture.slotsModel })
+        const button = byName(chart, "legendButton")
+        verify(button.visible)
+        chartStub.legend = []
+        verify(!button.visible)
+    }
+
+    // TR and BR both large: the least room for the zoom column between them. The last row puts the
+    // live two-line position in TR over a large BR: less room between the right corners than the
+    // column needs, so it has to go beside them. (A large position does not fit a 1024x600 page at
+    // all: it is wider than the page.)
+    function test_allSlotsOnFitWithoutOverlap_data() {
+        const both = ["large", "large", "medium", "large", "small", "small", "medium", "medium"]
+        const fields = ["depth", "sog", "cog", "wtemp", "time", "pos", "stw", "hdg"]
+        return sizes().map(s => Object.assign({ fields: fields, sizes: both }, s)).concat([
+            { tag: "1024x600 position in TR", w: 1024, h: 600, position: true,
+              fields: ["depth", "pos", "cog", "wtemp", "time", "sog", "stw", "hdg"], sizes: both.map((z, i) => i === 1 ? "medium" : z) }])
+    }
+    function test_allSlotsOnFitWithoutOverlap(data) {
+        Units.windowWidth = data.w
+        Units.windowHeight = data.h
+        if (data.position) fixture.setPosition(47.98, -122.23)
+        const ids = ["TL", "TR", "BL", "BR", "Top", "Bottom", "Left", "Right"]
+        for (let i = 0; i < ids.length; ++i)
+            fixture.slotsModel.setSlot(ids[i], true, data.fields[i], data.sizes[i])
+        // Every chart control on: recenter (not following) and the no-position chip too (not with a
+        // live position).
+        chartStub.follow = false
+        chartStub.noPosition = !data.position
+        const chart = createTemporaryObject(chartPageComp, testCase, {
+            width: data.w - Units.mm(17), height: data.h,
+            chart: chartStub, chartMap: createTemporaryObject(mapStub, testCase), slotsModel: fixture.slotsModel })
+        waitForRendering(chart)
+        const slots = findAll(chart, it => it.objectName.startsWith("slot-") && it.visible)
+        compare(slots.length, 8)
+        const box = it => { const p = it.mapToItem(chart, 0, 0); return { x: p.x, y: p.y, w: it.width, h: it.height } }
+        const overlaps = (a, b) => {
+            const p = box(a), q = box(b)
+            return p.x < q.x + q.w && q.x < p.x + p.w && p.y < q.y + q.h && q.y < p.y + p.h
+        }
+        const where = it => { const b = box(it); return it.objectName + " " + [b.x, b.y, b.w, b.h].map(Math.round).join(",") }
+        for (let a = 0; a < slots.length; ++a)
+            for (let b = a + 1; b < slots.length; ++b)
+                verify(!overlaps(slots[a], slots[b]), where(slots[a]) + " overlaps " + where(slots[b]))
+        // The chart's controls clear every slot and each other, and stay inside the page.
+        const controls = findAll(chart, it => it.isBigButton === true && it.visible && !it.objectName.startsWith("slot-"))
+                         .concat([byName(chart, "noPositionChip")].filter(it => it.visible))
+        compare(controls.map(c => c.objectName).sort(),
+                ["legendButton", "modeButton"].concat(data.position ? [] : ["noPositionChip"],
+                                                      ["recenterButton", "zoomInButton", "zoomOutButton"]))
+        for (let a = 0; a < controls.length; ++a) {
+            const c = box(controls[a])
+            verify(c.x >= 0 && c.y >= 0 && c.x + c.w <= chart.width + 0.5 && c.y + c.h <= chart.height + 0.5,
+                   where(controls[a]) + " is outside the page")
+            for (const s of slots)
+                verify(!overlaps(controls[a], s), where(controls[a]) + " overlaps " + where(s))
+            for (let b = a + 1; b < controls.length; ++b)
+                verify(!overlaps(controls[a], controls[b]), where(controls[a]) + " overlaps " + where(controls[b]))
+        }
+        // Bars shrink the viewport: the map area lies between them.
+        const map = byName(chart, "mapArea")
+        const top = byName(chart, "slot-Top"), left = byName(chart, "slot-Left")
+        verify(map.y >= top.height - 0.5, "map below the top bar")
+        verify(map.x >= left.width - 0.5, "map right of the left bar")
+    }
+
+    // The charts line tells "nothing installed" from "installed but refused" (the About page lists
+    // refusals with reasons).
+    Component { id: splashComp; Splash {} }
+    QtObject {
+        id: appInfoStub
+        property string appVersion: "0.1.0"
+        property var chartsPack: ({})
+        property var bathyPack: ({})
+        property var packs: []
+    }
+    function test_splashChartsLine_data() {
+        const ok = { kind: "charts", region: "puget-north", version: "1.0.0", notice: "", refused: "", inUse: true }
+        const bad = { kind: "charts", region: "puget-north", version: "2.0.0", notice: "", refused: "styles/nav-day.json: bad", inUse: false }
+        const bathy = { kind: "bathy", region: "puget-north", version: "1.0.0", notice: "", refused: "", inUse: false }
+        return [
+            { tag: "in use", charts: ok, packs: [ok, bad], want: "Charts: puget-north 1.0.0" },
+            { tag: "all refused", charts: ({}), packs: [bad, bathy], want: "Charts pack refused: see Settings, About" },
+            { tag: "none", charts: ({}), packs: [bathy], want: "No charts pack installed" },
+            { tag: "no packs", charts: ({}), packs: [], want: "No charts pack installed" }
+        ]
+    }
+    function test_splashChartsLine(data) {
+        appInfoStub.chartsPack = data.charts
+        appInfoStub.packs = data.packs
+        const splash = createTemporaryObject(splashComp, testCase, { width: 1024, height: 600, appInfo: appInfoStub })
+        compare(byName(splash, "splashCharts").text, data.want)
+    }
+    // The same for the fishing chart: a refused bathy pack is not "not installed".
+    function test_splashBathyLine_data() {
+        const ok = { kind: "bathy", region: "puget-north", version: "1.0.0", notice: "", refused: "", inUse: true }
+        const bad = { kind: "bathy", region: "puget-north", version: "2.0.0", notice: "", refused: "styles/fish-day.json: bad", inUse: false }
+        const charts = { kind: "charts", region: "puget-north", version: "1.0.0", notice: "", refused: "", inUse: true }
+        return [
+            { tag: "in use", bathy: ok, packs: [charts, ok, bad], want: "Bathy: puget-north 1.0.0" },
+            { tag: "refused", bathy: ({}), packs: [charts, bad], want: "Bathy pack refused: see Settings, About" },
+            { tag: "none", bathy: ({}), packs: [charts], want: "No fishing chart installed" }
+        ]
+    }
+    function test_splashBathyLine(data) {
+        appInfoStub.chartsPack = ({})
+        appInfoStub.bathyPack = data.bathy
+        appInfoStub.packs = data.packs
+        const splash = createTemporaryObject(splashComp, testCase, { width: 1024, height: 600, appInfo: appInfoStub })
+        compare(byName(splash, "splashBathy").text, data.want)
+    }
+
+    function test_noDataBanner() {
+        const banner = createTemporaryObject(bannerComp, testCase, { width: 1000, live: false })
+        verify(banner.visible)
+        compare(banner.text, "No data from N2K")
+        banner.schemaMismatch = true
+        compare(banner.text, "Daemon too new or too old")
+        banner.live = true
+        verify(!banner.visible)
+    }
+
+    function test_mainBannerFollowsSchemaMismatch() {
+        const main = makeMain(1024, 600)
+        const banner = byName(main.contentItem, "noDataBanner")
+        verify(banner.visible)
+        compare(banner.text, "No data from N2K")
+        fixture.appInfo.setSchemaMismatch(2)
+        compare(banner.text, "Daemon too new or too old")
+        fixture.setVessel(3, 2)
+        verify(!banner.visible)
+    }
+
+    // The digit ratio is measured on the loaded bold face, not a fallback or a synthesized bold.
+    FontMetrics { id: boldMetrics; font.family: Units.fontFamily; font.bold: true; font.pixelSize: 200 }
+    function test_digitRatioMeasuredOnLoadedFonts() {
+        compare(Units.regularFont.status, FontLoader.Ready)
+        compare(Units.boldFont.status, FontLoader.Ready)
+        verify(Units.fontsReady)
+        compare(Units.boldFont.name, Units.fontFamily) // one family: Bold is its bold face
+        fuzzyCompare(Units.digitRatio, boldMetrics.tightBoundingRect("8").height / 200, 1e-9)
+        verify(Units.digitRatio > 0.68 && Units.digitRatio < 0.75, "Noto Sans Bold 8 is about 0.71 em: " + Units.digitRatio)
+    }
+
+    // A slot's "8" is drawn at its size's digit height (95 to 110 %), at both panel sizes.
+    function test_slotDigitHeight_data() {
+        let out = []
+        for (const s of sizes())
+            for (const size of ["small", "medium", "large"])
+                out.push({ tag: s.tag + " " + size, w: s.w, h: s.h, size: size })
+        return out
+    }
+    function test_slotDigitHeight(data) {
+        Units.windowWidth = data.w
+        Units.windowHeight = data.h
+        const want = Units.mm(Units.slotDigitMm(data.size))
+        const slot = createTemporaryObject(slotComp, testCase, {
+            x: 20, y: 20, slotId: "TL", on: true, field: "depth", fieldLabel: "Depth", size: data.size,
+            formatted: "8", unit: "ft" })
+        verify(byName(slot, "slotValue"))
+        waitForRendering(slot)
+        // The whole slot: the value text item's box reaches above the slot, so a grab of it alone
+        // is cut off. Label, digit and unit are on the slot background; the digit is the longest
+        // run of rows with ink (the label is shorter and a gap apart, the unit sits beside it).
+        const img = grabImage(slot)
+        const bg = img.pixel(0, Math.floor(img.height / 2))
+        let rows = 0, run = 0
+        for (let y = 0; y < img.height; ++y) {
+            let ink = false
+            for (let x = 0; x < img.width && !ink; ++x) {
+                const c = img.pixel(x, y)
+                ink = Math.abs(c.r - bg.r) + Math.abs(c.g - bg.g) + Math.abs(c.b - bg.b) > 0.3
+            }
+            run = ink ? run + 1 : 0
+            rows = Math.max(rows, run)
+        }
+        verify(rows >= want * 0.95, "8 is " + rows + " px tall, want " + want * 0.95)
+        verify(rows <= want * 1.1, "8 is " + rows + " px tall, want about " + want)
+    }
+
+    function test_slotEditorChangesASlot() {
+        const chart = createTemporaryObject(chartPageComp, testCase, {
+            width: 1200, height: 800, chart: chartStub, chartMap: createTemporaryObject(mapStub, testCase),
+            slotsModel: fixture.slotsModel })
+        const bl = byName(chart, "slot-BL")
+        verify(!bl.visible) // off by default
+        chart.editing = true
+        verify(bl.visible)
+        mouseClick(bl)
+        const editor = byName(chart, "slotEditor")
+        verify(editor.visible)
+        mouseClick(byName(editor, "choice-on"))
+        mouseClick(byName(editor, "choice-field-rpm"))
+        mouseClick(byName(editor, "choice-size-large"))
+        mouseClick(byName(editor, "editorDone"))
+        verify(!editor.visible)
+        chart.editing = false
+        verify(bl.visible)
+        compare(bl.field, "rpm")
+        compare(bl.size, "large")
+    }
+
+    function test_numbersCellsAndPicker() {
+        const page = createTemporaryObject(numbersPageComp, testCase, { width: 1200, height: 800, model: fixture.numbersModel })
+        compare(findAll(page, it => it.objectName.startsWith("cell-") && it.visible).length, 2)
+        fixture.setVessel(3 * 0.3048, 0)
+        compare(byName(page, "cell-0").formatted, "3.0")
+        mouseClick(byName(page, "cell-1"))
+        const editor = byName(page, "slotEditor")
+        verify(editor.visible)
+        mouseClick(byName(editor, "choice-cells-4"))
+        mouseClick(byName(editor, "choice-field-cog"))
+        mouseClick(byName(editor, "editorDone"))
+        compare(fixture.numbersModel.count, 4)
+        compare(fixture.settings.bigNumbers, ["depth", "cog", "cog", "stw"])
+        tryCompare(page, "cellCount", 4)
+        compare(findAll(page, it => it.objectName.startsWith("cell-") && it.visible).length, 4)
+    }
+
+    // Picking fewer cells while editing a cell that goes away closes the editor: no later field tap
+    // can reach a cell that is not there.
+    function test_numbersFewerCellsClosesEditorOfRemovedCell() {
+        fixture.numbersModel.setCount(4)
+        const page = createTemporaryObject(numbersPageComp, testCase, { width: 1200, height: 800, model: fixture.numbersModel })
+        tryCompare(page, "cellCount", 4)
+        mouseClick(byName(page, "cell-3"))
+        const editor = byName(page, "slotEditor")
+        verify(editor.visible)
+        compare(page.editIndex, 3)
+        mouseClick(byName(editor, "choice-cells-2"))
+        compare(fixture.numbersModel.count, 2)
+        verify(!editor.visible, "the edited cell is gone")
+        compare(page.editIndex, -1)
+        // Editing a cell that stays keeps the editor open.
+        waitForRendering(page) // the grid places the new cells on the next frame
+        mouseClick(byName(page, "cell-0"))
+        mouseClick(byName(editor, "choice-cells-3"))
+        verify(editor.visible)
+        compare(page.editIndex, 0)
+    }
+
+    function makeSettings() {
+        const page = createTemporaryObject(settingsComp, testCase, { width: 1200, height: 800, settings: fixture.settings })
+        verify(page, "SettingsPage")
+        return page
+    }
+    // Scrolls every Flickable above `item` so the item is on screen, then clicks it.
+    function tap(item) {
+        verify(item, "nothing to tap")
+        for (let a = item.parent; a; a = a.parent) {
+            if (a.contentItem !== undefined && a.contentY !== undefined) {
+                const p = item.mapToItem(a, 0, 0)
+                if (p.y < 0 || p.y + item.height > a.height)
+                    a.contentY = Math.max(0, Math.min(a.contentHeight - a.height, a.contentY + p.y - Units.mm(2)))
+            }
+        }
+        mouseClick(item)
+    }
+    function pick(page, row, choice) {
+        tap(byName(page, row))
+        waitForRendering(byName(page, "settingsList")) // the list lays out on the next frame
+        tap(byName(page, "choice-" + choice))
+    }
+
+    function test_settingsConstructs_data() { return sizes() }
+    function test_settingsConstructs(data) {
+        Units.windowWidth = data.w
+        Units.windowHeight = data.h
+        const page = createTemporaryObject(settingsComp, testCase, { width: data.w - Units.mm(17), height: data.h, settings: fixture.settings })
+        verify(page, "SettingsPage")
+        checkBigButtons(page)
+        verify(byName(page, "editOverlaysButton"))
+        verify(byName(page, "aboutButton"))
+    }
+
+    function test_settingsInvalidDepthShowsReasonAndIsNotSaved() {
+        const page = makeSettings()
+        const deep = fixture.settings.deepM
+        verify(fixture.settings.setDepths(1.8288, deep - 0.3048, deep)) // safety is deep minus 1 ft
+        const before = fixture.settings.safetyM
+        verify(!byName(page, "depthError").visible)
+        tap(byName(page, "safetyPlus"))
+        compare(fixture.settings.safetyM, before)
+        verify(byName(page, "depthError").visible)
+        compare(byName(page, "depthError").text, "Safety must be less than deep.")
+        tap(byName(page, "safetyMinus"))
+        verify(fixture.settings.safetyM < before)
+        verify(!byName(page, "depthError").visible)
+    }
+
+    function test_settingsDepthStepFollowsUnit() {
+        const page = makeSettings()
+        compare(byName(page, "shallowValue").text, "6 ft")
+        tap(byName(page, "shallowPlus"))
+        compare(byName(page, "shallowValue").text, "7 ft")
+        fuzzyCompare(fixture.settings.shallowM, 7 * 0.3048, 1e-6)
+        pick(page, "row-depthUnit", "m")
+        compare(fixture.settings.depthUnit, "m")
+        verify(byName(page, "safetyValue").text.endsWith(" m"), byName(page, "safetyValue").text)
+        const m0 = fixture.settings.deepM
+        tap(byName(page, "deepPlus"))
+        fuzzyCompare(fixture.settings.deepM, m0 + 0.5, 1e-6)
+        pick(page, "row-depthUnit", "fm")
+        verify(byName(page, "safetyValue").text.endsWith(" fm"))
+        const f0 = fixture.settings.deepM
+        tap(byName(page, "deepMinus"))
+        fuzzyCompare(fixture.settings.deepM, f0 - 0.9144, 1e-6)
+    }
+
+    // At a limit a further step is refused, and the reason is worded in the page's depth unit.
+    function test_settingsDepthLimits_data() {
+        return [{ tag: "ft", unit: "ft", min: "2 ft", max: "197 ft" },
+                { tag: "m", unit: "m", min: "0.5 m", max: "60.0 m" },
+                { tag: "fm", unit: "fm", min: "0.3 fm", max: "32.8 fm" }]
+    }
+    function test_settingsDepthLimits(data) {
+        const page = makeSettings()
+        fixture.settings.depthUnit = data.unit
+        verify(fixture.settings.setDepths(0.5, 1.0, 60.0))
+        const error = byName(page, "depthError")
+        tap(byName(page, "deepPlus"))
+        compare(fixture.settings.deepM, 60.0)
+        verify(error.visible)
+        compare(error.text, "Depths must be at most " + data.max + ".")
+        compare(byName(page, "deepValue").text, data.max)
+        tap(byName(page, "deepMinus"))
+        verify(!error.visible)
+        tap(byName(page, "shallowMinus"))
+        compare(fixture.settings.shallowM, 0.5)
+        verify(error.visible)
+        compare(error.text, "Depths must be at least " + data.min + ".")
+        compare(byName(page, "shallowValue").text, data.min)
+    }
+
+    // A step that would pass a limit lands on it, so 60 m and 0.5 m are reachable in feet.
+    function test_settingsDepthStepClampsToLimit() {
+        const page = makeSettings()
+        verify(fixture.settings.setDepths(2 * 0.3048, 3.048, 196 * 0.3048))
+        compare(byName(page, "deepValue").text, "196 ft")
+        tap(byName(page, "deepPlus"))
+        compare(fixture.settings.deepM, 60.0)
+        compare(byName(page, "deepValue").text, "197 ft")
+        verify(!byName(page, "depthError").visible)
+        tap(byName(page, "shallowMinus"))
+        compare(fixture.settings.shallowM, 0.5)
+        compare(byName(page, "shallowValue").text, "2 ft")
+        verify(!byName(page, "depthError").visible)
+    }
+
+    // Switching units only changes the words: the stored metres stay, and ft to m to fm to ft
+    // shows the same values again.
+    function test_settingsDepthUnitRoundTrip() {
+        const page = makeSettings()
+        const texts = () => ["shallowValue", "safetyValue", "deepValue"].map(n => byName(page, n).text)
+        compare(texts(), ["6 ft", "10 ft", "30 ft"])
+        pick(page, "row-depthUnit", "m")
+        compare(texts(), ["1.8 m", "3.0 m", "9.1 m"])
+        pick(page, "row-depthUnit", "fm")
+        compare(texts(), ["1.0 fm", "1.7 fm", "5.0 fm"])
+        pick(page, "row-depthUnit", "ft")
+        compare(texts(), ["6 ft", "10 ft", "30 ft"])
+        compare([fixture.settings.shallowM, fixture.settings.safetyM, fixture.settings.deepM], [1.8288, 3.048, 9.144])
+    }
+
+    function test_settingsChoiceRows_data() {
+        return [
+            { row: "row-speedUnit", choice: "kmh", key: "speedUnit", want: "kmh" },
+            { row: "row-tempUnit", choice: "C", key: "tempUnit", want: "C" },
+            { row: "row-orientation", choice: "north", key: "orientation", want: "north" },
+            { row: "row-orientation", choice: "course", key: "orientation", want: "course" },
+            { row: "row-paletteMode", choice: "night", key: "paletteMode", want: "night" },
+            { row: "row-touchLock", choice: "0", key: "touchLockTimeoutS", want: 0 },
+            { row: "row-touchLock", choice: "30", key: "touchLockTimeoutS", want: 30 },
+            { row: "row-touchLock", choice: "300", key: "touchLockTimeoutS", want: 300 },
+            { row: "row-trackInterval", choice: "30", key: "trackIntervalS", want: 30 },
+            { row: "row-trackDistance", choice: "25", key: "trackMinDistanceM", want: 25 }
+        ]
+    }
+    function test_settingsChoiceRows(data) {
+        const page = makeSettings()
+        pick(page, data.row, data.choice)
+        compare(fixture.settings[data.key], data.want)
+        verify(!byName(page, "settingsList").visible)
+    }
+
+    function test_settingsOffsetToggleAndDiagonal() {
+        const page = makeSettings()
+        const on = fixture.settings.applyDepthOffset
+        tap(byName(page, "row-applyOffset"))
+        compare(fixture.settings.applyDepthOffset, !on)
+        compare(byName(page, "diagonalValue").text, "10.1 in")
+        tap(byName(page, "diagonalPlus"))
+        compare(fixture.settings.panelDiagonalIn, 10.2)
+        tap(byName(page, "diagonalMinus"))
+        tap(byName(page, "diagonalMinus"))
+        compare(fixture.settings.panelDiagonalIn, 10.0)
+        fixture.settings.panelDiagonalIn = 7.0
+        tap(byName(page, "diagonalMinus"))
+        compare(fixture.settings.panelDiagonalIn, 7.0)
+        fixture.settings.panelDiagonalIn = 15.0
+        tap(byName(page, "diagonalPlus"))
+        compare(fixture.settings.panelDiagonalIn, 15.0)
+    }
+
+    function test_settingsShowsChartDepthNote() {
+        const page = makeSettings()
+        verify(findAll(page, it => it.text === "Chart depths are in feet").length === 1)
+    }
+
+    function test_settingsTabInMain() {
+        const main = makeMain(1024, 600)
+        byName(main.contentItem, "splash").visible = false
+        mouseClick(byName(main.contentItem, "tab-settings"))
+        verify(byName(main.contentItem, "settingsPage").visible)
+        waitForRendering(byName(main.contentItem, "settingsPage"))
+        tap(byName(main.contentItem, "aboutButton"))
+        compare(main.page, "about")
+    }
+
+    function test_lockSwallowsTouchesAndLongPressUnlocks() {
+        const main = makeMain(1024, 600)
+        byName(main.contentItem, "splash").visible = false
+        const overlay = byName(main.contentItem, "lockOverlay")
+        verify(!overlay.visible, "no overlay while unlocked")
+        mouseClick(byName(main.contentItem, "lockButton"))
+        verify(fixture.touchLock.locked, "the Lock button locks")
+        verify(overlay.visible)
+        mouseClick(byName(main.contentItem, "tab-numbers"))
+        compare(main.page, "chart")
+        mouseClick(byName(main.contentItem, "paletteButton"))
+        compare(fixture.settings.paletteMode, "auto")
+        // A mouse drag and a wheel turn on the chart stop at the lock too.
+        const map = byName(main.contentItem, "mapArea")
+        mouseDrag(map, 300, 300, 120, 0)
+        mouseWheel(map, 300, 300, 0, 120)
+        compare(main.chartMap.gestures, 0, "no pan while locked")
+        compare(main.chartMap.moves, 0)
+        compare(main.chartMap.scales.length, 0)
+        compare(chartStub.zooms.length, 0, "no zoom while locked")
+
+        const hold = byName(overlay, "lockHold")
+        mousePress(hold)
+        fixture.advance(1000)
+        verify(fixture.touchLock.holdProgress > 0.6 && fixture.touchLock.holdProgress < 0.7, "ring at " + fixture.touchLock.holdProgress)
+        mouseRelease(hold)
+        compare(fixture.touchLock.holdProgress, 0)
+        verify(fixture.touchLock.locked, "a short press does not unlock")
+
+        mousePress(hold)
+        fixture.advance(1500)
+        mouseRelease(hold)
+        verify(!fixture.touchLock.locked, "1.5 s unlocks")
+        verify(!overlay.visible)
+        mouseWheel(map, 300, 300, 0, 120)
+        compare(chartStub.zooms.length, 1, "the wheel zooms once unlocked")
+        mouseDrag(map, 300, 300, 120, 0)
+        compare(main.chartMap.gestures, 1, "the drag pans once unlocked")
+        mouseClick(byName(main.contentItem, "tab-numbers"))
+        compare(main.page, "numbers")
+    }
+
+    // A finger tap at the item's centre: the touch path, as on the panel (not the mouse path).
+    function touchTap(item) {
+        verify(item, "nothing to tap")
+        touchEvent(item).press(0, item, item.width / 2, item.height / 2).commit()
+        touchEvent(item).release(0, item, item.width / 2, item.height / 2).commit()
+    }
+    function pinchOut(item) {
+        const cx = item.width / 2, cy = item.height / 2
+        touchEvent(item).press(0, item, cx - 50, cy).press(1, item, cx + 50, cy).commit()
+        for (let i = 1; i <= 10; ++i)
+            touchEvent(item).move(0, item, cx - 50 - 10 * i, cy).move(1, item, cx + 50 + 10 * i, cy).commit()
+        touchEvent(item).release(0, item, cx - 150, cy).release(1, item, cx + 150, cy).commit()
+    }
+
+    // The same through touch: taps on the tabs and palette, a pinch and a wheel turn on the chart
+    // all stop at the lock; a finger hold on the padlock unlocks, and then they all work.
+    function test_lockSwallowsTouchPinchAndWheel() {
+        const main = makeMain(1024, 600)
+        byName(main.contentItem, "splash").visible = false
+        const map = byName(main.contentItem, "mapArea")
+        waitForRendering(main.contentItem)
+        touchTap(byName(main.contentItem, "lockButton"))
+        verify(fixture.touchLock.locked, "a tap on Lock locks")
+        touchTap(byName(main.contentItem, "tab-numbers"))
+        compare(main.page, "chart")
+        touchTap(byName(main.contentItem, "paletteButton"))
+        compare(fixture.settings.paletteMode, "auto")
+        pinchOut(map)
+        compare(chartStub.zooms.length, 0, "no pinch zoom while locked")
+        mouseWheel(map, map.width / 2, map.height / 2, 0, 120)
+        compare(chartStub.zooms.length, 0, "no wheel zoom while locked")
+        touchEvent(map).press(0, map, 300, 300).commit()
+        for (let i = 1; i <= 10; ++i)
+            touchEvent(map).move(0, map, 300 + 12 * i, 300).commit()
+        touchEvent(map).release(0, map, 420, 300).commit()
+        compare(main.chartMap.gestures, 0, "no pan while locked: follow stays on")
+        compare(main.chartMap.moves, 0)
+        compare(main.chartMap.scales.length, 0)
+
+        const hold = byName(main.contentItem, "lockHold")
+        touchEvent(hold).press(0, hold, hold.width / 2, hold.height / 2).commit()
+        fixture.advance(1500)
+        touchEvent(hold).release(0, hold, hold.width / 2, hold.height / 2).commit()
+        verify(!fixture.touchLock.locked, "a 1.5 s finger hold unlocks")
+
+        touchTap(byName(main.contentItem, "paletteButton"))
+        compare(fixture.settings.paletteMode, "day")
+        mouseWheel(map, map.width / 2, map.height / 2, 0, 120)
+        compare(chartStub.zooms.length, 1, "the wheel zooms once unlocked")
+        pinchOut(map)
+        verify(chartStub.zooms.length > 1, "the pinch zooms once unlocked")
+        touchTap(byName(main.contentItem, "tab-numbers"))
+        compare(main.page, "numbers")
+    }
+
+    function test_lockHoldTargetIsOverTheLockButton() {
+        const main = makeMain(1024, 600)
+        fixture.touchLock.lockNow()
+        const hold = byName(main.contentItem, "lockHold")
+        const button = byName(main.contentItem, "lockButton")
+        const a = hold.mapToItem(main.contentItem, 0, 0), b = button.mapToItem(main.contentItem, 0, 0)
+        verify(Math.abs(a.x - b.x) < 1 && Math.abs(a.y - b.y) < 1, "hold at " + a.x + "," + a.y + " button at " + b.x + "," + b.y)
+        verify(hold.width >= Units.mm(12) - 0.5 && hold.height >= Units.mm(12) - 0.5)
+    }
+
+    function makeTracks(w, h) {
+        const page = createTemporaryObject(tracksComp, testCase,
+                                           { width: w, height: h, tracks: fixture.tracksController, settings: fixture.settings })
+        verify(page, "TracksPage")
+        return page
+    }
+    function rowTexts(row) {
+        return findAll(row, it => it.text !== undefined && it.visible).map(it => it.text).join(" | ")
+    }
+
+    function test_tracksConstructsEmptyAndWithRows_data() { return sizes() }
+    function test_tracksConstructsEmptyAndWithRows(data) {
+        Units.windowWidth = data.w
+        Units.windowHeight = data.h
+        const page = makeTracks(data.w - Units.mm(17), data.h)
+        verify(byName(page, "recordButton"))
+        verify(byName(page, "noTracks").visible, "empty state")
+        fixture.addTrack(1.7e9)
+        fixture.addTrack(1.7e9 + 86400)
+        compare(findAll(page, it => it.objectName === "trackRow").length, 2)
+        verify(!byName(page, "noTracks").visible)
+        checkBigButtons(page)
+    }
+
+    function test_tracksRecordButtonTogglesTheSetting() {
+        const page = makeTracks(1200, 800)
+        const b = byName(page, "recordButton")
+        compare(fixture.settings.trackRecording, false)
+        compare(b.text, "Start recording")
+        mouseClick(b)
+        compare(fixture.settings.trackRecording, true)
+        compare(b.text, "Stop recording")
+        mouseClick(b)
+        compare(fixture.settings.trackRecording, false)
+    }
+
+    function test_tracksRowShowsNameDurationAndNauticalMiles() {
+        const page = makeTracks(1200, 800)
+        fixture.addTrack(1.7e9) // 10 minutes, about 1112 m = 0.6 nm
+        const row = byName(page, "trackRow")
+        verify(row, "row")
+        const text = rowTexts(row)
+        verify(text.indexOf("0.6 nm") >= 0, text)
+        verify(text.indexOf("10 min") >= 0, text)
+        verify(/\d{4}-\d{2}-\d{2} \d{2}:\d{2}/.test(text), text)
+    }
+
+    function test_tracksShowHideToggle() {
+        const page = makeTracks(1200, 800)
+        const id = fixture.addTrack(1.7e9)
+        const toggle = byName(page, "trackToggle")
+        compare(toggle.text, "Hide")
+        mouseClick(toggle)
+        compare(fixture.tracksController.tracks[0].visible, false)
+        compare(fixture.tracksController.tracks[0].id, id)
+        compare(byName(page, "trackToggle").text, "Show")
+        mouseClick(byName(page, "trackToggle"))
+        compare(fixture.tracksController.tracks[0].visible, true)
+    }
+
+    function test_tracksDeleteAsksFirstInPage() {
+        const page = makeTracks(1200, 800)
+        fixture.addTrack(1.7e9)
+        const confirm = byName(page, "confirmDelete")
+        verify(!confirm.visible)
+        mouseClick(byName(page, "trackDelete"))
+        verify(confirm.visible, "confirm shown")
+        verify(byName(confirm, "confirmYes").width >= Units.mm(12) - 0.5)
+        mouseClick(byName(confirm, "confirmNo"))
+        verify(!confirm.visible)
+        compare(fixture.tracksController.tracks.length, 1)
+        mouseClick(byName(page, "trackDelete"))
+        mouseClick(byName(confirm, "confirmYes"))
+        verify(!confirm.visible)
+        compare(fixture.tracksController.tracks.length, 0)
+        verify(byName(page, "noTracks").visible)
+    }
+
+    function test_tracksTabShowsThePageInMain() {
+        const main = makeMain(1024, 600)
+        byName(main.contentItem, "splash").visible = false
+        mouseClick(byName(main.contentItem, "tab-tracks"))
+        verify(byName(main.contentItem, "tracksPage").visible)
+        verify(byName(main.contentItem, "recordButton"))
+    }
+
+    function test_tabBarRecordIndicatorFollowsTheSetting() {
+        const main = makeMain(1024, 600)
+        const ind = byName(main.contentItem, "recordIndicator")
+        verify(ind, "indicator")
+        verify(!ind.visible)
+        fixture.settings.trackRecording = true
+        verify(ind.visible)
+        const tab = byName(main.contentItem, "tab-tracks")
+        verify(ind.width < Units.mm(4) && ind.height < Units.mm(4))
+        const a = ind.mapToItem(main.contentItem, 0, 0), t = tab.mapToItem(main.contentItem, 0, 0)
+        verify(a.x >= t.x && a.x + ind.width <= t.x + tab.width && a.y >= t.y && a.y + ind.height <= t.y + tab.height,
+               "indicator sits inside the Tracks tab: it adds no height to the tab column")
+    }
+}

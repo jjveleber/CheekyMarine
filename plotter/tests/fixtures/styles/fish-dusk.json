@@ -1,0 +1,1015 @@
+{
+  "version": 8,
+  "name": "CheekyMarine fish dusk",
+  "metadata": {
+    "cheekymarine": {
+      "depths": {
+        "shallow_m": 1.8288,
+        "safety_m": 3.048,
+        "deep_m": 9.144,
+        "layers": [
+          "hazard-danger",
+          "hazard-danger-outline"
+        ]
+      },
+      "units": "ft",
+      "palette": "dusk",
+      "notice": "Fishing chart: survey depths, approx. MLLW. Not certified for navigation."
+    }
+  },
+  "sources": {
+    "enc": {
+      "type": "vector",
+      "url": "mbtiles://enc"
+    },
+    "bathy": {
+      "type": "vector",
+      "url": "mbtiles://bathy"
+    },
+    "dem": {
+      "type": "raster-dem",
+      "url": "mbtiles://dem",
+      "encoding": "terrarium",
+      "tileSize": 256
+    }
+  },
+  "sprite": "pack://sprites/fish",
+  "glyphs": "pack://glyphs/{fontstack}/{range}.pbf",
+  "layers": [
+    {
+      "id": "background",
+      "type": "background",
+      "paint": {
+        "background-color": "#6e6e6e"
+      }
+    },
+    {
+      "id": "water-base",
+      "type": "fill",
+      "source": "enc",
+      "source-layer": "depare",
+      "paint": {
+        "fill-color": "#798389"
+      }
+    },
+    {
+      "id": "band-fill",
+      "type": "fill",
+      "source": "bathy",
+      "source-layer": "band",
+      "paint": {
+        "fill-color": [
+          "step",
+          [
+            "get",
+            "depth_min_ft"
+          ],
+          "#4e6b7f",
+          30,
+          "#657985",
+          90,
+          "#798389",
+          180,
+          "#86837c"
+        ],
+        "fill-antialias": false
+      }
+    },
+    {
+      "id": "hillshade",
+      "type": "hillshade",
+      "source": "dem",
+      "paint": {
+        "hillshade-exaggeration": 0.5,
+        "hillshade-shadow-color": "#3b4348",
+        "hillshade-highlight-color": "#8c8c8c",
+        "hillshade-illumination-direction": 335
+      }
+    },
+    {
+      "id": "lndare",
+      "type": "fill",
+      "source": "enc",
+      "source-layer": "lndare",
+      "paint": {
+        "fill-color": "#83774c",
+        "fill-opacity": 1.0
+      }
+    },
+    {
+      "id": "coalne",
+      "type": "line",
+      "source": "enc",
+      "source-layer": "coalne",
+      "paint": {
+        "line-color": "#34342c",
+        "line-width": 1.2
+      }
+    },
+    {
+      "id": "contour-enc",
+      "type": "line",
+      "source": "bathy",
+      "source-layer": "contour",
+      "filter": [
+        "==",
+        [
+          "get",
+          "source"
+        ],
+        "enc"
+      ],
+      "paint": {
+        "line-color": "#3b4348",
+        "line-width": 0.8,
+        "line-dasharray": [
+          4,
+          2
+        ]
+      }
+    },
+    {
+      "id": "contour-minor-z12",
+      "type": "line",
+      "source": "bathy",
+      "source-layer": "contour",
+      "minzoom": 12,
+      "filter": [
+        "all",
+        [
+          "!=",
+          [
+            "get",
+            "source"
+          ],
+          "enc"
+        ],
+        [
+          "!",
+          [
+            "get",
+            "major"
+          ]
+        ],
+        [
+          "==",
+          [
+            "get",
+            "minzoom"
+          ],
+          12
+        ]
+      ],
+      "paint": {
+        "line-color": "#3b4348",
+        "line-width": 0.6
+      }
+    },
+    {
+      "id": "contour-minor-z13",
+      "type": "line",
+      "source": "bathy",
+      "source-layer": "contour",
+      "minzoom": 13,
+      "filter": [
+        "all",
+        [
+          "!=",
+          [
+            "get",
+            "source"
+          ],
+          "enc"
+        ],
+        [
+          "!",
+          [
+            "get",
+            "major"
+          ]
+        ],
+        [
+          "==",
+          [
+            "get",
+            "minzoom"
+          ],
+          13
+        ]
+      ],
+      "paint": {
+        "line-color": "#3b4348",
+        "line-width": 0.6
+      }
+    },
+    {
+      "id": "contour-minor-z14",
+      "type": "line",
+      "source": "bathy",
+      "source-layer": "contour",
+      "minzoom": 14,
+      "filter": [
+        "all",
+        [
+          "!=",
+          [
+            "get",
+            "source"
+          ],
+          "enc"
+        ],
+        [
+          "!",
+          [
+            "get",
+            "major"
+          ]
+        ],
+        [
+          "==",
+          [
+            "get",
+            "minzoom"
+          ],
+          14
+        ]
+      ],
+      "paint": {
+        "line-color": "#3b4348",
+        "line-width": 0.6
+      }
+    },
+    {
+      "id": "contour-minor-z15",
+      "type": "line",
+      "source": "bathy",
+      "source-layer": "contour",
+      "minzoom": 15,
+      "filter": [
+        "all",
+        [
+          "!=",
+          [
+            "get",
+            "source"
+          ],
+          "enc"
+        ],
+        [
+          "!",
+          [
+            "get",
+            "major"
+          ]
+        ],
+        [
+          "==",
+          [
+            "get",
+            "minzoom"
+          ],
+          15
+        ]
+      ],
+      "paint": {
+        "line-color": "#3b4348",
+        "line-width": 0.6
+      }
+    },
+    {
+      "id": "contour-major",
+      "type": "line",
+      "source": "bathy",
+      "source-layer": "contour",
+      "filter": [
+        "all",
+        [
+          "!=",
+          [
+            "get",
+            "source"
+          ],
+          "enc"
+        ],
+        [
+          "get",
+          "major"
+        ]
+      ],
+      "paint": {
+        "line-color": "#000000",
+        "line-width": 1.2
+      }
+    },
+    {
+      "id": "contour-label",
+      "type": "symbol",
+      "source": "bathy",
+      "source-layer": "contour",
+      "filter": [
+        "all",
+        [
+          "!=",
+          [
+            "get",
+            "source"
+          ],
+          "enc"
+        ],
+        [
+          "get",
+          "major"
+        ]
+      ],
+      "layout": {
+        "symbol-placement": "line",
+        "symbol-spacing": 400,
+        "text-field": [
+          "to-string",
+          [
+            "get",
+            "depth_ft"
+          ]
+        ],
+        "text-font": [
+          "Noto Sans Bold"
+        ],
+        "text-size": 11
+      },
+      "paint": {
+        "text-color": "#000000",
+        "text-halo-color": "#86837c",
+        "text-halo-width": 1.5
+      }
+    },
+    {
+      "id": "contour-label-z12",
+      "type": "symbol",
+      "source": "bathy",
+      "source-layer": "contour",
+      "filter": [
+        "all",
+        [
+          "!=",
+          [
+            "get",
+            "source"
+          ],
+          "enc"
+        ],
+        [
+          "!",
+          [
+            "get",
+            "major"
+          ]
+        ],
+        [
+          "==",
+          [
+            "get",
+            "minzoom"
+          ],
+          12
+        ]
+      ],
+      "layout": {
+        "symbol-placement": "line",
+        "symbol-spacing": 400,
+        "text-field": [
+          "to-string",
+          [
+            "get",
+            "depth_ft"
+          ]
+        ],
+        "text-font": [
+          "Noto Sans Bold"
+        ],
+        "text-size": 11
+      },
+      "paint": {
+        "text-color": "#000000",
+        "text-halo-color": "#86837c",
+        "text-halo-width": 1.5
+      },
+      "minzoom": 12
+    },
+    {
+      "id": "contour-label-z13",
+      "type": "symbol",
+      "source": "bathy",
+      "source-layer": "contour",
+      "filter": [
+        "all",
+        [
+          "!=",
+          [
+            "get",
+            "source"
+          ],
+          "enc"
+        ],
+        [
+          "!",
+          [
+            "get",
+            "major"
+          ]
+        ],
+        [
+          "==",
+          [
+            "get",
+            "minzoom"
+          ],
+          13
+        ]
+      ],
+      "layout": {
+        "symbol-placement": "line",
+        "symbol-spacing": 400,
+        "text-field": [
+          "to-string",
+          [
+            "get",
+            "depth_ft"
+          ]
+        ],
+        "text-font": [
+          "Noto Sans Bold"
+        ],
+        "text-size": 11
+      },
+      "paint": {
+        "text-color": "#000000",
+        "text-halo-color": "#86837c",
+        "text-halo-width": 1.5
+      },
+      "minzoom": 13
+    },
+    {
+      "id": "contour-label-z14",
+      "type": "symbol",
+      "source": "bathy",
+      "source-layer": "contour",
+      "filter": [
+        "all",
+        [
+          "!=",
+          [
+            "get",
+            "source"
+          ],
+          "enc"
+        ],
+        [
+          "!",
+          [
+            "get",
+            "major"
+          ]
+        ],
+        [
+          "==",
+          [
+            "get",
+            "minzoom"
+          ],
+          14
+        ]
+      ],
+      "layout": {
+        "symbol-placement": "line",
+        "symbol-spacing": 400,
+        "text-field": [
+          "to-string",
+          [
+            "get",
+            "depth_ft"
+          ]
+        ],
+        "text-font": [
+          "Noto Sans Bold"
+        ],
+        "text-size": 11
+      },
+      "paint": {
+        "text-color": "#000000",
+        "text-halo-color": "#86837c",
+        "text-halo-width": 1.5
+      },
+      "minzoom": 14
+    },
+    {
+      "id": "contour-label-z15",
+      "type": "symbol",
+      "source": "bathy",
+      "source-layer": "contour",
+      "filter": [
+        "all",
+        [
+          "!=",
+          [
+            "get",
+            "source"
+          ],
+          "enc"
+        ],
+        [
+          "!",
+          [
+            "get",
+            "major"
+          ]
+        ],
+        [
+          "==",
+          [
+            "get",
+            "minzoom"
+          ],
+          15
+        ]
+      ],
+      "layout": {
+        "symbol-placement": "line",
+        "symbol-spacing": 400,
+        "text-field": [
+          "to-string",
+          [
+            "get",
+            "depth_ft"
+          ]
+        ],
+        "text-font": [
+          "Noto Sans Bold"
+        ],
+        "text-size": 11
+      },
+      "paint": {
+        "text-color": "#000000",
+        "text-halo-color": "#86837c",
+        "text-halo-width": 1.5
+      },
+      "minzoom": 15
+    },
+    {
+      "id": "seabed-cmecs",
+      "type": "line",
+      "source": "enc",
+      "source-layer": "seabed",
+      "filter": [
+        "==",
+        [
+          "get",
+          "class"
+        ],
+        "CMECS"
+      ],
+      "paint": {
+        "line-color": "#3b4348",
+        "line-width": 0.5,
+        "line-dasharray": [
+          2,
+          2
+        ]
+      }
+    },
+    {
+      "id": "seabed",
+      "type": "symbol",
+      "source": "enc",
+      "source-layer": "seabed",
+      "filter": [
+        "!",
+        [
+          "all",
+          [
+            "==",
+            [
+              "get",
+              "class"
+            ],
+            "WEDKLP"
+          ],
+          [
+            "==",
+            [
+              "get",
+              "CATWED"
+            ],
+            1
+          ]
+        ]
+      ],
+      "layout": {
+        "text-field": [
+          "get",
+          "label"
+        ],
+        "text-font": [
+          "Noto Sans Regular"
+        ],
+        "text-size": 10,
+        "text-padding": [
+          "step",
+          [
+            "zoom"
+          ],
+          20,
+          15,
+          2
+        ],
+        "symbol-sort-key": [
+          "case",
+          [
+            "has",
+            "extent"
+          ],
+          [
+            "-",
+            [
+              "to-number",
+              [
+                "get",
+                "extent"
+              ]
+            ]
+          ],
+          [
+            "==",
+            [
+              "get",
+              "src"
+            ],
+            "usseabed"
+          ],
+          2,
+          1
+        ]
+      },
+      "paint": {
+        "text-color": "#292f35",
+        "text-halo-color": "#86837c",
+        "text-halo-width": 1.5
+      }
+    },
+    {
+      "id": "seabed-kelp",
+      "type": "symbol",
+      "source": "enc",
+      "source-layer": "seabed",
+      "filter": [
+        "all",
+        [
+          "==",
+          [
+            "get",
+            "class"
+          ],
+          "WEDKLP"
+        ],
+        [
+          "==",
+          [
+            "get",
+            "CATWED"
+          ],
+          1
+        ]
+      ],
+      "layout": {
+        "text-field": [
+          "get",
+          "label"
+        ],
+        "text-font": [
+          "Noto Sans Regular"
+        ],
+        "text-size": 10,
+        "text-padding": [
+          "step",
+          [
+            "zoom"
+          ],
+          20,
+          15,
+          2
+        ],
+        "symbol-sort-key": [
+          "case",
+          [
+            "has",
+            "extent"
+          ],
+          [
+            "-",
+            [
+              "to-number",
+              [
+                "get",
+                "extent"
+              ]
+            ]
+          ],
+          [
+            "==",
+            [
+              "get",
+              "src"
+            ],
+            "usseabed"
+          ],
+          2,
+          1
+        ],
+        "icon-image": "kelp",
+        "text-anchor": "left",
+        "text-offset": [
+          0.9,
+          0
+        ]
+      },
+      "paint": {
+        "text-color": "#292f35",
+        "text-halo-color": "#86837c",
+        "text-halo-width": 1.5,
+        "icon-color": "#3b4348"
+      }
+    },
+    {
+      "id": "light",
+      "type": "symbol",
+      "source": "enc",
+      "source-layer": "light",
+      "layout": {
+        "icon-image": "light-flare",
+        "icon-allow-overlap": true
+      },
+      "paint": {
+        "icon-color": [
+          "match",
+          [
+            "case",
+            [
+              "in",
+              ",",
+              [
+                "to-string",
+                [
+                  "coalesce",
+                  [
+                    "get",
+                    "COLOUR"
+                  ],
+                  ""
+                ]
+              ]
+            ],
+            [
+              "slice",
+              [
+                "to-string",
+                [
+                  "coalesce",
+                  [
+                    "get",
+                    "COLOUR"
+                  ],
+                  ""
+                ]
+              ],
+              0,
+              [
+                "index-of",
+                ",",
+                [
+                  "to-string",
+                  [
+                    "coalesce",
+                    [
+                      "get",
+                      "COLOUR"
+                    ],
+                    ""
+                  ]
+                ]
+              ]
+            ],
+            [
+              "to-string",
+              [
+                "coalesce",
+                [
+                  "get",
+                  "COLOUR"
+                ],
+                ""
+              ]
+            ]
+          ],
+          "1",
+          "#8c8c8c",
+          "2",
+          "#000000",
+          "3",
+          "#7c130e",
+          "4",
+          "#0e5723",
+          "6",
+          "#806c00",
+          "#806c00"
+        ]
+      }
+    },
+    {
+      "id": "hazard-outline",
+      "type": "line",
+      "source": "enc",
+      "source-layer": "hazard",
+      "paint": {
+        "line-color": "#000000",
+        "line-width": 0.8,
+        "line-dasharray": [
+          1,
+          2
+        ]
+      }
+    },
+    {
+      "id": "hazard-danger-outline",
+      "type": "line",
+      "source": "enc",
+      "source-layer": "hazard",
+      "paint": {
+        "line-color": "#7c130e",
+        "line-width": 0.8,
+        "line-dasharray": [
+          1,
+          2
+        ]
+      },
+      "filter": [
+        "any",
+        [
+          "!",
+          [
+            "has",
+            "VALSOU"
+          ]
+        ],
+        [
+          "<",
+          [
+            "to-number",
+            [
+              "get",
+              "VALSOU"
+            ]
+          ],
+          3.048
+        ],
+        [
+          "in",
+          [
+            "coalesce",
+            [
+              "get",
+              "WATLEV"
+            ],
+            0
+          ],
+          [
+            "literal",
+            [
+              1,
+              2,
+              4,
+              5
+            ]
+          ]
+        ]
+      ]
+    },
+    {
+      "id": "hazard",
+      "type": "symbol",
+      "source": "enc",
+      "source-layer": "hazard",
+      "layout": {
+        "icon-image": [
+          "match",
+          [
+            "get",
+            "class"
+          ],
+          "UWTROC",
+          "hazard-rock-dusk",
+          "WRECKS",
+          "hazard-wreck-dusk",
+          "hazard-obstruction-dusk"
+        ],
+        "icon-allow-overlap": [
+          "step",
+          [
+            "zoom"
+          ],
+          false,
+          15,
+          true
+        ],
+        "icon-ignore-placement": [
+          "step",
+          [
+            "zoom"
+          ],
+          false,
+          15,
+          true
+        ],
+        "icon-padding": 0
+      }
+    },
+    {
+      "id": "hazard-danger",
+      "type": "symbol",
+      "source": "enc",
+      "source-layer": "hazard",
+      "layout": {
+        "icon-image": [
+          "match",
+          [
+            "get",
+            "class"
+          ],
+          "UWTROC",
+          "hazard-rock-danger-dusk",
+          "WRECKS",
+          "hazard-wreck-danger-dusk",
+          "hazard-obstruction-danger-dusk"
+        ],
+        "icon-allow-overlap": [
+          "step",
+          [
+            "zoom"
+          ],
+          false,
+          15,
+          true
+        ],
+        "icon-ignore-placement": [
+          "step",
+          [
+            "zoom"
+          ],
+          false,
+          15,
+          true
+        ],
+        "icon-padding": 0
+      },
+      "filter": [
+        "any",
+        [
+          "!",
+          [
+            "has",
+            "VALSOU"
+          ]
+        ],
+        [
+          "<",
+          [
+            "to-number",
+            [
+              "get",
+              "VALSOU"
+            ]
+          ],
+          3.048
+        ],
+        [
+          "in",
+          [
+            "coalesce",
+            [
+              "get",
+              "WATLEV"
+            ],
+            0
+          ],
+          [
+            "literal",
+            [
+              1,
+              2,
+              4,
+              5
+            ]
+          ]
+        ]
+      ]
+    }
+  ]
+}

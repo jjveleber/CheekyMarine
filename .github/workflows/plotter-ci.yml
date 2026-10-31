@@ -1,0 +1,75 @@
+name: plotter-ci
+
+# Separate from ci.yml on purpose: release.yml calls ci.yml, and an n2kd release must not build maplibre.
+on:
+  push:
+    paths:
+      - "plotter/**"
+      - "scripts/build-maplibre-qt.sh"
+      - ".github/workflows/plotter-ci.yml"
+      - "CMakeLists.txt"
+  pull_request:
+    paths:
+      - "plotter/**"
+      - "scripts/build-maplibre-qt.sh"
+      - ".github/workflows/plotter-ci.yml"
+      - "CMakeLists.txt"
+
+permissions:
+  contents: read
+
+env:
+  QT_VERSION: "6.8.3"
+
+jobs:
+  plotter:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install system packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build libgl1-mesa-dev libxkbcommon-dev libicu-dev \
+            libcurl4-openssl-dev libuv1-dev libsqlite3-dev zlib1g-dev libpng-dev libjpeg-dev libwebp-dev \
+            libxcb-cursor0
+
+      - name: Cache Qt
+        id: qt-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/Qt
+          key: qt-6.8.3-linux_gcc_64
+
+      - name: Install Qt
+        if: steps.qt-cache.outputs.cache-hit != 'true'
+        run: |
+          pipx install aqtinstall
+          aqt install-qt linux desktop "$QT_VERSION" linux_gcc_64 -O ~/Qt
+
+      # Only the install prefix is cached. The 8.5 GB source checkout is not.
+      - name: Cache maplibre-native-qt
+        id: maplibre-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/maplibre-qt
+          key: maplibre-qt-${{ hashFiles('scripts/build-maplibre-qt.sh') }}-ubuntu-24.04
+
+      - name: Build maplibre-native-qt
+        if: steps.maplibre-cache.outputs.cache-hit != 'true'
+        run: |
+          df -h
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+          df -h
+          CMAKE_PREFIX_PATH="$HOME/Qt/$QT_VERSION/gcc_64" scripts/build-maplibre-qt.sh "$HOME/.local/maplibre-qt"
+
+      - name: Configure
+        run: |
+          cmake -S . -B build-plotter -G Ninja -DCM_BUILD_PLOTTER=ON -DN2K_BUILD_TESTS=OFF \
+            -DCMAKE_PREFIX_PATH="$HOME/Qt/$QT_VERSION/gcc_64;$HOME/.local/maplibre-qt"
+
+      - name: Build
+        run: cmake --build build-plotter
+
+      - name: Test
+        run: ctest --test-dir build-plotter --output-on-failure

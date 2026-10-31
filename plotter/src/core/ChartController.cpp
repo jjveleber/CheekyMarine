@@ -1,0 +1,378 @@
+#include "core/ChartController.h"
+#include "core/AisModel.h"
+#include "core/Fields.h"
+#include "core/DepthFilters.h"
+#include "core/Overlays.h"
+#include "core/Settings.h"
+#include "core/StyleLoader.h"
+#include "core/Tracks.h"
+#include "core/VesselModel.h"
+#include <QDebug>
+#include <QFile>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <algorithm>
+#include <cmath>
+
+namespace {
+constexpr double kStartZoom = 13;
+constexpr double kOverzoom = 2;
+constexpr double kFallbackMinZoom = 0, kFallbackMaxZoom = 22; // pack without zoom metadata
+
+QJsonObject parse(const char* json) { return QJsonDocument::fromJson(json).object(); }
+
+// A line layer with its paint line-color set.
+QJsonObject line(QJsonObject layer, const QColor& colour) {
+    QJsonObject paint = layer[QStringLiteral("paint")].toObject();
+    paint[QStringLiteral("line-color")] = colour.name();
+    layer[QStringLiteral("paint")] = paint;
+    return layer;
+}
+
+// Runtime layers, bottom first: tracks, active track, AIS, own ship (topmost), in the palette's overlay colours.
+QList<QJsonObject> runtimeLayers(const OverlayColours& c) {
+    return {
+        line(parse(R"({"id":"cm-tracks-line","type":"line","source":"cm-tracks",
+            "filter":["==",["get","kind"],"track"],
+            "layout":{"line-join":"round","line-cap":"round"},
+            "paint":{"line-width":2.5}})"), c.track),
+        line(parse(R"({"id":"cm-track-active-line","type":"line","source":"cm-track-active",
+            "filter":["==",["get","kind"],"track"],
+            "layout":{"line-join":"round","line-cap":"round"},
+            "paint":{"line-width":2.5}})"), c.track),
+        line(parse(R"({"id":"cm-ais-vector","type":"line","source":"cm-ais",
+            "filter":["==",["get","kind"],"aisvec"],
+            "paint":{"line-width":1.5}})"), c.aisVector),
+        parse(R"({"id":"cm-ais-icon","type":"symbol","source":"cm-ais",
+            "filter":["==",["get","kind"],"ais"],
+            "layout":{"icon-image":["case",["get","hollow"],"cm-ais-hollow",
+                                    ["==",["get","cls"],"B"],"cm-ais-b","cm-ais-a"],
+                      "icon-size":["case",["all",["get","hollow"],["==",["get","cls"],"B"]],0.75,1],
+                      "icon-rotate":["get","rot"],"icon-rotation-alignment":"map",
+                      "icon-allow-overlap":true,"icon-ignore-placement":true}})"),
+        line(parse(R"({"id":"cm-own-heading","type":"line","source":"cm-own",
+            "filter":["==",["get","kind"],"heading"],
+            "paint":{"line-width":1.5}})"), c.heading),
+        line(parse(R"({"id":"cm-own-cog","type":"line","source":"cm-own",
+            "filter":["==",["get","kind"],"cog"],
+            "paint":{"line-width":3,"line-dasharray":[2,1]}})"), c.cog),
+        parse(R"({"id":"cm-own-boat","type":"symbol","source":"cm-own",
+            "filter":["==",["get","kind"],"boat"],
+            "layout":{"icon-image":"cm-boat","icon-rotate":["get","rot"],
+                      "icon-rotation-alignment":"map",
+                      "icon-allow-overlap":true,"icon-ignore-placement":true}})"),
+    };
+}
+
+QString styleName(const QString& mode, const QString& palette) { return mode + QLatin1Char('-') + palette; }
+
+// The `mode` ("nav" or "fish") style for `palette`, read from its pack (bathy for fish, charts for
+// nav) and rewritten to load from local files. The start check and the runtime load both use it,
+// so they see the same pack directories. `bathy` is the bathy pack in use, if any.
+std::expected<QJsonObject, QString> readStyle(const QString& mode, const QString& palette, const PackInfo& charts,
+                                              const std::optional<PackInfo>& bathy) {
+    const QString bathyDir = bathy ? bathy->dir : QString();
+    const QString packDir = mode == QLatin1String("fish") ? bathyDir : charts.dir;
+    QFile f(packDir + QStringLiteral("/styles/") + styleName(mode, palette) + QStringLiteral(".json"));
+    if (!f.open(QIODevice::ReadOnly)) return std::unexpected(QStringLiteral("cannot be read"));
+    QJsonParseError err;
+    const QJsonDocument doc = QJsonDocument::fromJson(f.readAll(), &err);
+    if (err.error != QJsonParseError::NoError || !doc.isObject())
+        return std::unexpected(QStringLiteral("bad JSON: ") + err.errorString());
+    return rewriteStyle(doc.object(), packDir, charts.dir, bathyDir);
+}
+
+// Why the day, dusk and night `mode` styles cannot be used with these packs (each must read, rewrite
+// and take the depth filters), or empty when all can. The error is the same for any depths.
+QString styleProblem(const QString& mode, const PackInfo& charts, const std::optional<PackInfo>& bathy,
+                     const Depths& depths) {
+    for (const QString& palette : {QStringLiteral("day"), QStringLiteral("dusk"), QStringLiteral("night")}) {
+        const QString name = styleName(mode, palette);
+        QString error;
+        if (auto style = readStyle(mode, palette, charts, bathy)) {
+            if (auto filters = depthFilters(*style, depths, safetyContour(charts.valdco, depths.safetyM)); !filters)
+                error = filters.error();
+        } else {
+            error = style.error();
+        }
+        if (!error.isEmpty()) return QStringLiteral("styles/") + name + QStringLiteral(".json: ") + error;
+    }
+    return {};
+}
+} // namespace
+
+ChartController::ChartController(ChartMap& map, Settings& settings, VesselModel& vessel, AisModel& ais,
+                                 QList<PackInfo> packs, QObject* parent)
+    : QObject(parent), m_map(map), m_settings(settings), m_vessel(vessel), m_ais(ais), m_packs(std::move(packs)) {
+    // A pack whose styles cannot be used is refused, with the reason, and the next best one is tried.
+    const Depths depths = currentDepths();
+    const auto refuse = [this](const QString& dir, const QString& reason) {
+        for (PackInfo& p : m_packs)
+            if (p.dir == dir) p.refused = reason;
+    };
+    // The bathy pack is picked for each charts candidate first: nav styles load with it too.
+    while ((m_charts = PackCatalog::best(m_packs, u"charts"))) {
+        while ((m_bathy = PackCatalog::best(m_packs, u"bathy", m_charts->region))) {
+            const QString problem = styleProblem(QStringLiteral("fish"), *m_charts, m_bathy, depths);
+            if (problem.isEmpty()) break;
+            refuse(m_bathy->dir, problem);
+        }
+        const QString problem = styleProblem(QStringLiteral("nav"), *m_charts, m_bathy, depths);
+        if (problem.isEmpty()) break;
+        refuse(m_charts->dir, problem);
+    }
+    if (m_charts) {
+        for (const LegendEntry& e : m_charts->legend)
+            m_legend.append(QVariantMap{{QStringLiteral("abbr"), e.abbr}, {QStringLiteral("meaning"), e.meaning},
+                                        {QStringLiteral("kind"), e.kind}});
+        m_minZoom = m_charts->minZoom >= 0 ? m_charts->minZoom : kFallbackMinZoom;
+        m_maxZoom = m_charts->maxZoom >= 0 ? m_charts->maxZoom + kOverzoom : kFallbackMaxZoom;
+    } else {
+        m_bathy.reset(); // the last refused charts pack's
+        qWarning() << "ChartController: no usable charts pack";
+    }
+    if (m_settings.chartMode() == QLatin1String("fish") && fishAvailable()) m_mode = QStringLiteral("fish");
+
+    // Connect before the first load: the real map emits styleLoaded inside setStyleJson.
+    connect(&m_map, &ChartMap::styleLoaded, this, &ChartController::onStyleLoaded);
+    connect(&m_map, &ChartMap::userGesture, this, [this] { setFollow(false); });
+    connect(&m_map, &ChartMap::viewportChanged, this, &ChartController::applyCamera);
+    connect(&m_settings, &Settings::shallowMChanged, this, &ChartController::applyDepthFilters);
+    connect(&m_settings, &Settings::safetyMChanged, this, &ChartController::applyDepthFilters);
+    connect(&m_settings, &Settings::deepMChanged, this, &ChartController::applyDepthFilters);
+    connect(&m_settings, &Settings::orientationChanged, this, [this] {
+        emit orientationChanged();
+        applyCamera();
+    });
+    connect(&m_vessel, &VesselModel::changed, this, &ChartController::onVessel);
+    connect(&m_ais, &QAbstractItemModel::modelReset, this, &ChartController::pushAis);
+
+    m_map.setZoom(std::clamp(kStartZoom, m_minZoom, m_maxZoom));
+    loadStyle();
+}
+
+void ChartController::setMode(const QString& mode) {
+    if (mode == m_mode) return;
+    if (mode != QLatin1String("nav") && mode != QLatin1String("fish")) {
+        qWarning() << "ChartController: unknown mode" << mode;
+        return;
+    }
+    if (mode == QLatin1String("fish") && !fishAvailable()) {
+        qWarning() << "ChartController: no bathy pack for the charts region, staying in nav";
+        emit modeChanged(); // lets a toggle bound to `mode` snap back
+        return;
+    }
+    m_mode = mode;
+    m_settings.setChartMode(mode);
+    emit modeChanged();
+    loadStyle();
+}
+
+QString ChartController::orientation() const { return m_settings.orientation(); }
+void ChartController::setOrientation(const QString& orientation) { m_settings.setOrientation(orientation); }
+
+void ChartController::setPalette(const QString& palette) {
+    if (palette == m_palette) return;
+    if (palette != QLatin1String("day") && palette != QLatin1String("dusk") && palette != QLatin1String("night")) {
+        qWarning() << "ChartController: unknown palette" << palette;
+        return;
+    }
+    m_palette = palette;
+    emit paletteChanged();
+    loadStyle();
+}
+
+void ChartController::setFollow(bool follow) {
+    if (follow == m_follow) return;
+    m_follow = follow;
+    emit followChanged();
+    applyCamera();
+}
+
+void ChartController::setImages(const QHash<QString, QImage>& images) {
+    m_images = images;
+    if (!m_ready) return;
+    for (auto it = m_images.cbegin(); it != m_images.cend(); ++it) m_map.addImage(it.key(), it.value());
+}
+
+void ChartController::setTracks(const QList<QList<LatLon>>& tracks) {
+    m_tracks = tracks;
+    if (m_ready) m_map.setGeoJson(OverlayIds::kTracksSource, tracksGeoJson(m_tracks));
+}
+
+void ChartController::setActiveTrack(const QList<LatLon>& points) {
+    m_activeTrack = points;
+    if (m_ready) m_map.setGeoJson(OverlayIds::kActiveTrackSource, tracksGeoJson({m_activeTrack}));
+}
+
+void bindTracks(ChartController& chart, TracksController& tracks) {
+    QObject::connect(&tracks, &TracksController::finishedChanged, &chart,
+                     [&chart, &tracks] { chart.setTracks(tracks.finished()); });
+    QObject::connect(&tracks, &TracksController::activeChanged, &chart,
+                     [&chart, &tracks] { chart.setActiveTrack(tracks.active()); });
+    chart.setTracks(tracks.finished());
+    chart.setActiveTrack(tracks.active());
+}
+
+void ChartController::zoomIn() { zoomBy(1); }
+void ChartController::zoomOut() { zoomBy(-1); }
+
+void ChartController::recenter() {
+    if (m_follow) applyCamera();
+    else setFollow(true);
+}
+
+void ChartController::zoomBy(double log2Delta) {
+    m_map.setZoom(std::clamp(m_map.zoom() + log2Delta, m_minZoom, m_maxZoom));
+    applyCamera(); // the lower-third offset depends on the zoom
+}
+
+void ChartController::loadStyle() {
+    if (!m_charts) return;
+    auto style = readStyle(m_mode, m_palette, *m_charts, m_bathy);
+    if (!style) { // the pack was checked at start; its files changed since
+        qWarning() << "ChartController: cannot use" << styleName(m_mode, m_palette) << style.error();
+        return;
+    }
+    m_style = *style;
+    const QString notice = m_style[QStringLiteral("metadata")][QStringLiteral("cheekymarine")]
+                               [QStringLiteral("notice")].toString();
+    if (notice != m_notice) {
+        m_notice = notice;
+        emit noticeChanged();
+    }
+    // State is set before the call: styleLoaded may arrive inside it.
+    m_ready = false;
+    m_loadPending = true;
+    m_map.setStyleJson(QJsonDocument(m_style).toJson(QJsonDocument::Compact));
+}
+
+void ChartController::onStyleLoaded() {
+    if (!m_loadPending) return; // one set of runtime additions per load
+    m_loadPending = false;
+    for (auto it = m_images.cbegin(); it != m_images.cend(); ++it) m_map.addImage(it.key(), it.value());
+    m_map.setGeoJson(OverlayIds::kTracksSource, tracksGeoJson(m_tracks));
+    m_map.setGeoJson(OverlayIds::kActiveTrackSource, tracksGeoJson({m_activeTrack}));
+    m_map.setGeoJson(OverlayIds::kAisSource, aisGeoJson(m_ais.targets(), m_vessel.state()));
+    m_map.setGeoJson(OverlayIds::kOwnSource, ownShipGeoJson(m_vessel.state()));
+    for (const QJsonObject& layer : runtimeLayers(overlayColours(m_palette))) m_map.addLayer(layer);
+    m_ready = true;
+    applyDepthFilters();
+}
+
+void ChartController::applyDepthFilters() {
+    if (!m_ready || !m_charts) return;
+    const Depths d = currentDepths();
+    auto filters = depthFilters(m_style, d, safetyContour(m_charts->valdco, d.safetyM));
+    if (!filters) { // the pack was checked at start; its files changed since
+        qWarning() << "ChartController: depth filters not applied:" << filters.error();
+        return;
+    }
+    for (auto it = filters->cbegin(); it != filters->cend(); ++it) m_map.setLayerFilter(it.key(), it.value());
+}
+
+Depths ChartController::currentDepths() const {
+    return {m_settings.shallowM(), m_settings.safetyM(), m_settings.deepM()};
+}
+
+void ChartController::onVessel() {
+    const VesselState& s = m_vessel.state();
+    const bool noPos = !s.lat || !s.lon;
+    if (noPos != m_noPosition) {
+        m_noPosition = noPos;
+        emit noPositionChanged();
+    }
+    if (m_ready) m_map.setGeoJson(OverlayIds::kOwnSource, ownShipGeoJson(s));
+    refreshSelection(); // range and bearing are from the own ship
+    applyCamera();
+}
+
+void ChartController::pushAis() {
+    if (m_ready) m_map.setGeoJson(OverlayIds::kAisSource, aisGeoJson(m_ais.targets(), m_vessel.state()));
+    refreshSelection();
+}
+
+QVariant ChartController::targetAt(QPointF px, double radiusPx) const {
+    QVariant best;
+    double bestD = radiusPx;
+    for (const AisTarget& t : m_ais.targets()) {
+        if (!t.lat || !t.lon) continue;
+        const QPointF d = m_map.toScreen(*t.lat, *t.lon) - px;
+        const double dist = std::hypot(d.x(), d.y());
+        if (dist <= bestD) {
+            bestD = dist;
+            best = t.mmsi;
+        }
+    }
+    return best;
+}
+
+void ChartController::selectAt(QPointF px, double radiusPx) {
+    const QVariant hit = targetAt(px, radiusPx);
+    if (!hit.isValid()) return;
+    m_selectedMmsi = hit.toUInt();
+    refreshSelection();
+}
+
+void ChartController::clearTarget() {
+    m_selectedMmsi = 0;
+    refreshSelection();
+}
+
+// Rebuilds the sheet's values from the selected target; an unknown MMSI (gone) clears the selection.
+void ChartController::refreshSelection() {
+    QVariantMap sel;
+    if (m_selectedMmsi != 0) {
+        const QList<AisTarget> targets = m_ais.targets();
+        const auto it = std::find_if(targets.cbegin(), targets.cend(),
+                                     [this](const AisTarget& t) { return t.mmsi == m_selectedMmsi; });
+        if (it == targets.cend()) {
+            m_selectedMmsi = 0;
+        } else {
+            const AisTarget& t = *it;
+            const QString missing = QStringLiteral("--");
+            VesselState v; // the target's motion, formatted like the own-ship fields (speed in knots)
+            v.sogMs = t.sogMs;
+            v.cogRad = t.cogRad;
+            UnitPrefs knots;
+            knots.speed = SpeedUnit::Knots;
+            QString range = missing, bearing = missing;
+            const VesselState& own = m_vessel.state();
+            if (t.lat && t.lon && own.lat && own.lon) {
+                const LatLon from{*own.lat, *own.lon}, to{*t.lat, *t.lon};
+                range = QString::number(std::round(distanceM(from, to) / 1852.0 * 10.0) / 10.0, 'f', 1);
+                bearing = QStringLiteral("%1").arg(static_cast<int>(std::round(bearingDeg(from, to))) % 360, 3, 10,
+                                                   QLatin1Char('0'));
+            }
+            sel = {{"mmsi", QString::number(t.mmsi)},
+                   {"name", t.name.isEmpty() ? QStringLiteral("Unknown") : t.name},
+                   {"cls", t.cls.isEmpty() ? missing : t.cls},
+                   {"sog", formatValue(Field::Sog, v, knots)},
+                   {"cog", formatValue(Field::Cog, v, knots)},
+                   {"range", range},
+                   {"bearing", bearing},
+                   {"posAge", t.posAge ? QStringLiteral("%1 s").arg(static_cast<long long>(std::round(*t.posAge))) : missing}};
+        }
+    }
+    if (sel == m_aisSelection) return;
+    m_aisSelection = sel;
+    emit aisSelectionChanged();
+}
+
+void ChartController::applyCamera() {
+    const VesselState& s = m_vessel.state();
+    if (!m_follow || !s.lat || !s.lon) return;
+    const LatLon pos{*s.lat, *s.lon};
+    const double zoom = std::clamp(m_map.zoom(), m_minZoom, m_maxZoom);
+    const QString o = orientation();
+    if (o == QLatin1String("north")) {
+        m_map.setCamera(pos.lat, pos.lon, zoom, 0);
+        return;
+    }
+    double bearing = 0;
+    if (o == QLatin1String("course")) bearing = cogDeg(s).or_else([&] { return trueHeadingDeg(s); }).value_or(0);
+    else bearing = trueHeadingDeg(s).or_else([&] { return cogDeg(s); }).value_or(0);
+    // Boat in the lower third: the centre is a sixth of the viewport height ahead of it.
+    const LatLon c = destination(pos, bearing, m_map.viewportHeight() / 6 * metresPerPixel(pos.lat, zoom));
+    m_map.setCamera(c.lat, c.lon, zoom, bearing);
+}
