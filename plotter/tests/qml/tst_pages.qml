@@ -19,9 +19,11 @@ TestCase {
         property string mode: "nav"
         property string notice: "NOAA ENC data. Not certified for navigation."
         property bool noPosition: false
-        property var legend: [{ abbr: "Blds", meaning: "boulders", kind: "type" },
-                              { abbr: "Cb", meaning: "cobbles", kind: "type" },
-                              { abbr: "Sh", meaning: "shells", kind: "type" }]
+        readonly property var fullLegend: [{ abbr: "Blds", meaning: "boulders", kind: "type" },
+                                           { abbr: "Cb", meaning: "cobbles", kind: "type" },
+                                           { abbr: "Sh", meaning: "shells", kind: "type" },
+                                           { abbr: "bk", meaning: "broken", kind: "qualifier" }]
+        property var legend: fullLegend
         property var aisSelection: ({})
         property var selected: []
         function selectAt(p, r) { selected.push(r) }
@@ -61,6 +63,7 @@ TestCase {
     function init() {
         failOnWarning(/.*/)
         fixture.reset()
+        chartStub.legend = chartStub.fullLegend
         Units.windowWidth = 1280
         Units.windowHeight = 800
         Units.diagonalIn = 10.1
@@ -218,11 +221,25 @@ TestCase {
         compare(rows.length, chartStub.legend.length)
         for (const r of rows)
             verify(r.height >= Units.mm(12), "row height")
+        // The kind reads as a word, not the legend.json key.
+        compare(findAll(sheet, it => it.objectName === "legendKind").map(it => it.text).sort(),
+                ["Qualifier", "Type", "Type", "Type"])
         checkBigButtons(sheet)
         const close = byName(sheet, "legendCloseButton")
         verify(close)
         close.clicked()
         verify(!sheet.visible)
+    }
+
+    // No legend (no pack, or no legend.json): no button that would open a blank sheet.
+    function test_legendButtonHiddenWhenLegendEmpty() {
+        const chart = createTemporaryObject(chartPageComp, testCase, {
+            width: 1280 - Units.mm(17), height: 800,
+            chart: chartStub, chartMap: createTemporaryObject(mapStub, testCase), slotsModel: fixture.slotsModel })
+        const button = byName(chart, "legendButton")
+        verify(button.visible)
+        chartStub.legend = []
+        verify(!button.visible)
     }
 
     function test_allSlotsOnFitWithoutOverlap_data() { return sizes() }

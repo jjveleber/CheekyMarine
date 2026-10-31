@@ -219,7 +219,7 @@ Item {
     BigButton {
         objectName: "legendButton"
         anchors { left: cornerArea.left; verticalCenter: cornerArea.verticalCenter }
-        visible: !page.editing
+        visible: !page.editing && page.chart.legend.length > 0 // an empty legend would open a blank sheet
         text: "Legend"
         onClicked: legendSheet.visible = true
     }

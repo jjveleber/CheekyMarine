@@ -7,6 +7,8 @@ Rectangle {
     id: sheet
     objectName: "legendSheet"
     property var entries: []   // [{abbr, meaning, kind}]
+    // legend.json's kind keys as shown; an unknown kind shows as it is.
+    readonly property var kindLabels: ({ type: "Type", qualifier: "Qualifier" })
     signal closed()
 
     color: Theme.background
@@ -71,10 +73,11 @@ Rectangle {
                     }
                     Label {
                         id: kindLabel
+                        objectName: "legendKind"
                         anchors { right: parent.right; rightMargin: Units.mm(4); verticalCenter: parent.verticalCenter }
                         width: Units.mm(30)
                         horizontalAlignment: Text.AlignRight
-                        text: row.modelData.kind
+                        text: sheet.kindLabels[row.modelData.kind] ?? row.modelData.kind
                         color: Theme.disabledText
                         font.pixelSize: Units.mm(4)
                     }

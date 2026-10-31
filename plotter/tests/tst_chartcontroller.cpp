@@ -642,6 +642,26 @@ private slots:
         QCOMPARE(r.map.cameras.last().zoom, 6.0);
     }
 
+    // The legend sheet's rows: the charts pack's legend entries as {abbr, meaning, kind}, in order.
+    void legendIsTheChartsPackEntries() {
+        Rig r;
+        QVERIFY(r.settings);
+        r.packs[0].legend = {{"Blds", "boulders", "type"}, {"bk", "broken", "qualifier"}};
+        r.make();
+        const QVariantList l = r.ctrl->legend();
+        QCOMPARE(l.size(), 2);
+        QCOMPARE(l[0].toMap(), (QVariantMap{{"abbr", "Blds"}, {"meaning", "boulders"}, {"kind", "type"}}));
+        QCOMPARE(l[1].toMap(), (QVariantMap{{"abbr", "bk"}, {"meaning", "broken"}, {"kind", "qualifier"}}));
+    }
+    void legendEmptyWithoutAChartsPack() {
+        Rig r;
+        QVERIFY(r.settings);
+        r.packs.clear();
+        QTest::ignoreMessage(QtWarningMsg, "ChartController: no usable charts pack");
+        r.make();
+        QVERIFY(r.ctrl->legend().isEmpty());
+    }
+
     void zoomRangeFallbackWithoutMetadata() {
         Rig r(true, false, -1, -1);
         QVERIFY(r.settings);
