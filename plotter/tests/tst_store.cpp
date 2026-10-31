@@ -50,6 +50,57 @@ int runWriter(const QString& dir) {
     }
 }
 
+// Child of the multi-statement power-cut test: commits groups of three rows (g<n>-a, -b, -c) in one
+// transaction each, like a settings save, reporting each committed group on stdout.
+int runGroupWriter(const QString& dir) {
+    auto store = Store::open(dir);
+    if (!store)
+        return 2;
+    QSqlDatabase db = (*store)->db();
+    QSqlQuery q(db);
+    for (int g = 0;; ++g) {
+        if (!db.transaction())
+            return 3;
+        for (const char* part : {"a", "b", "c"}) {
+            q.prepare(QStringLiteral("INSERT INTO settings(key, value) VALUES(?, ?)"));
+            q.addBindValue(QStringLiteral("g%1-%2").arg(g).arg(QLatin1String(part)));
+            q.addBindValue(QString::number(g));
+            if (!q.exec())
+                return 3;
+        }
+        if (!db.commit())
+            return 3;
+        std::printf("%d\n", g);
+        std::fflush(stdout);
+    }
+}
+
+// Starts this test binary as a child in `mode` on `dir`, reads the numbers it reports until one
+// reaches `target` (or 60 s pass), then SIGKILLs it. Returns the last number reported, -1 for none.
+int killChildAfter(QProcess& child, const QString& mode, const QString& dir, int target) {
+    child.setProgram(QCoreApplication::applicationFilePath());
+    child.setArguments({mode, dir});
+    child.setProcessChannelMode(QProcess::SeparateChannels);
+    child.start();
+    if (!child.waitForStarted(10000))
+        return -1;
+    int acked = -1;
+    QByteArray buf;
+    QElapsedTimer clock;
+    clock.start();
+    while (acked < target && clock.elapsed() < 60000) {
+        if (!child.waitForReadyRead(1000) && child.state() != QProcess::Running)
+            break;
+        buf += child.readAllStandardOutput();
+        const auto lines = buf.split('\n');
+        if (lines.size() >= 2)
+            acked = lines[lines.size() - 2].toInt();
+    }
+    child.kill(); // SIGKILL
+    child.waitForFinished(10000);
+    return acked;
+}
+
 } // namespace
 
 class TstStore : public QObject {
@@ -258,26 +309,9 @@ private slots:
     void powerCutKeepsDatabaseIntact() {
         QTemporaryDir t;
         QProcess child;
-        child.setProgram(QCoreApplication::applicationFilePath());
-        child.setArguments({"--writer", t.path()});
-        child.setProcessChannelMode(QProcess::SeparateChannels);
-        child.start();
-        QVERIFY2(child.waitForStarted(10000), "child start");
-        int acked = -1;
-        QByteArray buf;
-        QElapsedTimer clock;
-        clock.start();
-        while (acked < 200 && clock.elapsed() < 60000) {
-            if (!child.waitForReadyRead(1000) && child.state() != QProcess::Running)
-                break;
-            buf += child.readAllStandardOutput();
-            const auto lines = buf.split('\n');
-            if (lines.size() >= 2)
-                acked = lines[lines.size() - 2].toInt();
-        }
-        child.kill(); // SIGKILL
-        QVERIFY(child.waitForFinished(10000));
+        const int acked = killChildAfter(child, "--writer", t.path(), 200);
         QVERIFY2(acked >= 200, qPrintable(QStringLiteral("child only acknowledged %1 rows").arg(acked)));
+        QCOMPARE(child.state(), QProcess::NotRunning);
         QCOMPARE(child.exitStatus(), QProcess::CrashExit);
 
         auto s = Store::open(t.path());
@@ -287,6 +321,25 @@ private slots:
         const int rows = scalar((*s)->db(), "SELECT count(*) FROM settings").toInt();
         QVERIFY2(rows >= acked + 1, qPrintable(QStringLiteral("rows %1 acked %2").arg(rows).arg(acked)));
     }
+    // Review Focus 4 for multi-statement saves: a kill between the statements of a transaction
+    // leaves each group all there or not there at all, and every reported group there.
+    void powerCutKeepsMultiStatementSavesAllOrNothing() {
+        QTemporaryDir t;
+        QProcess child;
+        const int acked = killChildAfter(child, "--group-writer", t.path(), 200);
+        QVERIFY2(acked >= 200, qPrintable(QStringLiteral("child only acknowledged %1 groups").arg(acked)));
+        QCOMPARE(child.state(), QProcess::NotRunning);
+        QCOMPARE(child.exitStatus(), QProcess::CrashExit);
+
+        auto s = Store::open(t.path());
+        QVERIFY(s.has_value());
+        QCOMPARE(scalar((*s)->db(), "PRAGMA integrity_check"), QStringLiteral("ok"));
+        const QString groups = QStringLiteral(
+            "SELECT substr(key, 1, instr(key, '-') - 1) AS g, count(*) AS n FROM settings GROUP BY g");
+        QCOMPARE(scalar((*s)->db(), "SELECT count(*) FROM (" + groups + ") WHERE n != 3"), QStringLiteral("0"));
+        const int complete = scalar((*s)->db(), "SELECT count(*) FROM (" + groups + ") WHERE n = 3").toInt();
+        QVERIFY2(complete >= acked + 1, qPrintable(QStringLiteral("groups %1 acked %2").arg(complete).arg(acked)));
+    }
 };
 
 int main(int argc, char** argv) {
@@ -294,6 +347,8 @@ int main(int argc, char** argv) {
     const QStringList args = app.arguments();
     if (const int i = int(args.indexOf("--writer")); i >= 0 && i + 1 < args.size())
         return runWriter(args[i + 1]);
+    if (const int i = int(args.indexOf("--group-writer")); i >= 0 && i + 1 < args.size())
+        return runGroupWriter(args[i + 1]);
     TstStore t;
     return QTest::qExec(&t, argc, argv);
 }
