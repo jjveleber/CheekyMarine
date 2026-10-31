@@ -3,6 +3,7 @@
 #include <QJsonArray>
 #include <QJsonValue>
 #include <cmath>
+#include <limits>
 
 namespace {
 
@@ -38,10 +39,17 @@ bool optNumber(const QJsonObject &o, const char *key, std::optional<double> &out
     return numberOrNull(o, key, out, err);
 }
 
+// Converting a double outside the target type's range is undefined behaviour, so check first.
+bool fitsInt(double d) { return d >= std::numeric_limits<int>::min() && d <= std::numeric_limits<int>::max(); }
+bool fitsU32(double d) { return d >= 0.0 && d <= std::numeric_limits<quint32>::max(); }
+// Counts and codes (sats, ship type, nav status) are never negative.
+bool fitsCount(double d) { return d >= 0.0 && d <= std::numeric_limits<int>::max(); }
+
+// Out of range reads as null.
 bool optInt(const QJsonObject &o, const char *key, std::optional<int> &out, QString &err) {
     std::optional<double> d;
     if (!optNumber(o, key, d, err)) return false;
-    if (d)
+    if (d && fitsCount(*d))
         out = static_cast<int>(*d);
     else
         out.reset();
@@ -67,7 +75,10 @@ bool optString(const QJsonObject &o, const char *key, QString &out, QString &err
 std::expected<int, QString> parseHello(const QJsonObject &o) {
     const QJsonValue s = o.value("schema");
     if (!s.isDouble()) return bad("schema", "missing or not a number");
-    return s.toInt();
+    // An integer JSON number only: toInt() would truncate 1.5 to 1.
+    const double d = s.toDouble();
+    if (!fitsInt(d) || d != std::floor(d)) return bad("schema", "not an integer");
+    return static_cast<int>(d);
 }
 
 std::expected<VesselState, QString> parseVessel(const QJsonObject &o) {
@@ -93,7 +104,7 @@ std::expected<VesselState, QString> parseVessel(const QJsonObject &o) {
         !numberOrNull(o, "gnssTime", v.gnssTime, err) || !numberOrNull(o, "sats", sats, err) ||
         !numberOrNull(o, "rpm", v.rpm, err))
         return Err(err);
-    if (sats) v.sats = static_cast<int>(*sats);
+    if (sats && fitsCount(*sats)) v.sats = static_cast<int>(*sats);
 
     const auto ref = o.find("hdgRef");
     if (ref == o.end()) return bad("hdgRef", "missing");
@@ -115,6 +126,7 @@ std::expected<QList<AisTarget>, QString> parseAis(const QJsonObject &o) {
         AisTarget t;
         const QJsonValue mmsi = j.value("mmsi");
         if (!mmsi.isDouble()) return bad("mmsi", "missing or not a number");
+        if (!fitsU32(mmsi.toDouble())) return bad("mmsi", "out of range");
         t.mmsi = static_cast<quint32>(mmsi.toDouble());
         if (!j.value("class").isString()) return bad("class", "missing or not a string");
         t.cls = j.value("class").toString();

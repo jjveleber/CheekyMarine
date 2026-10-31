@@ -8,7 +8,8 @@ constexpr double kPi = 3.14159265358979323846;
 
 // Round half away from zero (std::round) to one decimal; always prints one decimal.
 double round1(double v) { return std::round(v * 10.0) / 10.0; }
-QString oneDecimal(double v) { return QString::number(round1(v), 'f', 1); }
+// Adding 0.0 turns a negative zero into a positive one, so a tiny negative never prints "-0.0".
+QString oneDecimal(double v) { return QString::number(round1(v) + 0.0, 'f', 1); }
 QString whole(double v) { return QString::number(static_cast<long long>(std::round(v))); }
 
 QString degrees3(double rad) {

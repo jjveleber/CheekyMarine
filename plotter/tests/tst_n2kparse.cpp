@@ -17,6 +17,45 @@ private slots:
         QCOMPARE(*h, 1);
         QVERIFY(!parseHello(obj(R"({"type":"hello","version":"0.3.0"})")).has_value());
     }
+    void helloSchemaMustBeInteger() {
+        QVERIFY(!parseHello(obj(R"({"type":"hello","schema":1.5,"version":"0.3.0"})")).has_value());
+        QVERIFY(!parseHello(obj(R"({"type":"hello","schema":"1","version":"0.3.0"})")).has_value());
+        QVERIFY(!parseHello(obj(R"({"type":"hello","schema":null,"version":"0.3.0"})")).has_value());
+        auto h = parseHello(obj(R"({"type":"hello","schema":2,"version":"0.3.0"})"));
+        QVERIFY(h.has_value());
+        QCOMPARE(*h, 2);
+    }
+    void satsOutOfRangeIsNull() {
+        for (double bad : {-1.0, 3e9, 1e300}) {
+            QJsonObject o = obj(kVessel);
+            o["sats"] = bad;
+            auto v = parseVessel(o);
+            QVERIFY(v.has_value());
+            QVERIFY(!v->sats);
+        }
+    }
+    void aisOutOfRangeValues() {
+        const QByteArray tmpl =
+            R"({"type":"ais","t":1,"targets":[{"mmsi":MMSI,"class":"A","lat":null,"lon":null,"sog":null,"cog":null,"hdg":null,"name":null,"shipType":SHIP,"navStatus":NAV,"age":1,"posAge":null}]})";
+        auto parse = [&](const char *mmsi, const char *ship, const char *nav) {
+            QByteArray b = tmpl;
+            b.replace("MMSI", mmsi).replace("SHIP", ship).replace("NAV", nav);
+            return parseAis(QJsonDocument::fromJson(b).object());
+        };
+        QVERIFY(parse("367123450", "37", "0").has_value());
+        QVERIFY(parse("4294967295", "null", "null").has_value());
+        QVERIFY(!parse("-1", "null", "null").has_value());
+        QVERIFY(!parse("4294967296", "null", "null").has_value());
+        QVERIFY(!parse("1e300", "null", "null").has_value());
+        auto a = parse("5", "-1", "3e9");
+        QVERIFY(a.has_value());
+        QVERIFY(!a->first().shipType);
+        QVERIFY(!a->first().navStatus);
+        a = parse("5", "1e300", "2");
+        QVERIFY(a.has_value());
+        QVERIFY(!a->first().shipType);
+        QCOMPARE(*a->first().navStatus, 2);
+    }
     void vesselExample() {
         auto v = parseVessel(obj(kVessel));
         QVERIFY(v.has_value());

@@ -37,6 +37,12 @@ private slots:
         p.depth = DepthUnit::Fathoms;
         QCOMPARE(fv(Field::Depth, depth(18.288), p), QStringLiteral("10"));
     }
+    void depthNegativeOffset() {
+        UnitPrefs p;
+        p.depth = DepthUnit::Metres;
+        QCOMPARE(fv(Field::Depth, depth(0.0, -0.01), p), QStringLiteral("0.0"));  // no negative zero
+        QCOMPARE(fv(Field::Depth, depth(0.0, -0.1), p), QStringLiteral("-0.1"));  // honest negative stays
+    }
     void depthMissingAndLabels() {
         QCOMPARE(fv(Field::Depth, VesselState{}), QStringLiteral("--"));
         UnitPrefs p;
@@ -76,6 +82,7 @@ private slots:
         QCOMPARE(unitLabel(Field::Heading, s, {}), QStringLiteral("°T"));
         QCOMPARE(fv(Field::Cog, VesselState{}), QStringLiteral("--"));
         QCOMPARE(fv(Field::Heading, VesselState{}), QStringLiteral("--"));
+        QCOMPARE(unitLabel(Field::Heading, VesselState{}, {}), QString::fromUtf8("\xC2\xB0"));  // no reference: bare degree sign
         s.cogRad = 6.2831;  // 359.998 degrees rounds to 360, which wraps to 000
         QCOMPARE(fv(Field::Cog, s), QStringLiteral("000"));
     }
@@ -99,6 +106,9 @@ private slots:
         s.lat = -33.5;
         s.lon = 151.25;
         QCOMPARE(fv(Field::Position, s), QString::fromUtf8("33\xC2\xB0" "30.000'S\n151\xC2\xB0" "15.000'E"));
+        s.lat = 47.99999999;  // rounds up to 60.000 minutes: carries into the degrees
+        s.lon = 0.0;
+        QCOMPARE(fv(Field::Position, s), QString::fromUtf8("48\xC2\xB0" "00.000'N\n000\xC2\xB0" "00.000'E"));
         VesselState half;
         half.lat = 47.98;
         QCOMPARE(fv(Field::Position, half), QStringLiteral("--"));
