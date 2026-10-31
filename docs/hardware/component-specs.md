@@ -16,7 +16,7 @@ Owner rules this revision follows (2026-10-31):
 
 - **Clean shutdown on any power loss is mandatory.** Cutting power to the whole boat must never corrupt the SSD. That needs a hold-up module (part 4).
 - **Soft power is a nice-to-have.** A hard, latching power switch for the whole unit is fine. Turning it off is then the same event as a boat power cut, and the hold-up module handles both.
-- **Heat has to get out of the sealed box.** See part 20.
+- **Heat has to get out of the sealed box,** through a finned aluminum heat sink in the back wall (option A). See part 20.
 
 ## How it all connects
 
@@ -64,10 +64,10 @@ Order of the power path matters: fuse first (protects the cable), then TVS (alwa
 
 What happens when power goes away, from either the switch or the boat:
 
-1. The display goes dark at once (it isn't held up, which saves stored energy for the Pi).
+1. The display goes dark at once. It isn't held up, which saves stored energy for the Pi. (This needs the touch cable to carry no power; see part 15.)
 2. The hold-up module keeps the Pi running and tells it power failed.
 3. If power stays away for about 2 s (longer than an engine-start dip), the Pi shuts down cleanly and signals that it has halted.
-4. The hold-up module cuts the Pi's power. When 12 V returns, it powers the Pi back up, which then boots by itself.
+4. The hold-up module cuts the Pi's power, or leaves it halted. When 12 V returns, it powers or wakes the Pi, which then boots by itself.
 
 ## At a glance
 
@@ -76,7 +76,7 @@ What happens when power goes away, from either the switch or the boat:
 | 1 | Fuse + holder | 7.5 A blade fuse, sealed holder for 16 AWG | $4.58 (5 A bench fuse) |
 | 2 | TVS diode | Unidirectional, 15 to 18 V standoff, clamp 30 V or less | $1.06 |
 | 3 | Power switch | Latching, sealed, rated 10 A DC | not priced |
-| 4 | Hold-up module | 20 s or more at 10 W, supercapacitors, restarts the Pi | $48.90 |
+| 4 | Hold-up module | 20 s or more at 10 W, supercapacitors, restarts the Pi | none qualifying yet |
 | 5 | Buck regulator | 5 A continuous at 5.0 to 5.3 V, survives 30 V in | $47.95 |
 | 6 | Display power | Display safe to 30 V, or its own regulator | $0 if built in |
 | 7 | USB-C power lead | 20 AWG or heavier, 1 ft or shorter | $7.99 (2-pack) |
@@ -209,6 +209,7 @@ Heat in the box: everything above ends up as heat inside the enclosure. In dayli
 - **Soft power (momentary button plus a latch module), only if it stays simple.** It adds press-to-turn-on and hold-to-shut-down. The hold-up module is still needed for boat power cuts. If chosen, these become must-haves:
   - The latch holds its state through supply dips. The Pololu #2813's product page lists losing state "through power disruptions or excessive noise" as a drawback, so that module would need its own hold-up capacitor.
   - Off-state draw under 10 µA, and a separate OFF input driven by a Pi GPIO that stays low through boot, with an external pull-down.
+  - Nothing on the latch side can drive a Pi GPIO while the Pi is unpowered (diode or optocoupler in the sense line), or it back-powers the Pi through its pins.
   - The button is momentary, IP67, with two normally open contacts, gold plated (or one contact plus a Schottky diode). Silver mains-rated contacts make unreliable contact at microamps.
   - The Pololu #2813 is rated 4.5 to 32 V, 40 V absolute, 6 A with the MOSFETs at 55 °C (at 22 °C ambient; 16 A at 150 °C), so current isn't the problem; state loss is.
   - The EAO 82-5751.1000 first picked as the button doesn't qualify: distributor listings show one contact, silver plated.
@@ -240,9 +241,9 @@ Heat in the box: everything above ends up as heat inside the enclosure. In dayli
 | Hold-up time | 20 s or more at 2 A at 5 V (10 W; the Pi with the display off) | Runtime table at a stated load; not "up to" at no load |
 | Output | 5.0 to 5.3 V, 5 A, while input is present | Spec table |
 | Power-fail signal | Logic signal to a Pi GPIO, 3.3 V safe, within 100 ms of input loss | Pinout, manual |
-| Cut after shutdown | Removes the Pi's power after the Pi signals "halted", or after a fixed timeout | Manual |
-| Restart | Powers the Pi again when input returns, even if input came back during the shutdown | Manual: "auto restart", "wake on power restore" |
-| Input | 5 V side: takes the buck's 5.0 to 5.3 V. Or 12 V side: 9 to 16 V operating, survives 30 V | Spec table, absolute maximum |
+| Restart without hands | When input returns, the Pi boots again: the module either cuts and restores the Pi's power, or triggers the Pi 5's power-button (wake) contact | Manual: "auto restart", "wake on power restore", how it is done |
+| Restart in every case | Works even if input returns during or right after the shutdown. No documented window where the Pi stays off | Manual "known limitations"; ask the maker |
+| Input | 5 V side: takes the buck's 5.0 to 5.3 V. Or 12 V side: 9 to 16 V operating, 30 V or more absolute maximum, reverse-polarity protected | Spec table, absolute maximum |
 | Operating temperature | +65 °C or higher | Spec table |
 | Recharge | Back to the 20 s level within 2 minutes of power-on | Charge time spec; ask if only "full charge" is given |
 | Fit | Leaves the 40-pin header to the CAN HAT and the PCIe connector to the NVMe adapter | Photos, mounting drawing |
@@ -259,19 +260,26 @@ Heat in the box: everything above ends up as heat inside the enclosure. In dayli
 
 - Lithium cells of any kind (Li-ion, LiPo, LiFePO4): charging is limited to about 45 °C, and the sealed box gets hotter. They wear out fast there and are a fire risk. Lead-acid is too big.
 - "UPS" boards with no power-fail signal: they run the Pi until the energy is gone, which still corrupts.
-- No power cut after shutdown, or no restart: a halted Pi 5 doesn't boot again by itself, so the unit stays dark until someone opens the box.
+- No restart without hands, or a documented window where the Pi stays off: a halted Pi 5 doesn't boot again by itself, so the unit stays dark until someone opens the box.
 - HATs that need the 40-pin header with no pass-through for the CAN HAT.
-- 12 V-side modules with an input maximum below 30 V, unless the TVS is changed to clamp below their maximum.
+- 12 V-side modules with an input maximum below 30 V, unless a pre-regulator rated for 30 V sits in front of them. Changing the TVS doesn't help: the lowest suitable one (1.5KE18A, 15.3 V standoff) still clamps at 25.2 V.
 - Sellers that don't ship to the US.
 
 **Fits with**
 
 - Two GPIOs: power-fail in and halted out. Use pins the CAN HAT doesn't (see part 11), and a halted pin that stays low through boot, with an external pull-down.
+- Its load during the hold-up is the Pi alone, about 10 W, only if the display can't draw from the Pi's USB (part 15). If it can, the load rises to about 18 W and the 20 s rule needs nearly twice the energy.
 - The software waits about 2 s of continuous power loss before shutting down, so a cranking dip doesn't shut the unit off. The hold-up must cover that wait plus the shutdown (measure the shutdown time on the bench).
 - On the 5 V side, the buck (part 5) also supplies the module's charging current.
 - The filesystem design (read-only root, A/B slots, plan 4) still matters: it covers a failed hold-up or a hung shutdown.
 
-**Reference, not a requirement.** Geekworm UPS_Scap_5V5A, 100 F version, $48.90, geekworm.com, 2026-10-31. Per its product page: 9 to 24 V DC barrel input (or 12 V USB-C PD), 5 V 5 A output on USB-C with a PD handshake, 100 F supercapacitor bank, measured 44 s at 2 A and 24.5 s at 3 A (60 F version: 25 s at 2 A), power-loss signal on GPIO26 through a pogo pin, restarts the Pi when power returns, about 15 minutes to full charge, 85 x 56 mm (Pi footprint). It would replace the buck. Check before buying: it mounts under the Pi, where the NVMe adapter also goes; its 24 V input maximum is below the TVS's 27.7 V clamp; its operating temperature and power cut after halt aren't published; the 2-minute recharge level isn't stated. Seen and rejected: AQEX qUPS-P-SC-1.3 ($55.64): 5 V input only, 2.5 A output, 8 s at full load, doesn't ship to the US.
+**Reference, not a requirement.** No qualifying part found yet. Closest, and it fails as specified: Geekworm UPS_Scap_5V5A, 100 F version, $48.90, geekworm.com, 2026-10-31. Per its product page and wiki: 9 to 24 V DC barrel input (or 12 V USB-C PD), 5 V 5 A output on USB-C with a PD handshake, 100 F supercapacitor bank, measured 44 s at 2 A and 24.5 s at 3 A (60 F version: 25 s at 2 A), power-loss signal on GPIO26, about 15 minutes to full charge from a 30 W PD source, 85 x 56 mm (Pi footprint), no operating temperature published. Why it fails:
+
+- It doesn't cut power after halt; it wakes the Pi 5 through a contact under the board, and its wiki documents a 1 to 2 s window during shutdown where the Pi "may remain off until another power cycle" ("a known limitation for unattended use").
+- Its 24 V input maximum is below the 27.7 V TVS clamp, so it would need a 30 V pre-regulator.
+- Its signals (GPIO26, I2C, wake) reach the Pi only through contacts on the Pi's underside, with the Pi on 9 mm supports above it. The NVMe adapter mounts there too.
+
+Seen and rejected: AQEX qUPS-P-SC-1.3 ($55.64): 5 V input only, 2.5 A output, 8 s at full load, doesn't ship to the US.
 
 ### 5. Buck regulator (12 V to 5 V)
 
@@ -326,6 +334,7 @@ Heat in the box: everything above ends up as heat inside the enclosure. In dayli
 - **B. Its own regulator** for the display alone, from the switched 12 V, whenever A isn't stated:
   - 5 V displays: a second buck with 5.0 V output (not 5.3 V), rated 1.5x the display's current, 30 V input survival.
   - 12 V displays: a buck-boost (step-up/step-down) regulator with 12 V output, input 9 to 30 V or wider, rated 1.5x the display's current (about 1 A for the reference panel).
+  - Either regulator: reverse-polarity protected (or behind a part that is).
 
 **Disqualifiers**
 
@@ -655,6 +664,7 @@ Heat in the box: everything above ends up as heat inside the enclosure. In dayli
 |---|---|---|
 | Ends | USB-A male (Pi) to the display's touch port (USB-C or micro-B) | Display datasheet, cable title |
 | Data | Data wires present | Title says "data" or "sync"; not "charge only" |
+| No power | If the display's touch port also takes power: VBUS cut, by a USB power-blocking adapter (data only) or a cable without the VBUS wire | Display datasheet; adapter title "power blocker", "data only" |
 | Length | 50 cm or shorter | Title |
 
 **Nice to have**
@@ -668,7 +678,7 @@ Heat in the box: everything above ends up as heat inside the enclosure. In dayli
 **Fits with**
 
 - Use a USB 2 port (black) on the Pi.
-- With the 4D panel, add a USB power blocker (part 13) unless 4D says it isn't needed.
+- With the 4D panel the blocker is required: its touch port "parallels the power", so without it the panel runs from the Pi's USB (up to 1.6 A, about 8 W) after a power cut and drains the hold-up module.
 - The 4D reference ships a 50 cm USB cable in the box; check its ends before buying another.
 
 **Reference, not a requirement.** Included with the 4D display (50 cm, per 4D's datasheet).
@@ -702,7 +712,7 @@ Heat in the box: everything above ends up as heat inside the enclosure. In dayli
 
 - No IP rating, or IP54 and below.
 - Plain ABS without UV stabilization: goes brittle in sun.
-- All-metal boxes, unless heat option B (part 20) is chosen: they block Wi-Fi, which the update page needs.
+- All-metal boxes: they block Wi-Fi, which the update page needs. (Option B in part 20 was not chosen.)
 - Inside depth under 75 mm with a 16 mm panel.
 - Dark colors in direct sun, unless nothing else fits.
 
@@ -810,18 +820,18 @@ Heat in the box: everything above ends up as heat inside the enclosure. In dayli
 
 **The numbers.** Target: inside air at 55 °C or less on a 40 °C cabin day. That is a 15 °C rise at 18 W, so the box must shed heat at 0.8 °C/W or better. The reference box alone (about 0.21 m2 of plastic surface) manages roughly 0.9 °C/W, a 16 °C rise before any sun lands on it. That is too close, and sun through the cabin glass makes it worse. These are rough estimates; a thermometer in the box during the bench soak settles them.
 
-**Options, owner to choose:**
+**Options. The owner chose A (2026-10-31).**
 
 | Option | How | For | Against |
 |---|---|---|---|
-| **A. Heat sink in the back wall (recommended)** | Finned aluminum heat sink in a gasketed cutout in the box back. Fins outside; inside, a second set of fins or a small 5 V fan blowing the box air across the flat face. | One box. Keeps IP65 or better. Wi-Fi still gets out through the plastic. Roughly 0.6 °C/W overall, about 11 °C rise at 18 W. | A cutout and gasket to make. Heat sink must be bought to size. |
+| **A. Heat sink in the back wall (chosen)** | Finned aluminum heat sink in a gasketed cutout in the box back. Fins outside; inside, a second set of fins or a small 5 V fan blowing the box air across the flat face. | One box. Keeps IP65 or better. Wi-Fi still gets out through the plastic. Roughly 0.6 °C/W overall, about 11 °C rise at 18 W. | A cutout and gasket to make. Heat sink must be bought to size. |
 | B. Aluminum enclosure, display in a plastic or glass front | The whole box spreads and sheds heat. | Simple to seal. Best heat path of the single-box options. | Blocks Wi-Fi: needs a USB Wi-Fi adapter with an antenna outside the box. Heavier. |
 | C. Filtered fan and vent | Fan pulls cabin air through filtered vents. | Moves the most heat. | Drops to about IP54. Pulls salt air across the boards. Not recommended. |
-| D. Split boxes | Pi, power and hold-up in a second box in the shaded cavity below the shelf. Only the display (about 8 W) stays at the dash. | Best for heat: most of the load leaves the sun. | Two boxes, HDMI and USB through glands (HDMI plugs need split glands or IP67 HDMI bulkhead connectors). |
+| D. Split boxes | Pi, power and hold-up in a second box in the shaded cavity below the shelf. Only the display (about 8 W) stays at the dash. | Best for heat: most of the load leaves the sun. | Two boxes. HDMI and USB through glands (HDMI plugs need split glands or IP67 HDMI bulkhead connectors). Video and touch cables grow past their 1 ft and 50 cm must-haves. More entries than design 6.7's "12 V, N2K drop cable, and nothing else". |
 
 With any option: dim the backlight whenever full brightness isn't needed (the app can do it over DDC), choose a light-colored box, and keep it out of direct sun where the helm allows.
 
-**Must have (option A)**
+**Must have**
 
 | Spec | Requirement | How to check |
 |---|---|---|
@@ -849,7 +859,8 @@ With any option: dim the backlight whenever full brightness isn't needed (the ap
 
 - The cutout must miss the Pi stack, the mount plate's bolts, and the lid gasket.
 - Fan power comes from the 5 V side; it adds to the buck's load.
-- Tested on the bench: soak with full brightness and a sun lamp or heater, thermometer inside, before the boat.
+- Tested on the bench: soak with full brightness and a sun lamp or heater, thermometer inside, before the boat. Also read the SSD's own temperature (`nvme smart-log`): its 70 °C limit is the drive's temperature, not the air's, and it runs above the air.
+- With passive inner fins instead of a fan, option A comes out nearer 0.65 to 0.7 °C/W: still under the 0.8 target, with a thin margin.
 
 **Reference, not a requirement.** None priced yet.
 
@@ -859,29 +870,32 @@ Before ordering the boat parts, these have to agree with each other:
 
 1. **Voltage chain.** Boat 9 to 16 V, spikes clamped to about 28 V by the TVS. Everything after the TVS (switch, buck, 12 V-side hold-up, display) survives 30 V or has its own regulator. The 5.0 to 5.3 V rail goes only to the Pi (and the hold-up, if it sits on the 5 V side).
 2. **Power loss.** The hold-up gives 20 s or more at 10 W, cuts the Pi after it halts, and restarts it when power returns. The display isn't held up.
-3. **Under the Pi.** The NVMe adapter mounts there. A hold-up module that also wants the underside (the Geekworm reference) must be checked for a stacking order that works.
-4. **Stack height.** NVMe adapter under the Pi, Pi, Active Cooler (13.7 mm), CAN HAT on standoffs of about 16 mm. About 45 mm total (estimate; measure on the bench).
-5. **Enclosure size.** Inside depth 75 mm or more; display outline plus at least 15 mm per side; room beside the Pi for the micro-HDMI and USB-C plugs; a back-wall area for the heat sink and the mount.
-6. **Connector types.** Display's HDMI type matches the video cable; display's touch port matches the touch cable; drop cable is male at the tee.
-7. **GPIO budget.** CAN HAT: 0, 1, 13, 16, 17, 18, 19, 20, 21, 22. Hold-up: power-fail in and halted out on two other pins (the Geekworm reference uses GPIO26 for power-fail).
-8. **Current.** Fuse 7.5 A, switch 10 A DC, buck 5 A plus hold-up charging, wire 16 AWG, against a 4.8 A worst case at 10.5 V.
-9. **Heat.** 15 to 18 W out of the box at 0.8 °C/W or better (part 20).
+3. **Under the Pi.** The NVMe adapter mounts there. A hold-up module whose signals only reach the Pi through underside contacts (the Geekworm) can't share the spot.
+4. **Reverse polarity.** Everything fed from 12 V either has reverse-polarity protection or sits behind a part that does (design 6.6). The buck has it; a 12 V-input hold-up module or display regulator must too.
+5. **Stack height.** NVMe adapter under the Pi, Pi, Active Cooler (13.7 mm), CAN HAT on standoffs of about 16 mm. About 45 mm total (estimate; measure on the bench).
+6. **Enclosure size.** Inside depth 75 mm or more; display outline plus at least 15 mm per side; room beside the Pi for the micro-HDMI and USB-C plugs; a back-wall area for the heat sink and the mount.
+7. **Connector types.** Display's HDMI type matches the video cable; display's touch port matches the touch cable, with VBUS blocked; drop cable is male at the tee.
+8. **GPIO budget.** CAN HAT: 0, 1, 13, 16, 17, 18, 19, 20, 21, 22. Hold-up: power-fail in and halted out on two other pins, plus I2C or a wake contact if the module uses them.
+9. **Current.** Fuse 7.5 A, switch 10 A DC, buck 5 A plus hold-up charging, wire 16 AWG, against a 4.8 A worst case at 10.5 V.
+10. **Heat.** 15 to 18 W out of the box at 0.8 °C/W or better (part 20).
 
 ## Departures from the design spec
 
 This doc changes some lines of `docs/superpowers/specs/2026-10-28-cheekymarine-design.md`. The design spec gets updated to match in plan 5.
 
 - **6.6, "No battery backup. Hard power loss must be survivable by the filesystem design, not by a UPS."** Now: a supercapacitor hold-up module is mandatory (owner, 2026-10-31), and the filesystem design stays as a second layer. Still no batteries.
-- **6.6, soft power (momentary button and latch).** Now a nice-to-have. A latching power switch is acceptable (owner, 2026-10-31).
+- **Soft power.** Design goal 6 ("soft power button"), 6.6's momentary button and latch, 6.7's IP67 momentary pushbutton, and section 7's "Soft power module" and "Button" rows: now a nice-to-have. A latching power switch is acceptable (owner, 2026-10-31).
+- **6.6, feeding 5 V into the Pi's GPIO 5 V pins** (one option it lists): ruled out; 5 V goes in through the USB-C port to keep the Pi's input protection.
+- **6.6, reverse-polarity protection.** Kept, as a fit check across the 12 V parts, since the buck may be replaced by a hold-up module.
+- **6.7, "cable glands for 12V, N2K drop cable, and nothing else."** Still true for options A to C in part 20; option D would add more.
 - **6.6, LC filter and a 9 to 36 V regulator.** The LC filter is optional (add it if radios pick up noise); parts must survive 30 V after the TVS.
 - **6.6, "Output 5.1 V at 5 A."** Now 5.0 to 5.3 V.
-- **6.7, enclosure.** Adds a heat path (part 20).
+- **6.7, enclosure.** Adds a heat path: a finned aluminum heat sink in a gasketed cutout in the back wall (part 20, owner chose option A, 2026-10-31).
 - **7, NMEA 2000 interface.** The suggested Copperhill PiCAN-M is disqualified (not isolated); the interface must be galvanically isolated.
 
 ## Open questions before buying
 
-- **Heat option.** A, B, C or D in part 20. Recommended: A.
-- **Hold-up module.** Whether the Geekworm fits under the Pi alongside the NVMe adapter; its operating temperature; whether it cuts power after halt; its 24 V input maximum against the 27.7 V TVS clamp; how long it takes to reach 20 s of charge.
+- **Hold-up module.** No qualifying part yet. The Geekworm fails three must-haves (restart window, 24 V input, under-Pi fit). Keep looking for one that restarts in every case; failing that, plan 5 designs one (supercapacitors, a power-fail comparator, and a power cut after halt).
 - **Display 12 V maximum.** 4D gives "12.0 V typ" with no maximum. Without a stated 30 V maximum, add a display regulator (part 6).
 - **Display power-on.** Does the 4D panel come on by itself when powered? Its power button is on a board that isn't included.
 - **Display USB power backfeed.** 4D's datasheet suggests the touch port also takes power. Ask 4D, or plan on a USB power blocker.
