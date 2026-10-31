@@ -191,12 +191,6 @@ int main(int argc, char* argv[]) {
 
     const QString packsDir = cli.isSet(packsOpt) ? cli.value(packsOpt) : cli.value(dataOpt) + "/packs";
     const QList<PackInfo> packs = PackCatalog::scan(packsDir);
-    for (const PackInfo& p : packs)
-        if (!p.refused.isEmpty()) qWarning() << "pack refused:" << p.dir << p.refused;
-    AppInfo appInfo(packs);
-    // The client emits the hello's version before a schema mismatch.
-    QObject::connect(&client, &N2kClient::daemonVersion, &appInfo, &AppInfo::setDaemonVersion);
-    QObject::connect(&client, &N2kClient::schemaMismatch, &appInfo, &AppInfo::setSchemaMismatch);
 
     // Created here, not in QML, so the controller can hold its ChartMap; ChartPage reparents it.
     // Declared before the engine so it is destroyed after it, once the scene graph has released its node.
@@ -204,6 +198,13 @@ int main(int argc, char* argv[]) {
     QQmlEngine::setObjectOwnership(mapItem.get(), QQmlEngine::CppOwnership);
     ChartController chart(mapItem->port(), settings, vessel, ais, packs);
     mapItem->setZoomRange(chart.minZoom(), chart.maxZoom());
+    // The controller adds its own refusals (a style it cannot use) to the scan's.
+    for (const PackInfo& p : chart.packs())
+        if (!p.refused.isEmpty()) qWarning() << "pack refused:" << p.dir << p.refused;
+    AppInfo appInfo(chart.packs());
+    // The client emits the hello's version before a schema mismatch.
+    QObject::connect(&client, &N2kClient::daemonVersion, &appInfo, &AppInfo::setDaemonVersion);
+    QObject::connect(&client, &N2kClient::schemaMismatch, &appInfo, &AppInfo::setSchemaMismatch);
     // The active track always draws, the finished ones when shown.
     bindTracks(chart, tracksController);
 

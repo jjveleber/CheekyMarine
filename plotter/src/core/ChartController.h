@@ -10,6 +10,7 @@
 #include <QVariantList>
 #include <optional>
 
+struct Depths;
 class Settings;
 class VesselModel;
 class AisModel;
@@ -54,6 +55,9 @@ public:
     bool noPosition() const { return m_noPosition; }
     double minZoom() const { return m_minZoom; }
     double maxZoom() const { return m_maxZoom; }
+    // Every pack given, with `refused` set on a pack whose styles cannot be used (a depth filter error,
+    // or a style that cannot be read or rewritten). The About page lists this, not the scan.
+    QList<PackInfo> packs() const { return m_packs; }
 
     // Runtime images by id (OverlayIds), added now if a style is loaded and after every load.
     void setImages(const QHash<QString, QImage>& images);
@@ -92,6 +96,7 @@ private:
     void loadStyle();
     void onStyleLoaded();
     void applyDepthFilters();
+    Depths currentDepths() const;
     void onVessel();
     void pushAis();
     void refreshSelection();
@@ -101,6 +106,7 @@ private:
     Settings& m_settings;
     VesselModel& m_vessel;
     AisModel& m_ais;
+    QList<PackInfo> m_packs;
     std::optional<PackInfo> m_charts, m_bathy;
     QString m_mode = QStringLiteral("nav");
     QString m_palette = QStringLiteral("day");

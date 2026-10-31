@@ -63,17 +63,61 @@ QList<QJsonObject> runtimeLayers(const OverlayColours& c) {
                       "icon-allow-overlap":true,"icon-ignore-placement":true}})"),
     };
 }
+
+// The pack style <packDir>/styles/<name>.json, rewritten to load from local files.
+std::expected<QJsonObject, QString> readStyle(const QString& packDir, const QString& name, const QString& chartsDir,
+                                              const QString& bathyDir) {
+    QFile f(packDir + QStringLiteral("/styles/") + name + QStringLiteral(".json"));
+    if (!f.open(QIODevice::ReadOnly)) return std::unexpected(QStringLiteral("cannot be read"));
+    QJsonParseError err;
+    const QJsonDocument doc = QJsonDocument::fromJson(f.readAll(), &err);
+    if (err.error != QJsonParseError::NoError || !doc.isObject())
+        return std::unexpected(QStringLiteral("bad JSON: ") + err.errorString());
+    return rewriteStyle(doc.object(), packDir, chartsDir, bathyDir);
+}
+
+// Why the day, dusk and night `mode` styles of the pack in `packDir` cannot be used (each must read,
+// rewrite and take the depth filters), or empty when all can. The error is the same for any depths.
+QString styleProblem(const QString& mode, const QString& packDir, const PackInfo& charts, const QString& bathyDir,
+                     const Depths& depths) {
+    for (const char* palette : {"day", "dusk", "night"}) {
+        const QString name = mode + QLatin1Char('-') + QLatin1String(palette);
+        QString error;
+        if (auto style = readStyle(packDir, name, charts.dir, bathyDir)) {
+            if (auto filters = depthFilters(*style, depths, safetyContour(charts.valdco, depths.safetyM)); !filters)
+                error = filters.error();
+        } else {
+            error = style.error();
+        }
+        if (!error.isEmpty()) return QStringLiteral("styles/") + name + QStringLiteral(".json: ") + error;
+    }
+    return {};
+}
 } // namespace
 
 ChartController::ChartController(ChartMap& map, Settings& settings, VesselModel& vessel, AisModel& ais,
                                  QList<PackInfo> packs, QObject* parent)
-    : QObject(parent), m_map(map), m_settings(settings), m_vessel(vessel), m_ais(ais) {
-    m_charts = PackCatalog::best(packs, u"charts");
+    : QObject(parent), m_map(map), m_settings(settings), m_vessel(vessel), m_ais(ais), m_packs(std::move(packs)) {
+    // A pack whose styles cannot be used is refused, with the reason, and the next best one is tried.
+    const Depths depths = currentDepths();
+    const auto refuse = [this](const QString& dir, const QString& reason) {
+        for (PackInfo& p : m_packs)
+            if (p.dir == dir) p.refused = reason;
+    };
+    while ((m_charts = PackCatalog::best(m_packs, u"charts"))) {
+        const QString problem = styleProblem(QStringLiteral("nav"), m_charts->dir, *m_charts, {}, depths);
+        if (problem.isEmpty()) break;
+        refuse(m_charts->dir, problem);
+    }
     if (m_charts) {
         for (const LegendEntry& e : m_charts->legend)
             m_legend.append(QVariantMap{{QStringLiteral("abbr"), e.abbr}, {QStringLiteral("meaning"), e.meaning},
                                         {QStringLiteral("kind"), e.kind}});
-        m_bathy = PackCatalog::best(packs, u"bathy", m_charts->region);
+        while ((m_bathy = PackCatalog::best(m_packs, u"bathy", m_charts->region))) {
+            const QString problem = styleProblem(QStringLiteral("fish"), m_bathy->dir, *m_charts, m_bathy->dir, depths);
+            if (problem.isEmpty()) break;
+            refuse(m_bathy->dir, problem);
+        }
         m_minZoom = m_charts->minZoom >= 0 ? m_charts->minZoom : kFallbackMinZoom;
         m_maxZoom = m_charts->maxZoom >= 0 ? m_charts->maxZoom + kOverzoom : kFallbackMaxZoom;
     } else {
@@ -179,20 +223,10 @@ void ChartController::loadStyle() {
     if (!m_charts) return;
     const bool fish = m_mode == QLatin1String("fish");
     const QString packDir = fish ? m_bathy->dir : m_charts->dir;
-    QFile f(packDir + QStringLiteral("/styles/") + m_mode + QLatin1Char('-') + m_palette + QStringLiteral(".json"));
-    if (!f.open(QIODevice::ReadOnly)) {
-        qWarning() << "ChartController: cannot read" << f.fileName();
-        return;
-    }
-    QJsonParseError err;
-    const QJsonDocument doc = QJsonDocument::fromJson(f.readAll(), &err);
-    if (err.error != QJsonParseError::NoError || !doc.isObject()) {
-        qWarning() << "ChartController: bad style JSON" << f.fileName() << err.errorString();
-        return;
-    }
-    auto style = rewriteStyle(doc.object(), packDir, m_charts->dir, m_bathy ? m_bathy->dir : QString());
-    if (!style) {
-        qWarning() << "ChartController: cannot use" << f.fileName() << style.error();
+    const QString name = m_mode + QLatin1Char('-') + m_palette;
+    auto style = readStyle(packDir, name, m_charts->dir, m_bathy ? m_bathy->dir : QString());
+    if (!style) { // the pack was checked at start; its files changed since
+        qWarning() << "ChartController: cannot use" << packDir + QStringLiteral("/styles/") + name << style.error();
         return;
     }
     m_style = *style;
@@ -223,13 +257,17 @@ void ChartController::onStyleLoaded() {
 
 void ChartController::applyDepthFilters() {
     if (!m_ready || !m_charts) return;
-    const Depths d{m_settings.shallowM(), m_settings.safetyM(), m_settings.deepM()};
+    const Depths d = currentDepths();
     auto filters = depthFilters(m_style, d, safetyContour(m_charts->valdco, d.safetyM));
-    if (!filters) {
+    if (!filters) { // the pack was checked at start; its files changed since
         qWarning() << "ChartController: depth filters not applied:" << filters.error();
         return;
     }
     for (auto it = filters->cbegin(); it != filters->cend(); ++it) m_map.setLayerFilter(it.key(), it.value());
+}
+
+Depths ChartController::currentDepths() const {
+    return {m_settings.shallowM(), m_settings.safetyM(), m_settings.deepM()};
 }
 
 void ChartController::onVessel() {

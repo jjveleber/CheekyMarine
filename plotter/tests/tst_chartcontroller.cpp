@@ -108,6 +108,23 @@ bool copyStyles(const QString& dir) {
     return true;
 }
 
+// Replaces the filter of layer `id` in the style file at `path`.
+bool setLayerFilter(const QString& path, const QString& id, const QJsonValue& filter) {
+    QFile f(path);
+    if (!f.open(QIODevice::ReadOnly)) return false;
+    QJsonObject style = QJsonDocument::fromJson(f.readAll()).object();
+    f.close();
+    QJsonArray layers = style["layers"].toArray();
+    for (int i = 0; i < layers.size(); ++i) {
+        QJsonObject l = layers[i].toObject();
+        if (l["id"].toString() == id) l["filter"] = filter;
+        layers[i] = l;
+    }
+    style["layers"] = layers;
+    if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) return false;
+    return f.write(QJsonDocument(style).toJson()) > 0;
+}
+
 struct Rig {
     QTemporaryDir tmp;
     std::unique_ptr<Store> store;
@@ -284,30 +301,79 @@ private slots:
         QCOMPARE(r.map.filters.value("depare-vshallow"), json(R"(["<",["to-number",["get","DRVAL1"]],1.5])"));
     }
 
-    void depthFilterErrorKeepsStyleFilters() {
+    // A pack whose style trips the depth filter check is refused with the reason (the list the
+    // About page shows) and the next valid charts pack is used.
+    void depthFilterErrorRefusesThePackAndUsesTheNext() {
         Rig r;
         QVERIFY(r.settings);
-        // A depth literal the rule cannot map (7.7 m is none of the style's recorded depths).
-        const QString path = r.chartsDir() + "/styles/nav-day.json";
+        const QString newer = r.tmp.path() + "/packs/charts-puget-north-1.1.0";
+        QVERIFY(copyStyles(newer));
+        // A depth read beside a numeric literal outside a plain comparison: the rule cannot map it.
+        QVERIFY(setLayerFilter(newer + "/styles/nav-dusk.json", "depare-deep",
+                               json(R"(["step",["to-number",["get","DRVAL1"]],false,9.144,true])")));
+        PackInfo n = r.packs[0];
+        n.version = QVersionNumber(1, 1, 0);
+        n.dir = newer;
+        r.packs << n;
+        r.make();
+        const QList<PackInfo> packs = r.ctrl->packs();
+        QCOMPARE(packs.size(), 3);
+        QVERIFY2(packs[2].refused.contains("nav-dusk.json") && packs[2].refused.contains("depare-deep"),
+                 qPrintable(packs[2].refused));
+        QVERIFY(packs[0].refused.isEmpty());
+        QVERIFY(packs[1].refused.isEmpty());
+        QCOMPARE(r.map.styles.size(), 1);
+        QCOMPARE(spriteOf(r.map.styles[0]), "file://" + r.chartsDir() + "/sprites/nav");
+        QVERIFY(r.ctrl->fishAvailable());
+        r.map.loaded();
+        CHECK_OVERLAYS(r.map);
+        QCOMPARE(r.map.filters.value("depcnt-safety"), json(R"(["==",["to-number",["get","VALDCO"]],3.6])"));
+    }
+
+    // The only charts pack refused: nothing is loaded and nothing crashes.
+    void depthFilterErrorOnTheOnlyChartsPackLoadsNothing() {
+        Rig r;
+        QVERIFY(r.settings);
+        // 7.7 m is none of the style's recorded depths.
+        QVERIFY(setLayerFilter(r.chartsDir() + "/styles/nav-day.json", "depare-deep",
+                               json(R"([">=",["to-number",["get","DRVAL1"]],7.7])")));
+        QTest::ignoreMessage(QtWarningMsg, "ChartController: no usable charts pack");
+        r.make();
+        QVERIFY2(r.ctrl->packs()[0].refused.contains("unmapped depth literal 7.7"),
+                 qPrintable(r.ctrl->packs()[0].refused));
+        QVERIFY(r.map.styles.isEmpty());
+        QVERIFY(!r.ctrl->fishAvailable());
+        r.vessel.setState(boat());
+        r.ctrl->setPalette("night");
+        QVERIFY(r.map.styles.isEmpty());
+    }
+
+    // A bathy pack whose fish style lists a depth layer it does not have is refused: no fishing mode.
+    void depthFilterErrorRefusesTheBathyPack() {
+        Rig r;
+        QVERIFY(r.settings);
+        r.settings->setChartMode("fish");
+        const QString path = r.tmp.path() + "/packs/bathy-puget-north-1.0.0/styles/fish-night.json";
         QFile f(path);
         QVERIFY(f.open(QIODevice::ReadOnly));
         QJsonObject style = QJsonDocument::fromJson(f.readAll()).object();
         f.close();
-        QJsonArray layers = style["layers"].toArray();
-        for (int i = 0; i < layers.size(); ++i) {
-            QJsonObject l = layers[i].toObject();
-            if (l["id"].toString() == "depare-deep") l["filter"] = json(R"([">=",["to-number",["get","DRVAL1"]],7.7])");
-            layers[i] = l;
-        }
+        QJsonArray layers;
+        for (const auto& l : style["layers"].toArray())
+            if (l.toObject()["id"].toString() != "hazard-danger") layers << l;
         style["layers"] = layers;
         QVERIFY(f.open(QIODevice::WriteOnly | QIODevice::Truncate));
         f.write(QJsonDocument(style).toJson());
         f.close();
         r.make();
-        QTest::ignoreMessage(QtWarningMsg, QRegularExpression("^ChartController: depth filters not applied:"));
-        r.map.loaded();
-        QVERIFY(r.map.filters.isEmpty());
-        QCOMPARE(r.map.sources.size(), 4); // the overlays are still there
+        QVERIFY2(r.ctrl->packs()[1].refused.contains("fish-night.json") &&
+                     r.ctrl->packs()[1].refused.contains("hazard-danger"),
+                 qPrintable(r.ctrl->packs()[1].refused));
+        QVERIFY(r.ctrl->packs()[0].refused.isEmpty());
+        QVERIFY(!r.ctrl->fishAvailable());
+        QCOMPARE(r.ctrl->mode(), QStringLiteral("nav")); // the saved fish mode falls back
+        QCOMPARE(r.map.styles.size(), 1);
+        QCOMPARE(spriteOf(r.map.styles[0]), "file://" + r.chartsDir() + "/sprites/nav");
     }
 
     void paletteReloadReaddsRuntimeSources() {
