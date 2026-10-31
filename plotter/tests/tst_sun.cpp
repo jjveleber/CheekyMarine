@@ -112,6 +112,28 @@ private slots:
         QCOMPARE(paletteAt(after.sunset->addSecs(60), lat, lon), Palette::Dusk);
     }
 
+    // The noon guess of a UTC day stays on that day at every longitude, so crossing() measures the
+    // event from the right midnight. Without the wrap, -180 lands on the next day and 600 days back.
+    void noonGuessStaysOnItsUtcDay_data() {
+        QTest::addColumn<double>("lon");
+        QTest::addColumn<double>("wrapped");
+        QTest::newRow("-600") << -600.0 << 120.0;
+        QTest::newRow("-180") << -180.0 << 180.0;
+        QTest::newRow("-179.99") << -179.99 << -179.99;
+        QTest::newRow("0") << 0.0 << 0.0;
+        QTest::newRow("179.99") << 179.99 << 179.99;
+        QTest::newRow("180") << 180.0 << 180.0;
+        QTest::newRow("600") << 600.0 << -120.0;
+    }
+    void noonGuessStaysOnItsUtcDay() {
+        QFETCH(double, lon);
+        QFETCH(double, wrapped);
+        QVERIFY2(std::abs(detail::wrapLongitude(lon) - wrapped) < 1e-9,
+                 qPrintable(QString::number(detail::wrapLongitude(lon))));
+        const double day = 20532; // 2026-03-20
+        QCOMPARE(std::floor(detail::noonGuess(day, lon) / 86400.0), day);
+    }
+
     // On the antimeridian the events match those a hair inside it, on either side.
     void antimeridianMatchesNeighbour_data() {
         QTest::addColumn<double>("lon");

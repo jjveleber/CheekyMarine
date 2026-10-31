@@ -77,13 +77,13 @@ enum class Kind { CivilDawn, Sunrise, Sunset, CivilDusk };
 // Every event of the solar days whose noon falls within [from - 1 day, to + 1 day], sorted by time.
 QList<std::pair<double, Kind>> eventsAround(double from, double to, double lat, double lonIn) {
     QList<std::pair<double, Kind>> out;
-    // Longitude in (-180, 180]: at -180 the noon guess below lands on 00:00 UTC of the next day, and
-    // crossing() would return the next solar day's event.
-    const double lon = 180.0 - std::fmod(540.0 - lonIn, 360.0);
-    // Solar noon is near 12:00 UTC - lon/15 h; take the solar days of every UTC day in range.
+    // crossing() measures the event from 00:00 UTC of its noon guess, so the guess must stay on its own
+    // UTC day: unwrapped, lon -180 put it on the next day and returned the next solar day's event.
+    const double lon = detail::wrapLongitude(lonIn);
+    // Take the solar days of every UTC day in range.
     const double first = std::floor(from / 86400.0) - 2, last = std::floor(to / 86400.0) + 2;
     for (double day = first; day <= last; ++day) {
-        const double noon = day * 86400.0 + (720.0 - 4.0 * lon) * 60.0;
+        const double noon = detail::noonGuess(day, lon);
         const struct {
             double zenith;
             bool rising;
@@ -103,6 +103,12 @@ QDateTime toUtc(double unixSecs) {
     return QDateTime::fromSecsSinceEpoch(static_cast<qint64>(std::llround(unixSecs)), QTimeZone::UTC);
 }
 } // namespace
+
+double detail::wrapLongitude(double lon) { return lon + 360.0 * std::floor((180.0 - lon) / 360.0); }
+
+double detail::noonGuess(double utcDay, double lon) {
+    return utcDay * 86400.0 + (720.0 - 4.0 * wrapLongitude(lon)) * 60.0;
+}
 
 QString paletteName(Palette p) {
     switch (p) {
