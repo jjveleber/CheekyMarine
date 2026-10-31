@@ -14,34 +14,33 @@ If a product page doesn't state a must-have number, treat it as missing. Ask the
 
 Owner rules this revision follows (2026-10-31):
 
-- **Clean shutdown on any power loss is mandatory.** Cutting power to the whole boat must never corrupt the SSD. That needs a hold-up module (part 4).
-- **Soft power is a nice-to-have.** A hard, latching power switch for the whole unit is fine. Turning it off is then the same event as a boat power cut, and the hold-up module handles both.
+- **Clean shutdown when the boat's main battery switch goes off is mandatory.** It must never corrupt the SSD. The unit runs from the boat's standby (unswitched) power and watches a sense wire from the switched side (part 4).
+- **Soft power is a nice-to-have.** A plain latching on/off switch is fine (part 3).
 - **Heat has to get out of the sealed box,** through a finned aluminum heat sink in the back wall (option A). See part 20.
 
 ## How it all connects
 
 ```
- BOAT 12 V (helm fuse panel, or battery bus)
-   |
- [1] FUSE 7.5 A, at the source end
-   |
-   |   16 AWG duplex cable, about 3 ft
-   |
- ==|=== gland G1 ================= ENCLOSURE [16] =========================
-   |                                                    [20] heat sink in
-   +--[2] TVS across + and -                                 the back wall
-   |      (clamps spikes, blows the fuse if it fails short)
-   |
- [3] POWER SWITCH, sealed, latching  (off = same as a boat power cut)
-   |
-   +------------------------------------+
+ BOAT BATTERY ---- main battery switch ---- switched 12 V (helm panel)
+   |  (battery side: standby power)                |
+ [1] FUSE 7.5 A, at the source                   [4b] sense fuse 1 A
+   |                                               |
+   |   standby +, sense, negative: one 3-conductor cable [19]
+   |                                               |
+ ==|=== gland G1 ================= ENCLOSURE [16] =|=======================
+   |                                               |       [20] heat sink
+   +--[2] TVS across + and -                     [3] UNIT ON/OFF SWITCH
+   |                                               |       (in the sense wire)
+   |                                             [4b] SENSE INPUT (optocoupler)
+   |                                               |
+ [4d] LOAD SWITCH  <---- on/off ------------ [4c] CONTROLLER
+   |                                          |   ^
+   |                       power going away --+   | halted
+   |                                          v   |
+   +------------------------------------+    (Pi GPIOs)
    |                                    |
  [5] BUCK 12 V to 5.0-5.3 V, 5 A      [6] DISPLAY POWER: 30 V-safe input
-   |                                      or its own regulator (not held up)
- [4] HOLD-UP MODULE, supercapacitors    |
-   |   power fail -----> Pi GPIO        |
-   |   halted <--------- Pi GPIO        |
-   |                                    |
+   |                                      or its own regulator
    |  [7] USB-C power lead              |
    v                                    v
  [8] RASPBERRY PI 5, 8 GB  ---[14] micro-HDMI--->  [13] DISPLAY 9 to 10.1 in
@@ -58,16 +57,11 @@ Owner rules this revision follows (2026-10-31):
                        free tee on the existing NMEA 2000 backbone
 ```
 
-Mount [17] holds the enclosure [16] on the dash shelf. Glands [18] seal the two cable entries. Wire [19] covers the 12 V feed and everything inside the box. Some hold-up modules take 12 V in and make the 5 V themselves; one of those replaces the buck [5].
+Mount [17] holds the enclosure [16] on the dash shelf. Glands [18] seal the two cable entries. Wire [19] covers the feed cable and everything inside the box.
 
-Order of the power path matters: fuse first (protects the cable), then TVS (always across the feed), then the power switch (so off cuts the Pi and the display), then the buck and hold-up for the Pi, and the display's own feed.
+Order of the power path matters: fuse at the source (protects the cable), then TVS (always across the feed), then the load switch the controller drives, then the buck for the Pi and the display's own feed. The on/off switch only carries the sense signal.
 
-What happens when power goes away, from either the switch or the boat:
-
-1. The display goes dark at once. It isn't held up, which saves stored energy for the Pi. (This needs the touch cable to carry no power; see part 15.)
-2. The hold-up module keeps the Pi running and tells it power failed.
-3. If power stays away for about 2 s (longer than an engine-start dip), the Pi shuts down cleanly and signals that it has halted.
-4. The hold-up module cuts the Pi's power, or leaves it halted. When 12 V returns, it powers or wakes the Pi, which then boots by itself.
+What happens when the main battery switch (or the unit's own switch) goes off: the Pi gets 2 s of grace for an engine-start dip, then shuts down cleanly on standby power, and the controller cuts the unit to microamps. When the switch comes back on, the controller powers the unit up. Part 4 has the details.
 
 ## At a glance
 
@@ -75,8 +69,8 @@ What happens when power goes away, from either the switch or the boat:
 |---|---|---|---|
 | 1 | Fuse + holder | 7.5 A blade fuse, sealed holder for 16 AWG | $4.58 (5 A bench fuse) |
 | 2 | TVS diode | Unidirectional, 15 to 18 V standoff, clamp 30 V or less | $1.06 |
-| 3 | Power switch | Latching, sealed, rated 10 A DC | not priced |
-| 4 | Hold-up module | 20 s or more at 10 W, supercapacitors, restarts the Pi | none qualifying yet |
+| 3 | Unit on/off switch | Latching, sealed, reliable at 10 mA (sense wire only) | not priced |
+| 4 | Standby power + shutdown controller | Standby feed, sense input, controller under 100 µA off, 7.5 A load switch | $8.95 (load switch) |
 | 5 | Buck regulator | 5 A continuous at 5.0 to 5.3 V, survives 30 V in | $47.95 |
 | 6 | Display power | Display safe to 30 V, or its own regulator | $0 if built in |
 | 7 | USB-C power lead | 20 AWG or heavier, 1 ft or shorter | $7.99 (2-pack) |
@@ -92,7 +86,7 @@ What happens when power goes away, from either the switch or the boat:
 | 16 | Enclosure | IP65 or better, UV stable, 75 mm or more inside depth | $63.22 |
 | 17 | Mount | Holds about 2 kg on a dash shelf, no suction | $64.49 |
 | 18 | Glands | IP68, clamp range fits each cable | $1.92 (2) |
-| 19 | Wire | Tinned marine wire, 16 AWG feed | $21.93 |
+| 19 | Wire | Tinned marine 3-conductor feed, 16 or 14 AWG by length | $21.93 |
 | 20 | Heat sink | 1.5 °C/W or better, natural convection, anodized | not priced |
 
 ## Power budget
@@ -104,23 +98,23 @@ The numbers every power part below is sized from.
 | Pi 5 with SSD, CAN HAT, touch | 5.3 V | 5 A (26.5 W) | Raspberry Pi's 5 V 5 A supply rating |
 | Same, seen at 12 V through an 88% buck | 12 V | about 2.5 A | 26.5 W / 0.88 / 12 V |
 | Display, reference panel at 1000 nit | 12 V | 0.65 A | 4D datasheet, 10.1" 1280x800 table |
-| Hold-up charging, first minutes after power-on | 12 V | up to about 1 A | depends on the module; check its charge current |
-| **Whole unit** | 12 V | **about 4.2 A** | |
-| **Whole unit, battery sagging to 10.5 V** | 10.5 V | **about 4.8 A** | |
+| **Whole unit** | 12 V | **about 3.2 A** | |
+| **Whole unit, battery sagging to 10.5 V** | 10.5 V | **about 3.6 A** | |
+| **Unit off, main switch on or off** | 12 V | **100 µA or less** | controller plus load switch and TVS leakage (part 4) |
 
-Typical draw while charting is well below this; the worst case is what the fuse, switch, buck and wire must carry.
+Typical draw while charting is well below this; the worst case is what the fuse, load switch, buck and wire must carry. At 100 µA, a winter with the unit off uses about 0.2 Ah of battery.
 
-Voltage drop on the feed: 16 AWG copper is about 4 milliohms per foot. A 3 ft run is 6 ft out and back, so 0.024 ohm at 4.8 A drops about 0.12 V (about 1%). Wire gauge is set by toughness and the fuse, not by drop.
+Voltage drop on the feed: 16 AWG copper is about 4 milliohms per foot. A 3 ft run is 6 ft out and back, so 0.024 ohm at 3.6 A drops about 0.09 V (under 1%). If the standby feed has to come from the battery, a 20 ft run in 16 AWG drops about 0.58 V (5%); 14 AWG (about 2.5 milliohms per foot) brings it to about 0.36 V (3%). Part 19 sets the gauge by run length.
 
 Boat voltage the parts must live with: about 12.2 V resting, 14.4 to 14.8 V while charging, dips toward 10 V during engine cranking, and short spikes well above that. The TVS clamps spikes to about 28 V, so everything after it must survive 30 V.
 
-Heat in the box: everything above ends up as heat inside the enclosure. In daylight at full brightness that is about 15 to 18 W: the backlight about 7.8 W, the Pi about 5 to 8 W, buck losses about 1 W, the HAT and hold-up under 1 W. Part 20 deals with it.
+Heat in the box: everything above ends up as heat inside the enclosure. In daylight at full brightness that is about 15 to 18 W: the backlight about 7.8 W, the Pi about 5 to 8 W, buck losses about 1 W, the HAT and controller under 1 W. Part 20 deals with it.
 
 ## Power
 
 ### 1. Fuse and fuse holder
 
-**Job.** Protects the 12 V feed cable if anything downstream shorts. It belongs at the power source end of the cable, not at the box.
+**Job.** Protects the standby feed cable (part 4) if anything downstream shorts. It belongs at the power source end of the cable (the battery or the standby bus), not at the box.
 
 **Must have**
 
@@ -129,13 +123,13 @@ Heat in the box: everything above ends up as heat inside the enclosure. In dayli
 | Fuse type | Blade (ATO/ATC) so spares from the boat's kit fit | Product title or datasheet "ATO", "ATC", "blade" |
 | Fuse rating | 7.5 A, 32 V DC | Printed on the fuse; datasheet "voltage rating" |
 | Holder current rating | 15 A or more | Holder datasheet "rated current" |
-| Holder wire size | 16 AWG leads, or terminals that accept 16 AWG | Datasheet "wire gauge" or lead spec |
-| Sealing | Cover that closes over the fuse; "water resistant" or IP rating | Product page; a cap or lid in the photo |
+| Holder wire size | Leads or terminals that match the feed: 16 or 14 AWG (part 19) | Datasheet "wire gauge" or lead spec |
+| Sealing | Cover that closes over the fuse; IP67 if it sits near the battery or in the bilge area | Product page; a cap or lid in the photo, IP rating |
 | Location | Within 7 in of the source connection (ABYC E-11) | Install rule, not a product spec |
 
 **Nice to have**
 
-- A spare circuit on the helm's existing fuse panel or switch panel. If there is one, it replaces the inline holder entirely.
+- An existing fused standby (unswitched) circuit near the helm. If there is one, it replaces the inline holder entirely.
 - IP67 holder if it will hang in the open cavity below the dash.
 - Tinned leads.
 
@@ -147,8 +141,9 @@ Heat in the box: everything above ends up as heat inside the enclosure. In dayli
 
 **Fits with**
 
-- 7.5 A is above the 4.8 A worst case (with the hold-up charging at low battery), under the 16 AWG wire's rating, and blows on a real short. The 5 A fuse in the bench cart is fine on the bench (no display) and too close to the limit on the boat.
-- The holder's leads join the 16 AWG feed (part 19) with crimp butt connectors.
+- 7.5 A is 2x the 3.6 A worst case at low battery, under the 16 AWG wire's rating, and blows on a real short. The 5 A fuse in the bench cart is fine on the bench (no display) and too close to the limit on the boat.
+- The holder's leads join the feed (part 19) with crimp butt connectors.
+- The sense wire gets its own 1 A fuse at its switched source (part 4b).
 
 **Reference, not a requirement.** MPD BF353 water-resistant inline ATO holder, 15 A, 16 AWG leads, $4.14, Digi-Key, 2026-10-29. Littelfuse 0287005.PXCN 5 A ATO, $0.44, Digi-Key, 2026-10-29 (bench value; the boat wants 7.5 A).
 
@@ -181,118 +176,144 @@ Heat in the box: everything above ends up as heat inside the enclosure. In dayli
 **Fits with**
 
 - Must be after the fuse (part 1), so a shorted TVS blows the fuse.
-- Its clamp voltage sets what everything downstream must survive: 30 V for the switch, hold-up module (if on the 12 V side), buck, and display.
+- Its clamp voltage sets what everything downstream must survive: 30 V for the load switch, the controller's regulator, the buck, and the display.
 
 **Reference, not a requirement.** Littelfuse 1.5KE20A: 17.1 V standoff, 27.7 V clamp, 1500 W, unidirectional, $1.06, Digi-Key, 2026-10-30.
 
-### 3. Power switch
+### 3. Unit on/off switch
 
-**Job.** Turns the whole unit on and off. Off cuts 12 V to everything behind it, exactly like a boat power cut, and the hold-up module (part 4) gives the Pi time to shut down cleanly. One switch, no electronics.
+**Job.** Lets the owner turn the unit off while the boat stays on. It sits in the thin sense wire (part 4), not in the power feed, so turning it off looks to the controller exactly like the boat's main switch going off: the Pi shuts down cleanly, then the controller cuts its power. It carries only about 10 mA.
 
 **Must have**
 
 | Spec | Requirement | How to check |
 |---|---|---|
 | Action | Latching (stays where it is put): toggle, rocker, or latching pushbutton | Product title "on-off", "maintained", "latching" |
-| DC rating | 10 A or more at 12 V DC (or a 24 V or 32 V DC rating) | Datasheet "DC rating"; an AC-only rating doesn't count |
+| Rating | DC rated, 12 V or more, 1 A or more | Datasheet "DC rating" |
+| Low-current contacts | Reliable at about 10 mA: gold-plated contacts, or a minimum load of 10 mA or less | Datasheet "contact material", "minimum load" |
 | Front sealing | IP67 (IP65 minimum) when panel-mounted, with a boot or O-ring | Datasheet "front IP rating" |
 | Panel hole | 12 to 22 mm round, or a standard rocker cutout | Datasheet "mounting hole" |
 | Behind-panel depth | 40 mm or less | Datasheet drawing |
-| Terminals | Take 16 AWG (6.3 mm quick-connect or screw) | Datasheet |
 | Body | Stainless steel, anodized aluminum, or UV-stable plastic | Datasheet "material" |
 
 **Nice to have**
 
 - Lit when on. The LED must be on the switched side, so it draws nothing when off.
 - Guard, or flush mounting, so a knee or a line can't flip it.
-- A spare switch on the helm's existing switch panel instead of a switch on the box. No extra hole, and it may come with its own fuse.
-- **Soft power (momentary button plus a latch module), only if it stays simple.** It adds press-to-turn-on and hold-to-shut-down. The hold-up module is still needed for boat power cuts. If chosen, these become must-haves:
-  - The latch holds its state through supply dips. The Pololu #2813's product page lists losing state "through power disruptions or excessive noise" as a drawback, so that module would need its own hold-up capacitor.
-  - Off-state draw under 10 µA, and a separate OFF input driven by a Pi GPIO that stays low through boot, with an external pull-down.
-  - Nothing on the latch side can drive a Pi GPIO while the Pi is unpowered (diode or optocoupler in the sense line), or it back-powers the Pi through its pins.
-  - The button is momentary, IP67, with two normally open contacts, gold plated (or one contact plus a Schottky diode). Silver mains-rated contacts make unreliable contact at microamps.
-  - The Pololu #2813 is rated 4.5 to 32 V, 40 V absolute, 6 A with the MOSFETs at 55 °C (at 22 °C ambient; 16 A at 150 °C), so current isn't the problem; state loss is.
-  - The EAO 82-5751.1000 first picked as the button doesn't qualify: distributor listings show one contact, silver plated.
+- A spare switch on the helm's existing switch panel instead of a switch on the box. No extra hole in the box.
+- **Soft power (momentary button), only if it stays simple.** The controller in part 4 can read a momentary button instead: press to turn on, hold 2 s to shut down. That needs a momentary IP67 button with gold contacts and a few lines of controller firmware, and no latch module.
 
 **Disqualifiers**
 
-- AC-only ratings: DC arcs harder and burns contacts rated for AC.
 - Unsealed toggles or rockers.
-- Momentary switches without the latch module above.
+- Silver contacts rated only for heavy loads (a minimum load above 10 mA): at sense-wire currents they can fail to make contact.
 - Lit switches whose LED draws current when off.
 
 **Fits with**
 
-- Sits after the TVS (part 2) and before the buck, hold-up and display power (parts 4, 5, 6).
-- 10 A DC is 2x the 4.8 A worst case.
+- Wired in series with the sense wire (part 4), between the boat's switched 12 V and the controller's sense input.
 - Its hole goes in the enclosure (part 16) away from where a hand rests on the display, or on the helm switch panel.
 
-**Reference, not a requirement.** None priced yet.
+**Reference, not a requirement.** None priced yet. The first pick (EAO 82-5751.1000) was a momentary button and doesn't fit this job.
 
-### 4. Hold-up module
+### 4. Standby power and shutdown controller
 
-**Job.** Makes power loss safe. When 12 V disappears (the boat's battery switch, the power switch, a dead battery, a long cranking dip), it keeps the Pi running on stored energy, tells the Pi power failed, then cuts the Pi's power once the Pi has shut down. When power returns, it turns the Pi back on. Mandatory: the owner requires a clean shutdown whenever the whole boat loses power.
+**Job.** Makes power loss safe, using the boat's own battery as the backup. The unit is powered from **standby (unswitched) power**: the battery side of the main battery switch. A thin **sense wire** from the switched side tells it whether the boat is on. When the main switch goes off, the unit is still powered, so the Pi shuts down cleanly; then the controller cuts the unit's power to microamps. When the main switch comes back on, the controller powers the unit up. Mandatory: the owner requires a clean shutdown whenever the boat's main battery switch is turned off (owner, 2026-10-31: "Finding the boat's standby power is the way to go").
 
-**Must have**
+What happens, step by step:
+
+1. Main switch off (or the unit switch, part 3): the sense wire drops.
+2. After 2 s with no sense (longer than an engine-start dip), the controller tells the Pi power is going away. The display stays on through the shutdown, which is fine because the battery is still connected.
+3. The Pi shuts down and signals "halted" on a GPIO.
+4. The controller cuts power to the buck and the display. If the Pi never signals, it cuts after a timeout (about 90 s).
+5. It keeps power off for at least 2 s. Then, as soon as the sense wire is live again (including if it came back during the shutdown), it turns power back on and the Pi boots.
+
+It has four pieces:
+
+**4a. Standby feed.** A fused circuit from the battery side of the main switch, to the box.
 
 | Spec | Requirement | How to check |
 |---|---|---|
-| Energy storage | Supercapacitors (EDLC) | Product page "supercapacitor", farad rating |
-| Hold-up time | 20 s or more at 2 A at 5 V (10 W; the Pi with the display off) | Runtime table at a stated load; not "up to" at no load |
-| Output | 5.0 to 5.3 V, 5 A, while input is present | Spec table |
-| Power-fail signal | Logic signal to a Pi GPIO, 3.3 V safe, within 100 ms of input loss | Pinout, manual |
-| Restart without hands | When input returns, the Pi boots again: the module either cuts and restores the Pi's power, or triggers the Pi 5's power-button (wake) contact | Manual: "auto restart", "wake on power restore", how it is done |
-| Restart in every case | Works even if input returns during or right after the shutdown. No documented window where the Pi stays off | Manual "known limitations"; ask the maker |
-| Input | 5 V side: takes the buck's 5.0 to 5.3 V. Or 12 V side: 9 to 16 V operating, 30 V or more absolute maximum, reverse-polarity protected | Spec table, absolute maximum |
-| Operating temperature | +65 °C or higher | Spec table |
-| Recharge | Back to the 20 s level within 2 minutes of power-on | Charge time spec; ask if only "full charge" is given |
-| Fit | Leaves the 40-pin header to the CAN HAT and the PCIe connector to the NVMe adapter | Photos, mounting drawing |
+| Source | Battery side of the main battery switch: an existing standby circuit near the helm, or a new run from the battery | Boat wiring diagram; meter it with the main switch off |
+| Battery | The house battery, if the boat has more than one | Wiring diagram |
+| Fuse | At the source, within 7 in of the battery or standby bus (ABYC E-11), sized per part 1 | Install rule |
+| Wire | Per part 19: 16 AWG up to a 10 ft run, 14 AWG for 10 to 25 ft | Measure the run |
+
+**4b. Sense input.** Turns the switched 12 V into a signal for the controller and the Pi, with 12 V kept off their pins.
+
+| Spec | Requirement | How to check |
+|---|---|---|
+| Isolation | Optocoupler (the 12 V side and the logic side share nothing but light) | Datasheet "optocoupler", "photocoupler" |
+| Threshold | On above about 8 V, off below about 5 V (a resistor and a zener or a divider set this) | Circuit values; bench check with the bench supply |
+| Sense current | About 10 mA (keeps the switch contacts clean, part 3) | Resistor value |
+| Sense wire fuse | 1 A at the switched source, or tap an existing fused switched circuit | Install rule |
+| Input survival | 30 V on the sense wire | Resistor power rating at 30 V |
+
+**4c. Controller.** A small microcontroller running the sequence above. We write the firmware; it gets flashed once over USB.
+
+| Spec | Requirement | How to check |
+|---|---|---|
+| Inputs | Sense (from 4b), Pi "halted" GPIO | Pin count: 4 or more free I/O |
+| Outputs | Power on/off to the load switch (4d), "power going away" to a Pi GPIO | Same |
+| Logic levels | 3.3 V, so its pins connect straight to the Pi | Board spec |
+| Off-state draw | 100 µA or less for the whole controller, including its regulator, while the unit is off | Board spec "sleep current" plus the regulator's quiescent current |
+| Regulator | Runs from the standby feed through a low-quiescent regulator (a few µA) rated for 30 V | Regulator datasheet "quiescent current", "absolute maximum" |
+| Programming | USB, with a free toolchain | Product page |
+| Temperature | Rated to +85 °C | Datasheet |
+
+**4d. Load switch.** Connects and cuts the standby feed to the buck and the display, on the controller's command.
+
+| Spec | Requirement | How to check |
+|---|---|---|
+| Type | High-side switch (cuts the + line), logic-level control | Datasheet |
+| Current | 7.5 A or more continuous at 12 V (the feed's fuse) | Datasheet, at a stated temperature |
+| Voltage | 9 to 16 V operating, 30 V or more absolute maximum, reverse-polarity protected | Datasheet |
+| Off leakage | 10 µA or less | Datasheet "off current" |
+| Control | Driven by a 3.3 V level or pulse from the controller | Pin description |
+| Holds state | Through engine-start dips; or the controller can re-check and re-command it | Datasheet; firmware |
 
 **Nice to have**
 
-- 12 V input with built-in 12 V to 5 V conversion: it replaces the buck (part 5).
-- USB-C output that advertises 5 V 5 A over Power Delivery (the Pi then needs no `usb_max_current_enable=1` line).
-- Charge level readable by the Pi (I2C), so the app can show it.
-- 60 s or more of hold-up.
-- Charge-level LEDs.
+- The controller reads the battery voltage, so the app can show it.
+- The controller on a small board with screw terminals.
+- A bench test from the bench supply: cut the "switched" supply mid-boot, mid-run and mid-shutdown, and check the Pi always comes back.
 
 **Disqualifiers**
 
-- Lithium cells of any kind (Li-ion, LiPo, LiFePO4): charging is limited to about 45 °C, and the sealed box gets hotter. They wear out fast there and are a fire risk. Lead-acid is too big.
-- "UPS" boards with no power-fail signal: they run the Pi until the energy is gone, which still corrupts.
-- No restart without hands, or a documented window where the Pi stays off: a halted Pi 5 doesn't boot again by itself, so the unit stays dark until someone opens the box.
-- HATs that need the 40-pin header with no pass-through for the CAN HAT.
-- 12 V-side modules with an input maximum below 30 V, unless a pre-regulator rated for 30 V sits in front of them. Changing the TVS doesn't help: the lowest suitable one (1.5KE18A, 15.3 V standoff) still clamps at 25.2 V.
-- Sellers that don't ship to the US.
+- Powering the unit from the switched side only: then the main switch is a hard power cut, which the owner ruled out.
+- Unfused standby feeds, or a fuse at the box end: the run from the battery is unprotected.
+- Load switches or latches that lose their state on a dip with no way for the controller to correct it.
+- Controllers that draw milliamps while the unit is off (most hobby boards with power LEDs and standard regulators): a few mA for a whole winter adds up.
+- Batteries or supercapacitors inside the box: not needed with standby power, and lithium can't be charged above about 45 °C.
 
 **Fits with**
 
-- Two GPIOs: power-fail in and halted out. Use pins the CAN HAT doesn't (see part 11), and a halted pin that stays low through boot, with an external pull-down.
-- Its load during the hold-up is the Pi alone, about 10 W, only if the display can't draw from the Pi's USB (part 15). If it can, the load rises to about 18 W and the 20 s rule needs nearly twice the energy.
-- The software waits about 2 s of continuous power loss before shutting down, so a cranking dip doesn't shut the unit off. The hold-up must cover that wait plus the shutdown (measure the shutdown time on the bench).
-- On the 5 V side, the buck (part 5) also supplies the module's charging current.
-- The filesystem design (read-only root, A/B slots, plan 4) still matters: it covers a failed hold-up or a hung shutdown.
+- Two Pi GPIOs: "power going away" in and "halted" out. Use pins the CAN HAT doesn't (part 11), and a "halted" pin that stays low through boot, with an external pull-down.
+- Engine starts dip the same battery the unit runs on. The buck (part 5) must keep running down to about 7 V; the 2 s sense delay keeps a crank from shutting the unit down.
+- The 12 V cable into the box becomes three conductors: standby +, sense, and negative (part 19).
+- The filesystem design (read-only root, A/B slots, plan 4) still matters: it covers a disconnected or dead battery, and a hung shutdown.
 
-**Reference, not a requirement.** No qualifying part found yet. Closest, and it fails as specified: Geekworm UPS_Scap_5V5A, 100 F version, $48.90, geekworm.com, 2026-10-31. Per its product page and wiki: 9 to 24 V DC barrel input (or 12 V USB-C PD), 5 V 5 A output on USB-C with a PD handshake, 100 F supercapacitor bank, measured 44 s at 2 A and 24.5 s at 3 A (60 F version: 25 s at 2 A), power-loss signal on GPIO26, about 15 minutes to full charge from a 30 W PD source, 85 x 56 mm (Pi footprint), no operating temperature published. Why it fails:
+**Reference, not a requirement.** None chosen yet. Load switch candidate: the Pololu Big Pushbutton Power Switch HP #2813 ($8.95, Pololu, 2026-10-30): 4.5 to 32 V, 40 V absolute, under 0.2 µA off, ON and OFF inputs that take 3.3 V pulses. It can lose its state on power disruptions, so the controller must re-check and re-command it.
 
-- It doesn't cut power after halt; it wakes the Pi 5 through a contact under the board, and its wiki documents a 1 to 2 s window during shutdown where the Pi "may remain off until another power cycle" ("a known limitation for unattended use").
-- Its 24 V input maximum is below the 27.7 V TVS clamp, so it would need a 30 V pre-regulator.
-- Its signals (GPIO26, I2C, wake) reach the Pi only through contacts on the Pi's underside, with the Pi on 9 mm supports above it. The NVMe adapter mounts there too.
+Alternatives considered (2026-10-31):
 
-Seen and rejected: AQEX qUPS-P-SC-1.3 ($55.64): 5 V input only, 2.5 A output, 8 s at full load, doesn't ship to the US.
+- **Supercapacitor hold-up in the box** (DIY, about $40 to $60): works without standby power, but costs more, takes about 60 x 40 x 45 mm, and the cells are rated to about 65 °C. Kept only as a fallback if no standby feed can be run.
+- **Geekworm UPS_Scap_5V5A** ($48.90): its wiki documents a 1 to 2 s window during shutdown where the Pi can stay off, its input stops at 24 V, and its signals reach the Pi only through contacts under the board, where the NVMe adapter goes.
+- **Battery UPS boards** (Li-ion, LiFePO4, NiMH): charging is limited to about 45 °C, below the box's inside temperature.
+- **Small sealed lead-acid battery**: heat-tolerant but big and heavy, and still needs this controller.
 
 ### 5. Buck regulator (12 V to 5 V)
 
-**Job.** Turns boat 12 V into the 5 V the Pi needs, at up to 5 A, through every voltage the boat throws at it. Not needed if the hold-up module (part 4) takes 12 V in and makes 5 V itself.
+**Job.** Turns boat 12 V into the 5 V the Pi needs, at up to 5 A, through every voltage the boat throws at it, including engine starts on the same battery.
 
 **Must have**
 
 | Spec | Requirement | How to check |
 |---|---|---|
-| Input range | 9 to 16 V operating | Datasheet "input voltage range" |
+| Input range | 9 to 16 V operating, and keeps 5 V out down to about 7 V at 3 A (engine starts) | Datasheet "input voltage range", dropout or minimum input at load |
 | Input survival | 30 V or more absolute maximum (the TVS clamp) | Datasheet "absolute maximum" |
 | Output voltage | 5.0 to 5.3 V, fixed or adjustable into that range, 3% accuracy or better | Datasheet "output voltage" |
-| Output current | 5 A continuous at 12 V input (plus the hold-up's charging current if it sits on the 5 V side) | "Maximum continuous output current" graph or table at 12 V in; ignore peak numbers |
+| Output current | 5 A continuous at 12 V input | "Maximum continuous output current" graph or table at 12 V in; ignore peak numbers |
 | Temperature | Delivers that current at 60 °C ambient, or a derating curve that shows it | Datasheet derating graph |
 | Topology | Switching (buck, or buck-boost) | Datasheet; efficiency spec present |
 | Efficiency | 85% or better at 2 to 4 A | Efficiency graph |
@@ -305,7 +326,6 @@ Seen and rejected: AQEX qUPS-P-SC-1.3 ($55.64): 5 V input only, 2.5 A output, 8 
 - Conformal coating or potting (salt air, condensation).
 - Power-good output (handy for bring-up checks).
 - Screw terminals.
-- Built-in hold-up (see part 4); then one board does both jobs.
 - Made by a maker that publishes graphs, not just a headline number.
 
 **Disqualifiers**
@@ -319,14 +339,15 @@ Seen and rejected: AQEX qUPS-P-SC-1.3 ($55.64): 5 V input only, 2.5 A output, 8 
 **Fits with**
 
 - The Pi 5 flags undervoltage below about 4.63 V (a vendor-reported figure; not in Raspberry Pi's own documents). A 5.0 V buck minus about 0.1 V in the lead leaves about 4.9 V. Confirm on the bench with `vcgencmd get_throttled` (must read `throttled=0x0`).
-- Output goes into the USB-C power lead (part 7) or the hold-up module (part 4), never to the GPIO 5 V pins.
+- Output goes into the USB-C power lead (part 7), never to the GPIO 5 V pins.
+- Fed from the load switch (part 4d), so it is off when the unit is off.
 - Its output must not feed a 5 V display rated to 5.2 V (the 4D reference is).
 
 **Reference, not a requirement.** Pololu D42V55F5.3, $47.95, Pololu, 2026-10-29 (in the bench cart). Per its product page (read 2026-10-31): 5.3 V within 3%, input up to 60 V, reverse-voltage protection, typically 6 A at 42 V in (4 to 8 A depending on voltages, no heatsink, room temperature), 25.4 x 25.4 x 9 mm. No published temperature derating. Pololu's D36V50F5 (5.0 V), named in the design spec, also meets the voltage rule.
 
 ### 6. Display power
 
-**Job.** Feeds the display from the switched 12 V, safely across 9 to 16 V and the 30 V the TVS lets through. This is a requirement on the display (part 13) first; a separate regulator is only bought if the chosen display can't meet it. The display is not on the hold-up: it goes dark the moment power is cut.
+**Job.** Feeds the display from the load switch's 12 V output (part 4d), safely across 9 to 16 V and the 30 V the TVS lets through. This is a requirement on the display (part 13) first; a separate regulator is only bought if the chosen display can't meet it. The display stays on through a shutdown and goes off with the rest of the unit.
 
 **Must have, one of:**
 
@@ -344,14 +365,14 @@ Seen and rejected: AQEX qUPS-P-SC-1.3 ($55.64): 5 V input only, 2.5 A output, 8 
 
 **Fits with**
 
-- Fed after the power switch (part 3) so the display is off when the unit is off.
+- Fed from the load switch (part 4d), so the display is off when the unit is off.
 - The reference display's 12 V barrel jack is rated "12.0 V typ" with no maximum, so it needs option B unless 4D Systems confirms 30 V.
 
 **Reference, not a requirement.** None priced yet. Likely needed with the 4D panel.
 
 ### 7. USB-C power lead (buck to Pi)
 
-**Job.** Carries the 5 V into the Pi's USB-C power port. Using the port, not the GPIO 5 V pins, keeps the Pi's own input protection in the path. Not needed if the hold-up module has a USB-C output and comes with its own lead.
+**Job.** Carries the 5 V into the Pi's USB-C power port. Using the port, not the GPIO 5 V pins, keeps the Pi's own input protection in the path. 
 
 **Must have**
 
@@ -403,8 +424,8 @@ Seen and rejected: AQEX qUPS-P-SC-1.3 ($55.64): 5 V input only, 2.5 A output, 8 
 **Fits with**
 
 - Board 85 x 56 mm. Its USB-C, micro-HDMI and PCIe connectors are on the edges, so the enclosure (part 16) needs room beside it for plugs and cable bends, not just above it.
-- The 40-pin header carries the CAN HAT (part 11); the PCIe connector carries the NVMe adapter (part 10). The underside is wanted by both the NVMe adapter and some hold-up modules (part 4).
-- 70 °C is the board's limit, but the SSD and the hold-up module are rated lower; part 20 targets 55 °C inside the box.
+- The 40-pin header carries the CAN HAT (part 11); the PCIe connector carries the NVMe adapter (part 10). The underside holds the NVMe adapter.
+- 70 °C is the board's limit, and the SSD's 70 °C applies to the drive itself, which runs above the air; part 20 targets 55 °C inside the box.
 
 **Reference, not a requirement.** Raspberry Pi 5, 8 GB, SC1112, $175.00, Digi-Key, 2026-10-29 (rechecked 2026-10-30: $175.00, in stock). Digi-Key's page shows part SC1432, the same board. Same price at CanaKit.
 
@@ -472,7 +493,7 @@ Seen and rejected: AQEX qUPS-P-SC-1.3 ($55.64): 5 V input only, 2.5 A output, 8 
 **Nice to have**
 
 - SSD with TLC flash and a published endurance (TBW) figure.
-- SSD with power-loss protection or a known-good record on sudden power loss (a second layer behind the hold-up module).
+- SSD with power-loss protection or a known-good record on sudden power loss (a second layer behind the clean-shutdown design).
 - SSD with low idle power; the adapter takes its power from the Pi's 5 V.
 - Adapter that comes with standoffs and the ribbon.
 - A spare microSD you already own (any A2 card 16 GB or more works).
@@ -488,7 +509,7 @@ Seen and rejected: AQEX qUPS-P-SC-1.3 ($55.64): 5 V input only, 2.5 A output, 8 
 
 - Leave PCIe at the default Gen 2. The charts don't need Gen 3, and Gen 3 is where errors show up.
 - On arrival, update the bootloader, check the controller with `lspci -nn`, and soak-test booting from the SSD (repeated reboots plus a long file copy) inside the return window.
-- The adapter adds height under the Pi; measure the full stack before the enclosure is drilled. A hold-up module that also mounts under the Pi competes for the same spot.
+- The adapter adds height under the Pi; measure the full stack before the enclosure is drilled.
 
 **Reference, not a requirement.**
 
@@ -533,7 +554,7 @@ Seen and rejected: AQEX qUPS-P-SC-1.3 ($55.64): 5 V input only, 2.5 A output, 8 
 **Fits with**
 
 - Stacks on the 40-pin header above the Active Cooler: needs about 16 mm of standoff plus a header extender to clear the 13.7 mm cooler. Check what the board ships with.
-- GPIOs it takes with the Waveshare wiki's default setup: SPI1 (GPIO 19, 20, 21), chip selects GPIO 16, 17, 18, interrupts GPIO 22 and 13, and GPIO 0 and 1 for its ID EEPROM. The hold-up module's two signals must use other pins.
+- GPIOs it takes with the Waveshare wiki's default setup: SPI1 (GPIO 19, 20, 21), chip selects GPIO 16, 17, 18, interrupts GPIO 22 and 13, and GPIO 0 and 1 for its ID EEPROM. The controller's two signals (part 4) must use other pins.
 - Wires to the drop cable (part 12): CAN_H to NET-H (white), CAN_L to NET-L (blue), isolated GND to NET-C (black). NET-S (red) and the shield stay unconnected. Termination off.
 - The reference board also has its own 5 V / 7 to 36 V power input. Leave it unconnected on the boat: it would be a second feed into the Pi's 5 V rail. Set its logic-level jumper to 3.3 V.
 
@@ -678,7 +699,7 @@ Seen and rejected: AQEX qUPS-P-SC-1.3 ($55.64): 5 V input only, 2.5 A output, 8 
 **Fits with**
 
 - Use a USB 2 port (black) on the Pi.
-- With the 4D panel the blocker is required: its touch port "parallels the power", so without it the panel runs from the Pi's USB (up to 1.6 A, about 8 W) after a power cut and drains the hold-up module.
+- With the 4D panel the blocker is required: its touch port "parallels the power", so without it the panel runs from the Pi's USB (up to 1.6 A, about 8 W) and eats into the Pi's 1.6 A USB budget, which is shared with every other USB device.
 - The 4D reference ships a 50 cm USB cable in the box; check its ends before buying another.
 
 **Reference, not a requirement.** Included with the 4D display (50 cm, per 4D's datasheet).
@@ -784,16 +805,17 @@ Seen and rejected: AQEX qUPS-P-SC-1.3 ($55.64): 5 V input only, 2.5 A output, 8 
 
 ### 19. Wire and terminals
 
-**Job.** The 12 V feed from the source to the box, and the short runs inside the box.
+**Job.** The feed cable from the standby source to the box (standby +, sense, negative), and the short runs inside the box.
 
 **Must have**
 
 | Spec | Requirement | How to check |
 |---|---|---|
-| 12 V feed | 16 AWG, tinned copper, fine-stranded marine wire (UL 1426 boat cable or SAE J1127/J1128) | Product page "tinned", "UL 1426", "marine" |
-| Feed form | Round jacketed duplex (red and black or red and yellow) for the gland | Product page "duplex", "2-conductor" |
-| Length | About 3 ft for the run (under 2 ft) plus a service loop | |
-| Inside the box | 22 AWG tinned for the hold-up signals and any switch LED | Product page |
+| Feed conductors | Tinned copper, fine-stranded marine wire (UL 1426 boat cable or SAE J1127/J1128) | Product page "tinned", "UL 1426", "marine" |
+| Feed gauge | 16 AWG for a run up to 10 ft; 14 AWG for 10 to 25 ft (3% drop at 3.6 A). The sense conductor can be the same gauge | Run length from the wiring diagram |
+| Feed form | One round jacketed 3-conductor cable (standby +, sense, negative) for the gland | Product page "3-conductor", "triplex" |
+| Length | Depends on where standby power is found (open question): about 3 ft at the helm, 15 to 20 ft from the battery, plus a service loop | |
+| Inside the box | 22 AWG tinned for the controller signals, the switch and any switch LED | Product page |
 | Terminations | Crimp terminals and adhesive-lined heat shrink | Product page "heat shrink", "marine" |
 
 **Nice to have**
@@ -809,14 +831,15 @@ Seen and rejected: AQEX qUPS-P-SC-1.3 ($55.64): 5 V input only, 2.5 A output, 8 
 
 **Fits with**
 
-- 16 AWG is protected by the 7.5 A fuse (part 1) with lots of margin; drop is about 0.12 V at worst-case load.
+- 16 or 14 AWG is protected by the 7.5 A fuse (part 1) with lots of margin.
+- The reference wire is single conductor; buy 3-conductor jacketed cable for the feed instead.
 - Cable outside diameter sets the gland (part 18).
 
 **Reference, not a requirement.** Ancor 16 AWG tinned primary wire, 25 ft red (182803) and 25 ft black (182003), $21.93 total, Amazon, 2026-10-30. That is single conductor; for a gland, duplex jacketed cable seals better.
 
 ### 20. Heat path and heat sink
 
-**Job.** Gets the box's 15 to 18 W out to the cabin air, so the inside stays cool enough for the parts with the lowest ratings: the SSD and the hold-up module's supercapacitors (about 65 to 70 °C), the display (70 °C), the Pi (70 °C).
+**Job.** Gets the box's 15 to 18 W out to the cabin air, so the inside stays cool enough for the parts with the lowest ratings: the SSD (70 °C, measured on the drive), the display (70 °C), the Pi (70 °C).
 
 **The numbers.** Target: inside air at 55 °C or less on a 40 °C cabin day. That is a 15 °C rise at 18 W, so the box must shed heat at 0.8 °C/W or better. The reference box alone (about 0.21 m2 of plastic surface) manages roughly 0.9 °C/W, a 16 °C rise before any sun lands on it. That is too close, and sun through the cabin glass makes it worse. These are rough estimates; a thermometer in the box during the bench soak settles them.
 
@@ -827,7 +850,7 @@ Seen and rejected: AQEX qUPS-P-SC-1.3 ($55.64): 5 V input only, 2.5 A output, 8 
 | **A. Heat sink in the back wall (chosen)** | Finned aluminum heat sink in a gasketed cutout in the box back. Fins outside; inside, a second set of fins or a small 5 V fan blowing the box air across the flat face. | One box. Keeps IP65 or better. Wi-Fi still gets out through the plastic. Roughly 0.6 °C/W overall, about 11 °C rise at 18 W. | A cutout and gasket to make. Heat sink must be bought to size. |
 | B. Aluminum enclosure, display in a plastic or glass front | The whole box spreads and sheds heat. | Simple to seal. Best heat path of the single-box options. | Blocks Wi-Fi: needs a USB Wi-Fi adapter with an antenna outside the box. Heavier. |
 | C. Filtered fan and vent | Fan pulls cabin air through filtered vents. | Moves the most heat. | Drops to about IP54. Pulls salt air across the boards. Not recommended. |
-| D. Split boxes | Pi, power and hold-up in a second box in the shaded cavity below the shelf. Only the display (about 8 W) stays at the dash. | Best for heat: most of the load leaves the sun. | Two boxes. HDMI and USB through glands (HDMI plugs need split glands or IP67 HDMI bulkhead connectors). Video and touch cables grow past their 1 ft and 50 cm must-haves. More entries than design 6.7's "12 V, N2K drop cable, and nothing else". |
+| D. Split boxes | Pi, power and controller in a second box in the shaded cavity below the shelf. Only the display (about 8 W) stays at the dash. | Best for heat: most of the load leaves the sun. | Two boxes. HDMI and USB through glands (HDMI plugs need split glands or IP67 HDMI bulkhead connectors). Video and touch cables grow past their 1 ft and 50 cm must-haves. More entries than design 6.7's "12 V, N2K drop cable, and nothing else". |
 
 With any option: dim the backlight whenever full brightness isn't needed (the app can do it over DDC), choose a light-colored box, and keep it out of direct sun where the helm allows.
 
@@ -868,25 +891,25 @@ With any option: dim the backlight whenever full brightness isn't needed (the ap
 
 Before ordering the boat parts, these have to agree with each other:
 
-1. **Voltage chain.** Boat 9 to 16 V, spikes clamped to about 28 V by the TVS. Everything after the TVS (switch, buck, 12 V-side hold-up, display) survives 30 V or has its own regulator. The 5.0 to 5.3 V rail goes only to the Pi (and the hold-up, if it sits on the 5 V side).
-2. **Power loss.** The hold-up gives 20 s or more at 10 W, cuts the Pi after it halts, and restarts it when power returns. The display isn't held up.
-3. **Under the Pi.** The NVMe adapter mounts there. A hold-up module whose signals only reach the Pi through underside contacts (the Geekworm) can't share the spot.
-4. **Reverse polarity.** Everything fed from 12 V either has reverse-polarity protection or sits behind a part that does (design 6.6). The buck has it; a 12 V-input hold-up module or display regulator must too.
+1. **Voltage chain.** Boat 9 to 16 V, spikes clamped to about 28 V by the TVS. Everything after the TVS (load switch, controller regulator, buck, display) survives 30 V or has its own regulator. The 5.0 to 5.3 V rail goes only to the Pi.
+2. **Power loss.** The unit runs from standby power; the sense wire drops when the main switch goes off; the controller gives 2 s of grace, lets the Pi shut down, cuts power, and restarts the unit whenever sense returns, including mid-shutdown.
+3. **Under the Pi.** The NVMe adapter mounts there; nothing else needs the spot.
+4. **Reverse polarity.** Everything fed from 12 V either has reverse-polarity protection or sits behind a part that does (design 6.6). The buck has it; the load switch and any display regulator must too.
 5. **Stack height.** NVMe adapter under the Pi, Pi, Active Cooler (13.7 mm), CAN HAT on standoffs of about 16 mm. About 45 mm total (estimate; measure on the bench).
 6. **Enclosure size.** Inside depth 75 mm or more; display outline plus at least 15 mm per side; room beside the Pi for the micro-HDMI and USB-C plugs; a back-wall area for the heat sink and the mount.
 7. **Connector types.** Display's HDMI type matches the video cable; display's touch port matches the touch cable, with VBUS blocked; drop cable is male at the tee.
-8. **GPIO budget.** CAN HAT: 0, 1, 13, 16, 17, 18, 19, 20, 21, 22. Hold-up: power-fail in and halted out on two other pins, plus I2C or a wake contact if the module uses them.
-9. **Current.** Fuse 7.5 A, switch 10 A DC, buck 5 A plus hold-up charging, wire 16 AWG, against a 4.8 A worst case at 10.5 V.
+8. **GPIO budget.** CAN HAT: 0, 1, 13, 16, 17, 18, 19, 20, 21, 22. Controller: "power going away" in and "halted" out on two other pins.
+9. **Current.** Fuse 7.5 A, load switch 7.5 A or more, buck 5 A, wire 16 or 14 AWG, against a 3.6 A worst case at 10.5 V. Off draw 100 µA or less.
 10. **Heat.** 15 to 18 W out of the box at 0.8 °C/W or better (part 20).
 
 ## Departures from the design spec
 
 This doc changes some lines of `docs/superpowers/specs/2026-10-28-cheekymarine-design.md`. The design spec gets updated to match in plan 5.
 
-- **6.6, "No battery backup. Hard power loss must be survivable by the filesystem design, not by a UPS."** Now: a supercapacitor hold-up module is mandatory (owner, 2026-10-31), and the filesystem design stays as a second layer. Still no batteries.
-- **Soft power.** Design goal 6 ("soft power button"), 6.6's momentary button and latch, 6.7's IP67 momentary pushbutton, and section 7's "Soft power module" and "Button" rows: now a nice-to-have. A latching power switch is acceptable (owner, 2026-10-31).
+- **6.6, "No battery backup. Hard power loss must be survivable by the filesystem design, not by a UPS."** Kept: still no battery or UPS in the box. Added: the unit runs from the boat's standby (unswitched) power with a sense wire from the switched side, so turning off the main battery switch triggers a clean shutdown (owner, 2026-10-31). The filesystem design stays as the second layer. The design spec assumed power from the switched 12 V dash.
+- **Soft power.** Design goal 6 ("soft power button"), 6.6's momentary button and latch, 6.7's IP67 momentary pushbutton, and section 7's "Soft power module" and "Button" rows: now a nice-to-have. A latching on/off switch in the sense wire is acceptable (owner, 2026-10-31).
 - **6.6, feeding 5 V into the Pi's GPIO 5 V pins** (one option it lists): ruled out; 5 V goes in through the USB-C port to keep the Pi's input protection.
-- **6.6, reverse-polarity protection.** Kept, as a fit check across the 12 V parts, since the buck may be replaced by a hold-up module.
+- **6.6, reverse-polarity protection.** Kept, as a fit check across the 12 V parts, covering the load switch and any display regulator as well as the buck.
 - **6.7, "cable glands for 12V, N2K drop cable, and nothing else."** Still true for options A to C in part 20; option D would add more.
 - **6.6, LC filter and a 9 to 36 V regulator.** The LC filter is optional (add it if radios pick up noise); parts must survive 30 V after the TVS.
 - **6.6, "Output 5.1 V at 5 A."** Now 5.0 to 5.3 V.
@@ -895,7 +918,10 @@ This doc changes some lines of `docs/superpowers/specs/2026-10-28-cheekymarine-d
 
 ## Open questions before buying
 
-- **Hold-up module.** No qualifying part yet. The Geekworm fails three must-haves (restart window, 24 V input, under-Pi fit). Keep looking for one that restarts in every case; failing that, plan 5 designs one (supercapacitors, a power-fail comparator, and a power cut after halt).
+- **Standby power near the helm.** Owner is checking the boat's wiring diagrams for an existing standby (unswitched) circuit at the helm. If there is none, run a new fused feed from the battery side of the main switch (part 19 sets the gauge by length).
+- **Which battery.** If the boat has more than one, take standby power from the house battery.
+- **Sense source.** Which switched circuit at the helm the sense wire taps (it needs a 1 A fuse).
+- **Controller and load switch.** Pick a controller board that meets 100 µA off; confirm the Pololu #2813 load switch can be re-commanded by the controller after a dip.
 - **Display 12 V maximum.** 4D gives "12.0 V typ" with no maximum. Without a stated 30 V maximum, add a display regulator (part 6).
 - **Display power-on.** Does the 4D panel come on by itself when powered? Its power button is on a board that isn't included.
 - **Display USB power backfeed.** 4D's datasheet suggests the touch port also takes power. Ask 4D, or plan on a USB power blocker.
