@@ -16,6 +16,42 @@ CANBOAT = os.path.join(ROOT, "third_party", "canboat", "canboat.json")
 T0 = 1798000000.0
 
 
+sys.path.insert(0, HERE)
+import synth_n2k  # noqa: E402
+
+
+class EncoderRangeTest(unittest.TestCase):
+    """Encoder.payload rejects values that would collide with reserved bit patterns."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.enc = synth_n2k.Encoder(CANBOAT)
+
+    def pack(self, pgn, **values):
+        return self.enc.payload(pgn, values)
+
+    def test_in_range_accepted(self):
+        self.pack(128267, depth=100.0)  # unsigned 32 bit, 0.01 m
+        self.pack(128267, offset=-0.3)  # signed 16 bit, 0.001 m
+        self.pack(128267, offset=32.766)  # largest signed value below the sign bit
+
+    def test_not_available_pattern_rejected(self):
+        with self.assertRaises(ValueError):
+            self.pack(128267, depth=0xFFFFFFFF * 0.01)  # raw all ones
+
+    def test_signed_overflow_into_sign_bit_rejected(self):
+        with self.assertRaises(ValueError):
+            self.pack(128267, offset=32.768)  # raw 0x8000 would read back as negative
+
+    def test_signed_below_minimum_rejected(self):
+        with self.assertRaises(ValueError):
+            self.pack(128267, offset=-32.769)
+
+    def test_signed_minus_one_lsb_is_not_available_pattern(self):
+        with self.assertRaises(ValueError):
+            self.pack(128267, offset=-0.001)  # raw -1 is all ones, not available
+
+
 def generate(out):
     subprocess.run([sys.executable, "-I", os.path.join(HERE, "synth_n2k.py"),
                     "--canboat", CANBOAT, "--out", out], check=True)
@@ -71,7 +107,18 @@ class SynthN2kTest(unittest.TestCase):
         self.assertLess(abs(self.near(60, "waterTemp")["waterTemp"] - 283.15), 0.01)
 
     def test_position_dropout(self):
-        self.assertTrue(any(v["pos"] is None and T0 + 300 <= v["t"] < T0 + 320 for v in self.vessel))
+        # n2kd holds the last position for a few seconds, so the published nulls sit inside the
+        # generator's [300, 315) gap and none appear once the frames resume at 315.
+        gap = [v for v in self.vessel if v["pos"] is None and v["t"] >= T0 + 60]
+        self.assertTrue(gap)
+        self.assertGreaterEqual(min(v["t"] for v in gap), T0 + 300)
+        self.assertLess(max(v["t"] for v in gap), T0 + 315)
+        before = [v for v in self.vessel if T0 + 290 <= v["t"] <= T0 + 300]
+        self.assertTrue(before)
+        self.assertTrue(all(v["pos"] is not None for v in before))
+        after = [v for v in self.vessel if v["t"] >= T0 + 315]
+        self.assertTrue(after)
+        self.assertTrue(all(v["pos"] is not None for v in after))
 
     def test_depth_dropout(self):
         self.assertTrue(any(v["depth"] is None and T0 + 360 <= v["t"] < T0 + 377 for v in self.vessel))

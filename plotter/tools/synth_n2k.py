@@ -39,12 +39,14 @@ class Encoder:
                 raw = int.from_bytes(data + b"\xff" * (bits // 8 - len(data)), "little")
             else:
                 raw = int(round(v / f.get("Resolution", 1)))
-                if raw < 0:
-                    if not f.get("Signed"):
-                        raise ValueError("negative value for unsigned field " + f["Id"])
-                    raw += 1 << bits
-                if raw >> bits:
+                if f.get("Signed"):
+                    if not -(1 << (bits - 1)) <= raw < (1 << (bits - 1)):
+                        raise ValueError("value out of range for field " + f["Id"])
+                    raw &= (1 << bits) - 1
+                elif not 0 <= raw < (1 << bits):
                     raise ValueError("value out of range for field " + f["Id"])
+                if raw == (1 << bits) - 1:
+                    raise ValueError("value is the not-available pattern for field " + f["Id"])
             mask = ((1 << bits) - 1) << f["BitOffset"]
             word = (word & ~mask) | (raw << f["BitOffset"])
         return word.to_bytes(length, "little")
