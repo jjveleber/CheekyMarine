@@ -1,0 +1,682 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Hardware Cost Comparison</title>
+<style>
+/* default - plain document, letter, sans-serif */
+@page { size: letter; margin: 0.6in; }
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+    font-family: 'Calibri', 'Carlito', 'Arial', sans-serif;
+    font-size: 11pt; line-height: 1.45; color: #111; background: #fff;
+}
+h1 { font-size: 20pt; margin-bottom: 8px; }
+h2 {
+    font-size: 14pt; margin-top: 18px; margin-bottom: 10px;
+    padding-bottom: 3px; border-bottom: 1px solid #888;
+}
+h3 { font-size: 12pt; margin-top: 12px; margin-bottom: 4px; }
+h1, h2, h3, h4 { page-break-after: avoid; break-after: avoid; }
+p { margin-bottom: 8px; }
+ul, ol { margin-left: 20px; margin-bottom: 10px; }
+li { margin-bottom: 4px; page-break-inside: avoid; break-inside: avoid; }
+a { color: #2c5282; text-decoration: none; }
+code, pre {
+    font-family: 'DejaVu Sans Mono', monospace; font-size: 9.5pt;
+    background: #f4f4f4;
+}
+pre { padding: 8px; margin-bottom: 10px; page-break-inside: avoid; break-inside: avoid; }
+table { border-collapse: collapse; margin-bottom: 10px; width: 100%; }
+th, td { border: 1px solid #ccc; padding: 4px 6px; text-align: left; }
+blockquote { margin: 0 0 10px 16px; padding-left: 10px; border-left: 3px solid #ccc; }
+img { max-width: 100%; }
+hr { border: none; border-top: 1px solid #ccc; margin: 12px 0; }
+
+</style>
+</head>
+<body>
+<h1>Hardware
+cost: DIY, off-the-shelf, or networked Garmin</h1>
+<p>Prices were read from product pages on 2026-10-29 (bench carts) and
+2026-10-30 (everything else). They are US prices before tax and shipping
+unless marked. Nothing has been bought yet. Prices move often, so
+recheck before ordering.</p>
+<h2>Summary</h2>
+<p>Three options:</p>
+<ol type="1">
+<li><strong>DIY Pi unit at the main helm.</strong> Charts plus NMEA 2000
+data (depth, speed, heading, AIS). No sonar.</li>
+<li><strong>Off-the-shelf NMEA 2000 plotter at the main helm.</strong>
+Same job as the DIY unit: charts plus NMEA 2000 data, no Garmin sonar or
+radar. This is the like-for-like comparison.</li>
+<li><strong>Networked Garmin at the rear helm.</strong> Joins the 943xsv
+on the Garmin Marine Network, so it also shows the 943xsv’s sonar and
+the Fantom radar where the owner stands to fish.</li>
+</ol>
+<table>
+<colgroup>
+<col style="width: 25%" />
+<col style="width: 25%" />
+<col style="width: 25%" />
+<col style="width: 25%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Option</th>
+<th>Pick</th>
+<th>Size, touch</th>
+<th>Total before tax</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>1. DIY</td>
+<td>Pi 5 + 4D Systems 1000-nit panel</td>
+<td>10.1”, 1280x800, touch</td>
+<td><strong>$790.05</strong> ($833.24 with tax and shipping on the bench
+carts)</td>
+</tr>
+<tr class="even">
+<td>2. Off the shelf, cheapest</td>
+<td>Raymarine Element 7 S</td>
+<td>7”, buttons only</td>
+<td>$609.97</td>
+</tr>
+<tr class="odd">
+<td>2. Off the shelf, cheapest touch</td>
+<td>Lowrance Elite FS 7</td>
+<td>7”, touch</td>
+<td><strong>$829.97</strong></td>
+</tr>
+<tr class="even">
+<td>2. Off the shelf, cheapest 9” touch</td>
+<td>Simrad GO9 XSE</td>
+<td>9”, 800x480, touch</td>
+<td><strong>$894.97</strong></td>
+</tr>
+<tr class="odd">
+<td>2. Off the shelf, Garmin</td>
+<td>ECHOMAP UHD2 74sv / 94sv</td>
+<td>7” / 9”, touch</td>
+<td>$1,064.97 / $1,364.97</td>
+</tr>
+<tr class="even">
+<td>3. Networked, 7”</td>
+<td>Garmin GPSMAP 743</td>
+<td>7”, touch</td>
+<td><strong>$1,564.96</strong></td>
+</tr>
+<tr class="odd">
+<td>3. Networked, 9”</td>
+<td>Garmin GPSMAP 943</td>
+<td>9”, touch</td>
+<td><strong>$1,864.96</strong></td>
+</tr>
+<tr class="even">
+<td>3. Networked, 12”</td>
+<td>Garmin GPSMAP 1243</td>
+<td>12”, touch</td>
+<td>$3,164.96</td>
+</tr>
+</tbody>
+</table>
+<p>Like for like (option 1 vs option 2), the DIY unit is about the same
+price as a 7” touch plotter and about $105 under the cheapest 9” touch
+unit, with a bigger, sharper screen. The store-bought units are brighter
+(1200 to 1500 nits where published), IPX7 sealed, under warranty, and
+need no build work. The DIY unit’s edge is the 10.1” 1280x800 screen,
+the fishing chart (NCEI bathymetry, bottom composition), and owning the
+software. Option 3 costs about $775 to $1,075 more than the DIY unit,
+and that money buys sonar and radar at the rear helm.</p>
+<h2>Option 1: DIY Pi unit at
+the main helm</h2>
+<h3>Bench kit (3 carts, priced
+2026-10-29)</h3>
+<p>Everything here except the 6 ft HDMI cable goes on the boat later.
+Recheck on 2026-10-30: Pi 5 8 GB still $175.00 at Digi-Key, 19,766 in
+stock.</p>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Item</th>
+<th>Seller</th>
+<th>Price</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Raspberry Pi 5, 8 GB (SC1112)</td>
+<td><a
+href="https://www.digikey.com/en/products/detail/raspberry-pi/SC1112/21658257">Digi-Key</a></td>
+<td>$175.00</td>
+</tr>
+<tr class="even">
+<td>Official Active Cooler (SC1148)</td>
+<td><a
+href="https://www.digikey.com/en/products/detail/raspberry-pi/SC1148/21658255">Digi-Key</a></td>
+<td>$5.00</td>
+</tr>
+<tr class="odd">
+<td>MPD BF353 inline fuse holder</td>
+<td><a
+href="https://www.digikey.com/en/products/detail/mpd-memory-protection-devices/BF353/8119223">Digi-Key</a></td>
+<td>$4.14</td>
+</tr>
+<tr class="even">
+<td>Littelfuse 0287005.PXCN 5 A ATO fuse</td>
+<td><a
+href="https://www.digikey.com/en/products/detail/littelfuse-inc/0287005-PXCN/2519811">Digi-Key</a></td>
+<td>$0.44</td>
+</tr>
+<tr class="odd">
+<td><strong>Digi-Key cart</strong></td>
+<td></td>
+<td><strong>$184.58</strong> ($197.37 with tax and shipping)</td>
+</tr>
+<tr class="even">
+<td>Waveshare 2-CH isolated CAN HAT+ (27338)</td>
+<td><a href="https://www.amazon.com/dp/B0D3GD458Z">Amazon</a></td>
+<td>$34.99</td>
+</tr>
+<tr class="odd">
+<td>Pimoroni NVMe Base (PIM699)</td>
+<td><a href="https://www.amazon.com/dp/B0CX754H4D">Amazon</a></td>
+<td>$29.99</td>
+</tr>
+<tr class="even">
+<td>Netac NV3000 250 GB NVMe SSD</td>
+<td><a href="https://www.amazon.com/dp/B0CSSR9PC2">Amazon</a></td>
+<td>$49.66</td>
+</tr>
+<tr class="odd">
+<td>ELNONE USB-C pigtail, 2-pack</td>
+<td><a href="https://www.amazon.com/dp/B0CGVNG7Y4">Amazon</a></td>
+<td>$7.99</td>
+</tr>
+<tr class="even">
+<td>Micro-HDMI to HDMI, 6 ft (bench) + 3 ft (boat)</td>
+<td><a href="https://www.amazon.com/dp/B08C2PVP7J">Amazon</a></td>
+<td>$13.98</td>
+</tr>
+<tr class="odd">
+<td>SanDisk Extreme microSD 64 GB (recovery card)</td>
+<td>Amazon</td>
+<td>$31.99</td>
+</tr>
+<tr class="even">
+<td><strong>Amazon cart</strong></td>
+<td></td>
+<td><strong>$168.60</strong> ($186.29 with tax and shipping)</td>
+</tr>
+<tr class="odd">
+<td>Pololu D42V55F5.3 step-down regulator</td>
+<td><a href="https://www.pololu.com/product/5572">Pololu</a></td>
+<td>$47.95</td>
+</tr>
+<tr class="even">
+<td><strong>Pololu cart</strong></td>
+<td></td>
+<td><strong>$47.95</strong> ($60.66 with tax and shipping)</td>
+</tr>
+<tr class="odd">
+<td><strong>Bench kit total</strong></td>
+<td></td>
+<td><strong>$401.13</strong> ($444.32 with tax and shipping)</td>
+</tr>
+</tbody>
+</table>
+<p>Possible cart savings, about $17: the NVMe Base is $19.95 at <a
+href="https://www.adafruit.com/product/5845">Adafruit</a>, and the 3 ft
+micro-HDMI cable is not needed if the 4D display is chosen (it takes
+mini-HDMI, see below).</p>
+<h3>Boat parts (priced
+2026-10-30)</h3>
+<table>
+<colgroup>
+<col style="width: 25%" />
+<col style="width: 25%" />
+<col style="width: 25%" />
+<col style="width: 25%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Item</th>
+<th>Part number</th>
+<th>Seller</th>
+<th>Price</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>4D Systems 4DHDMI 10.1” display: 1000 cd/m2 IPS, 1280x800, touch
+glass bonded to the panel, USB-C touch, 12 V barrel at 650 mA</td>
+<td>4DHDMI-101-1280-800-CT-EAR-1000</td>
+<td><a
+href="https://www.digikey.com/en/products/detail/4d-systems-pty-ltd/4DHDMI-101-1280-800-CT-EAR-1000/28394428">Digi-Key</a>,
+4 in stock</td>
+<td>$147.95</td>
+</tr>
+<tr class="even">
+<td>Micro-HDMI to mini-HDMI cable, 1 ft</td>
+<td>ZeniKon B0DP6XCFJ5</td>
+<td><a href="https://www.amazon.com/dp/B0DP6XCFJ5">Amazon</a></td>
+<td>$12.99</td>
+</tr>
+<tr class="odd">
+<td>Hammond 1554 polycarbonate enclosure, 300x200x90 mm, IP66/67/68,
+NEMA 4X</td>
+<td>1554X2GY</td>
+<td><a
+href="https://www.digikey.com/en/products/detail/hammond-manufacturing/1554X2GY/11498222">Digi-Key</a></td>
+<td>$63.22</td>
+</tr>
+<tr class="even">
+<td>RAM C-size ball mount, double socket arm</td>
+<td>RAM-101U</td>
+<td><a href="https://www.rammount.com/part/ram-101u">RAM Mounts</a></td>
+<td>$64.49</td>
+</tr>
+<tr class="odd">
+<td>Pololu Big Pushbutton Power Switch HP (4.5 to 32 V, 6 A at 55
+C)</td>
+<td>#2813</td>
+<td><a href="https://www.pololu.com/product/2813">Pololu</a></td>
+<td>$8.95</td>
+</tr>
+<tr class="even">
+<td>EAO 19 mm momentary pushbutton, IP65/IP67</td>
+<td>82-5751.1000</td>
+<td>Digi-Key</td>
+<td>$42.46</td>
+</tr>
+<tr class="odd">
+<td>Ancor NMEA 2000 drop cable, 1 m (cut, wired to the HAT)</td>
+<td>270301</td>
+<td><a
+href="https://navstore.com/products/ancor-nmea-2000-drop-cable-1m-270301">Navstore</a></td>
+<td>$23.95</td>
+</tr>
+<tr class="even">
+<td>Altech PG9 nylon cable gland, IP68, x2</td>
+<td>5308 509</td>
+<td>Digi-Key</td>
+<td>$1.92</td>
+</tr>
+<tr class="odd">
+<td>Littelfuse TVS diode, 17.1 V standoff</td>
+<td>1.5KE20A</td>
+<td>Digi-Key</td>
+<td>$1.06</td>
+</tr>
+<tr class="even">
+<td>Ancor 16 AWG tinned wire, 25 ft red + 25 ft black</td>
+<td>182803, 182003</td>
+<td>Amazon</td>
+<td>$21.93</td>
+</tr>
+<tr class="odd">
+<td><strong>Boat parts total</strong></td>
+<td></td>
+<td></td>
+<td><strong>$388.92</strong></td>
+</tr>
+</tbody>
+</table>
+<p>Alternatives seen: finished sunlight-readable monitors instead of the
+bare 4D panel (Beetronics 10HB9M/U1 at $749.00, Xenarc 1029CNH at
+$770.00), which push the DIY total to about $1,100 with a VESA
+plate.</p>
+<h3>Open questions
+before buying the boat parts</h3>
+<ul>
+<li><strong>Display input voltage.</strong> The 4D datasheet gives only
+“12.0 V typ” for the barrel jack, with no maximum. The boat runs about
+14.4 V while charging. Ask 4D Systems before ordering.</li>
+<li><strong>Display power from the buck.</strong> The 4D boards accept
+4.8 to 5.2 V over USB. The Pololu outputs 5.3 V, so do not power the
+display from it.</li>
+<li><strong>Panel orientation.</strong> 4D’s drawing shows a native
+portrait panel (800x1280). Digi-Key lists 1280x800 over HDMI. Confirm
+the board outputs landscape.</li>
+<li><strong>Enclosure depth.</strong> The 16 mm display plus the 45 mm
+Pi stack is tight inside a 90 mm box. The deeper 1554XA2GY (120 mm) is
+not priced yet.</li>
+<li><strong>Tariffs.</strong> Digi-Key shows “tariff may apply” on the
+Pi, the EAO button, the TVS diode and others. The amount appears only in
+the cart.</li>
+</ul>
+<h2>Option 2:
+off-the-shelf NMEA 2000 plotter at the main helm</h2>
+<p>Same spot and same job as the DIY unit. Each total adds a <a
+href="https://www.garmin.com/en-US/p/pn/010-11078-00">Garmin NMEA 2000
+T-connector</a> ($29.99, 010-11078-00, ships in 5 to 8 weeks) and a <a
+href="https://www.garmin.com/en-US/p/pn/010-11076-00">2 m drop cable</a>
+($34.99, 010-11076-00): $64.98. No box checked includes either. Any
+brand’s standard Micro-C T and drop work.</p>
+<table>
+<colgroup>
+<col style="width: 12%" />
+<col style="width: 12%" />
+<col style="width: 12%" />
+<col style="width: 12%" />
+<col style="width: 12%" />
+<col style="width: 12%" />
+<col style="width: 12%" />
+<col style="width: 12%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Unit</th>
+<th>Size</th>
+<th>Touch</th>
+<th>Nits</th>
+<th>Unit price</th>
+<th>Add-ons</th>
+<th>Total</th>
+<th>Source</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Raymarine Element 7 S, LightHouse N. America charts
+(E70531-00-102)</td>
+<td>7”</td>
+<td>No, buttons</td>
+<td>1500</td>
+<td>$544.99</td>
+<td>$64.98</td>
+<td><strong>$609.97</strong></td>
+<td><a
+href="https://www.raymarine.com/en-us/our-products/chartplotters/element/element-s">Raymarine</a>,
+list price, dealer stock not shown</td>
+</tr>
+<tr class="even">
+<td>Lowrance Elite FS 7, no transducer, C-MAP Contour+
+(000-15703-001)</td>
+<td>7”</td>
+<td>Yes</td>
+<td>over 1200</td>
+<td>$764.99</td>
+<td>$64.98</td>
+<td><strong>$829.97</strong></td>
+<td><a
+href="https://www.defender.com/en_us/lowrance-elite-fs-7-multifunction-display-with-c-map-contour">Defender</a>,
+in stock</td>
+</tr>
+<tr class="odd">
+<td>Raymarine Element 9 HV, LightHouse N. America charts
+(E70534-00-102)</td>
+<td>9”</td>
+<td>No, buttons</td>
+<td>not found</td>
+<td>$786.99</td>
+<td>$64.98</td>
+<td>$851.97</td>
+<td><a
+href="https://www.defender.com/en_us/raymarine-element-9-hv-sonar-gps-display">Defender</a>,
+out of stock</td>
+</tr>
+<tr class="even">
+<td>Simrad GO9 XSE, C-MAP Discover, HDI transducer included
+(000-16293-001)</td>
+<td>9”</td>
+<td>Yes</td>
+<td>1200</td>
+<td>$829.99</td>
+<td>$64.98</td>
+<td><strong>$894.97</strong></td>
+<td><a
+href="https://www.defender.com/en_us/simrad-go9-xse-multifunction-display-with-c-map-discover-chart-navico-9-pin-high-speed-skimmer-none">Defender</a>,
+in stock</td>
+</tr>
+<tr class="odd">
+<td>Simrad GO7 XSR, no transducer, C-MAP Discover (000-14078-002)</td>
+<td>7”</td>
+<td>Yes</td>
+<td>1200</td>
+<td>$919.99</td>
+<td>$64.98</td>
+<td>$984.97</td>
+<td><a
+href="https://www.defender.com/en_us/simrad-go7-xsr-multifunction-display-with-c-map-discover-chart-c-map-discover-chart-without-transducer">Defender</a>,
+in stock</td>
+</tr>
+<tr class="even">
+<td>Humminbird HELIX 7 CHIRP MEGA DI GPS G4N, control head only
+(411640-1CHO)</td>
+<td>7”</td>
+<td>No, buttons</td>
+<td>not found</td>
+<td>$749.99</td>
+<td>$64.98 + N2K adapter $32.99 + CoastMaster card $149.99</td>
+<td>$997.95</td>
+<td><a
+href="https://www.defender.com/en_us/humminbird-helix-7-chirp-mega-di-gps-g4n-fishfinder">Defender</a>,
+in stock</td>
+</tr>
+<tr class="odd">
+<td>B&amp;G Vulcan 7, basemap only (000-14082-001)</td>
+<td>7”</td>
+<td>Yes</td>
+<td>1200</td>
+<td>$789.99</td>
+<td>$64.98 + C-MAP Discover card $159.00</td>
+<td>$1,013.97</td>
+<td><a
+href="https://www.defender.com/en_us/b-g-vulcan7r-multifunction-display-7-radar-display-000-14082-001">Defender</a>,
+in stock</td>
+</tr>
+<tr class="even">
+<td>Lowrance Elite FS 9, no transducer, C-MAP Contour+
+(000-15707-001)</td>
+<td>9”</td>
+<td>Yes</td>
+<td>over 1200</td>
+<td>$969.99</td>
+<td>$64.98</td>
+<td>$1,034.97</td>
+<td><a
+href="https://www.defender.com/en_us/lowrance-elite-fs-9-multifunction-display-with-c-map-contour">Defender</a>,
+in stock</td>
+</tr>
+<tr class="odd">
+<td>Garmin ECHOMAP UHD2 74sv, no transducer, US Coastal GN+
+(010-02685-00)</td>
+<td>7”</td>
+<td>Yes, plus keys</td>
+<td>not published</td>
+<td>$999.99</td>
+<td>$64.98</td>
+<td>$1,064.97</td>
+<td><a
+href="https://www.garmin.com/en-US/p/796418/pn/010-02685-00/">Garmin</a></td>
+</tr>
+<tr class="even">
+<td>B&amp;G Vulcan 9, C-MAP Discover (000-13214-009)</td>
+<td>9”</td>
+<td>Yes</td>
+<td>not found</td>
+<td>$1,019.99</td>
+<td>$64.98</td>
+<td>$1,084.97</td>
+<td><a
+href="https://www.defender.com/en_us/b-g-vulcan-9-chartplotter-with-c-map-discover-charts-000-13214-009">Defender</a>,
+in stock</td>
+</tr>
+<tr class="odd">
+<td>Humminbird XPLORE 9, control head only, CoastMaster included</td>
+<td>9”</td>
+<td>Yes, plus keys</td>
+<td>not found</td>
+<td>$1,199.99</td>
+<td>$64.98</td>
+<td>$1,264.97</td>
+<td><a
+href="https://www.defender.com/en_us/humminbird-xplore-cho-fishfinder">Defender</a>,
+out of stock</td>
+</tr>
+<tr class="even">
+<td>Garmin ECHOMAP UHD2 94sv, no transducer, US Coastal GN+
+(010-02689-00)</td>
+<td>9”</td>
+<td>Yes, plus keys</td>
+<td>not published</td>
+<td>$1,299.99</td>
+<td>$64.98</td>
+<td>$1,364.97</td>
+<td><a
+href="https://www.garmin.com/en-US/p/796274/pn/010-02689-00/">Garmin</a></td>
+</tr>
+</tbody>
+</table>
+<p>Gotchas:</p>
+<ul>
+<li><strong>Garmin.</strong> Nothing under $999.99 has NMEA 2000. The
+ECHOMAP UHD2 cv models (72cv at $649.99) have no N2K port. ECHOMAP units
+can’t join the Garmin Marine Network either, so they never show the
+943xsv’s sonar.</li>
+<li><strong>Raymarine.</strong> Element units have buttons, no touch.
+The Element 7 S price is Raymarine’s list price; no preferred seller had
+it in stock. Its N2K lead is a female DeviceNet pigtail, so check
+connector genders when ordering the drop.</li>
+<li><strong>Simrad.</strong> The GO9 XSE bundle with a transducer is
+cheaper than the no-transducer GO9 ($1,129.99). The transducer isn’t
+needed. The GO9 and the Elite FS 9 are only 800x480 on a 9” screen.</li>
+<li><strong>Humminbird.</strong> HELIX needs the $32.99 AS QD NMEA 2000
+adapter (720114-1). Defender lists it for HELIX 8 and up; confirm HELIX
+7 support with Humminbird. The CoastMaster card price is from a search
+result only. XPLORE N2K support is inferred from compatible drop cables;
+its spec sheet couldn’t be loaded.</li>
+<li><strong>Lowrance.</strong> The Eagle has no N2K. Lowrance still
+lists the older Elite-7 Ti² ($449) and HDS Carbon 9 ($899), but no
+seller carries them.</li>
+<li><strong>Not checked.</strong> West Marine and Humminbird’s own site
+blocked automated page loads.</li>
+</ul>
+<h2>Option 3: networked
+Garmin at the rear helm</h2>
+<p>The boat is a Hewescraft 240 OceanPro with a hard top and an extended
+transom. The rear helm is partly covered and about 10 to 20 ft of cable
+from the main helm.</p>
+<h3>Network parts every
+networked option needs</h3>
+<p>The 943xsv has <strong>one</strong> Garmin Marine Network port (<a
+href="https://www.garmin.com/en-US/p/697231/pn/010-02366-02/">spec
+tab</a>), and the Fantom 18 radar already uses it. A second networked
+display therefore needs a GMS 10 network switch at the main helm.</p>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Part</th>
+<th>Part number</th>
+<th>Price</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><a href="https://www.garmin.com/en-US/p/9706/pn/010-00351-00">GMS 10
+network port expander</a> (comes with an RJ-45 cable and a power/data
+cable)</td>
+<td>010-00351-00</td>
+<td>$269.99</td>
+</tr>
+<tr class="even">
+<td><a href="https://www.garmin.com/en-US/p/pn/010-10551-00">Garmin
+Marine Network cable, 20 ft</a>, GMS 10 to rear helm</td>
+<td>010-10551-00</td>
+<td>$54.99</td>
+</tr>
+<tr class="odd">
+<td><a href="https://www.garmin.com/en-US/p/pn/010-11076-01">NMEA 2000
+drop cable, 6 m</a>, backbone T to rear helm (replaces the 2 m drop in
+the box)</td>
+<td>010-11076-01</td>
+<td>$39.99</td>
+</tr>
+<tr class="even">
+<td><strong>Network parts total</strong></td>
+<td></td>
+<td><strong>$364.97</strong></td>
+</tr>
+</tbody>
+</table>
+<p>The GPS Store listed the GMS 10 at $209.95 with a 6 ft cable
+included, about $60 less than Garmin.</p>
+<h3>Units</h3>
+<p>The <a href="https://www.garmin.com/en-US/p/697231/">x3 GPSMAP</a>
+boxes include a bail mount, power cable, NMEA 2000 T-connector, a 2 m
+drop cable, and Garmin Navionics+ charts preloaded.</p>
+<table>
+<colgroup>
+<col style="width: 25%" />
+<col style="width: 25%" />
+<col style="width: 25%" />
+<col style="width: 25%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Option</th>
+<th>Unit</th>
+<th>Network parts</th>
+<th>Total</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>GPSMAP 743, 7” (010-02365-60)</td>
+<td>$1,199.99</td>
+<td>$364.97</td>
+<td><strong>$1,564.96</strong></td>
+</tr>
+<tr class="even">
+<td>GPSMAP 943, 9” (010-02366-60)</td>
+<td>$1,499.99</td>
+<td>$364.97</td>
+<td><strong>$1,864.96</strong></td>
+</tr>
+<tr class="odd">
+<td>GPSMAP 1243, 12” (010-02367-60)</td>
+<td>$2,899.99</td>
+<td>$364.97</td>
+<td><strong>$3,164.96</strong></td>
+</tr>
+</tbody>
+</table>
+<p>The 1243 has two network ports and could be daisy-chained without the
+GMS 10. That would mean running the radar cable to the rear helm, and
+Garmin does not clearly say whether a powered-off display passes traffic
+through, so it is not priced that way here. There is no 10” x3 unit. The
+10” GPSMAP 1022 is keyed only (no touch) and comes with a basemap
+only.</p>
+<h3>Used market</h3>
+<p>Unverified (eBay blocked page loads; prices from search results):
+used 943xsv about $1,000 to $1,200, used 1243xsv about $2,100. A used
+networked unit still needs the $364.97 in network parts.</p>
+<h2>What the difference buys</h2>
+<p><strong>Option 1 vs option 2.</strong> Close on price. The
+store-bought unit is brighter, sealed, under warranty, and ready today.
+The DIY unit has the bigger, sharper screen, the fishing chart, and
+software the owner controls, but it still has to be built (device image,
+enclosure) and comes with no warranty.</p>
+<p><strong>Option 3.</strong> A networked GPSMAP at the rear helm shows
+the 943xsv’s live sonar and the Fantom radar (with overlay and MARPA)
+where the owner stands to fish. It also shares waypoints and routes, has
+its own GPS as a backup, and is IPX7. Options 1 and 2 can never show
+Garmin sonar or radar, because those streams are proprietary to the
+Garmin Marine Network. They fix the same problem the other way: the new
+screen takes the chart, so the 943xsv runs full-screen sonar at the main
+helm.</p>
+
+</body>
+</html>

@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Pi 5 Dev Kit</title>
+<style>
+/* default - plain document, letter, sans-serif */
+@page { size: letter; margin: 0.6in; }
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+    font-family: 'Calibri', 'Carlito', 'Arial', sans-serif;
+    font-size: 11pt; line-height: 1.45; color: #111; background: #fff;
+}
+h1 { font-size: 20pt; margin-bottom: 8px; }
+h2 {
+    font-size: 14pt; margin-top: 18px; margin-bottom: 10px;
+    padding-bottom: 3px; border-bottom: 1px solid #888;
+}
+h3 { font-size: 12pt; margin-top: 12px; margin-bottom: 4px; }
+h1, h2, h3, h4 { page-break-after: avoid; break-after: avoid; }
+p { margin-bottom: 8px; }
+ul, ol { margin-left: 20px; margin-bottom: 10px; }
+li { margin-bottom: 4px; page-break-inside: avoid; break-inside: avoid; }
+a { color: #2c5282; text-decoration: none; }
+code, pre {
+    font-family: 'DejaVu Sans Mono', monospace; font-size: 9.5pt;
+    background: #f4f4f4;
+}
+pre { padding: 8px; margin-bottom: 10px; page-break-inside: avoid; break-inside: avoid; }
+table { border-collapse: collapse; margin-bottom: 10px; width: 100%; }
+th, td { border: 1px solid #ccc; padding: 4px 6px; text-align: left; }
+blockquote { margin: 0 0 10px 16px; padding-left: 10px; border-left: 3px solid #ccc; }
+img { max-width: 100%; }
+hr { border: none; border-top: 1px solid #ccc; margin: 12px 0; }
+
+</style>
+</head>
+<body>
+<h1>Pi 5 bench dev kit</h1>
+<p>Prices checked 2026-10-29 on the product pages (US, before tax and
+shipping). “Unverified” means seen only in a search listing. Prices move
+often; recheck before ordering.</p>
+<p>Purpose: run the plotter on real hardware under EGLFS (plan 3 Task
+18) and start NMEA 2000 bench work, before the panel, power and
+enclosure are chosen in plan 5. Everything here except the bench-only
+items goes on the boat later.</p>
+<h2>Price warning</h2>
+<p>Memory shortages have raised Raspberry Pi prices several times since
+launch: Pi 5 8 GB was $80 at launch and is $175 at retail today. The
+parent spec’s shopping list (section 7) assumed $80. The under-$1000
+total still holds, but the margin is about $95 smaller. NVMe SSDs are
+short too: the official Raspberry Pi SSDs are out of stock at every US
+reseller checked.</p>
+<h2>Recommended kit (one PiShop
+order)</h2>
+<table>
+<colgroup>
+<col style="width: 25%" />
+<col style="width: 25%" />
+<col style="width: 25%" />
+<col style="width: 25%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Item</th>
+<th>Price</th>
+<th>Link</th>
+<th>Later use</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Raspberry Pi 5, 8 GB (SC1112)</td>
+<td>$175.00</td>
+<td><a href="https://www.pishop.us/product/raspberry-pi-5-8gb/"
+class="uri">https://www.pishop.us/product/raspberry-pi-5-8gb/</a></td>
+<td>boat</td>
+</tr>
+<tr class="even">
+<td>Official Active Cooler (SC1148)</td>
+<td>$12.95</td>
+<td><a href="https://www.pishop.us/product/raspberry-pi-active-cooler/"
+class="uri">https://www.pishop.us/product/raspberry-pi-active-cooler/</a></td>
+<td>boat</td>
+</tr>
+<tr class="odd">
+<td>Official 27W USB-C power supply, US</td>
+<td>$12.95</td>
+<td><a
+href="https://www.pishop.us/product/raspberry-pi-27w-usb-c-power-supply-black-us/"
+class="uri">https://www.pishop.us/product/raspberry-pi-27w-usb-c-power-supply-black-us/</a></td>
+<td>bench only</td>
+</tr>
+<tr class="even">
+<td>Official microSD 64 GB A2, Pi OS preloaded</td>
+<td>$20.95</td>
+<td><a
+href="https://www.pishop.us/product/official-raspberry-pi-microsd-card-with-raspberry-pi-os-64-bit-64gb/"
+class="uri">https://www.pishop.us/product/official-raspberry-pi-microsd-card-with-raspberry-pi-os-64-bit-64gb/</a></td>
+<td>recovery card</td>
+</tr>
+<tr class="odd">
+<td>Micro-HDMI to HDMI cable, 1 m</td>
+<td>$6.95</td>
+<td><a
+href="https://www.pishop.us/product/micro-hdmi-to-standard-hdmi-a-m-1m-cable-black/"
+class="uri">https://www.pishop.us/product/micro-hdmi-to-standard-hdmi-a-m-1m-cable-black/</a></td>
+<td>bench only</td>
+</tr>
+<tr class="even">
+<td><strong>Total</strong></td>
+<td><strong>$228.80</strong></td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<p>Use any HDMI monitor already at hand: HDMI is the most proven EGLFS
+path. Reflash the card with Raspberry Pi OS trixie Lite 64-bit.</p>
+<p>Same board at CanaKit: $175.00, <a
+href="https://www.canakit.com/raspberry-pi-5-8gb.html"
+class="uri">https://www.canakit.com/raspberry-pi-5-8gb.html</a></p>
+<h2>Options</h2>
+<ul>
+<li><strong>Pi 5 4 GB instead of 8 GB:</strong> $110.00 at PiShop
+(unverified), saves $65. Qt, MapLibre and n2kd should fit in 4 GB; 8 GB
+is headroom. The 16 GB at $305 is not worth it.</li>
+<li><strong>Touch display for touch testing:</strong> Raspberry Pi Touch
+Display 2, 7 in, $81.95, <a
+href="https://www.pishop.us/product/raspberry-pi-touch-display-2/"
+class="uri">https://www.pishop.us/product/raspberry-pi-touch-display-2/</a>
+. DSI, auto-detected on the Pi 5. Portrait native (720x1280), so the app
+or the Qt KMS config must rotate it. It takes 5 V from GPIO pins, which
+conflicts with a CAN HAT on the header unless a stacking header is used.
+Brings the kit to $310.75.</li>
+<li><strong>Cheap CAN for bench loopback:</strong> Waveshare 2-Channel
+Isolated CAN Bus HAT+ (27338), $28.95, <a
+href="https://www.pishop.us/product/2-channel-isolated-can-bus-hat-for-raspberry-pi/"
+class="uri">https://www.pishop.us/product/2-channel-isolated-can-bus-hat-for-raspberry-pi/</a>
+. Pi 5 listed as supported, screw terminals (no Micro-C). Wiring can0 to
+can1 replays NMEA 2000 traffic without a real bus.</li>
+</ul>
+<h2>Buy later</h2>
+<ul>
+<li><strong>PiCAN-M without SMPS</strong> (boat NMEA 2000 interface,
+parent spec section 7): $99.95, <a
+href="https://copperhilltech.com/pican-m-nmea-0183-nmea-2000-hat-for-raspberry-pi/"
+class="uri">https://copperhilltech.com/pican-m-nmea-0183-nmea-2000-hat-for-raspberry-pi/</a>
+. Separate Copperhill order. Pi 5 support is likely but not stated by
+the vendor: Copperhill’s Pi 5 test covered the PiCAN Duo with the
+standard MCP2515 overlays. Ask Copperhill before ordering.</li>
+<li><strong>NVMe storage:</strong> Pimoroni NVMe Base (PIM699, mounts
+under the Pi so the GPIO header stays free for the CAN HAT), $18.95, <a
+href="https://www.pishop.us/product/nvme-base-for-raspberry-pi-5-nvme-base/"
+class="uri">https://www.pishop.us/product/nvme-base-for-raspberry-pi-5-nvme-base/</a>
+; official M.2 HAT+ $12.00. Buy the SSD when stock returns (official 256
+GB listed at $145.00, out of stock). Bench work runs fine from
+microSD.</li>
+<li><strong>Case:</strong> skip on the bench; an open board is easier
+for stacking HATs.</li>
+</ul>
+
+</body>
+</html>

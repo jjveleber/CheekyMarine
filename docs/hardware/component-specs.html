@@ -1,0 +1,2661 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Helm Display Buyer Specs</title>
+<style>
+/* default - plain document, letter, sans-serif */
+@page { size: letter; margin: 0.6in; }
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+    font-family: 'Calibri', 'Carlito', 'Arial', sans-serif;
+    font-size: 11pt; line-height: 1.45; color: #111; background: #fff;
+}
+h1 { font-size: 20pt; margin-bottom: 8px; }
+h2 {
+    font-size: 14pt; margin-top: 18px; margin-bottom: 10px;
+    padding-bottom: 3px; border-bottom: 1px solid #888;
+}
+h3 { font-size: 12pt; margin-top: 12px; margin-bottom: 4px; }
+h1, h2, h3, h4 { page-break-after: avoid; break-after: avoid; }
+p { margin-bottom: 8px; }
+ul, ol { margin-left: 20px; margin-bottom: 10px; }
+li { margin-bottom: 4px; page-break-inside: avoid; break-inside: avoid; }
+a { color: #2c5282; text-decoration: none; }
+code, pre {
+    font-family: 'DejaVu Sans Mono', monospace; font-size: 9.5pt;
+    background: #f4f4f4;
+}
+pre { padding: 8px; margin-bottom: 10px; page-break-inside: avoid; break-inside: avoid; }
+table { border-collapse: collapse; margin-bottom: 10px; width: 100%; }
+th, td { border: 1px solid #ccc; padding: 4px 6px; text-align: left; }
+blockquote { margin: 0 0 10px 16px; padding-left: 10px; border-left: 3px solid #ccc; }
+img { max-width: 100%; }
+hr { border: none; border-top: 1px solid #ccc; margin: 12px 0; }
+
+</style>
+</head>
+<body>
+<h1>DIY helm display:
+component buyer specs</h1>
+<p>What each part of the main-helm Pi unit must do, so any product can
+be judged against it. These are requirements, not product picks. Each
+section ends with the part we already found, labeled <strong>reference,
+not a requirement</strong>, with the price and the date it was read.
+Nothing has been bought yet (decision to build: 2026-10-30). Written
+2026-10-31, revised the same day after review on PR #25 and the owner’s
+power and heat decisions.</p>
+<p>How to read each section:</p>
+<ul>
+<li><strong>Job</strong>: what the part does and what it connects
+to.</li>
+<li><strong>Must have</strong>: the numbers a product has to meet, and
+where to find each one on a product page or datasheet.</li>
+<li><strong>Nice to have</strong>: worth paying a little more for.</li>
+<li><strong>Disqualifiers</strong>: walk away, and why.</li>
+<li><strong>Fits with</strong>: limits set by the other parts.</li>
+</ul>
+<p>If a product page doesn’t state a must-have number, treat it as
+missing. Ask the seller or move on.</p>
+<p>Owner rules this revision follows (2026-10-31):</p>
+<ul>
+<li><strong>Clean shutdown when the boat’s main battery switch goes off
+is mandatory.</strong> It must never corrupt the SSD. The unit runs from
+the house battery’s standby (unswitched) power and watches a sense wire
+from the switched side (part 4).</li>
+<li><strong>Once shut down, the unit disconnects from standby power
+completely,</strong> so it can’t drain the battery. A relay opens;
+nothing in the box draws current.</li>
+<li><strong>Soft power is a nice-to-have.</strong> A plain latching
+on/off switch is fine (part 3).</li>
+<li><strong>Heat has to get out of the sealed box,</strong> through a
+finned aluminum heat sink in the back wall (option A). See part 20.</li>
+</ul>
+<h2>How it all connects</h2>
+<pre><code> BOAT BATTERY ---- main battery switch ---- switched 12 V (helm panel)
+   |  (battery side: standby power)                |
+ [1] FUSE 7.5 A, at the source                   [4b] sense fuse 1 A
+   |                                               |
+   |   standby +, sense, negative: one 3-conductor cable [19]
+   |                                               |
+ ==|=== gland G1 ================= ENCLOSURE [16] =|=======================
+   |                                               |       [20] heat sink
+ [4d] RELAY  &lt;------- coil -----------+          [3] UNIT ON/OFF SWITCH
+   |  (open = nothing draws           |            |       (in the sense wire)
+   |   from the battery)              |          [4b] SENSE TVS + INPUT (opto)
+   |                                  |            |
+   +--[2] TVS across + and -        [4c] CONTROLLER  &lt;-- powered by the sense
+   |                                  |   ^             wire or the relay output
+   |              power going away ---+   | Pi 3.3 V
+   |                                  v   |
+   +------------------------------------+  (Pi GPIOs)
+   |                                    |
+ [5] BUCK 12 V to 5.0-5.3 V, 5 A      [6] DISPLAY POWER: 30 V-safe input
+   |                                      or its own regulator
+   |  [7] USB-C power lead              |
+   v                                    v
+ [8] RASPBERRY PI 5, 8 GB  ---[14] micro-HDMI---&gt;  [13] DISPLAY 9 to 10.1 in
+   |   + [9] Active Cooler  &lt;---[15] USB (touch)---     1000+ nit, touch
+   |
+   +-- PCIe ribbon --&gt; [10] NVMe adapter + SSD   (under the Pi)
+   +-- card slot ----&gt; microSD recovery card   (normally in a drawer)
+   +-- 40-pin header -&gt; [11] ISOLATED CAN HAT
+                            |  CAN_H, CAN_L, isolated GND
+ ========================== | ==== gland G2 ==============================
+                            |
+                       [12] N2K DROP CABLE, Micro-C male, 1 m
+                            |
+                       free tee on the existing NMEA 2000 backbone</code></pre>
+<p>Mount [17] holds the enclosure [16] on the dash shelf. Glands [18]
+seal the two cable entries. Wire [19] covers the feed cable and
+everything inside the box.</p>
+<p>Order of the power path matters: fuse at the source (protects the
+cable), then the relay (open when off, so nothing draws from the
+battery), then the TVS, then the buck for the Pi and the display’s own
+feed. The on/off switch only carries the sense signal.</p>
+<p>What happens when the main battery switch (or the unit’s own switch)
+goes off: the Pi gets 2 s of grace for an engine-start dip, then shuts
+down cleanly on standby power, and the controller opens the relay: from
+then on the unit draws nothing. When the switch comes back on, the sense
+wire powers the controller, which closes the relay and the unit starts.
+Part 4 has the details.</p>
+<h2>At a glance</h2>
+<table>
+<colgroup>
+<col style="width: 25%" />
+<col style="width: 25%" />
+<col style="width: 25%" />
+<col style="width: 25%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>#</th>
+<th>Part</th>
+<th>The one number that matters most</th>
+<th>Reference price</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>1</td>
+<td>Fuse + holder</td>
+<td>7.5 A blade fuse, sealed holder for 16 AWG</td>
+<td>$4.58 (5 A bench fuse)</td>
+</tr>
+<tr class="even">
+<td>2</td>
+<td>TVS diode</td>
+<td>Unidirectional, 15 to 18 V standoff, clamp 30 V or less</td>
+<td>$1.06</td>
+</tr>
+<tr class="odd">
+<td>3</td>
+<td>Unit on/off switch</td>
+<td>Latching, sealed, reliable at 5 mA, rated 1 A (sense wire only)</td>
+<td>not priced</td>
+</tr>
+<tr class="even">
+<td>4</td>
+<td>Standby power + shutdown controller</td>
+<td>Standby feed, sense input, controller, relay that opens fully when
+off</td>
+<td>not priced</td>
+</tr>
+<tr class="odd">
+<td>5</td>
+<td>Buck regulator</td>
+<td>5 A continuous at 5.0 to 5.3 V, survives 30 V in</td>
+<td>$47.95</td>
+</tr>
+<tr class="even">
+<td>6</td>
+<td>Display power</td>
+<td>Display safe to 30 V, or its own regulator</td>
+<td>$0 if built in</td>
+</tr>
+<tr class="odd">
+<td>7</td>
+<td>USB-C power lead</td>
+<td>20 AWG or heavier, 1 ft or shorter</td>
+<td>$7.99 (2-pack)</td>
+</tr>
+<tr class="even">
+<td>8</td>
+<td>Raspberry Pi 5</td>
+<td>8 GB</td>
+<td>$175.00</td>
+</tr>
+<tr class="odd">
+<td>9</td>
+<td>Cooler</td>
+<td>Fits under the CAN HAT (13.7 mm tall reference)</td>
+<td>$5.00</td>
+</tr>
+<tr class="even">
+<td>10</td>
+<td>NVMe adapter + SSD</td>
+<td>Mounts under the Pi; SSD on a Pi 5 tested list</td>
+<td>$29.99 + $49.66</td>
+</tr>
+<tr class="odd">
+<td>10b</td>
+<td>microSD</td>
+<td>A2, 16 to 64 GB</td>
+<td>$31.99</td>
+</tr>
+<tr class="even">
+<td>11</td>
+<td>N2K interface</td>
+<td>Galvanically isolated, SocketCAN on Pi 5</td>
+<td>$34.99</td>
+</tr>
+<tr class="odd">
+<td>12</td>
+<td>N2K drop cable</td>
+<td>Micro-C male, 1 m, shielded</td>
+<td>$23.95</td>
+</tr>
+<tr class="even">
+<td>13</td>
+<td>Display</td>
+<td>1000 cd/m2 or more, USB HID touch, turns on by itself</td>
+<td>$147.95</td>
+</tr>
+<tr class="odd">
+<td>14</td>
+<td>Video cable</td>
+<td>micro-HDMI to the display’s HDMI type, 1 ft</td>
+<td>$12.99</td>
+</tr>
+<tr class="even">
+<td>15</td>
+<td>Touch cable</td>
+<td>USB-A to the display’s touch port, data wires</td>
+<td>often in the display box</td>
+</tr>
+<tr class="odd">
+<td>16</td>
+<td>Enclosure</td>
+<td>IP65 or better, UV stable, 75 mm or more inside depth</td>
+<td>$63.22</td>
+</tr>
+<tr class="even">
+<td>17</td>
+<td>Mount</td>
+<td>Holds about 2 kg on a dash shelf, no suction</td>
+<td>$64.49</td>
+</tr>
+<tr class="odd">
+<td>18</td>
+<td>Glands</td>
+<td>IP68, clamp range fits each cable</td>
+<td>$1.92 (2)</td>
+</tr>
+<tr class="even">
+<td>19</td>
+<td>Wire</td>
+<td>Tinned marine 3-conductor feed, 16, 14 or 12 AWG by length</td>
+<td>$21.93</td>
+</tr>
+<tr class="odd">
+<td>20</td>
+<td>Heat sink</td>
+<td>1.5 °C/W or better, natural convection, anodized</td>
+<td>not priced</td>
+</tr>
+</tbody>
+</table>
+<h2>Power budget</h2>
+<p>The numbers every power part below is sized from.</p>
+<table>
+<colgroup>
+<col style="width: 25%" />
+<col style="width: 25%" />
+<col style="width: 25%" />
+<col style="width: 25%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Load</th>
+<th>Voltage</th>
+<th>Worst case</th>
+<th>Source</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Pi 5 with SSD, CAN HAT, touch</td>
+<td>5.3 V</td>
+<td>5 A (26.5 W)</td>
+<td>Raspberry Pi’s 5 V 5 A supply rating</td>
+</tr>
+<tr class="even">
+<td>Same, seen at 12 V through an 88% buck</td>
+<td>12 V</td>
+<td>about 2.5 A</td>
+<td>26.5 W / 0.88 / 12 V</td>
+</tr>
+<tr class="odd">
+<td>Display, reference panel at 1000 nit</td>
+<td>12 V</td>
+<td>0.65 A</td>
+<td>4D datasheet, 10.1” 1280x800 table</td>
+</tr>
+<tr class="even">
+<td><strong>Whole unit</strong></td>
+<td>12 V</td>
+<td><strong>about 3.2 A</strong></td>
+<td></td>
+</tr>
+<tr class="odd">
+<td><strong>Whole unit, battery sagging to 10.5 V</strong></td>
+<td>10.5 V</td>
+<td><strong>about 3.6 A</strong></td>
+<td></td>
+</tr>
+<tr class="even">
+<td><strong>Unit off, main switch on or off</strong></td>
+<td>12 V</td>
+<td><strong>zero</strong></td>
+<td>relay open; TVS, buck and display sit after it, and the controller
+is powered only from the sense wire or the relay output (part 4). Soft
+power (part 3) would add a few mA from the switched side while the boat
+is on</td>
+</tr>
+</tbody>
+</table>
+<p>Typical draw while charting is well below this; the worst case is
+what the fuse, relay, buck and wire must carry. With the unit off,
+nothing draws from the battery.</p>
+<p>Voltage drop on the feed: 16 AWG copper is about 4 milliohms per
+foot. A 3 ft run is 6 ft out and back, so 0.024 ohm at 3.6 A drops about
+0.09 V (under 1%). If the standby feed has to come from the battery, a
+20 ft run in 16 AWG drops about 0.58 V (5%); 14 AWG (about 2.5 milliohms
+per foot) brings it to about 0.36 V (3%); past 20 ft, 12 AWG (about 1.6
+milliohms per foot) keeps it under 3%. Part 19 sets the gauge by run
+length.</p>
+<p>Boat voltage the parts must live with: about 12.2 V resting, 14.4 to
+14.8 V while charging, dips toward 10 V during engine cranking, and
+short spikes well above that. The TVS clamps spikes to about 28 V, so
+everything after it must survive 30 V.</p>
+<p>Heat in the box: everything above ends up as heat inside the
+enclosure. In daylight at full brightness that is about 15 to 18 W: the
+backlight about 7.8 W, the Pi about 5 to 8 W, buck losses about 1 W, the
+HAT and controller under 1 W. Part 20 deals with it.</p>
+<h2>Power</h2>
+<h3>1. Fuse and fuse holder</h3>
+<p><strong>Job.</strong> Protects the standby feed cable (part 4) if
+anything downstream shorts. It belongs at the power source end of the
+cable (the battery or the standby bus), not at the box.</p>
+<p><strong>Must have</strong></p>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Spec</th>
+<th>Requirement</th>
+<th>How to check</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Fuse type</td>
+<td>Blade (ATO/ATC) so spares from the boat’s kit fit</td>
+<td>Product title or datasheet “ATO”, “ATC”, “blade”</td>
+</tr>
+<tr class="even">
+<td>Fuse rating</td>
+<td>7.5 A, 32 V DC</td>
+<td>Printed on the fuse; datasheet “voltage rating”</td>
+</tr>
+<tr class="odd">
+<td>Holder current rating</td>
+<td>15 A or more</td>
+<td>Holder datasheet “rated current”</td>
+</tr>
+<tr class="even">
+<td>Holder wire size</td>
+<td>Leads or terminals that match the feed: 16, 14 or 12 AWG (part
+19)</td>
+<td>Datasheet “wire gauge” or lead spec</td>
+</tr>
+<tr class="odd">
+<td>Sealing</td>
+<td>Cover that closes over the fuse; IP67 if it sits near the battery or
+in the bilge area</td>
+<td>Product page; a cap or lid in the photo, IP rating</td>
+</tr>
+<tr class="even">
+<td>Location</td>
+<td>Within 7 in of the source connection (ABYC E-11)</td>
+<td>Install rule, not a product spec</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Nice to have</strong></p>
+<ul>
+<li>An existing fused standby (unswitched) circuit near the helm. If
+there is one, it replaces the inline holder entirely.</li>
+<li>IP67 holder if it will hang in the open cavity below the dash.</li>
+<li>Tinned leads.</li>
+</ul>
+<p><strong>Disqualifiers</strong></p>
+<ul>
+<li>Glass tube (AGC) holders: tube fuses crack in vibration and the boat
+kit won’t have spares.</li>
+<li>Holders with leads thinner than 16 AWG: the holder lead becomes the
+weak point the fuse is meant to protect.</li>
+<li>Automotive “add-a-circuit” taps: they ride on another circuit’s
+fuse, so a fault here kills that circuit too.</li>
+</ul>
+<p><strong>Fits with</strong></p>
+<ul>
+<li>7.5 A is 2x the 3.6 A worst case at low battery, under the 16 AWG
+wire’s rating, and blows on a real short. The 5 A fuse in the bench cart
+is fine on the bench (no display) and too close to the limit on the
+boat.</li>
+<li>The holder’s leads join the feed (part 19) with crimp butt
+connectors.</li>
+<li>The sense wire gets its own 1 A fuse at its switched source (part
+4b).</li>
+</ul>
+<p><strong>Reference, not a requirement.</strong> MPD BF353
+water-resistant inline ATO holder, 15 A, 16 AWG leads, $4.14, Digi-Key,
+2026-10-29. Littelfuse 0287005.PXCN 5 A ATO, $0.44, Digi-Key, 2026-10-29
+(bench value; the boat wants 7.5 A).</p>
+<h3>2. TVS diode and filtering</h3>
+<p><strong>Job.</strong> Sits across + and - just after the relay (part
+4d). It does nothing at normal voltage, and clamps short spikes from the
+alternator, pumps and the starter before they reach the buck, the
+display and the controller. If a big spike kills it, it fails short and
+blows the fuse instead of letting the spike through.</p>
+<p><strong>Must have</strong></p>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Spec</th>
+<th>Requirement</th>
+<th>How to check</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Polarity</td>
+<td>Unidirectional</td>
+<td>Part number ends in “A” without “CA”; datasheet
+“uni-directional”</td>
+</tr>
+<tr class="even">
+<td>Standoff voltage (VRWM)</td>
+<td>15 to 18 V: above 14.8 V charging, as low as possible above it</td>
+<td>Datasheet “VRWM” or “reverse stand-off voltage”</td>
+</tr>
+<tr class="odd">
+<td>Clamping voltage (VC)</td>
+<td>30 V or less at rated pulse current</td>
+<td>Datasheet “VC” at “IPP”</td>
+</tr>
+<tr class="even">
+<td>Peak pulse power</td>
+<td>1500 W or more (10/1000 µs)</td>
+<td>Datasheet “PPPM”</td>
+</tr>
+<tr class="odd">
+<td>Leakage at standoff</td>
+<td>5 µA or less</td>
+<td>Datasheet “IR at VRWM”</td>
+</tr>
+<tr class="even">
+<td>Package</td>
+<td>Through-hole axial or a part that mounts on a terminal strip</td>
+<td>Datasheet package drawing</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Nice to have</strong></p>
+<ul>
+<li>An automotive load-dump rated TVS (SM8S class, 6600 W, AEC-Q101)
+instead of a 1500 W part. A 1500 W TVS handles switching spikes, not a
+full alternator load dump.</li>
+<li>A snap-on ferrite on the 12 V feed inside the box, plus a small LC
+filter (inductor plus capacitor), only if the VHF or AM radio picks up
+noise once installed. Don’t buy until there is a symptom. (The design
+spec lists an LC filter as standard; this doc makes it optional, see
+“Departures from the design spec”.)</li>
+</ul>
+<p><strong>Disqualifiers</strong></p>
+<ul>
+<li>Standoff below 15 V: the TVS starts conducting while the engine is
+charging and cooks.</li>
+<li>Clamping above 30 V: every part after it is specified to survive 30
+V, no more.</li>
+<li>MOVs (varistors) in place of a TVS: they wear out with each spike
+and clamp loosely.</li>
+</ul>
+<p><strong>Fits with</strong></p>
+<ul>
+<li>Must be after the fuse (part 1), so a shorted TVS blows the fuse,
+and after the relay, so its leakage stops when the unit is off.</li>
+<li>Its clamp voltage sets what everything downstream must survive: 30 V
+for the controller’s regulator, the buck, and the display.</li>
+<li>It doesn’t protect the sense wire, which reaches the controller
+without passing the relay; that wire has its own TVS (part 4b).</li>
+</ul>
+<p><strong>Reference, not a requirement.</strong> Littelfuse 1.5KE20A:
+17.1 V standoff, 27.7 V clamp, 1500 W, unidirectional, $1.06, Digi-Key,
+2026-10-30.</p>
+<h3>3. Unit on/off switch</h3>
+<p><strong>Job.</strong> Lets the owner turn the unit off while the boat
+stays on. It sits in the thin sense wire (part 4), not in the power
+feed, so turning it off looks to the controller exactly like the boat’s
+main switch going off: the Pi shuts down cleanly, then the controller
+opens the relay. It carries the sense wire’s current: about 5 mA for the
+sense input, plus the controller and relay coil (under 0.1 A in all)
+while it is powering them.</p>
+<p><strong>Must have</strong></p>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Spec</th>
+<th>Requirement</th>
+<th>How to check</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Action</td>
+<td>Latching (stays where it is put): toggle, rocker, or latching
+pushbutton</td>
+<td>Product title “on-off”, “maintained”, “latching”</td>
+</tr>
+<tr class="even">
+<td>Rating</td>
+<td>DC rated, 12 V or more, 1 A or more</td>
+<td>Datasheet “DC rating”</td>
+</tr>
+<tr class="odd">
+<td>Low-current contacts</td>
+<td>Reliable at about 5 mA: gold-plated contacts, or a minimum load of 5
+mA or less</td>
+<td>Datasheet “contact material”, “minimum load”</td>
+</tr>
+<tr class="even">
+<td>Front sealing</td>
+<td>IP67 (IP65 minimum) when panel-mounted, with a boot or O-ring</td>
+<td>Datasheet “front IP rating”</td>
+</tr>
+<tr class="odd">
+<td>Panel hole</td>
+<td>12 to 22 mm round, or a standard rocker cutout</td>
+<td>Datasheet “mounting hole”</td>
+</tr>
+<tr class="even">
+<td>Behind-panel depth</td>
+<td>40 mm or less</td>
+<td>Datasheet drawing</td>
+</tr>
+<tr class="odd">
+<td>Body</td>
+<td>Stainless steel, anodized aluminum, or UV-stable plastic</td>
+<td>Datasheet “material”</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Nice to have</strong></p>
+<ul>
+<li>Lit when on. The LED must be on the switched side, so it draws
+nothing when off.</li>
+<li>Guard, or flush mounting, so a knee or a line can’t flip it.</li>
+<li>A spare switch on the helm’s existing switch panel instead of a
+switch on the box. No extra hole in the box.</li>
+<li><strong>Soft power (momentary button), only if it stays
+simple.</strong> The controller in part 4 can read a momentary button
+instead: press to turn on, hold 2 s to shut down. That needs a momentary
+IP67 button with gold contacts and a few lines of controller firmware,
+and no latch module. The catch: the controller then has to stay powered
+whenever the boat is on, so it draws a few milliamps from the switched
+side all day; with the latching switch it draws nothing.</li>
+</ul>
+<p><strong>Disqualifiers</strong></p>
+<ul>
+<li>Unsealed toggles or rockers.</li>
+<li>Silver contacts rated only for heavy loads (a minimum load above 5
+mA): at sense-wire currents they can fail to make contact.</li>
+<li>Lit switches whose LED draws current when off.</li>
+</ul>
+<p><strong>Fits with</strong></p>
+<ul>
+<li>Wired in series with the sense wire (part 4), between the boat’s
+switched 12 V and the controller’s sense input.</li>
+<li>Its hole goes in the enclosure (part 16) away from where a hand
+rests on the display, or on the helm switch panel.</li>
+</ul>
+<p><strong>Reference, not a requirement.</strong> None priced yet. The
+first pick (EAO 82-5751.1000) was a momentary button and doesn’t fit
+this job.</p>
+<h3>4. Standby power and
+shutdown controller</h3>
+<p><strong>Job.</strong> Makes power loss safe, using the boat’s own
+battery as the backup. The unit is powered from <strong>standby
+(unswitched) power</strong>: the battery side of the main battery
+switch. A thin <strong>sense wire</strong> from the switched side tells
+it whether the boat is on. When the main switch goes off, the unit is
+still powered, so the Pi shuts down cleanly; then the controller opens a
+relay and the unit is disconnected from the battery completely. When the
+main switch comes back on, the sense wire powers the controller, which
+closes the relay. Mandatory: the owner requires a clean shutdown
+whenever the boat’s main battery switch is turned off (owner,
+2026-10-31: “Finding the boat’s standby power is the way to go”).</p>
+<p>What happens, step by step:</p>
+<ol type="1">
+<li>Main switch off (or the unit switch, part 3): the sense wire
+drops.</li>
+<li>After 2 s with no sense (longer than an engine-start dip), the
+controller sets a “power going away” line to the Pi and holds it until
+the relay opens. It is a level, not a pulse, so a Pi that is still
+booting reads it when its service starts. The display stays on through
+the shutdown, which is fine because the battery is still connected.</li>
+<li>The Pi shuts down, set to finish within about 60 s (services get a
+30 s stop limit, plan 4), and signals “halted”: its 3.3 V rail drops
+when it powers off after halt. That needs the Pi 5 EEPROM settings
+POWER_OFF_ON_HALT=1 and WAKE_ON_GPIO=0 (plan 4 sets them); a bench check
+confirms the header’s 3.3 V really drops. If it doesn’t, the halted GPIO
+becomes required instead.</li>
+<li>The controller releases its hold, and the relay opens. If the Pi
+never signals, the firmware acts after about 3 minutes: with sense still
+absent it releases the hold; if sense has come back meanwhile (the Pi
+hung while shutting down), it power-cycles instead, counted toward the
+cap in step 6. Independently, a hardware timer opens the relay 3.5 to 6
+minutes after sense drops, even if the controller has hung. The buck,
+the display and the controller itself lose power; nothing draws from the
+battery.</li>
+<li>If the sense wire is live again (it came back during the shutdown),
+the controller is still powered from it: it keeps the relay open for at
+least 2 s, then closes it, and the Pi boots. If not, everything stays
+dead until the main switch comes back on.</li>
+<li>If the Pi halts on its own while the boat is on (a software
+power-off, or after an update), the controller power-cycles it the same
+way, so the Pi reboots. It acts only on a change from running to halted
+after the Pi has been seen running (3.3 V present for at least 10 s),
+and only once the 3.3 V has been absent for at least 5 s (so a plain
+reboot’s blip, if the Pi 5 has one, doesn’t count; bench check), never
+on the Pi simply being off at power-up. If the Pi’s 3.3 V doesn’t appear
+within 60 s of the relay closing, it power-cycles once (a Pi left halted
+with its 5 V up). These cycles count toward the cap: it gives up after 3
+power-cycles in 10 minutes (then it leaves the unit off until the switch
+is cycled), so it can’t loop. The way to turn the unit off is the
+switch.</li>
+</ol>
+<p>It has four pieces:</p>
+<p><strong>4a. Standby feed.</strong> A fused circuit from the battery
+side of the main switch, to the box.</p>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Spec</th>
+<th>Requirement</th>
+<th>How to check</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Source</td>
+<td>Battery side of the main battery switch: an existing standby circuit
+near the helm, or a new run from the battery</td>
+<td>Boat wiring diagram; meter it with the main switch off</td>
+</tr>
+<tr class="even">
+<td>Battery</td>
+<td>The house battery (owner confirmed the boat has one). Until the
+diagram shows the house battery is kept apart from engine starting,
+assume a crank dips it</td>
+<td>Wiring diagram</td>
+</tr>
+<tr class="odd">
+<td>Fuse</td>
+<td>At the source, within 7 in of the battery or standby bus (ABYC
+E-11), sized per part 1</td>
+<td>Install rule</td>
+</tr>
+<tr class="even">
+<td>ABYC</td>
+<td>Check the feed against ABYC E-11’s list of loads allowed ahead of
+the battery switch; if it isn’t covered, it is a deliberate departure
+(recorded below)</td>
+<td>ABYC E-11 text</td>
+</tr>
+<tr class="odd">
+<td>Labels</td>
+<td>“Always live” label at the fuse, on the cable at both ends, and
+inside the box: the box stays live for up to about 6 minutes after the
+main switch goes off</td>
+<td>Install rule</td>
+</tr>
+<tr class="even">
+<td>Wire</td>
+<td>Per part 19: 16 AWG up to a 10 ft run, 14 AWG for 10 to 20 ft, 12
+AWG for 20 to 25 ft</td>
+<td>Measure the run</td>
+</tr>
+</tbody>
+</table>
+<p><strong>4b. Sense input.</strong> Turns the switched 12 V into a
+signal for the controller, with 12 V kept off its pins. The Pi never
+reads sense; it only gets “power going away” from the controller.</p>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Spec</th>
+<th>Requirement</th>
+<th>How to check</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Isolation</td>
+<td>Optocoupler (the 12 V side and the logic side share nothing but
+light)</td>
+<td>Datasheet “optocoupler”, “photocoupler”</td>
+</tr>
+<tr class="even">
+<td>Where it connects</td>
+<td>On the sense wire itself, before the diode that feeds the
+controller. Never at the point where the two diodes join: that point is
+live whenever the relay is closed, and the unit would never shut
+down</td>
+<td>Circuit</td>
+</tr>
+<tr class="odd">
+<td>Pull-down</td>
+<td>A resistor (about 10 kOhm) from the sense wire to negative inside
+the box, so an open switch reads “off” even with diode leakage</td>
+<td>Circuit</td>
+</tr>
+<tr class="even">
+<td>Surge clamp</td>
+<td>Its own small TVS (600 W class, 15 to 18 V standoff) where the sense
+wire enters the box: the main TVS sits after the relay and can’t protect
+this wire</td>
+<td>Datasheet, as for part 2</td>
+</tr>
+<tr class="odd">
+<td>Threshold</td>
+<td>On above about 8 V, off below about 5 V (a resistor and a zener or a
+divider set this)</td>
+<td>Circuit values; bench check with the bench supply</td>
+</tr>
+<tr class="even">
+<td>Sense current</td>
+<td>About 5 mA into the optocoupler LED at 12 V</td>
+<td>Resistor value</td>
+</tr>
+<tr class="odd">
+<td>LED current at 30 V</td>
+<td>Half the optocoupler LED’s absolute maximum or less. With a 5 mA
+design point and an 8 V threshold, a plain resistor gives about 27 mA at
+30 V, so a current-limiting part (constant-current diode or transistor)
+is required</td>
+<td>Optocoupler datasheet “IF absolute maximum”</td>
+</tr>
+<tr class="even">
+<td>Output</td>
+<td>To the controller only, open-collector, pulled up from the
+controller’s own 3.3 V (the controller must read sense when the Pi is
+off: every cold start and every restart)</td>
+<td>Circuit</td>
+</tr>
+<tr class="odd">
+<td>Sense wire fuse</td>
+<td>1 A at the switched source, or tap an existing fused switched
+circuit</td>
+<td>Install rule</td>
+</tr>
+<tr class="even">
+<td>Sense source</td>
+<td>A circuit that stays live while the engine cranks (the helm panel’s
+main feed after the battery switch). Not an ignition or accessory
+circuit: those drop for the whole crank, and every slow start would
+become a reboot</td>
+<td>Wiring diagram</td>
+</tr>
+<tr class="odd">
+<td>Sense goes to 0 V</td>
+<td>With the main switch off, the tap reads 0 V on a meter. A device
+with its own unswitched feed can hold a switched bus up, and the unit
+would never shut down</td>
+<td>Meter, main switch off, everything else as normal</td>
+</tr>
+<tr class="even">
+<td>Input survival</td>
+<td>30 V on the sense wire, behind the sense TVS</td>
+<td>Resistor power rating at 30 V</td>
+</tr>
+</tbody>
+</table>
+<p><strong>4c. Controller.</strong> A small microcontroller running the
+sequence above. It is powered from the sense wire (after the on/off
+switch) or from the relay output, through two diodes, so it is unpowered
+whenever the unit is off. The diode from the sense wire is a low-leakage
+silicon diode (not a Schottky, whose leakage rises steeply with heat and
+could hold a dead sense wire high). We write the firmware; it gets
+flashed once over USB.</p>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Spec</th>
+<th>Requirement</th>
+<th>How to check</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Inputs</td>
+<td>Sense (from 4b); the Pi’s 3.3 V through a divider (required: “seen
+running” in step 6 needs it, since a halted GPIO reads low both when the
+Pi runs and when it is off); relay closed (read from the coil logic’s
+output, a logic-level signal, not from the 12 V relay output, whose
+voltage sags with the battery). A halted GPIO is optional on top; if the
+bench check makes it required, “running” means 3.3 V present AND halted
+low everywhere (step 6, the 60 s rule)</td>
+<td>Pin count: 6 or more free I/O, 7 with the halted GPIO</td>
+</tr>
+<tr class="even">
+<td>Outputs</td>
+<td>Hold line and cycle request (into the coil logic), “power going
+away” to a Pi GPIO</td>
+<td>Same</td>
+</tr>
+<tr class="odd">
+<td>Start-up rule</td>
+<td>At boot the controller raises hold only once it reads the relay as
+closed (so the hardware 2 s delay is never skipped), and starts the 60 s
+no-boot timer from the relay being seen closed, whether that happened
+before or after the controller booted. Once raised, hold stays on until
+a deliberate release (step 4) or power-cycle; it is never dropped
+because the relay-closed input reads low</td>
+<td>Firmware review</td>
+</tr>
+<tr class="even">
+<td>Logic levels</td>
+<td>3.3 V. Lines to the Pi go through series resistors (about 1 kOhm)
+and are driven low or released whenever the Pi’s 3.3 V is absent, so
+they can’t power a Pi that is off</td>
+<td>Board spec; circuit</td>
+</tr>
+<tr class="odd">
+<td>Power</td>
+<td>From 12 V (sense wire or relay output, diode-ORed) through a
+regulator rated for 30 V</td>
+<td>Regulator datasheet “absolute maximum”</td>
+</tr>
+<tr class="even">
+<td>Coil logic</td>
+<td>In hardware, not firmware alone: coil on when (sense present AND the
+controller isn’t requesting a power-cycle) OR (the controller’s hold
+line is on AND the hardware timer hasn’t expired). The hold line is on
+continuously from boot whenever the relay is closed and no power-cycle
+is running, so it is already on at the instant sense drops (a relay
+releases in milliseconds). A power-cycle drops the hold line and raises
+the cycle request together. Both controller lines have pull-downs. The
+sense term’s rising edge is delayed about 2 s in hardware (falling edge
+immediate), so the relay always stays open at least 2 s even if the
+controller is unpowered when sense returns. Result: a controller reset
+or hang never cuts the Pi while the boat is on, and can’t keep the unit
+on the battery after it’s off</td>
+<td>Circuit; bench test: switch sense off with the Pi running and check
+it shuts down cleanly</td>
+</tr>
+<tr class="odd">
+<td>Relay drive</td>
+<td>The coil logic’s output drives the coil through a transistor, with a
+flyback diode</td>
+<td>Circuit</td>
+</tr>
+<tr class="even">
+<td>Watchdog</td>
+<td>Hardware watchdog and brown-out reset enabled (with the coil logic
+above, a reset while the boat is on doesn’t cut power)</td>
+<td>Microcontroller datasheet</td>
+</tr>
+<tr class="odd">
+<td>Hardware timer</td>
+<td>Separate from the microcontroller: a timer or counter IC (not a long
+RC on an electrolytic, whose leakage can stop it firing). Held reset
+while sense is present and expires 3.5 to 6 minutes after sense drops,
+across its tolerances, with a clean on/off output. It can’t chatter:
+once the contacts open with sense absent, nothing powers the coil</td>
+<td>Circuit; bench test hangs the controller</td>
+</tr>
+<tr class="even">
+<td>One sense signal</td>
+<td>The controller, the coil logic and the timer reset all use the same
+Schmitt-buffered signal from the optocoupler (8 V “on” threshold), so a
+back-fed sense wire sitting at a few volts reads “off” everywhere. The
+gates, the timer and the optocoupler’s pull-up run from the controller’s
+diode-ORed supply</td>
+<td>Circuit</td>
+</tr>
+<tr class="odd">
+<td>Firmware rule</td>
+<td>Hold per the start-up rule. After sense drops, keep holding until
+the Pi signals halted, then release. At about 3 minutes (always shorter
+than the hardware timer’s 3.5-minute minimum): release hold if sense is
+still absent; power-cycle if sense has come back (counted toward the
+cap)</td>
+<td>Firmware review</td>
+</tr>
+<tr class="even">
+<td>Programming</td>
+<td>USB, with a free toolchain</td>
+<td>Product page</td>
+</tr>
+<tr class="odd">
+<td>Temperature</td>
+<td>Rated to +85 °C</td>
+<td>Datasheet</td>
+</tr>
+</tbody>
+</table>
+<p><strong>4d. Relay.</strong> Connects the standby feed to everything
+in the box, and disconnects it completely when the unit is off.</p>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Spec</th>
+<th>Requirement</th>
+<th>How to check</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Type</td>
+<td>Electromechanical, normally open (SPST-NO), non-latching, 12 V
+coil</td>
+<td>Datasheet “contact form”, “coil voltage”</td>
+</tr>
+<tr class="even">
+<td>Contacts</td>
+<td>10 A or more at 14 V DC (resistive); 16 A or more preferred for
+start-up surge</td>
+<td>Datasheet “contact rating”, DC</td>
+</tr>
+<tr class="odd">
+<td>Coil power</td>
+<td>0.6 W or less (it is heat inside the box while the unit runs)</td>
+<td>Datasheet “coil power” or coil resistance (12 V squared over
+ohms)</td>
+</tr>
+<tr class="even">
+<td>Must-operate voltage (closing)</td>
+<td>70% of nominal or lower at 20 °C (8.4 V). Must-operate rises about
+0.4% per °C, so that becomes about 10.1 V at 70 °C. The coil gets the
+battery minus about 1.2 V (silicon sense diode, wiring, driver
+transistor), so it closes hot down to about 11.3 V at the battery. A 75%
+coil would need about 12.0 V, too close to a half-charged battery</td>
+<td>Datasheet “must operate” in % of nominal at 20 °C</td>
+</tr>
+<tr class="odd">
+<td>Staying closed (cranks)</td>
+<td>Accepted by test, not datasheet: with the box hot, dip the supply to
+the crank low point and check the relay holds. Datasheets don’t
+guarantee holding below must-operate. If it fails, choose a more
+sensitive coil (a 9 V crank dip needs about 56% at 70 °C)</td>
+<td>Bench crank test</td>
+</tr>
+<tr class="even">
+<td>Diodes</td>
+<td>The diode from the relay output to the coil supply can be a Schottky
+(saves about 0.4 V while holding; its leakage is harmless there). The
+one from the sense wire stays silicon (4c)</td>
+<td>Circuit</td>
+</tr>
+<tr class="odd">
+<td>Maximum coil voltage</td>
+<td>15 V or more continuous at 70 °C (charging runs 14.8 V)</td>
+<td>Datasheet “maximum continuous coil voltage”</td>
+</tr>
+<tr class="even">
+<td>Sealing</td>
+<td>Sealed (RT III, “wash tight”) or flux-proof inside the sealed
+box</td>
+<td>Datasheet</td>
+</tr>
+<tr class="odd">
+<td>Temperature</td>
+<td>Rated to +70 °C or higher</td>
+<td>Datasheet</td>
+</tr>
+<tr class="even">
+<td>Mounting</td>
+<td>PCB pins or 6.3 mm tabs in a socket</td>
+<td>Datasheet</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Nice to have</strong></p>
+<ul>
+<li>The controller reads the battery voltage, so the app can show
+it.</li>
+<li>The controller on a small board with screw terminals.</li>
+<li>Relay with a built-in coil diode and an LED.</li>
+<li>Bench tests from the bench supply: cut the “switched” supply
+mid-boot, mid-run and mid-shutdown, and check the Pi always comes back;
+hang the controller on purpose and check the relay still opens within
+the hardware limit; dip the supply to the crank low point and check the
+relay stays closed; leave the unit switch off in a warm box (50 °C) and
+check the controller reads “off”.</li>
+</ul>
+<p><strong>Disqualifiers</strong></p>
+<ul>
+<li>Powering the unit from the switched side only: then the main switch
+is a hard power cut, which the owner ruled out.</li>
+<li>Unfused standby feeds, or a fuse at the box end: the run from the
+battery is unprotected.</li>
+<li>Anything that stays connected to the battery when the unit is off:
+MOSFET load switches, latch modules (the Pololu #2813 draws 0.2 µA off,
+and it can lose its state on dips), always-on controllers. The owner
+requires a complete disconnect.</li>
+<li>Latching (bistable) relays: they hold their last position without
+power, so a controller fault mid-shutdown could leave the unit connected
+to the battery. (A non-latching relay alone isn’t enough either: it is
+held by the controller it powers, which is why the hardware time limit
+in 4c is a must-have.)</li>
+<li>Relays with coil power over 1 W (most 30/40 A automotive relays draw
+1.5 to 2 W): extra heat in the box.</li>
+<li>Batteries or supercapacitors inside the box: not needed with standby
+power, and lithium can’t be charged above about 45 °C.</li>
+</ul>
+<p><strong>Fits with</strong></p>
+<ul>
+<li>The controller reads the Pi’s 3.3 V (required) and drives one Pi
+GPIO, “power going away”. A “halted” GPIO from the Pi is optional, and
+becomes required only if the bench check shows the Pi 5’s 3.3 V doesn’t
+drop after halt. Use pins the CAN HAT doesn’t (part 11); a “halted” pin
+must stay low through boot, with an external pull-down.</li>
+<li>Until the wiring diagram shows otherwise, assume engine starts dip
+the battery the unit runs on (the boat has a main engine and a kicker).
+The buck (part 5) must keep running down to about 7 V, and the relay
+must stay closed (part 4d); the 2 s sense delay keeps a crank from
+shutting the unit down.</li>
+<li>The 12 V cable into the box becomes three conductors: standby +,
+sense, and negative (part 19).</li>
+<li>The filesystem design (read-only root, A/B slots, plan 4) still
+matters: it covers a disconnected or dead battery, and a hung
+shutdown.</li>
+</ul>
+<p><strong>Reference, not a requirement.</strong> None chosen yet, for
+the relay or the controller.</p>
+<p>Alternatives considered (2026-10-31):</p>
+<ul>
+<li><strong>Supercapacitor hold-up in the box</strong> (DIY, about $40
+to $60): works without standby power, but costs more, takes about 60 x
+40 x 45 mm, and the cells are rated to about 65 °C. Kept only as a
+fallback if no standby feed can be run.</li>
+<li><strong>Geekworm UPS_Scap_5V5A</strong> ($48.90): its wiki documents
+a 1 to 2 s window during shutdown where the Pi can stay off, its input
+stops at 24 V, and its signals reach the Pi only through contacts under
+the board, where the NVMe adapter goes.</li>
+<li><strong>Battery UPS boards</strong> (Li-ion, LiFePO4, NiMH):
+charging is limited to about 45 °C, below the box’s inside
+temperature.</li>
+<li><strong>Small sealed lead-acid battery</strong>: heat-tolerant but
+big and heavy, and still needs this controller.</li>
+</ul>
+<h3>5. Buck regulator (12 V to 5 V)</h3>
+<p><strong>Job.</strong> Turns boat 12 V into the 5 V the Pi needs, at
+up to 5 A, through every voltage the boat throws at it, including engine
+starts on the same battery.</p>
+<p><strong>Must have</strong></p>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Spec</th>
+<th>Requirement</th>
+<th>How to check</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Input range</td>
+<td>9 to 16 V operating, and keeps 5 V out down to about 7 V at 3 A
+(engine starts)</td>
+<td>Datasheet “input voltage range”, dropout or minimum input at
+load</td>
+</tr>
+<tr class="even">
+<td>Input survival</td>
+<td>30 V or more absolute maximum (the TVS clamp)</td>
+<td>Datasheet “absolute maximum”</td>
+</tr>
+<tr class="odd">
+<td>Output voltage</td>
+<td>5.0 to 5.3 V, fixed or adjustable into that range, 3% accuracy or
+better</td>
+<td>Datasheet “output voltage”</td>
+</tr>
+<tr class="even">
+<td>Output current</td>
+<td>5 A continuous at 12 V input</td>
+<td>“Maximum continuous output current” graph or table at 12 V in;
+ignore peak numbers</td>
+</tr>
+<tr class="odd">
+<td>Temperature</td>
+<td>Delivers that current at 60 °C ambient, or a derating curve that
+shows it</td>
+<td>Datasheet derating graph</td>
+</tr>
+<tr class="even">
+<td>Topology</td>
+<td>Switching (buck, or buck-boost)</td>
+<td>Datasheet; efficiency spec present</td>
+</tr>
+<tr class="odd">
+<td>Efficiency</td>
+<td>85% or better at 2 to 4 A</td>
+<td>Efficiency graph</td>
+</tr>
+<tr class="even">
+<td>Protection</td>
+<td>Reverse polarity (or add a diode), overcurrent,
+over-temperature</td>
+<td>Feature list</td>
+</tr>
+<tr class="odd">
+<td>Mounting</td>
+<td>Holes or a tab, and terminals or pads for 16 AWG in and 20 AWG
+out</td>
+<td>Photo, drawing</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Nice to have</strong></p>
+<ul>
+<li>USB-C PD source that advertises 5 V 5 A. The Pi then runs its USB
+ports at full current without the <code>usb_max_current_enable=1</code>
+config line.</li>
+<li>Conformal coating or potting (salt air, condensation).</li>
+<li>Power-good output (handy for bring-up checks).</li>
+<li>Screw terminals.</li>
+<li>Made by a maker that publishes graphs, not just a headline
+number.</li>
+</ul>
+<p><strong>Disqualifiers</strong></p>
+<ul>
+<li>Linear regulators (LM7805 class): at 12 V in and 5 A out they’d turn
+35 W into heat inside a sealed box.</li>
+<li>Unbranded “12 V to 5 V 5 A car converter” modules with no datasheet
+or efficiency graph: many sag or overheat well below their label.</li>
+<li>USB car chargers (cigarette-lighter plugs): no clean wired input,
+and most can’t supply 5 A at 5 V.</li>
+<li>Output below 5.0 V, or above 5.3 V.</li>
+<li>Absolute maximum input below 30 V: it wouldn’t survive what the TVS
+lets through.</li>
+</ul>
+<p><strong>Fits with</strong></p>
+<ul>
+<li>The Pi 5 flags undervoltage below about 4.63 V (a vendor-reported
+figure; not in Raspberry Pi’s own documents). A 5.0 V buck minus about
+0.1 V in the lead leaves about 4.9 V. Confirm on the bench with
+<code>vcgencmd get_throttled</code> (must read
+<code>throttled=0x0</code>).</li>
+<li>Output goes into the USB-C power lead (part 7), never to the GPIO 5
+V pins.</li>
+<li>Fed from the relay (part 4d), so it is off when the unit is
+off.</li>
+<li>Its output must not feed a 5 V display rated to 5.2 V (the 4D
+reference is).</li>
+</ul>
+<p><strong>Reference, not a requirement.</strong> Pololu D42V55F5.3,
+$47.95, Pololu, 2026-10-29 (in the bench cart). Per its product page
+(read 2026-10-31): 5.3 V within 3%, input up to 60 V, reverse-voltage
+protection, typically 6 A at 42 V in (4 to 8 A depending on voltages, no
+heatsink, room temperature), 25.4 x 25.4 x 9 mm. No published
+temperature derating. Pololu’s D36V50F5 (5.0 V), named in the design
+spec, also meets the voltage rule.</p>
+<h3>6. Display power</h3>
+<p><strong>Job.</strong> Feeds the display from the relay’s 12 V output
+(part 4d), safely across 9 to 16 V and the 30 V the TVS lets through.
+This is a requirement on the display (part 13) first; a separate
+regulator is only bought if the chosen display can’t meet it. The
+display stays on through a shutdown and goes off with the rest of the
+unit.</p>
+<p><strong>Must have, one of:</strong></p>
+<ul>
+<li><strong>A. 12 V input on the display</strong> rated 9 to 16 V
+continuous and 30 V or more absolute maximum, both stated by the
+maker.</li>
+<li><strong>B. Its own regulator</strong> for the display alone, fed
+from the relay output after the TVS, whenever A isn’t stated:
+<ul>
+<li>5 V displays: a second buck with 5.0 V output (not 5.3 V), rated
+1.5x the display’s current, 30 V input survival.</li>
+<li>12 V displays: a buck-boost (step-up/step-down) regulator with 12 V
+output, input 9 to 30 V or wider, rated 1.5x the display’s current
+(about 1 A for the reference panel).</li>
+<li>Either regulator: reverse-polarity protected (or behind a part that
+is).</li>
+</ul></li>
+</ul>
+<p><strong>Disqualifiers</strong></p>
+<ul>
+<li>Powering the display from the Pi’s USB ports. The Pi 5 shares 1.6 A
+across all four ports, and a 1000-nit panel draws more than that at 5 V
+(1.7 A for the reference).</li>
+<li>Powering a 5 V display from the Pi’s 5.3 V buck when the display’s
+maximum is under 5.3 V.</li>
+<li>A 12 V display wired straight to the feed when its maker doesn’t
+state a 30 V maximum. A 16 V maximum isn’t enough: clamped spikes reach
+about 28 V.</li>
+</ul>
+<p><strong>Fits with</strong></p>
+<ul>
+<li>Fed from the relay (part 4d), so the display is off when the unit is
+off.</li>
+<li>The reference display’s 12 V barrel jack is rated “12.0 V typ” with
+no maximum, so it needs option B unless 4D Systems confirms 30 V.</li>
+</ul>
+<p><strong>Reference, not a requirement.</strong> None priced yet.
+Likely needed with the 4D panel.</p>
+<h3>7. USB-C power lead (buck to
+Pi)</h3>
+<p><strong>Job.</strong> Carries the 5 V into the Pi’s USB-C power port.
+Using the port, not the GPIO 5 V pins, keeps the Pi’s own input
+protection in the path.</p>
+<p><strong>Must have</strong></p>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Spec</th>
+<th>Requirement</th>
+<th>How to check</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Plug</td>
+<td>USB-C male, power wires brought out to bare ends</td>
+<td>Photo, title “pigtail”, “DIY”, “bare wire”</td>
+</tr>
+<tr class="even">
+<td>Wire size</td>
+<td>20 AWG or heavier on VBUS and GND</td>
+<td>Product page wire gauge</td>
+</tr>
+<tr class="odd">
+<td>Length</td>
+<td>1 ft (30 cm) or shorter</td>
+<td>Product page</td>
+</tr>
+<tr class="even">
+<td>Current</td>
+<td>Rated 5 A</td>
+<td>Product page</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Nice to have</strong></p>
+<ul>
+<li>Right-angle plug, to save room beside the Pi.</li>
+<li>Spare in the box (the reference is a 2-pack).</li>
+</ul>
+<p><strong>Disqualifiers</strong></p>
+<ul>
+<li>Thin charging pigtails: at 5 A over 1 ft, 24 AWG drops about 0.26 V
+and 28 AWG about 0.65 V. The Pi throttles.</li>
+<li>Leads longer than needed: every foot adds drop.</li>
+</ul>
+<p><strong>Reference, not a requirement.</strong> ELNONE USB-C pigtail,
+20 AWG, 6-wire, 1 ft, 2-pack, $7.99, Amazon, 2026-10-29 (in the bench
+cart).</p>
+<h2>Compute and storage</h2>
+<h3>8. Raspberry Pi 5, 8 GB</h3>
+<p><strong>Job.</strong> Runs the chart app, the map rendering on its
+GPU, and the NMEA 2000 daemon. Everything else plugs into it.</p>
+<p><strong>Must have</strong></p>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Spec</th>
+<th>Requirement</th>
+<th>How to check</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Model</td>
+<td>Raspberry Pi 5</td>
+<td>Title and photo: two micro-HDMI, PCIe connector, power button</td>
+</tr>
+<tr class="even">
+<td>Memory</td>
+<td>8 GB (owner’s choice, headroom for future chart layers)</td>
+<td>Title, part number SC1112 or SC1432 (both are the 8 GB board)</td>
+</tr>
+<tr class="odd">
+<td>Seller</td>
+<td>Raspberry Pi approved reseller, or the reseller’s own Amazon
+store</td>
+<td>raspberrypi.com product page “Buy” list</td>
+</tr>
+<tr class="even">
+<td>Operating range</td>
+<td>0 to 70 °C ambient (the board’s own rating)</td>
+<td>Raspberry Pi 5 product brief (October 2026 edition)</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Nice to have</strong></p>
+<ul>
+<li>Buying from the same seller as the cooler (part 9) to save
+shipping.</li>
+</ul>
+<p><strong>Disqualifiers</strong></p>
+<ul>
+<li>Kits with a wall power supply, case, or SD card: paying for parts
+this build replaces.</li>
+<li>Compute Module 5, Pi 500, Pi 4: different board, different fit. The
+software targets the Pi 5.</li>
+<li>2 GB or 4 GB: below the owner’s chosen headroom.</li>
+<li>Marketplace sellers with no reseller status: counterfeit and
+relabeled boards exist.</li>
+</ul>
+<p><strong>Fits with</strong></p>
+<ul>
+<li>Board 85 x 56 mm. Its USB-C, micro-HDMI and PCIe connectors are on
+the edges, so the enclosure (part 16) needs room beside it for plugs and
+cable bends, not just above it.</li>
+<li>The 40-pin header carries the CAN HAT (part 11); the PCIe connector
+carries the NVMe adapter (part 10). The underside holds the NVMe
+adapter.</li>
+<li>70 °C is the board’s limit, and the SSD’s 70 °C applies to the drive
+itself, which runs above the air; part 20 targets 55 °C inside the
+box.</li>
+</ul>
+<p><strong>Reference, not a requirement.</strong> Raspberry Pi 5, 8 GB,
+SC1112, $175.00, Digi-Key, 2026-10-29 (rechecked 2026-10-30: $175.00, in
+stock). Digi-Key’s page shows part SC1432, the same board. Same price at
+CanaKit.</p>
+<h3>9. Cooler</h3>
+<p><strong>Job.</strong> Keeps the Pi’s chip below its throttling
+temperature. Inside a sealed box it only moves heat into the box’s air;
+part 20 gets it out of the box.</p>
+<p><strong>Must have</strong></p>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Spec</th>
+<th>Requirement</th>
+<th>How to check</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Fit</td>
+<td>Made for the Pi 5 (uses its fan connector and mounting holes)</td>
+<td>Title “for Raspberry Pi 5”</td>
+</tr>
+<tr class="even">
+<td>Height above the board</td>
+<td>Low enough to clear the CAN HAT’s underside on its standoffs</td>
+<td>Product drawing; reference is 13.7 mm</td>
+</tr>
+<tr class="odd">
+<td>Fan control</td>
+<td>Plugs into the Pi 5’s 4-pin fan header (speed set by the Pi)</td>
+<td>Photo of the cable and plug</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Nice to have</strong></p>
+<ul>
+<li>Official part (pins and thermal pads made for the board).</li>
+</ul>
+<p><strong>Disqualifiers</strong></p>
+<ul>
+<li>Enclosing cases (Argon, Flirc, aluminum heatsink cases): they cover
+the 40-pin header and the PCIe connector this build needs.</li>
+<li>Tall tower coolers: they push the CAN HAT up and the stack past the
+enclosure depth.</li>
+<li>Passive-only heatsinks: no airflow in a still box.</li>
+</ul>
+<p><strong>Fits with</strong></p>
+<ul>
+<li>The CAN HAT (part 11) must sit higher than the cooler. With a 13.7
+mm cooler the HAT needs standoffs of about 16 mm plus a 40-pin header
+extender. Check what the HAT ships with.</li>
+<li>The official Active Cooler is designed to stay on once fitted; plan
+the stack before clipping it on.</li>
+</ul>
+<p><strong>Reference, not a requirement.</strong> Raspberry Pi Active
+Cooler, SC1148, $5.00, Digi-Key, 2026-10-29 (in the bench cart). Height
+13.7 mm per Raspberry Pi’s product brief.</p>
+<h3>10. Storage: NVMe adapter,
+SSD, microSD</h3>
+<p><strong>Job.</strong> The SSD holds the operating system, the app,
+chart packs and track logs, and the Pi boots from it. The adapter
+connects it to the Pi’s PCIe port. The microSD card is only for first
+boot and recovery; it lives in a drawer.</p>
+<p><strong>NVMe adapter: must have</strong></p>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Spec</th>
+<th>Requirement</th>
+<th>How to check</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Interface</td>
+<td>Pi 5 PCIe flat ribbon (FFC)</td>
+<td>Title “for Raspberry Pi 5”, ribbon in photo</td>
+</tr>
+<tr class="even">
+<td>Mounting</td>
+<td>Under the Pi, leaving the 40-pin header free</td>
+<td>Photos; “bottom mount”</td>
+</tr>
+<tr class="odd">
+<td>Drive sizes</td>
+<td>M.2 M-key, 2230 to 2280</td>
+<td>Product page</td>
+</tr>
+<tr class="even">
+<td>Boot</td>
+<td>Pi 5 can boot from it</td>
+<td>Product page or maker’s docs</td>
+</tr>
+</tbody>
+</table>
+<p><strong>SSD: must have</strong></p>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Spec</th>
+<th>Requirement</th>
+<th>How to check</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Type</td>
+<td>M.2 NVMe, M-key (not SATA)</td>
+<td>Title “NVMe”, “PCIe”; a SATA drive says “SATA” or has B+M key
+notches</td>
+</tr>
+<tr class="even">
+<td>Length</td>
+<td>2280 or shorter (fits the adapter)</td>
+<td>Title “2280”, “2242”, “2230”</td>
+</tr>
+<tr class="odd">
+<td>Capacity</td>
+<td>128 GB minimum; 250 to 256 GB preferred at a similar price</td>
+<td>Title</td>
+</tr>
+<tr class="even">
+<td>Pi 5 evidence</td>
+<td>On the adapter maker’s tested list, or Pi 5 owners report it
+booting</td>
+<td>Adapter maker’s compatibility page; forum reports with the exact
+model</td>
+</tr>
+<tr class="odd">
+<td>Operating temperature</td>
+<td>0 to 70 °C</td>
+<td>Datasheet</td>
+</tr>
+<tr class="even">
+<td>Seller</td>
+<td>Sold by the brand, or by the retailer itself</td>
+<td>“Sold by” line</td>
+</tr>
+</tbody>
+</table>
+<p><strong>microSD: must have</strong></p>
+<table>
+<thead>
+<tr class="header">
+<th>Spec</th>
+<th>Requirement</th>
+<th>How to check</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Class</td>
+<td>A2 (A1 acceptable), U3</td>
+<td>Logo on the card photo, title</td>
+</tr>
+<tr class="even">
+<td>Capacity</td>
+<td>16 to 64 GB</td>
+<td>Title</td>
+</tr>
+<tr class="odd">
+<td>Seller</td>
+<td>Sold by the brand or the retailer itself</td>
+<td>“Sold by” line</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Nice to have</strong></p>
+<ul>
+<li>SSD with TLC flash and a published endurance (TBW) figure.</li>
+<li>SSD with power-loss protection or a known-good record on sudden
+power loss (a second layer behind the clean-shutdown design).</li>
+<li>SSD with low idle power; the adapter takes its power from the Pi’s 5
+V.</li>
+<li>Adapter that comes with standoffs and the ribbon.</li>
+<li>A spare microSD you already own (any A2 card 16 GB or more
+works).</li>
+</ul>
+<p><strong>Disqualifiers</strong></p>
+<ul>
+<li>Top-mount M.2 HATs that cover the 40-pin header: the CAN HAT needs
+it, and stacking both doubles the height.</li>
+<li>SATA M.2 drives: the Pi 5 PCIe port can’t talk to them.</li>
+<li>WD drives with SanDisk controllers (reports of the Pi 5 not
+booting), Patriot P300/P310, and look-alike “Samsung” listings from
+third-party sellers.</li>
+<li>2280 drives on an adapter that only fits 2230/2242.</li>
+</ul>
+<p><strong>Fits with</strong></p>
+<ul>
+<li>Leave PCIe at the default Gen 2. The charts don’t need Gen 3, and
+Gen 3 is where errors show up.</li>
+<li>On arrival, update the bootloader, check the controller with
+<code>lspci -nn</code>, and soak-test booting from the SSD (repeated
+reboots plus a long file copy) inside the return window.</li>
+<li>The adapter adds height under the Pi; measure the full stack before
+the enclosure is drilled.</li>
+</ul>
+<p><strong>Reference, not a requirement.</strong></p>
+<ul>
+<li>Pimoroni NVMe Base, PIM699, $29.99, Amazon, 2026-10-29 (in the bench
+cart; $19.95 at Adafruit).</li>
+<li>Netac NV3000 250 GB, $49.66, Amazon sold by Netac, 2026-10-29 (in
+the bench cart). On Pimoroni’s tested list (model line). Backup:
+TeamGroup MP33 256 GB, $63.99.</li>
+<li>SanDisk Extreme 64 GB A2 microSD, $31.99, Amazon, 2026-10-29 (in the
+bench cart).</li>
+</ul>
+<h2>NMEA 2000</h2>
+<h3>11. NMEA 2000 interface
+(isolated CAN)</h3>
+<p><strong>Job.</strong> Connects the Pi to the boat’s NMEA 2000 bus so
+the app gets depth, speed, heading and AIS. It must be electrically
+isolated: the Pi’s ground comes from the house battery wiring, the bus
+ground comes from wherever the bus is powered, and the two can sit at
+different voltages. Isolation keeps current from flowing between them
+through the Pi.</p>
+<p><strong>Must have</strong></p>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Spec</th>
+<th>Requirement</th>
+<th>How to check</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Isolation</td>
+<td>Galvanic: digital isolator (or isolated transceiver) plus an
+isolated DC-DC for the bus side</td>
+<td>Product page “isolated”, and the schematic shows an isolator chip
+and an isolated power module</td>
+</tr>
+<tr class="even">
+<td>Bus</td>
+<td>CAN 2.0B at 250 kbit/s</td>
+<td>Product page</td>
+</tr>
+<tr class="odd">
+<td>Linux driver</td>
+<td>Shows up as a SocketCAN interface (<code>can0</code>) with a
+mainline kernel driver</td>
+<td>Wiki names the driver (mcp2515, mcp251xfd); setup is a device-tree
+overlay, not a vendor binary</td>
+</tr>
+<tr class="even">
+<td>Pi 5 support</td>
+<td>Listed explicitly</td>
+<td>Product page compatibility list</td>
+</tr>
+<tr class="odd">
+<td>Termination</td>
+<td>120 ohm terminator that can be turned off</td>
+<td>Jumper or switch on the board</td>
+</tr>
+<tr class="even">
+<td>Bus power</td>
+<td>Does not draw from the bus’s NET-S, or draws 50 mA (1 LEN) or
+less</td>
+<td>Product page; isolated side powered from the Pi</td>
+</tr>
+<tr class="odd">
+<td>Form</td>
+<td>HAT on the 40-pin header, or USB</td>
+<td>Photo</td>
+</tr>
+<tr class="even">
+<td>Connection</td>
+<td>Screw terminals or pins for CAN_H, CAN_L, isolated GND</td>
+<td>Photo</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Nice to have</strong></p>
+<ul>
+<li>A stated isolation voltage (1 kV or more).</li>
+<li>MCP2518FD controller (larger receive buffers than MCP2515), if the
+soak test ever shows dropped frames.</li>
+<li>Two channels: one loops to the other on the bench to test the daemon
+without a boat.</li>
+<li>HAT+ EEPROM (the Pi identifies the board).</li>
+</ul>
+<p><strong>Disqualifiers</strong></p>
+<ul>
+<li>Not isolated. Copperhill PiCAN-M: its schematic ties the bus ground
+to the Pi ground. MacArthur HAT: its docs say the Pi and the bus must
+share one power source.</li>
+<li>Boards that power the Pi from the bus (PiCAN-M SMPS version): 3 A is
+short of the Pi 5’s 5 A, and it ties the grounds.</li>
+<li>USB gateways that don’t present SocketCAN (Actisense NGT-1, Yacht
+Devices USB gateway): the daemon reads SocketCAN.</li>
+<li>NMEA 0183 adapters: different bus.</li>
+<li>Boards that need the PCIe port or cover the cooler without
+standoffs.</li>
+</ul>
+<p><strong>Fits with</strong></p>
+<ul>
+<li>Stacks on the 40-pin header above the Active Cooler: needs about 16
+mm of standoff plus a header extender to clear the 13.7 mm cooler. Check
+what the board ships with.</li>
+<li>GPIOs it takes with the Waveshare wiki’s default setup: SPI1 (GPIO
+19, 20, 21), chip selects GPIO 16, 17, 18, interrupts GPIO 22 and 13,
+and GPIO 0 and 1 for its ID EEPROM. The controller’s lines to the Pi
+(part 4) must use other pins.</li>
+<li>Wires to the drop cable (part 12): CAN_H to NET-H (white), CAN_L to
+NET-L (blue), isolated GND to NET-C (black). NET-S (red) and the shield
+stay unconnected. Termination off.</li>
+<li>The reference board also has its own 5 V / 7 to 36 V power input.
+Leave it unconnected on the boat: it would be a second feed into the
+Pi’s 5 V rail. Set its logic-level jumper to 3.3 V.</li>
+</ul>
+<p><strong>Reference, not a requirement.</strong> Waveshare 2-CH
+Isolated CAN Bus HAT+, 27338 (MCP2515 + SN65HVD230, digital isolator and
+isolated power, 65 x 56.5 mm), $34.99, Amazon sold by Waveshare,
+2026-10-29 (in the bench cart); $24.99 plus shipping at waveshare.com.
+Its wiki gives no isolation voltage and no standoff height. Fallback if
+it misbehaves on the real bus: PEAK PCAN-USB opto, about $314.</p>
+<h3>12. NMEA 2000 drop cable</h3>
+<p><strong>Job.</strong> Connects the CAN HAT to a free port on a
+backbone tee. The molded Micro-C end plugs into the tee; the other end
+is cut and wired to the HAT inside the box.</p>
+<p><strong>Must have</strong></p>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Spec</th>
+<th>Requirement</th>
+<th>How to check</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Connector</td>
+<td>Micro-C (M12, 5-pin, A-coded), male</td>
+<td>Title “male”; pins, not sockets, in the photo</td>
+</tr>
+<tr class="even">
+<td>Length</td>
+<td>1 m (about 3 ft; the run is under 2 ft)</td>
+<td>Title</td>
+</tr>
+<tr class="odd">
+<td>Cable</td>
+<td>NMEA 2000 or DeviceNet micro/light: shielded, data pair twisted</td>
+<td>Product page “NMEA 2000 certified” or “DeviceNet”</td>
+</tr>
+<tr class="even">
+<td>Wire colors</td>
+<td>Red NET-S, black NET-C, white NET-H, blue NET-L, bare shield</td>
+<td>Product page, or check after cutting</td>
+</tr>
+<tr class="odd">
+<td>Sealing</td>
+<td>IP67 or better at the connector</td>
+<td>Product page</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Nice to have</strong></p>
+<ul>
+<li>NMEA 2000 certified (NMEA logo) rather than generic DeviceNet.</li>
+<li>Instead of cutting a cable: a panel-mount Micro-C male bulkhead
+connector in the enclosure plus a standard female-to-male drop. Then the
+box unplugs without tools. Costs a little more and needs a matching
+hole.</li>
+<li>If the backbone has no free tee port: one Micro-C T-connector (any
+brand; the Garmin backbone uses standard Micro-C).</li>
+</ul>
+<p><strong>Disqualifiers</strong></p>
+<ul>
+<li>Female end at the tee side: wrong gender for a tee’s port.</li>
+<li>Proprietary connectors (Raymarine SeaTalkNG, Simrad SimNet) without
+an adapter: don’t fit the Garmin backbone.</li>
+<li>Unshielded or untwisted cable.</li>
+<li>Drops over 6 m: the NMEA 2000 limit for one drop.</li>
+</ul>
+<p><strong>Fits with</strong></p>
+<ul>
+<li>Cable outside diameter sets the gland size (part 18). Measure or
+read it from the datasheet.</li>
+<li>Before buying, look at the backbone for a free tee port. If none,
+add a T-connector.</li>
+</ul>
+<p><strong>Reference, not a requirement.</strong> Ancor NMEA 2000 drop
+cable, 1 m, 270301, $23.95, Navstore, 2026-10-30.</p>
+<h2>Display and cables</h2>
+<h3>13. Display</h3>
+<p><strong>Job.</strong> The screen and the touch input. It has to be
+readable at the helm in daylight through glass on all sides, beside a
+roughly 1200-nit Garmin the owner runs at full brightness.</p>
+<p><strong>Must have</strong></p>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Spec</th>
+<th>Requirement</th>
+<th>How to check</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Size</td>
+<td>9 to 10.1 in diagonal</td>
+<td>Title</td>
+</tr>
+<tr class="even">
+<td>Brightness</td>
+<td>1000 cd/m2 (nits) or more, as a number</td>
+<td>Datasheet “luminance” or “brightness”; “high brightness” without a
+number doesn’t count</td>
+</tr>
+<tr class="odd">
+<td>Resolution</td>
+<td>1024x600 minimum, 1280x800 preferred, landscape</td>
+<td>Datasheet; check the HDMI board outputs landscape, not a rotated
+portrait panel</td>
+</tr>
+<tr class="even">
+<td>Panel</td>
+<td>IPS (wide viewing angles)</td>
+<td>Datasheet “IPS” or 85/85/85/85 viewing angles</td>
+</tr>
+<tr class="odd">
+<td>Video input</td>
+<td>HDMI (full, mini or micro), plug and play</td>
+<td>Product page; no driver install</td>
+</tr>
+<tr class="even">
+<td>Touch</td>
+<td>Capacitive, over USB as a standard HID multitouch device</td>
+<td>Product page “USB touch”, “driver-free”, “Raspberry Pi / Linux plug
+and play”</td>
+</tr>
+<tr class="odd">
+<td>Turns on by itself</td>
+<td>Comes on whenever power is applied, with no button press</td>
+<td>Manual or datasheet “auto power on”; ask the seller if not
+stated</td>
+</tr>
+<tr class="even">
+<td>Power</td>
+<td>Meets part 6: 12 V input rated to 30 V, or 5 V/12 V from its own
+regulator</td>
+<td>Datasheet “input voltage” with a min and max</td>
+</tr>
+<tr class="odd">
+<td>Power draw</td>
+<td>Stated at full brightness</td>
+<td>Datasheet current table</td>
+</tr>
+<tr class="even">
+<td>Operating temperature</td>
+<td>-10 to +60 °C or wider</td>
+<td>Datasheet</td>
+</tr>
+<tr class="odd">
+<td>Storage temperature</td>
+<td>-20 to +70 °C or wider</td>
+<td>Datasheet</td>
+</tr>
+<tr class="even">
+<td>Dimming</td>
+<td>Can dim far enough for night use</td>
+<td>OSD menu or DDC/CI brightness control</td>
+</tr>
+<tr class="odd">
+<td>Mounting</td>
+<td>Tabs, bezel or holes to fix it behind a cutout</td>
+<td>Mechanical drawing</td>
+</tr>
+<tr class="even">
+<td>Depth</td>
+<td>Stated; 25 mm or less</td>
+<td>Mechanical drawing</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Nice to have</strong></p>
+<ul>
+<li>Touch glass optically bonded to the LCD (less glare, no condensation
+gap).</li>
+<li>Cover-lens-bezel version: the glass is bigger than the LCD, which
+makes sealing it into a cutout much easier than sealing a 1:1 glass
+edge.</li>
+<li>DDC/CI brightness control over HDMI, so the app can dim the screen
+at night and when full brightness isn’t needed. The backlight is the
+biggest heat source in the box.</li>
+<li>Anti-glare or anti-reflective glass treatment.</li>
+<li>Touch that ignores water drops (test before cutting the enclosure,
+spec section 8).</li>
+<li>Readable through polarized sunglasses in landscape (test).</li>
+</ul>
+<p><strong>Disqualifiers</strong></p>
+<ul>
+<li>Brightness under 1000 nits, or no number given.</li>
+<li>Panels that wake into standby and need a button press: the button
+would be inside the sealed box.</li>
+<li>DSI, SPI or GPIO-header displays: the header is taken by the CAN
+HAT, and these panels are dim.</li>
+<li>Resistive touch, or touch that needs a vendor driver or Windows
+software.</li>
+<li>Power only over the touch USB cable from the Pi: the Pi can’t supply
+it.</li>
+<li>No mechanical drawing: the enclosure cutout can’t be planned.</li>
+<li>Finished monitors at $700 or more (Beetronics, Xenarc): they push
+the DIY total near $1,100 (cost comparison).</li>
+</ul>
+<p><strong>Fits with</strong></p>
+<ul>
+<li>Input voltage against part 6 and the buck (part 5).</li>
+<li>Its HDMI connector type sets the video cable (part 14); its touch
+port type sets the touch cable (part 15).</li>
+<li>Outline plus a sealing border sets the enclosure lid size; depth
+plus the Pi stack sets the enclosure depth (part 16).</li>
+<li>If the touch port also carries power, the display draws from the
+Pi’s USB even when it has 12 V. A USB power-blocking adapter (data only,
+VBUS cut) on the touch cable is required (part 15); with the 4D panel it
+is required regardless.</li>
+</ul>
+<p><strong>Reference, not a requirement.</strong> 4D Systems
+4DHDMI-101-1280-800-CT-EAR-1000, $147.95, Digi-Key, 2026-10-30 (4 in
+stock). Per 4D’s datasheet R1.3: IPS, 1280x800, 1000 cd/m2, capacitive
+touch glass optically bonded, metal mounting tabs, mini-HDMI (HDMI 1.4),
+DDC supported, one USB-C port for touch and 5 V power (4.8 to 5.2 V,
+1700 mA; the datasheet says this port “parallels the power”, so backfeed
+is likely), 12 V barrel jack (650 mA, “12.0 V typ”, no maximum given),
+-20 to +70 °C operating, -30 to +80 °C storage. RS lists 15.98 mm depth.
+Its power button is on an optional button board that isn’t included.
+Open: 12 V maximum, power-on behavior, native orientation (see open
+questions). Variant to price: 4DHDMI-101-1280-800-CT-CLB-1000 (cover
+lens bezel).</p>
+<h3>14. Video cable</h3>
+<p><strong>Job.</strong> Pi 5 micro-HDMI port to the display’s HDMI
+input, inside the box.</p>
+<p><strong>Must have</strong></p>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Spec</th>
+<th>Requirement</th>
+<th>How to check</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Pi end</td>
+<td>Micro-HDMI (type D) male</td>
+<td>Title, photo</td>
+</tr>
+<tr class="even">
+<td>Display end</td>
+<td>Matches the display: full (type A), mini (type C) or micro (type
+D)</td>
+<td>Display datasheet, then cable title</td>
+</tr>
+<tr class="odd">
+<td>Length</td>
+<td>1 ft (30 cm) or shorter</td>
+<td>Title</td>
+</tr>
+<tr class="even">
+<td>Bandwidth</td>
+<td>HDMI 1.4 or later (1280x800 needs very little)</td>
+<td>Title</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Nice to have</strong></p>
+<ul>
+<li>Thin, flexible cable; right-angle ends if the box is tight beside
+the Pi.</li>
+</ul>
+<p><strong>Disqualifiers</strong></p>
+<ul>
+<li>Adapter stacks (micro to full adapter plus a cable): extra joints
+shake loose.</li>
+<li>Long cables coiled inside the box: stiff, take room, pick up
+noise.</li>
+</ul>
+<p><strong>Fits with</strong></p>
+<ul>
+<li>Plug length plus bend radius beside the Pi’s long edge sets the side
+clearance in the enclosure.</li>
+</ul>
+<p><strong>Reference, not a requirement.</strong> ZeniKon micro-HDMI to
+mini-HDMI, 1 ft, $12.99, Amazon, 2026-10-30. The 4D display ships with a
+50 cm HDMI cable, but not one with a micro-HDMI end; the bench cart’s 3
+ft micro-HDMI to HDMI cable isn’t needed with the 4D panel.</p>
+<h3>15. Touch USB cable</h3>
+<p><strong>Job.</strong> Carries touch data from the display to a Pi USB
+port.</p>
+<p><strong>Must have</strong></p>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Spec</th>
+<th>Requirement</th>
+<th>How to check</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Ends</td>
+<td>USB-A male (Pi) to the display’s touch port (USB-C or micro-B)</td>
+<td>Display datasheet, cable title</td>
+</tr>
+<tr class="even">
+<td>Data</td>
+<td>Data wires present</td>
+<td>Title says “data” or “sync”; not “charge only”</td>
+</tr>
+<tr class="odd">
+<td>No power</td>
+<td>If the display’s touch port also takes power: VBUS cut, by a USB
+power-blocking adapter (data only) or a cable without the VBUS wire</td>
+<td>Display datasheet; adapter title “power blocker”, “data only”</td>
+</tr>
+<tr class="even">
+<td>Length</td>
+<td>50 cm or shorter</td>
+<td>Title</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Nice to have</strong></p>
+<ul>
+<li>Right-angle ends.</li>
+</ul>
+<p><strong>Disqualifiers</strong></p>
+<ul>
+<li>Charge-only cables: touch never shows up.</li>
+</ul>
+<p><strong>Fits with</strong></p>
+<ul>
+<li>Use a USB 2 port (black) on the Pi.</li>
+<li>With the 4D panel the blocker is required: its touch port “parallels
+the power”, so without it the panel runs from the Pi’s USB (up to 1.6 A,
+about 8 W) and eats into the Pi’s 1.6 A USB budget, which is shared with
+every other USB device.</li>
+<li>The 4D reference ships a 50 cm USB cable in the box; check its ends
+before buying another.</li>
+</ul>
+<p><strong>Reference, not a requirement.</strong> Included with the 4D
+display (50 cm, per 4D’s datasheet).</p>
+<h2>Housing</h2>
+<h3>16. Enclosure</h3>
+<p><strong>Job.</strong> Holds the display in its lid and all the
+electronics behind it, sealed against spray and rain in a glass cabin
+that gets direct sun.</p>
+<p><strong>Must have</strong></p>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Spec</th>
+<th>Requirement</th>
+<th>How to check</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Ingress</td>
+<td>IP65 minimum (IP66/67 preferred), with a lid gasket</td>
+<td>Datasheet “IP rating”, “NEMA 4X”</td>
+</tr>
+<tr class="even">
+<td>Material</td>
+<td>Polycarbonate, ABS or ASA, UV-stabilized</td>
+<td>Datasheet “UV stabilized”, “UL 746C f1”</td>
+</tr>
+<tr class="odd">
+<td>Inside length and width</td>
+<td>Display outline plus at least 15 mm per side for the sealing
+border</td>
+<td>Inside dimensions on the drawing (not outside)</td>
+</tr>
+<tr class="even">
+<td>Inside depth</td>
+<td>75 mm or more for a 16 mm display (display plus about 45 mm Pi stack
+plus cable room)</td>
+<td>Drawing; base depth plus lid depth</td>
+</tr>
+<tr class="odd">
+<td>Lid</td>
+<td>Flat enough to cut a display window and mount the panel</td>
+<td>Drawing; a flat lid, not domed</td>
+</tr>
+<tr class="even">
+<td>Back</td>
+<td>Flat area for the heat sink cutout (part 20) and the mount plate
+(part 17)</td>
+<td>Drawing</td>
+</tr>
+<tr class="odd">
+<td>Hardware</td>
+<td>Stainless or captive lid screws</td>
+<td>Datasheet</td>
+</tr>
+<tr class="even">
+<td>Temperature</td>
+<td>-20 to +80 °C or wider</td>
+<td>Datasheet</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Nice to have</strong></p>
+<ul>
+<li>Light color (grey or white): absorbs less sun.</li>
+<li>A pressure-equalizing vent (IP67 membrane breather): keeps
+temperature swings from pumping moist air past the seals.</li>
+<li>Internal mounting bosses or an inner panel to fix the Pi stack
+to.</li>
+</ul>
+<p><strong>Disqualifiers</strong></p>
+<ul>
+<li>No IP rating, or IP54 and below.</li>
+<li>Plain ABS without UV stabilization: goes brittle in sun.</li>
+<li>All-metal boxes: they block Wi-Fi, which the update page needs.
+(Option B in part 20 was not chosen.)</li>
+<li>Inside depth under 75 mm with a 16 mm panel.</li>
+<li>Dark colors in direct sun, unless nothing else fits.</li>
+</ul>
+<p><strong>Fits with</strong></p>
+<ul>
+<li>Display outline (part 13), stack height (parts 8, 9, 10, 11), cable
+side room (part 14), switch hole (part 3), two gland holes (part 18),
+mount plate (part 17), heat sink (part 20).</li>
+<li>Measure the real Pi stack on the bench before choosing the
+depth.</li>
+</ul>
+<p><strong>Reference, not a requirement.</strong> Hammond 1554X2GY,
+polycarbonate, 300 x 200 x 90 mm outside, IP66/67/68, NEMA 4X, grey,
+$63.22, Digi-Key, 2026-10-30. Octopart lists the inside as 289.1 x 186.5
+x 81.8 mm: the depth passes, and the 186.5 mm width leaves about 19 mm
+per side around the 148 mm tall 4D panel. Check Hammond’s own
+drawing.</p>
+<h3>17. Mount</h3>
+<p><strong>Job.</strong> Holds the enclosure on the flat dash shelf left
+of the wheel, beside the Garmin, tilted toward the helm seat.</p>
+<p><strong>Must have</strong></p>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Spec</th>
+<th>Requirement</th>
+<th>How to check</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Load</td>
+<td>About 2.5 kg (enclosure, display, electronics, heat sink) with boat
+vibration</td>
+<td>Maker’s load rating for the ball size</td>
+</tr>
+<tr class="even">
+<td>Base</td>
+<td>Screws or bolts to a flat shelf</td>
+<td>Base plate drawing, hole pattern</td>
+</tr>
+<tr class="odd">
+<td>Adjustment</td>
+<td>Tilt and swivel, lockable</td>
+<td>Product page</td>
+</tr>
+<tr class="even">
+<td>Materials</td>
+<td>Marine: anodized aluminum, glass-filled composite, stainless
+hardware</td>
+<td>Product page</td>
+</tr>
+<tr class="odd">
+<td>Enclosure side</td>
+<td>Plate that bolts through the box with sealed fasteners</td>
+<td>Plate drawing and hole pattern</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Nice to have</strong></p>
+<ul>
+<li>Short or medium arm: shorter shakes less.</li>
+<li>A second, identical ball base so the unit can move (rear helm,
+bench).</li>
+<li>The enclosure-side plate bolted to the heat sink (part 20) rather
+than to the plastic.</li>
+</ul>
+<p><strong>Disqualifiers</strong></p>
+<ul>
+<li>Suction cups or adhesive-only bases.</li>
+<li>Plain steel hardware: rusts.</li>
+<li>Tablet clamp cradles: made for a tablet’s edges, not a box.</li>
+</ul>
+<p><strong>Fits with</strong></p>
+<ul>
+<li>Bolting the plate through the enclosure back needs sealing washers
+or gasket; it must not land on the Pi stack inside.</li>
+<li>Cables leave the box through glands and run down through the shelf
+to the cavity below (spec 6.7).</li>
+</ul>
+<p><strong>Reference, not a requirement.</strong> RAM Mounts RAM-101U,
+C-size (1.5 in) ball, double socket arm, two round plates, $64.49, RAM
+Mounts, 2026-10-30.</p>
+<h3>18. Cable glands</h3>
+<p><strong>Job.</strong> Seal the two places cables enter the box: the
+12 V feed and the N2K drop.</p>
+<p><strong>Must have</strong></p>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Spec</th>
+<th>Requirement</th>
+<th>How to check</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Rating</td>
+<td>IP68</td>
+<td>Datasheet</td>
+</tr>
+<tr class="even">
+<td>Clamping range</td>
+<td>Includes each cable’s outside diameter</td>
+<td>Datasheet “clamping range” (e.g. 4 to 8 mm); measure the cables</td>
+</tr>
+<tr class="odd">
+<td>Thread</td>
+<td>Matches the hole (PG or metric, with a locknut)</td>
+<td>Datasheet thread size and hole diameter</td>
+</tr>
+<tr class="even">
+<td>Material</td>
+<td>UV-stabilized nylon (black) or brass/stainless</td>
+<td>Datasheet</td>
+</tr>
+<tr class="odd">
+<td>Count</td>
+<td>Two, plus a spare</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Nice to have</strong></p>
+<ul>
+<li>A bulkhead Micro-C connector for the N2K side (see part 12) instead
+of a gland, so the box unplugs.</li>
+<li>A sealed 3-pin connector (Deutsch DT class) on the feed cable for
+the same reason.</li>
+</ul>
+<p><strong>Disqualifiers</strong></p>
+<ul>
+<li>Grey nylon without UV stabilization.</li>
+<li>Running two loose single wires through one round gland: it can’t
+seal them. Use the round jacketed 3-conductor feed cable (part 19) or a
+multi-hole insert.</li>
+</ul>
+<p><strong>Reference, not a requirement.</strong> Altech 5308 509, PG9
+nylon, IP68, 2 for $1.92, Digi-Key, 2026-10-30. Check its clamping range
+against both cables.</p>
+<h3>19. Wire and terminals</h3>
+<p><strong>Job.</strong> The feed cable from the standby source to the
+box (standby +, sense, negative), and the short runs inside the box.</p>
+<p><strong>Must have</strong></p>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Spec</th>
+<th>Requirement</th>
+<th>How to check</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Feed conductors</td>
+<td>Tinned copper, fine-stranded marine wire (UL 1426 boat cable or SAE
+J1127/J1128)</td>
+<td>Product page “tinned”, “UL 1426”, “marine”</td>
+</tr>
+<tr class="even">
+<td>Feed gauge</td>
+<td>3% drop or less at 3.6 A: 16 AWG for a run up to 10 ft, 14 AWG for
+10 to 20 ft, 12 AWG for 20 to 25 ft. The sense conductor can be the same
+gauge</td>
+<td>Run length from the wiring diagram</td>
+</tr>
+<tr class="odd">
+<td>Feed form</td>
+<td>One round jacketed 3-conductor cable (standby +, sense, negative)
+for the gland</td>
+<td>Product page “3-conductor”, “triplex”</td>
+</tr>
+<tr class="even">
+<td>Length</td>
+<td>Depends on where standby power is found (open question): about 3 ft
+at the helm, 15 to 20 ft from the battery, plus a service loop</td>
+<td></td>
+</tr>
+<tr class="odd">
+<td>Inside the box</td>
+<td>22 AWG tinned for the controller signals, the switch and any switch
+LED</td>
+<td>Product page</td>
+</tr>
+<tr class="even">
+<td>Terminations</td>
+<td>Crimp terminals and adhesive-lined heat shrink</td>
+<td>Product page “heat shrink”, “marine”</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Nice to have</strong></p>
+<ul>
+<li>Pre-made heat-shrink butt connectors.</li>
+<li>Labels on both ends of the feed.</li>
+</ul>
+<p><strong>Disqualifiers</strong></p>
+<ul>
+<li>Bare (untinned) copper: corrodes inside the jacket.</li>
+<li>Solid-core or automotive single-strand wire: cracks in
+vibration.</li>
+<li>Solder-only joints with no strain relief: crack in vibration.</li>
+</ul>
+<p><strong>Fits with</strong></p>
+<ul>
+<li>16, 14 or 12 AWG is protected by the 7.5 A fuse (part 1) with lots
+of margin.</li>
+<li>The reference wire is single conductor; buy 3-conductor jacketed
+cable for the feed instead.</li>
+<li>Cable outside diameter sets the gland (part 18).</li>
+</ul>
+<p><strong>Reference, not a requirement.</strong> Ancor 16 AWG tinned
+primary wire, 25 ft red (182803) and 25 ft black (182003), $21.93 total,
+Amazon, 2026-10-30. That is single conductor; the feed needs 3-conductor
+jacketed cable, which seals in the gland.</p>
+<h3>20. Heat path and heat sink</h3>
+<p><strong>Job.</strong> Gets the box’s 15 to 18 W out to the cabin air,
+so the inside stays cool enough for the parts with the lowest ratings:
+the SSD (70 °C, measured on the drive), the display (70 °C), the Pi (70
+°C).</p>
+<p><strong>The numbers.</strong> Target: inside air at 55 °C or less on
+a 40 °C cabin day. That is a 15 °C rise at 18 W, so the box must shed
+heat at 0.8 °C/W or better. The reference box alone (about 0.21 m2 of
+plastic surface) manages roughly 0.9 °C/W, a 16 °C rise before any sun
+lands on it. That is too close, and sun through the cabin glass makes it
+worse. These are rough estimates; a thermometer in the box during the
+bench soak settles them.</p>
+<p><strong>Options. The owner chose A (2026-10-31).</strong></p>
+<table>
+<colgroup>
+<col style="width: 25%" />
+<col style="width: 25%" />
+<col style="width: 25%" />
+<col style="width: 25%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Option</th>
+<th>How</th>
+<th>For</th>
+<th>Against</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>A. Heat sink in the back wall (chosen)</strong></td>
+<td>Finned aluminum heat sink in a gasketed cutout in the box back. Fins
+outside; inside, a second set of fins or a small 5 V fan blowing the box
+air across the flat face.</td>
+<td>One box. Keeps IP65 or better. Wi-Fi still gets out through the
+plastic. Roughly 0.6 °C/W overall, about 11 °C rise at 18 W.</td>
+<td>A cutout and gasket to make. Heat sink must be bought to size.</td>
+</tr>
+<tr class="even">
+<td>B. Aluminum enclosure, display in a plastic or glass front</td>
+<td>The whole box spreads and sheds heat.</td>
+<td>Simple to seal. Best heat path of the single-box options.</td>
+<td>Blocks Wi-Fi: needs a USB Wi-Fi adapter with an antenna outside the
+box. Heavier.</td>
+</tr>
+<tr class="odd">
+<td>C. Filtered fan and vent</td>
+<td>Fan pulls cabin air through filtered vents.</td>
+<td>Moves the most heat.</td>
+<td>Drops to about IP54. Pulls salt air across the boards. Not
+recommended.</td>
+</tr>
+<tr class="even">
+<td>D. Split boxes</td>
+<td>Pi, power and controller in a second box in the shaded cavity below
+the shelf. Only the display (about 8 W) stays at the dash.</td>
+<td>Best for heat: most of the load leaves the sun.</td>
+<td>Two boxes. HDMI and USB through glands (HDMI plugs need split glands
+or IP67 HDMI bulkhead connectors). Video and touch cables grow past
+their 1 ft and 50 cm must-haves. More entries than design 6.7’s “12 V,
+N2K drop cable, and nothing else”.</td>
+</tr>
+</tbody>
+</table>
+<p>With any option: dim the backlight whenever full brightness isn’t
+needed (the app can do it over DDC), choose a light-colored box, and
+keep it out of direct sun where the helm allows.</p>
+<p><strong>Must have</strong></p>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Spec</th>
+<th>Requirement</th>
+<th>How to check</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Thermal resistance</td>
+<td>1.5 °C/W or better in natural convection, at the length bought</td>
+<td>Datasheet “°C/W, natural convection”, or the graph of °C/W against
+length</td>
+</tr>
+<tr class="even">
+<td>Material</td>
+<td>Aluminum (6063 class), anodized</td>
+<td>Datasheet</td>
+</tr>
+<tr class="odd">
+<td>Size</td>
+<td>Fits the enclosure back with room for the gasket and the mount
+plate: about 200 x 150 mm or less for the reference box</td>
+<td>Drawing</td>
+</tr>
+<tr class="even">
+<td>Fins</td>
+<td>Run vertically as mounted (heat rises along them)</td>
+<td>Drawing; plan the orientation</td>
+</tr>
+<tr class="odd">
+<td>Base</td>
+<td>Flat, 5 mm or thicker, drillable for stainless screws and a
+gasket</td>
+<td>Drawing</td>
+</tr>
+<tr class="even">
+<td>Inside coupling</td>
+<td>Inner fins, or a flat face plus a 40 to 60 mm 5 V fan (1 W or less)
+across it</td>
+<td>Drawing; fan datasheet</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Nice to have</strong></p>
+<ul>
+<li>Clear or natural anodizing: black absorbs more sun.</li>
+<li>The mount’s ball plate (part 17) bolted to the heat sink: aluminum
+carries the load better than plastic.</li>
+<li>Double-sided (fins both faces) extrusions, so no inside fan is
+needed.</li>
+</ul>
+<p><strong>Disqualifiers</strong></p>
+<ul>
+<li>Heat sinks rated only with forced airflow: the outside has
+none.</li>
+<li>Raw, unanodized aluminum: corrodes in salt air.</li>
+<li>Copper: corrodes against aluminum and stainless, and costs
+more.</li>
+<li>Peltier (thermoelectric) coolers: they draw 30 W or more and add
+more heat than they move.</li>
+</ul>
+<p><strong>Fits with</strong></p>
+<ul>
+<li>The cutout must miss the Pi stack, the mount plate’s bolts, and the
+lid gasket.</li>
+<li>Fan power comes from the 5 V side; it adds to the buck’s load.</li>
+<li>Tested on the bench: soak with full brightness and a sun lamp or
+heater, thermometer inside, before the boat. Also read the SSD’s own
+temperature (<code>nvme smart-log</code>): its 70 °C limit is the
+drive’s temperature, not the air’s, and it runs above the air.</li>
+<li>With passive inner fins instead of a fan, option A comes out nearer
+0.65 to 0.7 °C/W: still under the 0.8 target, with a thin margin.</li>
+</ul>
+<p><strong>Reference, not a requirement.</strong> None priced yet.</p>
+<h2>Fit checks across parts</h2>
+<p>Before ordering the boat parts, these have to agree with each
+other:</p>
+<ol type="1">
+<li><strong>Voltage chain.</strong> Boat 9 to 16 V, spikes clamped to
+about 28 V by the TVS. Everything after the TVS (controller regulator,
+buck, display) survives 30 V or has its own regulator. The sense wire
+has its own TVS. The 5.0 to 5.3 V rail goes only to the Pi.</li>
+<li><strong>Power loss.</strong> The unit runs from the house battery’s
+standby power; the sense wire drops when the main switch goes off; the
+controller gives 2 s of grace, lets the Pi shut down, opens the relay
+(zero draw after that), and restarts the unit whenever sense returns,
+including mid-shutdown. A hardware time limit opens the relay even if
+the controller hangs.</li>
+<li><strong>Under the Pi.</strong> The NVMe adapter mounts there;
+nothing else needs the spot.</li>
+<li><strong>Reverse polarity.</strong> Everything fed from 12 V either
+has reverse-polarity protection or sits behind a part that does (design
+6.6). The buck has it; any display regulator must too.</li>
+<li><strong>Stack height.</strong> NVMe adapter under the Pi, Pi, Active
+Cooler (13.7 mm), CAN HAT on standoffs of about 16 mm. About 45 mm total
+(estimate; measure on the bench).</li>
+<li><strong>Enclosure size.</strong> Inside depth 75 mm or more; display
+outline plus at least 15 mm per side; room beside the Pi for the
+micro-HDMI and USB-C plugs; a back-wall area for the heat sink and the
+mount.</li>
+<li><strong>Connector types.</strong> Display’s HDMI type matches the
+video cable; display’s touch port matches the touch cable, with VBUS
+blocked; drop cable is male at the tee.</li>
+<li><strong>GPIO budget.</strong> CAN HAT: 0, 1, 13, 16, 17, 18, 19, 20,
+21, 22. Controller: “power going away” into the Pi on one other pin,
+plus the Pi’s 3.3 V read by the controller (a “halted” GPIO only if the
+bench check needs it).</li>
+<li><strong>Current.</strong> Fuse 7.5 A, relay contacts 10 A or more,
+buck 5 A, wire 16, 14 or 12 AWG, against a 3.6 A worst case at 10.5 V.
+Off draw zero.</li>
+<li><strong>Heat.</strong> 15 to 18 W out of the box at 0.8 °C/W or
+better (part 20).</li>
+</ol>
+<h2>Departures from the design
+spec</h2>
+<p>This doc changes some lines of
+<code>docs/superpowers/specs/2026-10-28-cheekymarine-design.md</code>.
+The design spec gets updated to match in plan 5.</p>
+<ul>
+<li><strong>6.6, “No battery backup. Hard power loss must be survivable
+by the filesystem design, not by a UPS.”</strong> Kept: still no battery
+or UPS in the box. Added: the unit runs from the house battery’s standby
+(unswitched) power, disconnects completely by relay once shut down, with
+a sense wire from the switched side, so turning off the main battery
+switch triggers a clean shutdown (owner, 2026-10-31). The filesystem
+design stays as the second layer. The design spec assumed power from the
+switched 12 V dash.</li>
+<li><strong>Soft power.</strong> Design goal 6 (“soft power button”),
+6.6’s momentary button and latch, 6.7’s IP67 momentary pushbutton, and
+section 7’s “Soft power module” and “Button” rows: now a nice-to-have. A
+latching on/off switch in the sense wire is acceptable (owner,
+2026-10-31).</li>
+<li><strong>6.6, feeding 5 V into the Pi’s GPIO 5 V pins</strong> (one
+option it lists): ruled out; 5 V goes in through the USB-C port to keep
+the Pi’s input protection.</li>
+<li><strong>6.6, reverse-polarity protection.</strong> Kept, as a fit
+check across the 12 V parts, covering any display regulator as well as
+the buck.</li>
+<li><strong>6.7, “cable glands for 12V, N2K drop cable, and nothing
+else.”</strong> Still true for options A to C in part 20; option D would
+add more.</li>
+<li><strong>ABYC E-11, connections ahead of the battery switch.</strong>
+The standby feed is one. If E-11’s list of allowed loads doesn’t cover
+it, this is a deliberate departure, mitigated by a fuse at the source,
+“always live” labels, and a relay that disconnects completely when the
+unit is off.</li>
+<li><strong>6.6, LC filter and a 9 to 36 V regulator.</strong> The LC
+filter is optional (add it if radios pick up noise); parts must survive
+30 V after the TVS.</li>
+<li><strong>6.6, “Output 5.1 V at 5 A.”</strong> Now 5.0 to 5.3 V.</li>
+<li><strong>6.7, enclosure.</strong> Adds a heat path: a finned aluminum
+heat sink in a gasketed cutout in the back wall (part 20, owner chose
+option A, 2026-10-31).</li>
+<li><strong>7, NMEA 2000 interface.</strong> The suggested Copperhill
+PiCAN-M is disqualified (not isolated); the interface must be
+galvanically isolated.</li>
+</ul>
+<h2>Open questions before buying</h2>
+<ul>
+<li><strong>Standby power near the helm.</strong> Owner is checking the
+boat’s wiring diagrams for an existing standby (unswitched) circuit at
+the helm. If there is none, run a new fused feed from the battery side
+of the main switch (part 19 sets the gauge by length).</li>
+<li><strong>House battery standby point.</strong> Standby power comes
+from the house battery (owner, 2026-10-31); find its battery-side
+connection on the diagram.</li>
+<li><strong>Sense source.</strong> Which switched circuit at the helm
+the sense wire taps: one that stays live while cranking, not ignition or
+accessory (it needs a 1 A fuse).</li>
+<li><strong>Does cranking reach the house battery?</strong> The boat has
+a main engine and a kicker. If the house battery is kept apart from
+starting, a 70% coil should hold; if not, the crank test decides, and a
+more sensitive coil may be needed (part 4d).</li>
+<li><strong>Relay and controller.</strong> Pick a relay that meets part
+4d (coil 0.6 W or less) and a controller board.</li>
+<li><strong>Display 12 V maximum.</strong> 4D gives “12.0 V typ” with no
+maximum. Without a stated 30 V maximum, add a display regulator (part
+6).</li>
+<li><strong>Display power-on.</strong> Does the 4D panel come on by
+itself when powered? Its power button is on a board that isn’t
+included.</li>
+<li><strong>Display USB power backfeed.</strong> 4D’s datasheet says the
+touch port also takes power, so the USB power blocker (part 15) is on
+the buy list.</li>
+<li><strong>Display orientation.</strong> 4D’s drawing shows a portrait
+panel; Digi-Key lists 1280x800. Confirm the HDMI board outputs
+landscape.</li>
+<li><strong>CAN HAT standoff height.</strong> Waveshare doesn’t state
+what standoffs ship with the 27338 or whether they clear the Active
+Cooler. Check on arrival; buy 16 mm M2.5 standoffs and a header extender
+if needed.</li>
+<li><strong>CAN HAT isolation voltage.</strong> Not published. Optional
+question to Waveshare.</li>
+<li><strong>Enclosure drawing.</strong> Octopart’s inside dimensions for
+the 1554X2GY need confirming on Hammond’s drawing.</li>
+<li><strong>Free tee port.</strong> Look at the backbone. If none, add a
+Micro-C T-connector.</li>
+<li><strong>Spare helm switch or fuse circuit.</strong> If the helm
+panel has one, it can replace the inline fuse holder and the switch on
+the box.</li>
+<li><strong>Tariffs.</strong> Digi-Key shows “tariff may apply” on
+several parts; the amount shows only in the cart.</li>
+</ul>
+<p>Prices are US, before tax and shipping, from product pages on the
+dates given. Recheck before ordering.</p>
+
+</body>
+</html>
