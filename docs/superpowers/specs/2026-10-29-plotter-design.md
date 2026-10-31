@@ -146,7 +146,7 @@ Physical size comes from a setting `panel_diagonal_in` (default 10.1) with the r
 
 ### 6.11 Palette automation
 
-Auto mode picks day between sunrise and sunset, dusk from sunset to civil dusk and from civil dawn to sunrise, night otherwise, from the boat's position and GNSS or system time, re-evaluated every minute. Without a position it keeps the last palette. The solar calculation is a small pure C++ implementation of the NOAA solar position equations (public domain), tested against NOAA's published sunrise and sunset times for Seattle on several dates. UI night palette: red on black, no white anywhere.
+Auto mode picks day between sunrise and sunset, dusk from sunset to civil dusk and from civil dawn to sunrise, night otherwise, from the boat's position and GNSS or system time, re-evaluated every minute. Without a position it keeps the last palette. The last applied palette is persisted as the setting `lastPalette`, so auto mode starts in it before the first fix. The solar calculation is a small pure C++ implementation of the NOAA solar position equations (public domain), tested against NOAA's published sunrise and sunset times for Seattle on several dates. UI night palette: red on black, no white anywhere.
 
 ### 6.12 Storage and schema (parent 6.9)
 
