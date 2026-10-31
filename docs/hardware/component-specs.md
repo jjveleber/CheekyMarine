@@ -71,7 +71,7 @@ What happens when the main battery switch (or the unit's own switch) goes off: t
 | # | Part | The one number that matters most | Reference price |
 |---|---|---|---|
 | 1 | Fuse + holder | 7.5 A blade fuse, sealed holder for 16 AWG | $4.58 (5 A bench fuse) |
-| 2 | TVS diode + LC filter | TVS: unidirectional, 17 to 18 V standoff, clamp 30 V or less, across the filter output. Inductor: 10 µH, 6 A saturation | $1.06 (TVS); LC not priced |
+| 2 | TVS diode + LC filter | TVS: unidirectional, 17 to 18 V standoff, clamp 30 V or less, across the filter output. Inductor: 10 µH, 6 A saturation | $0.373 at 10 (TVS); LC not priced |
 | 3 | Unit on/off switch | Latching, sealed, reliable at 5 mA, rated 1 A (sense wire only) | not priced |
 | 4 | Standby power + shutdown controller | Standby feed, sense input, controller, relay that opens fully when off | not priced |
 | 5 | Buck regulator | 5 A continuous at 5.0 to 5.3 V, survives 30 V in | $47.95 |
@@ -214,7 +214,7 @@ Leave open: Manufacturer, Breakdown Voltage (it follows from the working voltage
 - Order: relay, LC filter, TVS across the filter output, then the buck (part 5) and the display power (part 6). Everything here sits after the relay, so it draws nothing when the unit is off.
 - Every 12 V load in the box (buck, display power, the controller's supply and the relay coil supply in part 4) taps the filter output, at the TVS. Never the relay contact itself: that point is ahead of the filter and the clamp, and the 30 V rule wouldn't hold there.
 
-**Reference, not a requirement.** Diotec 1.5KE20A, Mouser (https://www.mouser.com/en/ProductDetail/Diotec-Semiconductor/1.5KE20A?qs=OlC7AqGiEDn%252BxJs4ZS20Vw%3D%3D), ammo pack, orderable as 10 (on the To order list), 2026-10-31. Per Diotec's datasheet: 17.1 V standoff, breakdown 19.0 to 21.0 V, 27.7 V clamp at 56 A, 1500 W at 10/1000 µs, 1 µA max leakage at standoff, -50 to +175 °C. Same part from Littelfuse: $1.06, Digi-Key, 2026-10-30. LC filter parts: none priced yet.
+**Reference, not a requirement.** Diotec 1.5KE20A, Mouser (https://www.mouser.com/en/ProductDetail/Diotec-Semiconductor/1.5KE20A?qs=OlC7AqGiEDn%252BxJs4ZS20Vw%3D%3D), ammo pack, $0.373 each at 10 ($0.72 for one), Mouser, 2026-10-31, tariff may apply (on the To order list), 2026-10-31. Per Diotec's datasheet: 17.1 V standoff, breakdown 19.0 to 21.0 V, 27.7 V clamp at 56 A, 1500 W at 10/1000 µs, 1 µA max leakage at standoff, -50 to +175 °C. Same part from Littelfuse: $1.06, Digi-Key, 2026-10-30. LC filter parts: none priced yet.
 
 ### 3. Unit on/off switch
 
@@ -981,7 +981,7 @@ Picks made, nothing ordered yet. The owner places every order; this list only tr
 
 | Part | Pick | Qty | Where | Price | Picked |
 |---|---|---|---|---|---|
-| 2. TVS diode | Diotec 1.5KE20A | 10 (spares and the bench) | Mouser, https://www.mouser.com/en/ProductDetail/Diotec-Semiconductor/1.5KE20A?qs=OlC7AqGiEDn%252BxJs4ZS20Vw%3D%3D | not recorded | 2026-10-31 |
+| 2. TVS diode | Diotec 1.5KE20A | 10 (spares and the bench) | Mouser, https://www.mouser.com/en/ProductDetail/Diotec-Semiconductor/1.5KE20A?qs=OlC7AqGiEDn%252BxJs4ZS20Vw%3D%3D | $0.373 each, $3.73 for 10, before tax and shipping; Mouser warns a 50% tariff may apply (about $5.60) | 2026-10-31 |
 
 ## Open questions before buying
 
