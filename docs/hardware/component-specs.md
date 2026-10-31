@@ -14,7 +14,8 @@ If a product page doesn't state a must-have number, treat it as missing. Ask the
 
 Owner rules this revision follows (2026-10-31):
 
-- **Clean shutdown when the boat's main battery switch goes off is mandatory.** It must never corrupt the SSD. The unit runs from the boat's standby (unswitched) power and watches a sense wire from the switched side (part 4).
+- **Clean shutdown when the boat's main battery switch goes off is mandatory.** It must never corrupt the SSD. The unit runs from the house battery's standby (unswitched) power and watches a sense wire from the switched side (part 4).
+- **Once shut down, the unit disconnects from standby power completely,** so it can't drain the battery. A relay opens; nothing in the box draws current.
 - **Soft power is a nice-to-have.** A plain latching on/off switch is fine (part 3).
 - **Heat has to get out of the sealed box,** through a finned aluminum heat sink in the back wall (option A). See part 20.
 
@@ -29,15 +30,15 @@ Owner rules this revision follows (2026-10-31):
    |                                               |
  ==|=== gland G1 ================= ENCLOSURE [16] =|=======================
    |                                               |       [20] heat sink
-   +--[2] TVS across + and -                     [3] UNIT ON/OFF SWITCH
-   |                                               |       (in the sense wire)
-   |                                             [4b] SENSE INPUT (optocoupler)
-   |                                               |
- [4d] LOAD SWITCH  <---- on/off ------------ [4c] CONTROLLER
-   |                                          |   ^
-   |                       power going away --+   | halted
-   |                                          v   |
-   +------------------------------------+    (Pi GPIOs)
+ [4d] RELAY  <------- coil -----------+          [3] UNIT ON/OFF SWITCH
+   |  (open = nothing draws           |            |       (in the sense wire)
+   |   from the battery)              |          [4b] SENSE INPUT (optocoupler)
+   |                                  |            |
+   +--[2] TVS across + and -        [4c] CONTROLLER  <-- powered by the sense
+   |                                  |   ^             wire or the relay output
+   |              power going away ---+   | halted
+   |                                  v   |
+   +------------------------------------+  (Pi GPIOs)
    |                                    |
  [5] BUCK 12 V to 5.0-5.3 V, 5 A      [6] DISPLAY POWER: 30 V-safe input
    |                                      or its own regulator
@@ -59,9 +60,9 @@ Owner rules this revision follows (2026-10-31):
 
 Mount [17] holds the enclosure [16] on the dash shelf. Glands [18] seal the two cable entries. Wire [19] covers the feed cable and everything inside the box.
 
-Order of the power path matters: fuse at the source (protects the cable), then TVS (always across the feed), then the load switch the controller drives, then the buck for the Pi and the display's own feed. The on/off switch only carries the sense signal.
+Order of the power path matters: fuse at the source (protects the cable), then the relay (open when off, so nothing draws from the battery), then the TVS, then the buck for the Pi and the display's own feed. The on/off switch only carries the sense signal.
 
-What happens when the main battery switch (or the unit's own switch) goes off: the Pi gets 2 s of grace for an engine-start dip, then shuts down cleanly on standby power, and the controller cuts the unit to microamps. When the switch comes back on, the controller powers the unit up. Part 4 has the details.
+What happens when the main battery switch (or the unit's own switch) goes off: the Pi gets 2 s of grace for an engine-start dip, then shuts down cleanly on standby power, and the controller opens the relay: from then on the unit draws nothing. When the switch comes back on, the sense wire powers the controller, which closes the relay and the unit starts. Part 4 has the details.
 
 ## At a glance
 
@@ -70,7 +71,7 @@ What happens when the main battery switch (or the unit's own switch) goes off: t
 | 1 | Fuse + holder | 7.5 A blade fuse, sealed holder for 16 AWG | $4.58 (5 A bench fuse) |
 | 2 | TVS diode | Unidirectional, 15 to 18 V standoff, clamp 30 V or less | $1.06 |
 | 3 | Unit on/off switch | Latching, sealed, reliable at 10 mA (sense wire only) | not priced |
-| 4 | Standby power + shutdown controller | Standby feed, sense input, controller under 100 µA off, 7.5 A load switch | $8.95 (load switch) |
+| 4 | Standby power + shutdown controller | Standby feed, sense input, controller, relay that opens fully when off | not priced |
 | 5 | Buck regulator | 5 A continuous at 5.0 to 5.3 V, survives 30 V in | $47.95 |
 | 6 | Display power | Display safe to 30 V, or its own regulator | $0 if built in |
 | 7 | USB-C power lead | 20 AWG or heavier, 1 ft or shorter | $7.99 (2-pack) |
@@ -100,9 +101,9 @@ The numbers every power part below is sized from.
 | Display, reference panel at 1000 nit | 12 V | 0.65 A | 4D datasheet, 10.1" 1280x800 table |
 | **Whole unit** | 12 V | **about 3.2 A** | |
 | **Whole unit, battery sagging to 10.5 V** | 10.5 V | **about 3.6 A** | |
-| **Unit off, main switch on or off** | 12 V | **100 µA or less** | controller plus load switch and TVS leakage (part 4) |
+| **Unit off, main switch on or off** | 12 V | **zero** | relay open; the controller and TVS sit after it (part 4) |
 
-Typical draw while charting is well below this; the worst case is what the fuse, load switch, buck and wire must carry. At 100 µA, a winter with the unit off uses about 0.2 Ah of battery.
+Typical draw while charting is well below this; the worst case is what the fuse, relay, buck and wire must carry. With the unit off, nothing draws from the battery.
 
 Voltage drop on the feed: 16 AWG copper is about 4 milliohms per foot. A 3 ft run is 6 ft out and back, so 0.024 ohm at 3.6 A drops about 0.09 V (under 1%). If the standby feed has to come from the battery, a 20 ft run in 16 AWG drops about 0.58 V (5%); 14 AWG (about 2.5 milliohms per foot) brings it to about 0.36 V (3%). Part 19 sets the gauge by run length.
 
@@ -149,7 +150,7 @@ Heat in the box: everything above ends up as heat inside the enclosure. In dayli
 
 ### 2. TVS diode and filtering
 
-**Job.** Sits across + and - right where the feed enters the box. It does nothing at normal voltage, and clamps short spikes from the alternator, pumps and the starter before they reach the switch, buck and display. If a big spike kills it, it fails short and blows the fuse instead of letting the spike through.
+**Job.** Sits across + and - just after the relay (part 4d). It does nothing at normal voltage, and clamps short spikes from the alternator, pumps and the starter before they reach the switch, buck and display. If a big spike kills it, it fails short and blows the fuse instead of letting the spike through.
 
 **Must have**
 
@@ -175,8 +176,8 @@ Heat in the box: everything above ends up as heat inside the enclosure. In dayli
 
 **Fits with**
 
-- Must be after the fuse (part 1), so a shorted TVS blows the fuse.
-- Its clamp voltage sets what everything downstream must survive: 30 V for the load switch, the controller's regulator, the buck, and the display.
+- Must be after the fuse (part 1), so a shorted TVS blows the fuse, and after the relay, so its leakage stops when the unit is off.
+- Its clamp voltage sets what everything downstream must survive: 30 V for the controller's regulator, the buck, and the display.
 
 **Reference, not a requirement.** Littelfuse 1.5KE20A: 17.1 V standoff, 27.7 V clamp, 1500 W, unidirectional, $1.06, Digi-Key, 2026-10-30.
 
@@ -218,15 +219,15 @@ Heat in the box: everything above ends up as heat inside the enclosure. In dayli
 
 ### 4. Standby power and shutdown controller
 
-**Job.** Makes power loss safe, using the boat's own battery as the backup. The unit is powered from **standby (unswitched) power**: the battery side of the main battery switch. A thin **sense wire** from the switched side tells it whether the boat is on. When the main switch goes off, the unit is still powered, so the Pi shuts down cleanly; then the controller cuts the unit's power to microamps. When the main switch comes back on, the controller powers the unit up. Mandatory: the owner requires a clean shutdown whenever the boat's main battery switch is turned off (owner, 2026-10-31: "Finding the boat's standby power is the way to go").
+**Job.** Makes power loss safe, using the boat's own battery as the backup. The unit is powered from **standby (unswitched) power**: the battery side of the main battery switch. A thin **sense wire** from the switched side tells it whether the boat is on. When the main switch goes off, the unit is still powered, so the Pi shuts down cleanly; then the controller opens a relay and the unit is disconnected from the battery completely. When the main switch comes back on, the sense wire powers the controller, which closes the relay. Mandatory: the owner requires a clean shutdown whenever the boat's main battery switch is turned off (owner, 2026-10-31: "Finding the boat's standby power is the way to go").
 
 What happens, step by step:
 
 1. Main switch off (or the unit switch, part 3): the sense wire drops.
 2. After 2 s with no sense (longer than an engine-start dip), the controller tells the Pi power is going away. The display stays on through the shutdown, which is fine because the battery is still connected.
 3. The Pi shuts down and signals "halted" on a GPIO.
-4. The controller cuts power to the buck and the display. If the Pi never signals, it cuts after a timeout (about 90 s).
-5. It keeps power off for at least 2 s. Then, as soon as the sense wire is live again (including if it came back during the shutdown), it turns power back on and the Pi boots.
+4. The controller opens the relay. If the Pi never signals, it opens it after a timeout (about 90 s). The buck, the display and the controller itself lose power; nothing draws from the battery.
+5. If the sense wire is live again (it came back during the shutdown), the controller is still powered from it: it keeps the relay open for at least 2 s, then closes it, and the Pi boots. If not, everything stays dead until the main switch comes back on.
 
 It has four pieces:
 
@@ -235,7 +236,7 @@ It has four pieces:
 | Spec | Requirement | How to check |
 |---|---|---|
 | Source | Battery side of the main battery switch: an existing standby circuit near the helm, or a new run from the battery | Boat wiring diagram; meter it with the main switch off |
-| Battery | The house battery, if the boat has more than one | Wiring diagram |
+| Battery | The house battery (the boat has one) | Wiring diagram |
 | Fuse | At the source, within 7 in of the battery or standby bus (ABYC E-11), sized per part 1 | Install rule |
 | Wire | Per part 19: 16 AWG up to a 10 ft run, 14 AWG for 10 to 25 ft | Measure the run |
 
@@ -249,41 +250,45 @@ It has four pieces:
 | Sense wire fuse | 1 A at the switched source, or tap an existing fused switched circuit | Install rule |
 | Input survival | 30 V on the sense wire | Resistor power rating at 30 V |
 
-**4c. Controller.** A small microcontroller running the sequence above. We write the firmware; it gets flashed once over USB.
+**4c. Controller.** A small microcontroller running the sequence above. It is powered from the sense wire (after the on/off switch) or from the relay output, through two diodes, so it is unpowered whenever the unit is off. We write the firmware; it gets flashed once over USB.
 
 | Spec | Requirement | How to check |
 |---|---|---|
 | Inputs | Sense (from 4b), Pi "halted" GPIO | Pin count: 4 or more free I/O |
-| Outputs | Power on/off to the load switch (4d), "power going away" to a Pi GPIO | Same |
+| Outputs | Relay coil drive (4d), "power going away" to a Pi GPIO | Same |
 | Logic levels | 3.3 V, so its pins connect straight to the Pi | Board spec |
-| Off-state draw | 100 µA or less for the whole controller, including its regulator, while the unit is off | Board spec "sleep current" plus the regulator's quiescent current |
-| Regulator | Runs from the standby feed through a low-quiescent regulator (a few µA) rated for 30 V | Regulator datasheet "quiescent current", "absolute maximum" |
+| Power | From 12 V (sense wire or relay output, diode-ORed) through a regulator rated for 30 V | Regulator datasheet "absolute maximum" |
+| Relay drive | One output through a transistor to the relay coil, with a flyback diode | Circuit |
 | Programming | USB, with a free toolchain | Product page |
 | Temperature | Rated to +85 °C | Datasheet |
 
-**4d. Load switch.** Connects and cuts the standby feed to the buck and the display, on the controller's command.
+**4d. Relay.** Connects the standby feed to everything in the box, and disconnects it completely when the unit is off.
 
 | Spec | Requirement | How to check |
 |---|---|---|
-| Type | High-side switch (cuts the + line), logic-level control | Datasheet |
-| Current | 7.5 A or more continuous at 12 V (the feed's fuse) | Datasheet, at a stated temperature |
-| Voltage | 9 to 16 V operating, 30 V or more absolute maximum, reverse-polarity protected | Datasheet |
-| Off leakage | 10 µA or less | Datasheet "off current" |
-| Control | Driven by a 3.3 V level or pulse from the controller | Pin description |
-| Holds state | Through engine-start dips; or the controller can re-check and re-command it | Datasheet; firmware |
+| Type | Electromechanical, normally open (SPST-NO), non-latching, 12 V coil | Datasheet "contact form", "coil voltage" |
+| Contacts | 10 A or more at 14 V DC (resistive); 16 A or more preferred for start-up surge | Datasheet "contact rating", DC |
+| Coil power | 0.6 W or less (it is heat inside the box while the unit runs) | Datasheet "coil power" or coil resistance (12 V squared over ohms) |
+| Must-operate voltage | 8.5 V or less (closes on a low battery) | Datasheet "pick-up" or "must operate" voltage |
+| Drop-out voltage | 5 V or less (stays closed through engine starts) | Datasheet "must release" or "drop-out" voltage |
+| Sealing | Sealed (RT III, "wash tight") or flux-proof inside the sealed box | Datasheet |
+| Temperature | Rated to +70 °C or higher | Datasheet |
+| Mounting | PCB pins or 6.3 mm tabs in a socket | Datasheet |
 
 **Nice to have**
 
 - The controller reads the battery voltage, so the app can show it.
 - The controller on a small board with screw terminals.
+- Relay with a built-in coil diode and an LED.
 - A bench test from the bench supply: cut the "switched" supply mid-boot, mid-run and mid-shutdown, and check the Pi always comes back.
 
 **Disqualifiers**
 
 - Powering the unit from the switched side only: then the main switch is a hard power cut, which the owner ruled out.
 - Unfused standby feeds, or a fuse at the box end: the run from the battery is unprotected.
-- Load switches or latches that lose their state on a dip with no way for the controller to correct it.
-- Controllers that draw milliamps while the unit is off (most hobby boards with power LEDs and standard regulators): a few mA for a whole winter adds up.
+- Anything that stays connected to the battery when the unit is off: MOSFET load switches, latch modules (the Pololu #2813 draws 0.2 µA off, and it can lose its state on dips), always-on controllers. The owner requires a complete disconnect.
+- Latching (bistable) relays: they hold their last position without power, so a controller fault mid-shutdown could leave the unit connected to the battery.
+- Relays with coil power over 1 W (most 30/40 A automotive relays draw 1.5 to 2 W): extra heat in the box.
 - Batteries or supercapacitors inside the box: not needed with standby power, and lithium can't be charged above about 45 °C.
 
 **Fits with**
@@ -293,7 +298,7 @@ It has four pieces:
 - The 12 V cable into the box becomes three conductors: standby +, sense, and negative (part 19).
 - The filesystem design (read-only root, A/B slots, plan 4) still matters: it covers a disconnected or dead battery, and a hung shutdown.
 
-**Reference, not a requirement.** None chosen yet. Load switch candidate: the Pololu Big Pushbutton Power Switch HP #2813 ($8.95, Pololu, 2026-10-30): 4.5 to 32 V, 40 V absolute, under 0.2 µA off, ON and OFF inputs that take 3.3 V pulses. It can lose its state on power disruptions, so the controller must re-check and re-command it.
+**Reference, not a requirement.** None chosen yet, for the relay or the controller.
 
 Alternatives considered (2026-10-31):
 
@@ -340,14 +345,14 @@ Alternatives considered (2026-10-31):
 
 - The Pi 5 flags undervoltage below about 4.63 V (a vendor-reported figure; not in Raspberry Pi's own documents). A 5.0 V buck minus about 0.1 V in the lead leaves about 4.9 V. Confirm on the bench with `vcgencmd get_throttled` (must read `throttled=0x0`).
 - Output goes into the USB-C power lead (part 7), never to the GPIO 5 V pins.
-- Fed from the load switch (part 4d), so it is off when the unit is off.
+- Fed from the relay (part 4d), so it is off when the unit is off.
 - Its output must not feed a 5 V display rated to 5.2 V (the 4D reference is).
 
 **Reference, not a requirement.** Pololu D42V55F5.3, $47.95, Pololu, 2026-10-29 (in the bench cart). Per its product page (read 2026-10-31): 5.3 V within 3%, input up to 60 V, reverse-voltage protection, typically 6 A at 42 V in (4 to 8 A depending on voltages, no heatsink, room temperature), 25.4 x 25.4 x 9 mm. No published temperature derating. Pololu's D36V50F5 (5.0 V), named in the design spec, also meets the voltage rule.
 
 ### 6. Display power
 
-**Job.** Feeds the display from the load switch's 12 V output (part 4d), safely across 9 to 16 V and the 30 V the TVS lets through. This is a requirement on the display (part 13) first; a separate regulator is only bought if the chosen display can't meet it. The display stays on through a shutdown and goes off with the rest of the unit.
+**Job.** Feeds the display from the relay's 12 V output (part 4d), safely across 9 to 16 V and the 30 V the TVS lets through. This is a requirement on the display (part 13) first; a separate regulator is only bought if the chosen display can't meet it. The display stays on through a shutdown and goes off with the rest of the unit.
 
 **Must have, one of:**
 
@@ -365,7 +370,7 @@ Alternatives considered (2026-10-31):
 
 **Fits with**
 
-- Fed from the load switch (part 4d), so the display is off when the unit is off.
+- Fed from the relay (part 4d), so the display is off when the unit is off.
 - The reference display's 12 V barrel jack is rated "12.0 V typ" with no maximum, so it needs option B unless 4D Systems confirms 30 V.
 
 **Reference, not a requirement.** None priced yet. Likely needed with the 4D panel.
@@ -891,25 +896,25 @@ With any option: dim the backlight whenever full brightness isn't needed (the ap
 
 Before ordering the boat parts, these have to agree with each other:
 
-1. **Voltage chain.** Boat 9 to 16 V, spikes clamped to about 28 V by the TVS. Everything after the TVS (load switch, controller regulator, buck, display) survives 30 V or has its own regulator. The 5.0 to 5.3 V rail goes only to the Pi.
-2. **Power loss.** The unit runs from standby power; the sense wire drops when the main switch goes off; the controller gives 2 s of grace, lets the Pi shut down, cuts power, and restarts the unit whenever sense returns, including mid-shutdown.
+1. **Voltage chain.** Boat 9 to 16 V, spikes clamped to about 28 V by the TVS. Everything after the TVS (controller regulator, buck, display) survives 30 V or has its own regulator. The 5.0 to 5.3 V rail goes only to the Pi.
+2. **Power loss.** The unit runs from the house battery's standby power; the sense wire drops when the main switch goes off; the controller gives 2 s of grace, lets the Pi shut down, opens the relay (zero draw after that), and restarts the unit whenever sense returns, including mid-shutdown.
 3. **Under the Pi.** The NVMe adapter mounts there; nothing else needs the spot.
-4. **Reverse polarity.** Everything fed from 12 V either has reverse-polarity protection or sits behind a part that does (design 6.6). The buck has it; the load switch and any display regulator must too.
+4. **Reverse polarity.** Everything fed from 12 V either has reverse-polarity protection or sits behind a part that does (design 6.6). The buck has it; any display regulator must too.
 5. **Stack height.** NVMe adapter under the Pi, Pi, Active Cooler (13.7 mm), CAN HAT on standoffs of about 16 mm. About 45 mm total (estimate; measure on the bench).
 6. **Enclosure size.** Inside depth 75 mm or more; display outline plus at least 15 mm per side; room beside the Pi for the micro-HDMI and USB-C plugs; a back-wall area for the heat sink and the mount.
 7. **Connector types.** Display's HDMI type matches the video cable; display's touch port matches the touch cable, with VBUS blocked; drop cable is male at the tee.
 8. **GPIO budget.** CAN HAT: 0, 1, 13, 16, 17, 18, 19, 20, 21, 22. Controller: "power going away" in and "halted" out on two other pins.
-9. **Current.** Fuse 7.5 A, load switch 7.5 A or more, buck 5 A, wire 16 or 14 AWG, against a 3.6 A worst case at 10.5 V. Off draw 100 µA or less.
+9. **Current.** Fuse 7.5 A, relay contacts 10 A or more, buck 5 A, wire 16 or 14 AWG, against a 3.6 A worst case at 10.5 V. Off draw zero.
 10. **Heat.** 15 to 18 W out of the box at 0.8 °C/W or better (part 20).
 
 ## Departures from the design spec
 
 This doc changes some lines of `docs/superpowers/specs/2026-10-28-cheekymarine-design.md`. The design spec gets updated to match in plan 5.
 
-- **6.6, "No battery backup. Hard power loss must be survivable by the filesystem design, not by a UPS."** Kept: still no battery or UPS in the box. Added: the unit runs from the boat's standby (unswitched) power with a sense wire from the switched side, so turning off the main battery switch triggers a clean shutdown (owner, 2026-10-31). The filesystem design stays as the second layer. The design spec assumed power from the switched 12 V dash.
+- **6.6, "No battery backup. Hard power loss must be survivable by the filesystem design, not by a UPS."** Kept: still no battery or UPS in the box. Added: the unit runs from the house battery's standby (unswitched) power, disconnects completely by relay once shut down, with a sense wire from the switched side, so turning off the main battery switch triggers a clean shutdown (owner, 2026-10-31). The filesystem design stays as the second layer. The design spec assumed power from the switched 12 V dash.
 - **Soft power.** Design goal 6 ("soft power button"), 6.6's momentary button and latch, 6.7's IP67 momentary pushbutton, and section 7's "Soft power module" and "Button" rows: now a nice-to-have. A latching on/off switch in the sense wire is acceptable (owner, 2026-10-31).
 - **6.6, feeding 5 V into the Pi's GPIO 5 V pins** (one option it lists): ruled out; 5 V goes in through the USB-C port to keep the Pi's input protection.
-- **6.6, reverse-polarity protection.** Kept, as a fit check across the 12 V parts, covering the load switch and any display regulator as well as the buck.
+- **6.6, reverse-polarity protection.** Kept, as a fit check across the 12 V parts, covering any display regulator as well as the buck.
 - **6.7, "cable glands for 12V, N2K drop cable, and nothing else."** Still true for options A to C in part 20; option D would add more.
 - **6.6, LC filter and a 9 to 36 V regulator.** The LC filter is optional (add it if radios pick up noise); parts must survive 30 V after the TVS.
 - **6.6, "Output 5.1 V at 5 A."** Now 5.0 to 5.3 V.
@@ -919,9 +924,9 @@ This doc changes some lines of `docs/superpowers/specs/2026-10-28-cheekymarine-d
 ## Open questions before buying
 
 - **Standby power near the helm.** Owner is checking the boat's wiring diagrams for an existing standby (unswitched) circuit at the helm. If there is none, run a new fused feed from the battery side of the main switch (part 19 sets the gauge by length).
-- **Which battery.** If the boat has more than one, take standby power from the house battery.
+- **House battery standby point.** Standby power comes from the house battery (owner, 2026-10-31); find its battery-side connection on the diagram.
 - **Sense source.** Which switched circuit at the helm the sense wire taps (it needs a 1 A fuse).
-- **Controller and load switch.** Pick a controller board that meets 100 µA off; confirm the Pololu #2813 load switch can be re-commanded by the controller after a dip.
+- **Relay and controller.** Pick a relay that meets part 4d (coil 0.6 W or less) and a controller board.
 - **Display 12 V maximum.** 4D gives "12.0 V typ" with no maximum. Without a stated 30 V maximum, add a display regulator (part 6).
 - **Display power-on.** Does the 4D panel come on by itself when powered? Its power button is on a board that isn't included.
 - **Display USB power backfeed.** 4D's datasheet suggests the touch port also takes power. Ask 4D, or plan on a USB power blocker.
