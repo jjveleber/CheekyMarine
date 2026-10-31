@@ -58,8 +58,9 @@ struct Rig {
     }
 };
 
-// Child of the power-cut test: records one point per synthetic second, forever, reporting each
-// point it has handed to the recorder on stdout.
+// Child of the power-cut test: records one point per synthetic second, reporting each point it has
+// handed to the recorder on stdout and waiting for a line on stdin before the next, so the parent
+// knows exactly how many were sent when it kills the child.
 int runRecorder(const QString& dir) {
     auto store = Store::open(dir);
     if (!store) return 2;
@@ -75,6 +76,9 @@ int runRecorder(const QString& dir) {
         rec.onVessel(at(1000 + i, 47.0 + i * 1e-4, -122.0));
         std::printf("%d\n", i);
         std::fflush(stdout);
+        char ack[8];
+        if (!std::fgets(ack, sizeof ack, stdin))
+            return 0;
     }
 }
 
@@ -524,8 +528,9 @@ private slots:
         QCOMPARE(c.active().size(), 1);
     }
 
-    // Review Focus 4: SIGKILL a recording child after 25 synthetic seconds of points; the database
-    // must be intact and what it holds a prefix of what was sent.
+    // Review Focus 4: SIGKILL a recording child once it has handed 59 points to the recorder (it
+    // waits for an ack per point, so that count is exact); the database must be intact, what it
+    // holds a prefix of what was sent, and at most one batch lost.
     void powerCutKeepsAPrefixOfTheTrack() {
         QTemporaryDir t;
         QProcess child;
@@ -534,20 +539,24 @@ private slots:
         child.setProcessChannelMode(QProcess::SeparateChannels);
         child.start();
         QVERIFY2(child.waitForStarted(10000), "child start");
-        int sent = -1;
+        constexpr int kKillAt = 58; // the last point sent: 19 buffered, the most a batch leaves
+        int last = -1;
         QByteArray buf;
         QElapsedTimer clock;
         clock.start();
-        while (sent < 25 && clock.elapsed() < 60000) {
+        while (last < kKillAt && clock.elapsed() < 60000) {
             if (!child.waitForReadyRead(1000) && child.state() != QProcess::Running) break;
             buf += child.readAllStandardOutput();
-            const auto lines = buf.split('\n');
-            if (lines.size() >= 2) sent = lines[lines.size() - 2].toInt();
+            for (qsizetype nl; (nl = buf.indexOf('\n')) >= 0; buf.remove(0, nl + 1)) {
+                last = buf.left(nl).toInt();
+                if (last < kKillAt) child.write("\n"); // the child sends the next point
+            }
         }
-        child.kill(); // SIGKILL
+        child.kill(); // SIGKILL, while the child waits for the ack of point kKillAt
         QVERIFY(child.waitForFinished(10000));
-        QVERIFY2(sent >= 25, qPrintable(QStringLiteral("child only sent %1 points").arg(sent)));
+        QCOMPARE(last, kKillAt);
         QCOMPARE(child.exitStatus(), QProcess::CrashExit);
+        const int sent = last + 1;
 
         auto s = Store::open(t.path());
         QVERIFY(s.has_value());
@@ -558,7 +567,8 @@ private slots:
         const auto l = ts.list();
         QCOMPARE(l.size(), 1);
         const auto pts = ts.points(l[0].id);
-        QVERIFY2(pts.size() >= 20, qPrintable(QStringLiteral("stored %1 points").arg(pts.size())));
+        QVERIFY2(pts.size() >= sent - TrackRecorder::kWriteBatch && pts.size() <= sent,
+                 qPrintable(QStringLiteral("stored %1 of %2 points").arg(pts.size()).arg(sent)));
         for (qsizetype i = 0; i < pts.size(); ++i) {
             QVERIFY2(std::abs(pts[i].lat - (47.0 + double(i) * 1e-4)) < 1e-9, "stored points are a prefix of the sent ones");
             QCOMPARE(pts[i].lon, -122.0);
