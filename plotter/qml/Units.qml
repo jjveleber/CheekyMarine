@@ -20,15 +20,21 @@ QtObject {
     readonly property FontLoader regularFont: FontLoader { source: "../fonts/NotoSans-Regular.ttf" }
     readonly property FontLoader boldFont: FontLoader { source: "../fonts/NotoSans-Bold.ttf" }
     readonly property string fontFamily: regularFont.name
+    readonly property bool fontsReady: regularFont.status === FontLoader.Ready && boldFont.status === FontLoader.Ready
 
     readonly property FontMetrics digitMetrics: FontMetrics {
         font.family: units.fontFamily
         font.bold: true
         font.pixelSize: 200
     }
-    // Height of "8" as a fraction of the pixel size (about 0.71 for Noto Sans Bold).
+    // Height of "8" as a fraction of the pixel size (about 0.71 for Noto Sans Bold). Measured only
+    // once both fonts are loaded: before that it would be a fallback face or a synthesized bold.
     readonly property real digitRatio: {
-        const h = digitMetrics.font.family, r = digitMetrics.tightBoundingRect("8").height / 200
+        // tightBoundingRect() is a call, so it adds no binding dependency on the font: reading the
+        // family (and fontsReady) here is what re-evaluates this when the fonts arrive.
+        const family = digitMetrics.font.family
+        if (!fontsReady || family === "") return 0.714
+        const r = digitMetrics.tightBoundingRect("8").height / 200
         return r > 0.3 ? r : 0.714
     }
     // Font pixel size whose "8" is heightMm tall.

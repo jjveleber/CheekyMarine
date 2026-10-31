@@ -410,20 +410,39 @@ TestCase {
         verify(!banner.visible)
     }
 
-    // A large slot's "8" is drawn at least 25 mm tall (95 %).
-    function test_largeSlotDigitHeight() {
-        Units.windowWidth = 1280
-        Units.windowHeight = 800
+    // The digit ratio is measured on the loaded bold face, not a fallback or a synthesized bold.
+    FontMetrics { id: boldMetrics; font.family: Units.fontFamily; font.bold: true; font.pixelSize: 200 }
+    function test_digitRatioMeasuredOnLoadedFonts() {
+        compare(Units.regularFont.status, FontLoader.Ready)
+        compare(Units.boldFont.status, FontLoader.Ready)
+        verify(Units.fontsReady)
+        compare(Units.boldFont.name, Units.fontFamily) // one family: Bold is its bold face
+        fuzzyCompare(Units.digitRatio, boldMetrics.tightBoundingRect("8").height / 200, 1e-9)
+        verify(Units.digitRatio > 0.68 && Units.digitRatio < 0.75, "Noto Sans Bold 8 is about 0.71 em: " + Units.digitRatio)
+    }
+
+    // A slot's "8" is drawn at its size's digit height (95 to 110 %), at both panel sizes.
+    function test_slotDigitHeight_data() {
+        let out = []
+        for (const s of sizes())
+            for (const size of ["small", "medium", "large"])
+                out.push({ tag: s.tag + " " + size, w: s.w, h: s.h, size: size })
+        return out
+    }
+    function test_slotDigitHeight(data) {
+        Units.windowWidth = data.w
+        Units.windowHeight = data.h
+        const want = Units.mm(Units.slotDigitMm(data.size))
         const slot = createTemporaryObject(slotComp, testCase, {
-            x: 20, y: 20, slotId: "TL", on: true, field: "depth", fieldLabel: "Depth", size: "large",
+            x: 20, y: 20, slotId: "TL", on: true, field: "depth", fieldLabel: "Depth", size: data.size,
             formatted: "8", unit: "ft" })
-        const value = byName(slot, "slotValue")
-        verify(value)
+        verify(byName(slot, "slotValue"))
         waitForRendering(slot)
-        const img = grabImage(value)
-        // The text item's box reaches over the field label above it: the digit is the longest run
-        // of rows with ink.
-        const bg = img.pixel(0, 0)
+        // The whole slot: the value text item's box reaches above the slot, so a grab of it alone
+        // is cut off. Label, digit and unit are on the slot background; the digit is the longest
+        // run of rows with ink (the label is shorter and a gap apart, the unit sits beside it).
+        const img = grabImage(slot)
+        const bg = img.pixel(0, Math.floor(img.height / 2))
         let rows = 0, run = 0
         for (let y = 0; y < img.height; ++y) {
             let ink = false
@@ -434,8 +453,8 @@ TestCase {
             run = ink ? run + 1 : 0
             rows = Math.max(rows, run)
         }
-        verify(rows >= Units.mm(25) * 0.95, "8 is " + rows + " px tall, want " + Units.mm(25) * 0.95)
-        verify(rows <= Units.mm(25) * 1.1, "8 is " + rows + " px tall, want about " + Units.mm(25))
+        verify(rows >= want * 0.95, "8 is " + rows + " px tall, want " + want * 0.95)
+        verify(rows <= want * 1.1, "8 is " + rows + " px tall, want about " + want)
     }
 
     function test_slotEditorChangesASlot() {
