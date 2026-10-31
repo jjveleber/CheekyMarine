@@ -226,8 +226,8 @@ What happens, step by step:
 
 1. Main switch off (or the unit switch, part 3): the sense wire drops.
 2. After 2 s with no sense (longer than an engine-start dip), the controller sets a "power going away" line to the Pi and holds it until the relay opens. It is a level, not a pulse, so a Pi that is still booting reads it when its service starts. The display stays on through the shutdown, which is fine because the battery is still connected.
-3. The Pi shuts down, set to finish within about 60 s (services get a 30 s stop limit, plan 4), and signals "halted": its 3.3 V rail drops when it powers off after halt, or a GPIO goes high (which one works on the Pi 5 is a bench check).
-4. The controller opens the relay. If the Pi never signals, the firmware opens it after about 3 minutes, and a hardware timer opens it after 3.5 to 6 minutes even if the controller has hung. The buck, the display and the controller itself lose power; nothing draws from the battery.
+3. The Pi shuts down, set to finish within about 60 s (services get a 30 s stop limit, plan 4), and signals "halted": its 3.3 V rail drops when it powers off after halt. That needs the Pi 5 EEPROM settings POWER_OFF_ON_HALT=1 and WAKE_ON_GPIO=0 (plan 4 sets them); a bench check confirms the header's 3.3 V really drops. If it doesn't, the halted GPIO becomes required instead.
+4. The controller releases its hold, and the relay opens. If the Pi never signals, the firmware acts after about 3 minutes: with sense still absent it releases the hold; if sense has come back meanwhile (the Pi hung while shutting down), it power-cycles instead, counted toward the cap in step 6. Independently, a hardware timer opens the relay 3.5 to 6 minutes after sense drops, even if the controller has hung. The buck, the display and the controller itself lose power; nothing draws from the battery.
 5. If the sense wire is live again (it came back during the shutdown), the controller is still powered from it: it keeps the relay open for at least 2 s, then closes it, and the Pi boots. If not, everything stays dead until the main switch comes back on.
 6. If the Pi halts on its own while the boat is on (a software power-off, or after an update), the controller power-cycles it the same way, so the Pi reboots. It acts only on a change from running to halted after the Pi has been seen running (3.3 V present for at least 10 s), and only once the 3.3 V has been absent for at least 5 s (so a plain reboot's blip, if the Pi 5 has one, doesn't count; bench check), never on the Pi simply being off at power-up. If the Pi's 3.3 V doesn't appear within 60 s of the relay closing, it power-cycles once (a Pi left halted with its 5 V up). These cycles count toward the cap: it gives up after 3 power-cycles in 10 minutes (then it leaves the unit off until the switch is cycled), so it can't loop. The way to turn the unit off is the switch.
 
@@ -265,12 +265,13 @@ It has four pieces:
 
 | Spec | Requirement | How to check |
 |---|---|---|
-| Inputs | Sense (from 4b), and the Pi's 3.3 V through a divider (required: "seen running" in step 6 needs it, since a halted-GPIO reads low both when the Pi runs and when it is off). A halted GPIO is optional on top | Pin count: 4 or more free I/O |
-| Outputs | Relay coil drive (4d), "power going away" to a Pi GPIO | Same |
+| Inputs | Sense (from 4b); the Pi's 3.3 V through a divider (required: "seen running" in step 6 needs it, since a halted GPIO reads low both when the Pi runs and when it is off); relay closed (the relay output through a divider). A halted GPIO is optional on top | Pin count: 6 or more free I/O, 7 with the halted GPIO |
+| Outputs | Hold line and cycle request (into the coil logic), "power going away" to a Pi GPIO | Same |
+| Start-up rule | At boot the controller raises hold only once it reads the relay as closed (so the hardware 2 s delay is never skipped), and starts the 60 s no-boot timer from the relay being seen closed, whether that happened before or after the controller booted | Firmware review |
 | Logic levels | 3.3 V. Lines to the Pi go through series resistors (about 1 kOhm) and are driven low or released whenever the Pi's 3.3 V is absent, so they can't power a Pi that is off | Board spec; circuit |
 | Power | From 12 V (sense wire or relay output, diode-ORed) through a regulator rated for 30 V | Regulator datasheet "absolute maximum" |
 | Coil logic | In hardware, not firmware alone: coil on when (sense present AND the controller isn't requesting a power-cycle) OR (the controller's hold line is on AND the hardware timer hasn't expired). The hold line is on continuously from boot whenever the relay is closed and no power-cycle is running, so it is already on at the instant sense drops (a relay releases in milliseconds). A power-cycle drops the hold line and raises the cycle request together. Both controller lines have pull-downs. The sense term's rising edge is delayed about 2 s in hardware (falling edge immediate), so the relay always stays open at least 2 s even if the controller is unpowered when sense returns. Result: a controller reset or hang never cuts the Pi while the boat is on, and can't keep the unit on the battery after it's off | Circuit; bench test: switch sense off with the Pi running and check it shuts down cleanly |
-| Relay drive | Through a transistor to the coil, with a flyback diode | Circuit |
+| Relay drive | The coil logic's output drives the coil through a transistor, with a flyback diode | Circuit |
 | Watchdog | Hardware watchdog and brown-out reset enabled (with the coil logic above, a reset while the boat is on doesn't cut power) | Microcontroller datasheet |
 | Hardware timer | Separate from the microcontroller: a timer or counter IC (not a long RC on an electrolytic, whose leakage can stop it firing). Held reset while sense is present and expires 3.5 to 6 minutes after sense drops, across its tolerances, with a clean on/off output. It can't chatter: once the contacts open with sense absent, nothing powers the coil | Circuit; bench test hangs the controller |
 | One sense signal | The controller, the coil logic and the timer reset all use the same Schmitt-buffered signal from the optocoupler (8 V "on" threshold), so a back-fed sense wire sitting at a few volts reads "off" everywhere. The gates, the timer and the optocoupler's pull-up run from the controller's diode-ORed supply | Circuit |
@@ -311,7 +312,7 @@ It has four pieces:
 
 **Fits with**
 
-- Two Pi GPIOs: "power going away" in and "halted" out (or the Pi's 3.3 V rail sensed by the controller). Use pins the CAN HAT doesn't (part 11), and a "halted" pin that stays low through boot, with an external pull-down.
+- The controller reads the Pi's 3.3 V (required) and drives one Pi GPIO, "power going away". A "halted" GPIO from the Pi is optional, and becomes required only if the bench check shows the Pi 5's 3.3 V doesn't drop after halt. Use pins the CAN HAT doesn't (part 11); a "halted" pin must stay low through boot, with an external pull-down.
 - Until the wiring diagram shows otherwise, assume engine starts dip the battery the unit runs on (the boat has a main engine and a kicker). The buck (part 5) must keep running down to about 7 V, and the relay must stay closed (part 4d); the 2 s sense delay keeps a crank from shutting the unit down.
 - The 12 V cable into the box becomes three conductors: standby +, sense, and negative (part 19).
 - The filesystem design (read-only root, A/B slots, plan 4) still matters: it covers a disconnected or dead battery, and a hung shutdown.
@@ -921,7 +922,7 @@ Before ordering the boat parts, these have to agree with each other:
 5. **Stack height.** NVMe adapter under the Pi, Pi, Active Cooler (13.7 mm), CAN HAT on standoffs of about 16 mm. About 45 mm total (estimate; measure on the bench).
 6. **Enclosure size.** Inside depth 75 mm or more; display outline plus at least 15 mm per side; room beside the Pi for the micro-HDMI and USB-C plugs; a back-wall area for the heat sink and the mount.
 7. **Connector types.** Display's HDMI type matches the video cable; display's touch port matches the touch cable, with VBUS blocked; drop cable is male at the tee.
-8. **GPIO budget.** CAN HAT: 0, 1, 13, 16, 17, 18, 19, 20, 21, 22. Controller: "power going away" in and "halted" out on two other pins.
+8. **GPIO budget.** CAN HAT: 0, 1, 13, 16, 17, 18, 19, 20, 21, 22. Controller: "power going away" into the Pi on one other pin, plus the Pi's 3.3 V read by the controller (a "halted" GPIO only if the bench check needs it).
 9. **Current.** Fuse 7.5 A, relay contacts 10 A or more, buck 5 A, wire 16, 14 or 12 AWG, against a 3.6 A worst case at 10.5 V. Off draw zero.
 10. **Heat.** 15 to 18 W out of the box at 0.8 °C/W or better (part 20).
 
