@@ -28,10 +28,10 @@ struct SlotConfig {
 // BR wtemp medium off, Top time small off, Bottom pos small off, Left stw medium off,
 // Right hdg medium off.
 QList<SlotConfig> defaultSlots();
-// `configs` (the eight slots in SlotId order) merged into `stored`: each known slot's first entry gets
-// the on, field and size values that differ from what slotsFromJson reads from it; every other entry
-// and key (a newer app's slot ids, per-slot keys and field names) is kept as is. A slot with no entry
-// is appended whole, as {"id":"TL","on":true,"field":"depth","size":"large"}, in SlotId order.
+// `configs` merged into `stored`: each config's slot gets its on, field and size written into the
+// first entry with its id, or appended as {"id":"TL","on":true,"field":"depth","size":"large"} in
+// `configs` order. Every other entry and key (a newer app's slot ids, per-slot keys, and the values of
+// slots not in `configs`) is kept as is.
 QJsonArray slotsToJson(const QList<SlotConfig>& configs, const QJsonArray& stored = {});
 // Always the eight slots in SlotId order. A slot with no entry takes its default; within an entry a
 // missing or unknown value (on, field, size) takes that slot's default. Unknown ids are ignored;
@@ -70,10 +70,10 @@ public:
     QHash<int, QByteArray> roleNames() const override;
 
     QList<SlotConfig> slotConfigs() const { return m_slots; }
-    // Changes one slot and stores the eight merged into the stored array (slotsToJson). Unknown id,
-    // field or size: logged, nothing changes.
+    // Writes this one slot into the stored array (slotsToJson); the other entries are untouched.
+    // Unknown id, field or size: logged, nothing changes.
     Q_INVOKABLE void setSlot(const QString& id, bool on, const QString& field, const QString& size);
-    // Stores the given eight slots (the dev option --slots uses it).
+    // Writes the given slots into the stored array (the dev option --slots passes all eight).
     void setSlotConfigs(const QList<SlotConfig>& configs);
 
 private:

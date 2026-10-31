@@ -38,29 +38,17 @@ QList<SlotConfig> defaultSlots() {
 }
 
 QJsonArray slotsToJson(const QList<SlotConfig>& configs, const QJsonArray& stored) {
-    const QList<SlotConfig> was = slotsFromJson(stored);
     QJsonArray a = stored;
-    QList<bool> seen(configs.size(), false);
-    for (int k = 0; k < a.size(); ++k) {
-        if (!a[k].isObject()) continue;
-        QJsonObject o = a[k].toObject();
-        const auto id = slotIdFromName(o.value("id").toString());
-        if (!id || int(*id) >= configs.size() || seen[int(*id)]) continue;
-        const int i = int(*id);
-        seen[i] = true;
-        const SlotConfig& s = configs.at(i);
-        if (s.on != was.at(i).on) o["on"] = s.on;
-        if (s.field != was.at(i).field) o["field"] = fieldName(s.field);
-        if (s.size != was.at(i).size) o["size"] = slotSizeName(s.size);
-        a[k] = o;
-    }
-    for (int i = 0; i < configs.size(); ++i) {
-        if (seen[i]) continue;
-        const SlotConfig& s = configs.at(i);
-        a.append(QJsonObject{{"id", slotIdName(s.id)},
-                             {"on", s.on},
-                             {"field", fieldName(s.field)},
-                             {"size", slotSizeName(s.size)}});
+    for (const SlotConfig& s : configs) {
+        const QString id = slotIdName(s.id);
+        int k = 0;
+        while (k < a.size() && a[k].toObject().value("id").toString() != id) ++k; // first entry wins
+        QJsonObject o = k < a.size() ? a[k].toObject() : QJsonObject{{"id", id}};
+        o["on"] = s.on;
+        o["field"] = fieldName(s.field);
+        o["size"] = slotSizeName(s.size);
+        if (k < a.size()) a[k] = o;
+        else a.append(o);
     }
     return a;
 }
@@ -179,9 +167,7 @@ void SlotsModel::setSlot(const QString& id, bool on, const QString& field, const
         qWarning() << "slots: rejected" << id << field << size;
         return;
     }
-    QList<SlotConfig> next = m_slots;
-    next[int(*i)] = {*i, on, *f, *z};
-    setSlotConfigs(next);
+    setSlotConfigs({{*i, on, *f, *z}}); // only this slot's entry is written
 }
 
 void SlotsModel::setSlotConfigs(const QList<SlotConfig>& configs) {

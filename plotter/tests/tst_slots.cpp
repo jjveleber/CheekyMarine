@@ -176,6 +176,18 @@ private slots:
         QCOMPARE(e.settings->slotsJson().toArray(), want);
     }
 
+    // Picking the default field over a newer app's unknown one stores the default's name.
+    void choosingDefaultOverUnknownFieldIsSaved() {
+        Env e;
+        QVERIFY(e.settings);
+        e.settings->setSlotsJson(parse(R"([{"id":"Top","on":false,"field":"aws","size":"small","x":1}])"));
+        SlotsModel m(*e.settings, e.vessel);
+        QCOMPARE(m.slotConfigs().at(4).field, Field::Time); // aws is unknown here: the slot default
+        m.setSlot("Top", false, "time", "small");
+        QCOMPARE(e.settings->slotsJson().toArray(),
+                 parse(R"([{"id":"Top","on":false,"field":"time","size":"small","x":1}])"));
+    }
+
     // Each unit setting refreshes the formatted and unit roles of both models.
     void unitSettingsRefreshBothModels_data() {
         QTest::addColumn<QString>("setting");
