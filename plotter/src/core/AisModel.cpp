@@ -29,6 +29,7 @@ QHash<int, QByteArray> AisModel::roleNames() const {
 }
 
 void AisModel::setTargets(const QList<AisTarget> &t) {
+    if (!m_live) return;  // not live shows nothing: never repopulate cleared targets
     beginResetModel();
     m_targets = t;
     endResetModel();
@@ -37,5 +38,8 @@ void AisModel::setTargets(const QList<AisTarget> &t) {
 void AisModel::setLive(bool live) {
     if (m_live == live) return;
     m_live = live;
-    if (!live && !m_targets.isEmpty()) setTargets({});
+    if (live || m_targets.isEmpty()) return;
+    beginResetModel();
+    m_targets.clear();
+    endResetModel();
 }

@@ -30,6 +30,7 @@ void N2kClient::connectNow() {
     if (m_sock.state() != QLocalSocket::UnconnectedState) return;
     m_buf.clear();
     m_mismatch = false;
+    m_helloSeen = false;
     m_sock.connectToServer(m_path);
 }
 
@@ -72,12 +73,13 @@ void N2kClient::handleLine(const QByteArray &line) {
             qWarning("n2kd: bad hello: %s", qPrintable(schema.error()));
             return;
         }
+        m_helloSeen = true;
         emit daemonVersion(o.value("version").toString());
         if (*schema != 1) {
             m_mismatch = true;
             emit schemaMismatch(*schema);
         }
-    } else if (m_mismatch) {
+    } else if (!m_helloSeen || m_mismatch) {
         return;
     } else if (type == "vessel") {
         const auto v = parseVessel(o);

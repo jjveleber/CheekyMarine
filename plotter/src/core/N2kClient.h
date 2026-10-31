@@ -36,4 +36,5 @@ private:
     QByteArray m_buf;
     bool m_live = false;
     bool m_mismatch = false;
+    bool m_helloSeen = false;
 };

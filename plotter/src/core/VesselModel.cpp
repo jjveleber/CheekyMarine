@@ -1,6 +1,7 @@
 #include "VesselModel.h"
 
 void VesselModel::setState(const VesselState &s) {
+    if (!m_live) return;  // not live shows "--": never repopulate the cleared state
     m_state = s;
     emit changed();
 }

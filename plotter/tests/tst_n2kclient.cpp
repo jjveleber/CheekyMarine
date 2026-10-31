@@ -80,6 +80,29 @@ private slots:
         QTest::qWait(200);
         QCOMPARE(vs.count(), 0);
     }
+    // Data before the first hello of a connection is ignored, on the first connect and after a reconnect.
+    void dataBeforeHelloIgnored() {
+        N2kClient c(path(), 3000, 100);
+        QSignalSpy vs(&c, &N2kClient::vessel), as(&c, &N2kClient::ais), cs(&c, &N2kClient::connectionChanged);
+        c.start();
+        QVERIFY(accept());
+        send(kVesselLine + kAisLine);
+        QTest::qWait(200);
+        QCOMPARE(vs.count(), 0);
+        QCOMPARE(as.count(), 0);
+        QCOMPARE(cs.count(), 0);
+        send(kHello + kVesselLine);
+        QTRY_COMPARE_WITH_TIMEOUT(vs.count(), 1, 10000);
+        m_peer->disconnectFromServer();
+        QTRY_COMPARE_WITH_TIMEOUT(cs.count(), 2, 10000);
+        m_peer = nullptr;
+        QVERIFY(accept());
+        send(kVesselLine);
+        QTest::qWait(200);
+        QCOMPARE(vs.count(), 1);
+        send(kHello + kVesselLine);
+        QTRY_COMPARE_WITH_TIMEOUT(vs.count(), 2, 10000);
+    }
     void lineSplitAcrossWrites() {
         N2kClient c(path(), 3000, 100);
         QSignalSpy vs(&c, &N2kClient::vessel);
@@ -204,6 +227,34 @@ private slots:
         QCOMPARE(am.rowCount(), 0);
         QVERIFY(am.targets().isEmpty());
         QCOMPARE(ch.count(), 2);
+    }
+    // Contract: not live shows "--"; a late setState or setTargets must not repopulate the cleared models.
+    void modelsIgnoreDataWhileNotLive() {
+        VesselModel vm;
+        AisModel am;
+        VesselState s;
+        s.depthM = 5.0;
+        AisTarget t;
+        t.mmsi = 7;
+        QSignalSpy ch(&vm, &VesselModel::changed), rs(&am, &AisModel::modelReset);
+        vm.setState(s);
+        am.setTargets({t});
+        QCOMPARE(ch.count(), 0);
+        QVERIFY(!vm.state().depthM);
+        QCOMPARE(rs.count(), 0);
+        QCOMPARE(am.rowCount(), 0);
+        vm.setLive(true);
+        am.setLive(true);
+        vm.setState(s);
+        am.setTargets({t});
+        QCOMPARE(*vm.state().depthM, 5.0);
+        QCOMPARE(am.rowCount(), 1);
+        vm.setLive(false);
+        am.setLive(false);
+        vm.setState(s);
+        am.setTargets({t});
+        QVERIFY(!vm.state().depthM);
+        QCOMPARE(am.rowCount(), 0);
     }
 };
 
