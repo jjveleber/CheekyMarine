@@ -15,6 +15,13 @@ Item {
 
     objectName: "numbersPage"
 
+    // Fewer cells picked while editing one that went away: close the editor, so no field tap can
+    // reach a cell that is not there.
+    onCellCountChanged: if (editIndex >= cellCount) {
+        editIndex = -1
+        editor.close()
+    }
+
     Grid {
         id: grid
         anchors { fill: parent; margins: page.gap }

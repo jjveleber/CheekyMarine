@@ -344,6 +344,28 @@ TestCase {
         compare(findAll(page, it => it.objectName.startsWith("cell-") && it.visible).length, 4)
     }
 
+    // Picking fewer cells while editing a cell that goes away closes the editor: no later field tap
+    // can reach a cell that is not there.
+    function test_numbersFewerCellsClosesEditorOfRemovedCell() {
+        fixture.numbersModel.setCount(4)
+        const page = createTemporaryObject(numbersPageComp, testCase, { width: 1200, height: 800, model: fixture.numbersModel })
+        tryCompare(page, "cellCount", 4)
+        mouseClick(byName(page, "cell-3"))
+        const editor = byName(page, "slotEditor")
+        verify(editor.visible)
+        compare(page.editIndex, 3)
+        mouseClick(byName(editor, "choice-cells-2"))
+        compare(fixture.numbersModel.count, 2)
+        verify(!editor.visible, "the edited cell is gone")
+        compare(page.editIndex, -1)
+        // Editing a cell that stays keeps the editor open.
+        waitForRendering(page) // the grid places the new cells on the next frame
+        mouseClick(byName(page, "cell-0"))
+        mouseClick(byName(editor, "choice-cells-3"))
+        verify(editor.visible)
+        compare(page.editIndex, 0)
+    }
+
     function makeSettings() {
         const page = createTemporaryObject(settingsComp, testCase, { width: 1200, height: 800, settings: fixture.settings })
         verify(page, "SettingsPage")
