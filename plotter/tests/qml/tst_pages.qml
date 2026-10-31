@@ -25,8 +25,8 @@ TestCase {
                                            { abbr: "bk", meaning: "broken", kind: "qualifier" }]
         property var legend: fullLegend
         property var aisSelection: ({})
-        property var selected: []
-        function selectAt(p, r) { selected.push(r) }
+        property var selected: [] // selectAt calls: {x, y, r}
+        function selectAt(p, r) { selected.push({ x: p.x, y: p.y, r: r }) }
         function clearTarget() { aisSelection = ({}) }
         function zoomIn() {}
         function zoomOut() {}
@@ -66,6 +66,7 @@ TestCase {
         chartStub.legend = chartStub.fullLegend
         chartStub.follow = true
         chartStub.noPosition = false
+        chartStub.selected = []
         Units.windowWidth = 1280
         Units.windowHeight = 800
         Units.diagonalIn = 10.1
@@ -231,6 +232,30 @@ TestCase {
         verify(close)
         close.clicked()
         verify(!sheet.visible)
+    }
+
+    // A tap on the chart (mouse, and touch as on the panel) reaches selectAt with the point in map
+    // area coordinates, the ones the map's pixelForCoordinate uses, and an 8 mm radius. The Top and
+    // Left bars are on, so the map area is offset from the page and page coordinates would differ.
+    function test_chartTapSelectsAtMapAreaPoint() {
+        fixture.slotsModel.setSlot("Top", true, "time", "small")
+        fixture.slotsModel.setSlot("Left", true, "stw", "medium")
+        const chart = createTemporaryObject(chartPageComp, testCase, {
+            width: 1280 - Units.mm(17), height: 800,
+            chart: chartStub, chartMap: createTemporaryObject(mapStub, testCase), slotsModel: fixture.slotsModel })
+        waitForRendering(chart)
+        const map = byName(chart, "mapArea")
+        verify(map.x > 0 && map.y > 0, "map area offset by the bars")
+        mouseClick(map, 300, 250)
+        touchEvent(map).press(0, map, 400, 350).commit()
+        touchEvent(map).release(0, map, 400, 350).commit()
+        const want = [{ x: 300, y: 250 }, { x: 400, y: 350 }]
+        compare(chartStub.selected.length, want.length)
+        for (let i = 0; i < want.length; ++i) {
+            const got = chartStub.selected[i], what = JSON.stringify(got)
+            verify(Math.abs(got.x - want[i].x) < 1 && Math.abs(got.y - want[i].y) < 1, what)
+            fuzzyCompare(got.r, Units.mm(8), 1e-6)
+        }
     }
 
     // No legend (no pack, or no legend.json): no button that would open a blank sheet.

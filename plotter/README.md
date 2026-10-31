@@ -140,6 +140,15 @@ plus `--page`, `--sheet`, `--lock` or `--record` as needed. The no-data banner i
 without n2kd (`nodata-*.png`); the recovery screen is `--data` pointing at a directory whose
 `plotter.db` is junk (`recovery-*.png`).
 
+## Bring-up checks
+
+On the real panel, once the app runs there (the tests cover these offscreen only):
+
+- Tap on target: with AIS targets on the chart, tap one with a finger; its sheet must open for that
+  target. The tap point is in map area coordinates (`tst_pages` proves it reaches `selectAt` that
+  way); this checks that on the panel's touch driver it matches where the map draws the target
+  (`pixelForCoordinate`), including with the Top and Left bars on.
+
 ## Licences
 
 See `THIRD_PARTY_NOTICES` at the repository root: Qt 6 (LGPL-3.0, dynamic), maplibre-native-qt core
