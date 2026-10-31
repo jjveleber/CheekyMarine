@@ -102,6 +102,22 @@ private slots:
         s["glyphs"] = "pack://glyphs/other";
         QVERIFY(!rewriteStyle(s, "/p/charts", "/p/charts", "/p/bathy").has_value());
     }
+    void noSpritePassesThrough() {
+        QJsonObject s = load("nav-day");
+        s.remove("sprite");
+        auto r = rewriteStyle(s, "/p/charts", "/p/charts", "/p/bathy");
+        QVERIFY2(r.has_value(), errText(r).constData());
+        QVERIFY(!r->contains("sprite"));
+        QCOMPARE(r->value("glyphs").toString(), QStringLiteral("file:///p/charts/glyphs/{fontstack}/{range}.pbf"));
+    }
+    void noGlyphsPassesThrough() {
+        QJsonObject s = load("nav-day");
+        s.remove("glyphs");
+        auto r = rewriteStyle(s, "/p/charts", "/p/charts", "/p/bathy");
+        QVERIFY2(r.has_value(), errText(r).constData());
+        QVERIFY(!r->contains("glyphs"));
+        QCOMPARE(r->value("sprite").toString(), QStringLiteral("file:///p/charts/sprites/nav"));
+    }
     void badChartsDirErrors() {
         for (const char* d : {"rel", "/a?b", "/a%20b"})
             QVERIFY(!rewriteStyle(load("nav-day"), "/p/charts", d, "/p/bathy").has_value());
