@@ -18,6 +18,10 @@ Item {
     property real leftInset: 0
     property real rightInset: 0
     readonly property real margin: Units.mm(1.5)
+    // Inner edges of the right corner slots (the corner area's edge when a slot is off): the zoom
+    // column sits centred between them.
+    property real trBottom: cornerArea.y
+    property real brTop: cornerArea.y + cornerArea.height
 
     objectName: "chartPage"
 
@@ -145,6 +149,8 @@ Item {
             Binding { when: slotView.slotId === "Bottom"; target: page; property: "bottomInset"; value: slotView.takesRoom ? slotView.height : 0 }
             Binding { when: slotView.slotId === "Left"; target: page; property: "leftInset"; value: slotView.takesRoom ? slotView.width : 0 }
             Binding { when: slotView.slotId === "Right"; target: page; property: "rightInset"; value: slotView.takesRoom ? slotView.width : 0 }
+            Binding { when: slotView.slotId === "TR"; target: page; property: "trBottom"; value: slotView.on ? slotView.y + slotView.height : cornerArea.y }
+            Binding { when: slotView.slotId === "BR"; target: page; property: "brTop"; value: slotView.on ? slotView.y : cornerArea.y + cornerArea.height }
         }
     }
 
@@ -179,18 +185,25 @@ Item {
         onClicked: page.chart.recenter()
     }
 
+    // In the gap between the TR and BR slots. No vertical padding, so each button is 12 mm tall and
+    // the column fits between two large corners at 1024x600.
     Column {
-        anchors { right: cornerArea.right; verticalCenter: cornerArea.verticalCenter }
+        anchors.right: cornerArea.right
+        y: page.trBottom + (page.brTop - page.trBottom - height) / 2
         visible: !page.editing
         spacing: Units.mm(1.5)
         BigButton {
             objectName: "zoomInButton"
+            topPadding: 0
+            bottomPadding: 0
             font.pixelSize: Units.mm(8)
             text: "+"
             onClicked: page.chart.zoomIn()
         }
         BigButton {
             objectName: "zoomOutButton"
+            topPadding: 0
+            bottomPadding: 0
             font.pixelSize: Units.mm(8)
             text: "−"
             onClicked: page.chart.zoomOut()
@@ -198,6 +211,7 @@ Item {
     }
 
     Rectangle {
+        objectName: "noPositionChip"
         anchors { horizontalCenter: cornerArea.horizontalCenter; top: cornerArea.top }
         visible: page.chart.noPosition && !page.editing
         radius: height / 2

@@ -64,6 +64,8 @@ TestCase {
         failOnWarning(/.*/)
         fixture.reset()
         chartStub.legend = chartStub.fullLegend
+        chartStub.follow = true
+        chartStub.noPosition = false
         Units.windowWidth = 1280
         Units.windowHeight = 800
         Units.diagonalIn = 10.1
@@ -250,21 +252,41 @@ TestCase {
             const m = fixture.slotsModel
             const i = ["TL", "TR", "BL", "BR", "Top", "Bottom", "Left", "Right"].indexOf(id)
             const field = ["depth", "sog", "cog", "wtemp", "time", "pos", "stw", "hdg"][i]
-            const size = ["large", "large", "medium", "medium", "small", "small", "medium", "medium"][i]
+            // TR and BR both large: the least room for the zoom column between them.
+            const size = ["large", "large", "medium", "large", "small", "small", "medium", "medium"][i]
             m.setSlot(id, true, field, size)
         }
+        // Every chart control on: recenter (not following) and the no-position chip too.
+        chartStub.follow = false
+        chartStub.noPosition = true
         const chart = createTemporaryObject(chartPageComp, testCase, {
             width: data.w - Units.mm(17), height: data.h,
             chart: chartStub, chartMap: createTemporaryObject(mapStub, testCase), slotsModel: fixture.slotsModel })
+        waitForRendering(chart)
         const slots = findAll(chart, it => it.objectName.startsWith("slot-") && it.visible)
         compare(slots.length, 8)
-        for (let a = 0; a < slots.length; ++a) {
-            for (let b = a + 1; b < slots.length; ++b) {
-                const p = slots[a].mapToItem(chart, 0, 0), q = slots[b].mapToItem(chart, 0, 0)
-                const overlap = p.x < q.x + slots[b].width && q.x < p.x + slots[a].width
-                             && p.y < q.y + slots[b].height && q.y < p.y + slots[a].height
-                verify(!overlap, slots[a].objectName + " overlaps " + slots[b].objectName)
-            }
+        const box = it => { const p = it.mapToItem(chart, 0, 0); return { x: p.x, y: p.y, w: it.width, h: it.height } }
+        const overlaps = (a, b) => {
+            const p = box(a), q = box(b)
+            return p.x < q.x + q.w && q.x < p.x + p.w && p.y < q.y + q.h && q.y < p.y + p.h
+        }
+        const where = it => { const b = box(it); return it.objectName + " " + [b.x, b.y, b.w, b.h].map(Math.round).join(",") }
+        for (let a = 0; a < slots.length; ++a)
+            for (let b = a + 1; b < slots.length; ++b)
+                verify(!overlaps(slots[a], slots[b]), where(slots[a]) + " overlaps " + where(slots[b]))
+        // The chart's controls clear every slot and each other, and stay inside the page.
+        const controls = findAll(chart, it => it.isBigButton === true && it.visible && !it.objectName.startsWith("slot-"))
+                         .concat([byName(chart, "noPositionChip")])
+        compare(controls.map(c => c.objectName).sort(),
+                ["legendButton", "modeButton", "noPositionChip", "recenterButton", "zoomInButton", "zoomOutButton"])
+        for (let a = 0; a < controls.length; ++a) {
+            const c = box(controls[a])
+            verify(c.x >= 0 && c.y >= 0 && c.x + c.w <= chart.width + 0.5 && c.y + c.h <= chart.height + 0.5,
+                   where(controls[a]) + " is outside the page")
+            for (const s of slots)
+                verify(!overlaps(controls[a], s), where(controls[a]) + " overlaps " + where(s))
+            for (let b = a + 1; b < controls.length; ++b)
+                verify(!overlaps(controls[a], controls[b]), where(controls[a]) + " overlaps " + where(controls[b]))
         }
         // Bars shrink the viewport: the map area lies between them.
         const map = byName(chart, "mapArea")
