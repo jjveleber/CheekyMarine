@@ -45,8 +45,8 @@ bool fitsU32(double d) { return d >= 0.0 && d <= std::numeric_limits<quint32>::m
 // Counts and codes (sats, ship type, nav status) are never negative.
 bool fitsCount(double d) { return d >= 0.0 && d <= std::numeric_limits<int>::max(); }
 
-// Out of range reads as null.
-bool optInt(const QJsonObject &o, const char *key, std::optional<int> &out, QString &err) {
+// A count or code: negative or out of range reads as null.
+bool optCount(const QJsonObject &o, const char *key, std::optional<int> &out, QString &err) {
     std::optional<double> d;
     if (!optNumber(o, key, d, err)) return false;
     if (d && fitsCount(*d))
@@ -136,7 +136,7 @@ std::expected<QList<AisTarget>, QString> parseAis(const QJsonObject &o) {
         if (!optNumber(j, "lat", t.lat, err) || !optNumber(j, "lon", t.lon, err) ||
             !optNumber(j, "sog", t.sogMs, err) || !optNumber(j, "cog", t.cogRad, err) ||
             !optNumber(j, "hdg", t.hdgRad, err) || !optNumber(j, "posAge", t.posAge, err) ||
-            !optInt(j, "shipType", t.shipType, err) || !optInt(j, "navStatus", t.navStatus, err) ||
+            !optCount(j, "shipType", t.shipType, err) || !optCount(j, "navStatus", t.navStatus, err) ||
             !optString(j, "name", t.name, err))
             return Err(err);
         if (!t.lat || !t.lon) t.lat = t.lon = std::nullopt;
