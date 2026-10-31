@@ -35,10 +35,13 @@ bool TrackStore::append(qint64 id, const QList<TrackPoint>& points) {
         qWarning() << "cannot write track points:" << db.lastError().text();
         return false;
     }
+    // The failing statement's own error (QSqlQuery errors are not in db.lastError()).
+    QSqlError err;
     QSqlQuery q(db);
-    q.prepare(QStringLiteral("INSERT INTO track_points(track_id, t, lat, lon, sog, cog, depth) VALUES(?,?,?,?,?,?,?)"));
-    bool ok = true;
-    for (const TrackPoint& p : points) {
+    if (!q.prepare(QStringLiteral("INSERT INTO track_points(track_id, t, lat, lon, sog, cog, depth) VALUES(?,?,?,?,?,?,?)")))
+        err = q.lastError();
+    for (qsizetype i = 0; !err.isValid() && i < points.size(); ++i) {
+        const TrackPoint& p = points[i];
         q.addBindValue(id);
         q.addBindValue(p.t);
         q.addBindValue(p.lat);
@@ -46,18 +49,21 @@ bool TrackStore::append(qint64 id, const QList<TrackPoint>& points) {
         q.addBindValue(optionalDouble(p.sog));
         q.addBindValue(optionalDouble(p.cog));
         q.addBindValue(optionalDouble(p.depth));
-        if (!(ok = q.exec()))
-            break;
+        if (!q.exec())
+            err = q.lastError();
     }
-    if (ok) {
+    if (!err.isValid()) {
         QSqlQuery u(db);
         u.prepare(QStringLiteral("UPDATE tracks SET ended = ? WHERE id = ?"));
         u.addBindValue(points.last().t);
         u.addBindValue(id);
-        ok = u.exec();
+        if (!u.exec())
+            err = u.lastError();
     }
-    if (!ok || !db.commit()) {
-        qWarning() << "cannot write track points:" << (ok ? db.lastError().text() : q.lastError().text());
+    if (!err.isValid() && !db.commit())
+        err = db.lastError();
+    if (err.isValid()) {
+        qWarning() << "cannot write track points:" << err.text();
         db.rollback();
         return false;
     }
@@ -159,7 +165,8 @@ TrackRecorder::~TrackRecorder() {
 void TrackRecorder::dropUnwritten() {
     if (m_buffer.isEmpty())
         return;
-    // The write failed and the track is about to change: these points belong to the old track.
+    // The write failed and the track is about to change (these points belong to the old track), or
+    // a full batch could not be written.
     qWarning() << "dropping" << m_buffer.size() << "unwritten track points";
     m_buffer.clear();
 }
@@ -194,6 +201,8 @@ void TrackRecorder::onVessel(const VesselState& s) {
     const bool keep = !m_last || (p.t - m_last->t >= m_settings.trackIntervalS() &&
                                   distanceM({m_last->lat, m_last->lon}, {p.lat, p.lon}) >= m_settings.trackMinDistanceM());
     if (keep) {
+        if (m_buffer.isEmpty())
+            m_bufferId = m_active;
         m_buffer.append(p);
         m_last = p;
         m_activePoints.append({p.lat, p.lon});
@@ -208,9 +217,12 @@ void TrackRecorder::onVessel(const VesselState& s) {
 void TrackRecorder::flush() {
     if (m_buffer.isEmpty())
         return;
-    if (m_store.append(m_active, m_buffer))
+    m_lastWriteS = m_nowS();
+    if (m_store.append(m_bufferId, m_buffer))
         m_buffer.clear();
-    m_lastWriteS = m_nowS(); // on failure the points stay buffered and are retried in 30 s
+    else if (m_buffer.size() >= kWriteBatch)
+        dropUnwritten(); // writes keep failing: hold at most one batch
+    // else the points stay buffered and are retried in 30 s or at a full batch
 }
 
 void TrackRecorder::tick() {

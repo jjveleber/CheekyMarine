@@ -66,7 +66,8 @@ public:
     ~TrackRecorder() override;
 
     void onVessel(const VesselState& s);
-    // Writes the buffered points now.
+    // Writes the buffered points now. When a full batch cannot be written it is dropped with one
+    // warning, so writes that keep failing do not grow the buffer.
     void flush();
     // Writes the buffer when 30 s have passed since the last write (a timer calls it, so a quiet
     // data feed does not leave points unwritten).
@@ -87,7 +88,10 @@ private:
     Settings& m_settings;
     std::function<double()> m_nowS;
     qint64 m_active = 0;
+    // Unwritten points, at most one batch, and the track they belong to: written only to that
+    // track, dropped with a warning when the track changes after a failed write.
     QList<TrackPoint> m_buffer;
+    qint64 m_bufferId = 0;
     QList<LatLon> m_activePoints;
     std::optional<TrackPoint> m_last; // last stored point of the active track
     std::optional<double> m_lastPosT; // last vessel update that carried a position, stored or not

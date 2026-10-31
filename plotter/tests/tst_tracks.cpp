@@ -366,6 +366,36 @@ private slots:
         QCOMPARE(q.value(0).toInt(), 0);
     }
 
+    // A failing UPDATE of `ended` reports its own error, not the INSERT's.
+    void failedEndedUpdateReportsItsOwnError() {
+        Rig r;
+        const qint64 id = r.tracks->create(0);
+        QSqlQuery q(r.store->db());
+        QVERIFY(q.exec("CREATE TRIGGER no_updates BEFORE UPDATE ON tracks BEGIN SELECT RAISE(ABORT, 'updates are off'); END"));
+        TrackPoint p;
+        p.t = 1; p.lat = 1; p.lon = 1;
+        QTest::ignoreMessage(QtWarningMsg, QRegularExpression("cannot write track points: .*updates are off"));
+        QVERIFY(!r.tracks->append(id, {p}));
+        QCOMPARE(r.rows("track_points"), 0); // rolled back
+    }
+    // Writes that keep failing: the buffer never holds more than one batch, and each failed batch
+    // is one write warning and one drop warning, not one per point.
+    void failingWritesKeepTheBufferToOneBatch() {
+        Rig r(true, 1, 0);
+        QTest::failOnWarning(QRegularExpression(".*"));
+        QSqlQuery q(r.store->db());
+        QVERIFY(q.exec("ALTER TABLE track_points RENAME TO track_points_off")); // writes now fail
+        for (int batch = 0; batch < 3; ++batch) {
+            QTest::ignoreMessage(QtWarningMsg, QRegularExpression("cannot write track points"));
+            QTest::ignoreMessage(QtWarningMsg, QRegularExpression("dropping 20 unwritten track points"));
+        }
+        for (int i = 0; i < 60; ++i) r.feed(i, 47.0 + i * 1e-4); // batches full at 19, 39 and 59
+        r.feed(60, 47.0 + 60 * 1e-4);
+        QVERIFY(q.exec("ALTER TABLE track_points_off RENAME TO track_points"));
+        r.rec->flush();
+        QCOMPARE(r.stored(r.rec->activeId()), 1); // the dropped batches are gone, the newer point is kept
+    }
+
     void controllerShowsActiveAlwaysAndOthersWhenVisible() {
         Rig r(true, 1, 0);
         TracksController c(*r.tracks, *r.rec);
