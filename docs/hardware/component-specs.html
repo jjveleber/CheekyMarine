@@ -149,7 +149,7 @@ Part 4 has the details.</p>
 <tr class="even">
 <td>2</td>
 <td>TVS diode + LC filter</td>
-<td>TVS: unidirectional, 15 to 18 V standoff, clamp 30 V or less, across
+<td>TVS: unidirectional, 17 to 18 V standoff, clamp 30 V or less, across
 the filter output. Inductor: 10 µH, 6 A saturation</td>
 <td>$1.06 (TVS); LC not priced</td>
 </tr>
@@ -468,7 +468,11 @@ to about 32 V on the capacitors).</p>
 </tr>
 <tr class="even">
 <td>Standoff voltage (VRWM)</td>
-<td>15 to 18 V: above 14.8 V charging, as low as possible above it</td>
+<td>17 to 18 V. A charger can run above 14.8 V: temperature-compensated
+charging in the cold reaches about 15 V, and an equalize cycle 15.5 to
+16 V, while the TVS’s breakdown voltage drops about 0.1% per °C when
+cold. 15 to 17 V only if the charger never exceeds 14.8 V. Above 18 V
+the clamp passes 30 V</td>
 <td>Datasheet “VRWM” or “reverse stand-off voltage”</td>
 </tr>
 <tr class="odd">
@@ -528,7 +532,7 @@ mouser.com/c/circuit-protection/esd-protection-diodes-tvs-diodes/, read
 </tr>
 <tr class="even">
 <td>Working Voltage</td>
-<td>Range 15 V to 18 V (or tick 15 V through 18 V)</td>
+<td>Range 17 V to 18 V (17.1 V is the 1.5KE20A)</td>
 <td>Standoff voltage</td>
 </tr>
 <tr class="odd">
@@ -669,9 +673,14 @@ supply and the relay coil supply in part 4) taps the filter output, at
 the TVS. Never the relay contact itself: that point is ahead of the
 filter and the clamp, and the 30 V rule wouldn’t hold there.</li>
 </ul>
-<p><strong>Reference, not a requirement.</strong> Littelfuse 1.5KE20A:
-17.1 V standoff, 27.7 V clamp, 1500 W, unidirectional, $1.06, Digi-Key,
-2026-10-30. LC filter parts: none priced yet.</p>
+<p><strong>Reference, not a requirement.</strong> Diotec 1.5KE20A,
+Mouser
+(https://www.mouser.com/en/ProductDetail/Diotec-Semiconductor/1.5KE20A?qs=OlC7AqGiEDn%252BxJs4ZS20Vw%3D%3D),
+ammo pack, orderable as 10 (owner is ordering 10), 2026-10-31. Per
+Diotec’s datasheet: 17.1 V standoff, breakdown 19.0 to 21.0 V, 27.7 V
+clamp at 56 A, 1500 W at 10/1000 µs, 1 µA max leakage at standoff, -50
+to +175 °C. Same part from Littelfuse: $1.06, Digi-Key, 2026-10-30. LC
+filter parts: none priced yet.</p>
 <h3>3. Unit on/off switch</h3>
 <p><strong>Job.</strong> Lets the owner turn the unit off while the boat
 stays on. It sits in the thin sense wire (part 4), not in the power
@@ -915,9 +924,9 @@ the box, so an open switch reads “off” even with diode leakage</td>
 </tr>
 <tr class="even">
 <td>Surge clamp</td>
-<td>Its own small TVS (600 W class, 15 to 18 V standoff) where the sense
-wire enters the box: the main TVS sits after the relay and can’t protect
-this wire</td>
+<td>Its own small TVS (600 W class, 17 to 18 V standoff, as for part 2)
+where the sense wire enters the box: the main TVS sits after the relay
+and can’t protect this wire</td>
 <td>Datasheet, as for part 2; Mouser: part 2’s TVS filters with Pppm set
 to 600 W (P6KE20A is the axial 600 W part)</td>
 </tr>

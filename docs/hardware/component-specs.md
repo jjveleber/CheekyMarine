@@ -71,7 +71,7 @@ What happens when the main battery switch (or the unit's own switch) goes off: t
 | # | Part | The one number that matters most | Reference price |
 |---|---|---|---|
 | 1 | Fuse + holder | 7.5 A blade fuse, sealed holder for 16 AWG | $4.58 (5 A bench fuse) |
-| 2 | TVS diode + LC filter | TVS: unidirectional, 15 to 18 V standoff, clamp 30 V or less, across the filter output. Inductor: 10 µH, 6 A saturation | $1.06 (TVS); LC not priced |
+| 2 | TVS diode + LC filter | TVS: unidirectional, 17 to 18 V standoff, clamp 30 V or less, across the filter output. Inductor: 10 µH, 6 A saturation | $1.06 (TVS); LC not priced |
 | 3 | Unit on/off switch | Latching, sealed, reliable at 5 mA, rated 1 A (sense wire only) | not priced |
 | 4 | Standby power + shutdown controller | Standby feed, sense input, controller, relay that opens fully when off | not priced |
 | 5 | Buck regulator | 5 A continuous at 5.0 to 5.3 V, survives 30 V in | $47.95 |
@@ -159,7 +159,7 @@ Heat in the box: everything above ends up as heat inside the enclosure. In dayli
 | Spec | Requirement | How to check |
 |---|---|---|
 | Polarity | Unidirectional | Part number ends in "A" without "CA"; datasheet "uni-directional" |
-| Standoff voltage (VRWM) | 15 to 18 V: above 14.8 V charging, as low as possible above it | Datasheet "VRWM" or "reverse stand-off voltage" |
+| Standoff voltage (VRWM) | 17 to 18 V. A charger can run above 14.8 V: temperature-compensated charging in the cold reaches about 15 V, and an equalize cycle 15.5 to 16 V, while the TVS's breakdown voltage drops about 0.1% per °C when cold. 15 to 17 V only if the charger never exceeds 14.8 V. Above 18 V the clamp passes 30 V | Datasheet "VRWM" or "reverse stand-off voltage" |
 | Clamping voltage (VC) | 30 V or less at rated pulse current | Datasheet "VC" at "IPP" |
 | Peak pulse power | 1500 W or more (10/1000 µs) | Datasheet "PPPM" |
 | Leakage at standoff | 5 µA or less | Datasheet "IR at VRWM" |
@@ -172,7 +172,7 @@ Heat in the box: everything above ends up as heat inside the enclosure. In dayli
 | Product | TVS Diodes (not ESD Suppressors, the data-line parts) | |
 | Polarity | Unidirectional | Polarity |
 | Number of Channels | 1 Channel | |
-| Working Voltage | Range 15 V to 18 V (or tick 15 V through 18 V) | Standoff voltage |
+| Working Voltage | Range 17 V to 18 V (17.1 V is the 1.5KE20A) | Standoff voltage |
 | Clamping Voltage | Range up to 30 V | Clamping voltage; confirm on the datasheet it is VC at the rated IPP |
 | Pppm - Peak Pulse Power Dissipation | 1.5 kW and every larger value | Peak pulse power; confirm on the datasheet it is a 10/1000 µs rating, not 8/20 µs |
 | Termination Style | Axial, Through Hole | Package |
@@ -214,7 +214,7 @@ Leave open: Manufacturer, Breakdown Voltage (it follows from the working voltage
 - Order: relay, LC filter, TVS across the filter output, then the buck (part 5) and the display power (part 6). Everything here sits after the relay, so it draws nothing when the unit is off.
 - Every 12 V load in the box (buck, display power, the controller's supply and the relay coil supply in part 4) taps the filter output, at the TVS. Never the relay contact itself: that point is ahead of the filter and the clamp, and the 30 V rule wouldn't hold there.
 
-**Reference, not a requirement.** Littelfuse 1.5KE20A: 17.1 V standoff, 27.7 V clamp, 1500 W, unidirectional, $1.06, Digi-Key, 2026-10-30. LC filter parts: none priced yet.
+**Reference, not a requirement.** Diotec 1.5KE20A, Mouser (https://www.mouser.com/en/ProductDetail/Diotec-Semiconductor/1.5KE20A?qs=OlC7AqGiEDn%252BxJs4ZS20Vw%3D%3D), ammo pack, orderable as 10 (owner is ordering 10), 2026-10-31. Per Diotec's datasheet: 17.1 V standoff, breakdown 19.0 to 21.0 V, 27.7 V clamp at 56 A, 1500 W at 10/1000 µs, 1 µA max leakage at standoff, -50 to +175 °C. Same part from Littelfuse: $1.06, Digi-Key, 2026-10-30. LC filter parts: none priced yet.
 
 ### 3. Unit on/off switch
 
@@ -285,7 +285,7 @@ It has four pieces:
 | Isolation | Optocoupler (the 12 V side and the logic side share nothing but light) | Datasheet "optocoupler", "photocoupler" |
 | Where it connects | On the sense wire itself, before the diode that feeds the controller. Never at the point where the two diodes join: that point is live whenever the relay is closed, and the unit would never shut down | Circuit |
 | Pull-down | A resistor (about 10 kOhm) from the sense wire to negative inside the box, so an open switch reads "off" even with diode leakage | Circuit |
-| Surge clamp | Its own small TVS (600 W class, 15 to 18 V standoff) where the sense wire enters the box: the main TVS sits after the relay and can't protect this wire | Datasheet, as for part 2; Mouser: part 2's TVS filters with Pppm set to 600 W (P6KE20A is the axial 600 W part) |
+| Surge clamp | Its own small TVS (600 W class, 17 to 18 V standoff, as for part 2) where the sense wire enters the box: the main TVS sits after the relay and can't protect this wire | Datasheet, as for part 2; Mouser: part 2's TVS filters with Pppm set to 600 W (P6KE20A is the axial 600 W part) |
 | Threshold | On above about 8 V, off below about 5 V (a resistor and a zener or a divider set this) | Circuit values; bench check with the bench supply |
 | Sense current | About 5 mA into the optocoupler LED at 12 V | Resistor value |
 | LED current at 30 V | Half the optocoupler LED's absolute maximum or less. With a 5 mA design point and an 8 V threshold, a plain resistor gives about 27 mA at 30 V, so a current-limiting part (constant-current diode or transistor) is required | Optocoupler datasheet "IF absolute maximum" |
