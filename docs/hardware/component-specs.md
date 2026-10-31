@@ -34,8 +34,8 @@ Owner rules this revision follows (2026-10-31):
    |  (open = nothing draws           |            |       (in the sense wire)
    |   from the battery)              |          [4b] SENSE TVS + INPUT (opto)
    |                                  |            |
-   +--[2] TVS across + and -        [4c] CONTROLLER  <-- powered by the sense
- [2] LC FILTER (in line)              |   ^             wire or the relay output
+ [2] LC FILTER (in line)            [4c] CONTROLLER  <-- powered by the sense
+   +--[2] TVS across + and -          |   ^             wire or the relay output
    |              power going away ---+   | Pi 3.3 V
    |                                  v   |
    +------------------------------------+  (Pi GPIOs)
@@ -60,7 +60,7 @@ Owner rules this revision follows (2026-10-31):
 
 Mount [17] holds the enclosure [16] on the dash shelf. Glands [18] seal the two cable entries. Wire [19] covers the feed cable and everything inside the box.
 
-Order of the power path matters: fuse at the source (protects the cable), then the relay (open when off, so nothing draws from the battery), then the TVS and the LC filter, then the buck for the Pi and the display's own feed. The on/off switch only carries the sense signal.
+Order of the power path matters: fuse at the source (protects the cable), then the relay (open when off, so nothing draws from the battery), then the LC filter with the TVS across its output, then the buck for the Pi and the display's own feed. The on/off switch only carries the sense signal.
 
 What happens when the main battery switch (or the unit's own switch) goes off: the Pi gets 2 s of grace for an engine-start dip, then shuts down cleanly on standby power, and the controller opens the relay: from then on the unit draws nothing. When the switch comes back on, the sense wire powers the controller, which closes the relay and the unit starts. Part 4 has the details.
 
@@ -69,7 +69,7 @@ What happens when the main battery switch (or the unit's own switch) goes off: t
 | # | Part | The one number that matters most | Reference price |
 |---|---|---|---|
 | 1 | Fuse + holder | 7.5 A blade fuse, sealed holder for 16 AWG | $4.58 (5 A bench fuse) |
-| 2 | TVS diode + LC filter | TVS: unidirectional, 15 to 18 V standoff, clamp 30 V or less. Inductor: 6 A saturation | $1.06 (TVS); LC not priced |
+| 2 | TVS diode + LC filter | TVS: unidirectional, 15 to 18 V standoff, clamp 30 V or less, across the filter output. Inductor: 10 µH, 6 A saturation | $1.06 (TVS); LC not priced |
 | 3 | Unit on/off switch | Latching, sealed, reliable at 5 mA, rated 1 A (sense wire only) | not priced |
 | 4 | Standby power + shutdown controller | Standby feed, sense input, controller, relay that opens fully when off | not priced |
 | 5 | Buck regulator | 5 A continuous at 5.0 to 5.3 V, survives 30 V in | $47.95 |
@@ -150,7 +150,7 @@ Heat in the box: everything above ends up as heat inside the enclosure. In dayli
 
 ### 2. TVS diode and filtering
 
-**Job.** Sits across + and - just after the relay (part 4d). It does nothing at normal voltage, and clamps short spikes from the alternator, pumps and the starter before they reach the buck, the display and the controller. If a big spike kills it, it fails short and blows the fuse instead of letting the spike through. An LC filter (an inductor in the + line, capacitors across + and - after it) follows the TVS and keeps the buck's switching noise off the boat wiring and the radios. The owner builds it from parts (owner, 2026-10-31).
+**Job.** Sits across + and - at the LC filter's output, after the relay (part 4d). It does nothing at normal voltage, and clamps short spikes from the alternator, pumps and the starter before they reach the buck, the display and the controller. If a big spike kills it, it fails short and blows the fuse instead of letting the spike through. The LC filter (an inductor in the + line, capacitors across + and - after it) sits between the relay and the TVS and keeps the buck's switching noise off the boat wiring and the radios. The owner builds it from parts (owner, 2026-10-31). The TVS goes across the filter's output, not its input: an inductor and capacitors ring after a fast edge, and a TVS ahead of the inductor can't clamp that (a 28 V clamped surge rings to about 32 V on the capacitors).
 
 **TVS: must have**
 
@@ -167,13 +167,14 @@ Heat in the box: everything above ends up as heat inside the enclosure. In dayli
 
 | Spec | Requirement | How to check |
 |---|---|---|
-| Inductor value | 10 µH (4.7 to 22 µH) | Datasheet "inductance" |
-| Inductor saturation current | 6 A or more (3.6 A worst case, plus start-up surge) | Datasheet "Isat" |
+| Inductor value | 10 µH (the damping row is sized for it) | Datasheet "inductance" |
+| Inductor saturation current | 6 A or more (3.6 A worst case with margin). The capacitors' charge when the relay closes peaks well above this for tens of µs; that brief saturation is harmless | Datasheet "Isat" |
+| Inductor heating current | 4 A or more at 85 °C | Datasheet "Irms" or "rated current" and its derating |
 | Inductor resistance | 20 milliohm or less (0.07 V drop at 3.6 A) | Datasheet "DCR" |
 | Inductor type | Shielded power inductor, rated to 125 °C | Datasheet "shielded", operating temperature |
-| Ceramic capacitor | 10 µF, X7R, 50 V | Datasheet dielectric and voltage |
-| Electrolytic capacitor | 100 µF or more, 50 V, 105 °C, ripple current 1 A or more | Datasheet voltage, temperature, "ripple current" |
-| Damping | The electrolytic damps the filter's resonance, so a filter in front of a switching buck doesn't ring: ESR about 0.2 to 1 ohm (a general-purpose low-ESR part, not a polymer). Or add a series 1 ohm plus 100 µF across the output | Datasheet "ESR"; bench check: no ringing on the buck input, buck output steady on a load step |
+| Ceramic capacitor | 10 µF nominal, X7R, 50 V, radial leaded (a bare SMD part cracks when a hand-wired board flexes) | Datasheet dielectric, voltage, package |
+| Electrolytic capacitor | 100 to 220 µF, 50 V, 105 °C, 2000 h or more at 105 °C, ripple current 1 A or more | Datasheet voltage, temperature, "load life", "ripple current" |
+| Damping | An LC filter in front of a switching regulator can ring or oscillate unless it is damped. The electrolytic does it: ESR 0.3 to 0.5 ohm at room temperature (cold raises ESR 2 to 3 times, so start low; not a polymer part, whose ESR is too low). If the chosen electrolytic's ESR is below 0.3 ohm, add a resistor in series with it so the two add up to 0.3 to 0.5 ohm (for example 0.33 ohm, 1/4 W) | Datasheet "ESR" or "impedance" at 100 kHz; bench check at the lowest input (7 V) with the buck and the display regulator both loaded: no ringing on the buck input, buck output steady on a load step |
 
 **Nice to have**
 
@@ -193,7 +194,7 @@ Heat in the box: everything above ends up as heat inside the enclosure. In dayli
 - Must be after the fuse (part 1), so a shorted TVS blows the fuse, and after the relay, so its leakage stops when the unit is off.
 - Its clamp voltage sets what everything downstream must survive: 30 V for the controller's regulator, the buck, and the display.
 - It doesn't protect the sense wire, which reaches the controller without passing the relay; that wire has its own TVS (part 4b).
-- LC filter order: after the TVS, ahead of the buck (part 5) and the display power (part 6). It sits after the relay, so it draws nothing when the unit is off.
+- Order: relay, LC filter, TVS across the filter output, then the buck (part 5) and the display power (part 6). Everything here sits after the relay, so it draws nothing when the unit is off.
 
 **Reference, not a requirement.** Littelfuse 1.5KE20A: 17.1 V standoff, 27.7 V clamp, 1500 W, unidirectional, $1.06, Digi-Key, 2026-10-30. LC filter parts: none priced yet.
 
@@ -933,7 +934,7 @@ Before ordering the boat parts, these have to agree with each other:
 1. **Voltage chain.** Boat 9 to 16 V, spikes clamped to about 28 V by the TVS. Everything after the TVS (controller regulator, buck, display) survives 30 V or has its own regulator. The sense wire has its own TVS. The 5.0 to 5.3 V rail goes only to the Pi.
 2. **Power loss.** The unit runs from the house battery's standby power; the sense wire drops when the main switch goes off; the controller gives 2 s of grace, lets the Pi shut down, opens the relay (zero draw after that), and restarts the unit whenever sense returns, including mid-shutdown. A hardware time limit opens the relay even if the controller hangs.
 3. **Under the Pi.** The NVMe adapter mounts there; nothing else needs the spot.
-4. **Reverse polarity.** Everything fed from 12 V either has reverse-polarity protection or sits behind a part that does (design 6.6). The buck has it; any display regulator must too.
+4. **Reverse polarity.** Everything fed from 12 V either has reverse-polarity protection or sits behind a part that does (design 6.6). The buck has it; any display regulator must too. The LC filter's electrolytic sits ahead of both: reversed, the TVS conducts forward and holds it near -1 V until the fuse blows.
 5. **Stack height.** NVMe adapter under the Pi, Pi, Active Cooler (13.7 mm), CAN HAT on standoffs of about 16 mm. About 45 mm total (estimate; measure on the bench).
 6. **Enclosure size.** Inside depth 75 mm or more; display outline plus at least 15 mm per side; room beside the Pi for the micro-HDMI and USB-C plugs; a back-wall area for the heat sink and the mount.
 7. **Connector types.** Display's HDMI type matches the video cable; display's touch port matches the touch cable, with VBUS blocked; drop cable is male at the tee.
