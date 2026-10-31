@@ -84,7 +84,7 @@ finned aluminum heat sink in the back wall (option A). See part 20.</li>
    |   from the battery)              |          [4b] SENSE TVS + INPUT (opto)
    |                                  |            |
  [2] LC FILTER (in line)            [4c] CONTROLLER  &lt;-- powered by the sense
-   +--[2] TVS across + and -          |   ^             wire or the relay output
+   +--[2] TVS across + and -          |   ^             wire or the filter output
    |              power going away ---+   | Pi 3.3 V
    |                                  v   |
    +------------------------------------+  (Pi GPIOs)
@@ -319,7 +319,7 @@ off</td>
 <td>12 V</td>
 <td><strong>zero</strong></td>
 <td>relay open; TVS, buck and display sit after it, and the controller
-is powered only from the sense wire or the relay output (part 4). Soft
+is powered only from the sense wire or the filter output (part 4). Soft
 power (part 3) would add a few mA from the switched side while the boat
 is on</td>
 </tr>
@@ -546,11 +546,12 @@ current 1 A or more</td>
 <tr class="even">
 <td>Damping</td>
 <td>An LC filter in front of a switching regulator can ring or oscillate
-unless it is damped. The electrolytic does it: ESR 0.3 to 0.5 ohm at
-room temperature (cold raises ESR 2 to 3 times, so start low; not a
-polymer part, whose ESR is too low). If the chosen electrolytic’s ESR is
-below 0.3 ohm, add a resistor in series with it so the two add up to 0.3
-to 0.5 ohm (for example 0.33 ohm, 1/4 W)</td>
+unless it is damped. Preferred build: a low-ESR electrolytic with a 0.33
+ohm, 1/2 W resistor in series (the resistor doesn’t drift with cold;
+every relay close puts a short pulse of a few tens of mJ through it). Or
+an electrolytic whose own ESR is 0.3 to 0.5 ohm at room temperature,
+knowing that cold raises ESR 2 to 3 times and thins the margin on a cold
+crank. Not a polymer part on its own: its ESR is too low</td>
 <td>Datasheet “ESR” or “impedance” at 100 kHz; bench check at the lowest
 input (7 V) with the buck and the display regulator both loaded: no
 ringing on the buck input, buck output steady on a load step</td>
@@ -590,6 +591,10 @@ without passing the relay; that wire has its own TVS (part 4b).</li>
 <li>Order: relay, LC filter, TVS across the filter output, then the buck
 (part 5) and the display power (part 6). Everything here sits after the
 relay, so it draws nothing when the unit is off.</li>
+<li>Every 12 V load in the box (buck, display power, the controller’s
+supply and the relay coil supply in part 4) taps the filter output, at
+the TVS. Never the relay contact itself: that point is ahead of the
+filter and the clamp, and the 30 V rule wouldn’t hold there.</li>
 </ul>
 <p><strong>Reference, not a requirement.</strong> Littelfuse 1.5KE20A:
 17.1 V standoff, 27.7 V clamp, 1500 W, unidirectional, $1.06, Digi-Key,
@@ -898,11 +903,12 @@ would never shut down</td>
 </table>
 <p><strong>4c. Controller.</strong> A small microcontroller running the
 sequence above. It is powered from the sense wire (after the on/off
-switch) or from the relay output, through two diodes, so it is unpowered
-whenever the unit is off. The diode from the sense wire is a low-leakage
-silicon diode (not a Schottky, whose leakage rises steeply with heat and
-could hold a dead sense wire high). We write the firmware; it gets
-flashed once over USB.</p>
+switch) or from the filter output (part 2, at the TVS, after the relay),
+through two diodes, so it is unpowered whenever the unit is off. The
+diode from the sense wire is a low-leakage silicon diode (not a
+Schottky, whose leakage rises steeply with heat and could hold a dead
+sense wire high). We write the firmware; it gets flashed once over
+USB.</p>
 <table>
 <colgroup>
 <col style="width: 33%" />
@@ -953,7 +959,7 @@ they can’t power a Pi that is off</td>
 </tr>
 <tr class="odd">
 <td>Power</td>
-<td>From 12 V (sense wire or relay output, diode-ORed) through a
+<td>From 12 V (sense wire or filter output, diode-ORed) through a
 regulator rated for 30 V</td>
 <td>Regulator datasheet “absolute maximum”</td>
 </tr>
@@ -1078,9 +1084,9 @@ sensitive coil (a 9 V crank dip needs about 56% at 70 °C)</td>
 </tr>
 <tr class="even">
 <td>Diodes</td>
-<td>The diode from the relay output to the coil supply can be a Schottky
-(saves about 0.4 V while holding; its leakage is harmless there). The
-one from the sense wire stays silicon (4c)</td>
+<td>The diode from the filter output to the coil supply can be a
+Schottky (saves about 0.4 V while holding; its leakage is harmless
+there). The one from the sense wire stays silicon (4c)</td>
 <td>Circuit</td>
 </tr>
 <tr class="odd">
@@ -1293,19 +1299,19 @@ heatsink, room temperature), 25.4 x 25.4 x 9 mm. No published
 temperature derating. Pololu’s D36V50F5 (5.0 V), named in the design
 spec, also meets the voltage rule.</p>
 <h3>6. Display power</h3>
-<p><strong>Job.</strong> Feeds the display from the relay’s 12 V output
-(part 4d), safely across 9 to 16 V and the 30 V the TVS lets through.
-This is a requirement on the display (part 13) first; a separate
-regulator is only bought if the chosen display can’t meet it. The
-display stays on through a shutdown and goes off with the rest of the
-unit.</p>
+<p><strong>Job.</strong> Feeds the display from the filter output (part
+2), after the relay (part 4d), safely across 9 to 16 V and the 30 V the
+TVS lets through. This is a requirement on the display (part 13) first;
+a separate regulator is only bought if the chosen display can’t meet it.
+The display stays on through a shutdown and goes off with the rest of
+the unit.</p>
 <p><strong>Must have, one of:</strong></p>
 <ul>
 <li><strong>A. 12 V input on the display</strong> rated 9 to 16 V
 continuous and 30 V or more absolute maximum, both stated by the
 maker.</li>
 <li><strong>B. Its own regulator</strong> for the display alone, fed
-from the relay output after the TVS, whenever A isn’t stated:
+from the filter output, at the TVS, whenever A isn’t stated:
 <ul>
 <li>5 V displays: a second buck with 5.0 V output (not 5.3 V), rated
 1.5x the display’s current, 30 V input survival.</li>
@@ -2621,8 +2627,10 @@ nothing else needs the spot.</li>
 <li><strong>Reverse polarity.</strong> Everything fed from 12 V either
 has reverse-polarity protection or sits behind a part that does (design
 6.6). The buck has it; any display regulator must too. The LC filter’s
-electrolytic sits ahead of both: reversed, the TVS conducts forward and
-holds it near -1 V until the fuse blows.</li>
+electrolytic sits ahead of both: reversed, the TVS conducts forward at
+tens of amps or more and holds it at about -1 to -3.5 V for the
+milliseconds until the fuse blows. Check the electrolytic after any
+reverse-polarity event.</li>
 <li><strong>Stack height.</strong> NVMe adapter under the Pi, Pi, Active
 Cooler (13.7 mm), CAN HAT on standoffs of about 16 mm. About 45 mm total
 (estimate; measure on the bench).</li>

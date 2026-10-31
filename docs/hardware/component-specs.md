@@ -35,7 +35,7 @@ Owner rules this revision follows (2026-10-31):
    |   from the battery)              |          [4b] SENSE TVS + INPUT (opto)
    |                                  |            |
  [2] LC FILTER (in line)            [4c] CONTROLLER  <-- powered by the sense
-   +--[2] TVS across + and -          |   ^             wire or the relay output
+   +--[2] TVS across + and -          |   ^             wire or the filter output
    |              power going away ---+   | Pi 3.3 V
    |                                  v   |
    +------------------------------------+  (Pi GPIOs)
@@ -101,7 +101,7 @@ The numbers every power part below is sized from.
 | Display, reference panel at 1000 nit | 12 V | 0.65 A | 4D datasheet, 10.1" 1280x800 table |
 | **Whole unit** | 12 V | **about 3.2 A** | |
 | **Whole unit, battery sagging to 10.5 V** | 10.5 V | **about 3.6 A** | |
-| **Unit off, main switch on or off** | 12 V | **zero** | relay open; TVS, buck and display sit after it, and the controller is powered only from the sense wire or the relay output (part 4). Soft power (part 3) would add a few mA from the switched side while the boat is on |
+| **Unit off, main switch on or off** | 12 V | **zero** | relay open; TVS, buck and display sit after it, and the controller is powered only from the sense wire or the filter output (part 4). Soft power (part 3) would add a few mA from the switched side while the boat is on |
 
 Typical draw while charting is well below this; the worst case is what the fuse, relay, buck and wire must carry. With the unit off, nothing draws from the battery.
 
@@ -174,7 +174,7 @@ Heat in the box: everything above ends up as heat inside the enclosure. In dayli
 | Inductor type | Shielded power inductor, rated to 125 °C | Datasheet "shielded", operating temperature |
 | Ceramic capacitor | 10 µF nominal, X7R, 50 V, radial leaded (a bare SMD part cracks when a hand-wired board flexes) | Datasheet dielectric, voltage, package |
 | Electrolytic capacitor | 100 to 220 µF, 50 V, 105 °C, 2000 h or more at 105 °C, ripple current 1 A or more | Datasheet voltage, temperature, "load life", "ripple current" |
-| Damping | An LC filter in front of a switching regulator can ring or oscillate unless it is damped. The electrolytic does it: ESR 0.3 to 0.5 ohm at room temperature (cold raises ESR 2 to 3 times, so start low; not a polymer part, whose ESR is too low). If the chosen electrolytic's ESR is below 0.3 ohm, add a resistor in series with it so the two add up to 0.3 to 0.5 ohm (for example 0.33 ohm, 1/4 W) | Datasheet "ESR" or "impedance" at 100 kHz; bench check at the lowest input (7 V) with the buck and the display regulator both loaded: no ringing on the buck input, buck output steady on a load step |
+| Damping | An LC filter in front of a switching regulator can ring or oscillate unless it is damped. Preferred build: a low-ESR electrolytic with a 0.33 ohm, 1/2 W resistor in series (the resistor doesn't drift with cold; every relay close puts a short pulse of a few tens of mJ through it). Or an electrolytic whose own ESR is 0.3 to 0.5 ohm at room temperature, knowing that cold raises ESR 2 to 3 times and thins the margin on a cold crank. Not a polymer part on its own: its ESR is too low | Datasheet "ESR" or "impedance" at 100 kHz; bench check at the lowest input (7 V) with the buck and the display regulator both loaded: no ringing on the buck input, buck output steady on a load step |
 
 **Nice to have**
 
@@ -195,6 +195,7 @@ Heat in the box: everything above ends up as heat inside the enclosure. In dayli
 - Its clamp voltage sets what everything downstream must survive: 30 V for the controller's regulator, the buck, and the display.
 - It doesn't protect the sense wire, which reaches the controller without passing the relay; that wire has its own TVS (part 4b).
 - Order: relay, LC filter, TVS across the filter output, then the buck (part 5) and the display power (part 6). Everything here sits after the relay, so it draws nothing when the unit is off.
+- Every 12 V load in the box (buck, display power, the controller's supply and the relay coil supply in part 4) taps the filter output, at the TVS. Never the relay contact itself: that point is ahead of the filter and the clamp, and the 30 V rule wouldn't hold there.
 
 **Reference, not a requirement.** Littelfuse 1.5KE20A: 17.1 V standoff, 27.7 V clamp, 1500 W, unidirectional, $1.06, Digi-Key, 2026-10-30. LC filter parts: none priced yet.
 
@@ -277,7 +278,7 @@ It has four pieces:
 | Sense goes to 0 V | With the main switch off, the tap reads 0 V on a meter. A device with its own unswitched feed can hold a switched bus up, and the unit would never shut down | Meter, main switch off, everything else as normal |
 | Input survival | 30 V on the sense wire, behind the sense TVS | Resistor power rating at 30 V |
 
-**4c. Controller.** A small microcontroller running the sequence above. It is powered from the sense wire (after the on/off switch) or from the relay output, through two diodes, so it is unpowered whenever the unit is off. The diode from the sense wire is a low-leakage silicon diode (not a Schottky, whose leakage rises steeply with heat and could hold a dead sense wire high). We write the firmware; it gets flashed once over USB.
+**4c. Controller.** A small microcontroller running the sequence above. It is powered from the sense wire (after the on/off switch) or from the filter output (part 2, at the TVS, after the relay), through two diodes, so it is unpowered whenever the unit is off. The diode from the sense wire is a low-leakage silicon diode (not a Schottky, whose leakage rises steeply with heat and could hold a dead sense wire high). We write the firmware; it gets flashed once over USB.
 
 | Spec | Requirement | How to check |
 |---|---|---|
@@ -285,7 +286,7 @@ It has four pieces:
 | Outputs | Hold line and cycle request (into the coil logic), "power going away" to a Pi GPIO | Same |
 | Start-up rule | At boot the controller raises hold only once it reads the relay as closed (so the hardware 2 s delay is never skipped), and starts the 60 s no-boot timer from the relay being seen closed, whether that happened before or after the controller booted. Once raised, hold stays on until a deliberate release (step 4) or power-cycle; it is never dropped because the relay-closed input reads low | Firmware review |
 | Logic levels | 3.3 V. Lines to the Pi go through series resistors (about 1 kOhm) and are driven low or released whenever the Pi's 3.3 V is absent, so they can't power a Pi that is off | Board spec; circuit |
-| Power | From 12 V (sense wire or relay output, diode-ORed) through a regulator rated for 30 V | Regulator datasheet "absolute maximum" |
+| Power | From 12 V (sense wire or filter output, diode-ORed) through a regulator rated for 30 V | Regulator datasheet "absolute maximum" |
 | Coil logic | In hardware, not firmware alone: coil on when (sense present AND the controller isn't requesting a power-cycle) OR (the controller's hold line is on AND the hardware timer hasn't expired). The hold line is on continuously from boot whenever the relay is closed and no power-cycle is running, so it is already on at the instant sense drops (a relay releases in milliseconds). A power-cycle drops the hold line and raises the cycle request together. Both controller lines have pull-downs. The sense term's rising edge is delayed about 2 s in hardware (falling edge immediate), so the relay always stays open at least 2 s even if the controller is unpowered when sense returns. Result: a controller reset or hang never cuts the Pi while the boat is on, and can't keep the unit on the battery after it's off | Circuit; bench test: switch sense off with the Pi running and check it shuts down cleanly |
 | Relay drive | The coil logic's output drives the coil through a transistor, with a flyback diode | Circuit |
 | Watchdog | Hardware watchdog and brown-out reset enabled (with the coil logic above, a reset while the boat is on doesn't cut power) | Microcontroller datasheet |
@@ -304,7 +305,7 @@ It has four pieces:
 | Coil power | 0.6 W or less (it is heat inside the box while the unit runs) | Datasheet "coil power" or coil resistance (12 V squared over ohms) |
 | Must-operate voltage (closing) | 70% of nominal or lower at 20 °C (8.4 V). Must-operate rises about 0.4% per °C, so that becomes about 10.1 V at 70 °C. The coil gets the battery minus about 1.2 V (silicon sense diode, wiring, driver transistor), so it closes hot down to about 11.3 V at the battery. A 75% coil would need about 12.0 V, too close to a half-charged battery | Datasheet "must operate" in % of nominal at 20 °C |
 | Staying closed (cranks) | Accepted by test, not datasheet: with the box hot, dip the supply to the crank low point and check the relay holds. Datasheets don't guarantee holding below must-operate. If it fails, choose a more sensitive coil (a 9 V crank dip needs about 56% at 70 °C) | Bench crank test |
-| Diodes | The diode from the relay output to the coil supply can be a Schottky (saves about 0.4 V while holding; its leakage is harmless there). The one from the sense wire stays silicon (4c) | Circuit |
+| Diodes | The diode from the filter output to the coil supply can be a Schottky (saves about 0.4 V while holding; its leakage is harmless there). The one from the sense wire stays silicon (4c) | Circuit |
 | Maximum coil voltage | 15 V or more continuous at 70 °C (charging runs 14.8 V) | Datasheet "maximum continuous coil voltage" |
 | Sealing | Sealed (RT III, "wash tight") or flux-proof inside the sealed box | Datasheet |
 | Temperature | Rated to +70 °C or higher | Datasheet |
@@ -387,12 +388,12 @@ Alternatives considered (2026-10-31):
 
 ### 6. Display power
 
-**Job.** Feeds the display from the relay's 12 V output (part 4d), safely across 9 to 16 V and the 30 V the TVS lets through. This is a requirement on the display (part 13) first; a separate regulator is only bought if the chosen display can't meet it. The display stays on through a shutdown and goes off with the rest of the unit.
+**Job.** Feeds the display from the filter output (part 2), after the relay (part 4d), safely across 9 to 16 V and the 30 V the TVS lets through. This is a requirement on the display (part 13) first; a separate regulator is only bought if the chosen display can't meet it. The display stays on through a shutdown and goes off with the rest of the unit.
 
 **Must have, one of:**
 
 - **A. 12 V input on the display** rated 9 to 16 V continuous and 30 V or more absolute maximum, both stated by the maker.
-- **B. Its own regulator** for the display alone, fed from the relay output after the TVS, whenever A isn't stated:
+- **B. Its own regulator** for the display alone, fed from the filter output, at the TVS, whenever A isn't stated:
   - 5 V displays: a second buck with 5.0 V output (not 5.3 V), rated 1.5x the display's current, 30 V input survival.
   - 12 V displays: a buck-boost (step-up/step-down) regulator with 12 V output, input 9 to 30 V or wider, rated 1.5x the display's current (about 1 A for the reference panel).
   - Either regulator: reverse-polarity protected (or behind a part that is).
@@ -934,7 +935,7 @@ Before ordering the boat parts, these have to agree with each other:
 1. **Voltage chain.** Boat 9 to 16 V, spikes clamped to about 28 V by the TVS. Everything after the TVS (controller regulator, buck, display) survives 30 V or has its own regulator. The sense wire has its own TVS. The 5.0 to 5.3 V rail goes only to the Pi.
 2. **Power loss.** The unit runs from the house battery's standby power; the sense wire drops when the main switch goes off; the controller gives 2 s of grace, lets the Pi shut down, opens the relay (zero draw after that), and restarts the unit whenever sense returns, including mid-shutdown. A hardware time limit opens the relay even if the controller hangs.
 3. **Under the Pi.** The NVMe adapter mounts there; nothing else needs the spot.
-4. **Reverse polarity.** Everything fed from 12 V either has reverse-polarity protection or sits behind a part that does (design 6.6). The buck has it; any display regulator must too. The LC filter's electrolytic sits ahead of both: reversed, the TVS conducts forward and holds it near -1 V until the fuse blows.
+4. **Reverse polarity.** Everything fed from 12 V either has reverse-polarity protection or sits behind a part that does (design 6.6). The buck has it; any display regulator must too. The LC filter's electrolytic sits ahead of both: reversed, the TVS conducts forward at tens of amps or more and holds it at about -1 to -3.5 V for the milliseconds until the fuse blows. Check the electrolytic after any reverse-polarity event.
 5. **Stack height.** NVMe adapter under the Pi, Pi, Active Cooler (13.7 mm), CAN HAT on standoffs of about 16 mm. About 45 mm total (estimate; measure on the bench).
 6. **Enclosure size.** Inside depth 75 mm or more; display outline plus at least 15 mm per side; room beside the Pi for the micro-HDMI and USB-C plugs; a back-wall area for the heat sink and the mount.
 7. **Connector types.** Display's HDMI type matches the video cable; display's touch port matches the touch cable, with VBUS blocked; drop cable is male at the tee.
