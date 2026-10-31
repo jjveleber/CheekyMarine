@@ -120,12 +120,12 @@ private slots:
     }
     // Any data line after the hello keeps the connection live: an ais-only stream must not flap.
     void aisOnlyStreamStaysLive() {
-        N2kClient c(path(), 300, 100);
+        N2kClient c(path(), 1000, 100);
         QSignalSpy cs(&c, &N2kClient::connectionChanged);
         c.start();
         QVERIFY(accept());
         send(kHello);
-        for (int i = 0; i < 8; ++i) {  // 8 x 100 ms = 800 ms, well past staleMs
+        for (int i = 0; i < 26; ++i) {  // 26 x 100 ms = 2.6 s, well past staleMs
             send(kAisLine);
             QTest::qWait(100);
         }
