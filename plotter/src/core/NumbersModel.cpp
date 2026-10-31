@@ -13,9 +13,7 @@ NumbersModel::NumbersModel(Settings& settings, VesselModel& vessel, QObject* par
     reload();
     connect(&m_settings, &Settings::bigNumbersChanged, this, &NumbersModel::reload);
     connect(&m_vessel, &VesselModel::changed, this, &NumbersModel::refreshValues);
-    for (auto sig : {&Settings::depthUnitChanged, &Settings::speedUnitChanged, &Settings::tempUnitChanged,
-                     &Settings::applyDepthOffsetChanged})
-        connect(&m_settings, sig, this, &NumbersModel::refreshValues);
+    onUnitSettingsChanged(m_settings, this, [this] { refreshValues(); });
 }
 
 int NumbersModel::rowCount(const QModelIndex& parent) const { return parent.isValid() ? 0 : count(); }
@@ -26,8 +24,8 @@ QVariant NumbersModel::data(const QModelIndex& index, int role) const {
     switch (role) {
     case FieldRole: return fieldName(f);
     case FieldLabelRole: return fieldLabel(f);
-    case FormattedRole: return formatValue(f, m_vessel.state(), m_settings.unitPrefs());
-    case UnitRole: return unitLabel(f, m_vessel.state(), m_settings.unitPrefs());
+    case FormattedRole:
+    case UnitRole: return fieldRoleText(f, role == UnitRole, m_vessel, m_settings);
     }
     return {};
 }

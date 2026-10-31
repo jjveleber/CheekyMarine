@@ -37,13 +37,31 @@ QList<SlotConfig> defaultSlots() {
     };
 }
 
-QJsonArray slotsToJson(const QList<SlotConfig>& configs) {
-    QJsonArray a;
-    for (const SlotConfig& s : configs)
+QJsonArray slotsToJson(const QList<SlotConfig>& configs, const QJsonArray& stored) {
+    const QList<SlotConfig> was = slotsFromJson(stored);
+    QJsonArray a = stored;
+    QList<bool> seen(configs.size(), false);
+    for (int k = 0; k < a.size(); ++k) {
+        if (!a[k].isObject()) continue;
+        QJsonObject o = a[k].toObject();
+        const auto id = slotIdFromName(o.value("id").toString());
+        if (!id || int(*id) >= configs.size() || seen[int(*id)]) continue;
+        const int i = int(*id);
+        seen[i] = true;
+        const SlotConfig& s = configs.at(i);
+        if (s.on != was.at(i).on) o["on"] = s.on;
+        if (s.field != was.at(i).field) o["field"] = fieldName(s.field);
+        if (s.size != was.at(i).size) o["size"] = slotSizeName(s.size);
+        a[k] = o;
+    }
+    for (int i = 0; i < configs.size(); ++i) {
+        if (seen[i]) continue;
+        const SlotConfig& s = configs.at(i);
         a.append(QJsonObject{{"id", slotIdName(s.id)},
                              {"on", s.on},
                              {"field", fieldName(s.field)},
                              {"size", slotSizeName(s.size)}});
+    }
     return a;
 }
 
@@ -112,14 +130,23 @@ QVariantList fieldChoices() {
     return l;
 }
 
+QString fieldRoleText(Field field, bool unit, const VesselModel& vessel, const Settings& settings) {
+    return unit ? unitLabel(field, vessel.state(), settings.unitPrefs())
+                : formatValue(field, vessel.state(), settings.unitPrefs());
+}
+
+void onUnitSettingsChanged(Settings& settings, QObject* context, const std::function<void()>& refresh) {
+    for (auto sig : {&Settings::depthUnitChanged, &Settings::speedUnitChanged, &Settings::tempUnitChanged,
+                     &Settings::applyDepthOffsetChanged})
+        QObject::connect(&settings, sig, context, refresh);
+}
+
 SlotsModel::SlotsModel(Settings& settings, VesselModel& vessel, QObject* parent)
     : QAbstractListModel(parent), m_settings(settings), m_vessel(vessel) {
     m_slots = slotsFromJson(m_settings.slotsJson().toArray());
     connect(&m_settings, &Settings::slotsJsonChanged, this, &SlotsModel::reload);
     connect(&m_vessel, &VesselModel::changed, this, &SlotsModel::refreshValues);
-    for (auto sig : {&Settings::depthUnitChanged, &Settings::speedUnitChanged, &Settings::tempUnitChanged,
-                     &Settings::applyDepthOffsetChanged})
-        connect(&m_settings, sig, this, &SlotsModel::refreshValues);
+    onUnitSettingsChanged(m_settings, this, [this] { refreshValues(); });
 }
 
 int SlotsModel::rowCount(const QModelIndex& parent) const { return parent.isValid() ? 0 : int(m_slots.size()); }
@@ -133,8 +160,8 @@ QVariant SlotsModel::data(const QModelIndex& index, int role) const {
     case FieldRole: return fieldName(s.field);
     case FieldLabelRole: return fieldLabel(s.field);
     case SizeRole: return slotSizeName(s.size);
-    case FormattedRole: return formatValue(s.field, m_vessel.state(), m_settings.unitPrefs());
-    case UnitRole: return unitLabel(s.field, m_vessel.state(), m_settings.unitPrefs());
+    case FormattedRole:
+    case UnitRole: return fieldRoleText(s.field, role == UnitRole, m_vessel, m_settings);
     }
     return {};
 }
@@ -159,7 +186,7 @@ void SlotsModel::setSlot(const QString& id, bool on, const QString& field, const
 
 void SlotsModel::setSlotConfigs(const QList<SlotConfig>& configs) {
     // Settings emits slotsJsonChanged, and reload() takes the stored value back.
-    m_settings.setSlotsJson(slotsToJson(configs));
+    m_settings.setSlotsJson(slotsToJson(configs, m_settings.slotsJson().toArray()));
 }
 
 void SlotsModel::reload() {

@@ -150,6 +150,56 @@ private slots:
         QCOMPARE(row(m, 1, "unit"), QStringLiteral("km/h"));
     }
 
+    // A newer app's extra slot, per-slot keys and field name survive an edit of one slot (Review Focus 5, R34).
+    void unknownSlotsAndKeysSurviveSave() {
+        Env e;
+        QVERIFY(e.settings);
+        const QJsonArray stored = parse(R"([
+            {"id":"TL","on":true,"field":"depth","size":"large","colour":"red"},
+            {"id":"Centre","on":true,"field":"aws","size":"small"},
+            {"id":"TR","on":true,"field":"sog","size":"large","colour":"blue"},
+            {"id":"BL","on":false,"field":"cog","size":"medium","blink":true},
+            {"id":"BR","on":false,"field":"wtemp","size":"medium","blink":false},
+            {"id":"Top","on":false,"field":"aws","size":"small","x":1},
+            {"id":"Bottom","on":false,"field":"pos","size":"small","x":2},
+            {"id":"Left","on":false,"field":"stw","size":"medium","x":3},
+            {"id":"Right","on":false,"field":"hdg","size":"medium","x":4}])");
+        e.settings->setSlotsJson(stored);
+        SlotsModel m(*e.settings, e.vessel);
+        m.setSlot("BL", true, "rpm", "large");
+        QJsonArray want = stored;
+        QJsonObject bl = want.at(3).toObject();
+        bl["on"] = true;
+        bl["field"] = "rpm";
+        bl["size"] = "large";
+        want[3] = bl;
+        QCOMPARE(e.settings->slotsJson().toArray(), want);
+    }
+
+    // Each unit setting refreshes the formatted and unit roles of both models.
+    void unitSettingsRefreshBothModels_data() {
+        QTest::addColumn<QString>("setting");
+        for (const char* s : {"depthUnit", "speedUnit", "tempUnit", "applyDepthOffset"}) QTest::newRow(s) << QString(s);
+    }
+    void unitSettingsRefreshBothModels() {
+        QFETCH(QString, setting);
+        Env e;
+        QVERIFY(e.settings);
+        SlotsModel m(*e.settings, e.vessel);
+        NumbersModel n(*e.settings, e.vessel);
+        QSignalSpy slotsChanged(&m, &QAbstractItemModel::dataChanged);
+        QSignalSpy numbersChanged(&n, &QAbstractItemModel::dataChanged);
+        if (setting == "depthUnit") e.settings->setDepthUnit("m");
+        if (setting == "speedUnit") e.settings->setSpeedUnit("kmh");
+        if (setting == "tempUnit") e.settings->setTempUnit("C");
+        if (setting == "applyDepthOffset") e.settings->setApplyDepthOffset(false);
+        QCOMPARE(slotsChanged.count(), 1);
+        QCOMPARE(numbersChanged.count(), 1);
+        const QList<int> roles{SlotsModel::FormattedRole, SlotsModel::UnitRole};
+        QCOMPARE(slotsChanged.at(0).at(2).value<QList<int>>(), roles);
+        QCOMPARE(numbersChanged.at(0).at(2).value<QList<int>>(), (QList<int>{NumbersModel::FormattedRole, NumbersModel::UnitRole}));
+    }
+
     void slotsModelReloadsOnExternalChange() {
         Env e;
         SlotsModel m(*e.settings, e.vessel);
