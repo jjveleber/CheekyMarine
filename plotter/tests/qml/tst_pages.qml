@@ -424,6 +424,24 @@ TestCase {
         const splash = createTemporaryObject(splashComp, testCase, { width: 1024, height: 600, appInfo: appInfoStub })
         compare(byName(splash, "splashCharts").text, data.want)
     }
+    // The same for the fishing chart: a refused bathy pack is not "not installed".
+    function test_splashBathyLine_data() {
+        const ok = { kind: "bathy", region: "puget-north", version: "1.0.0", notice: "", refused: "", inUse: true }
+        const bad = { kind: "bathy", region: "puget-north", version: "2.0.0", notice: "", refused: "styles/fish-day.json: bad", inUse: false }
+        const charts = { kind: "charts", region: "puget-north", version: "1.0.0", notice: "", refused: "", inUse: true }
+        return [
+            { tag: "in use", bathy: ok, packs: [charts, ok, bad], want: "Bathy: puget-north 1.0.0" },
+            { tag: "refused", bathy: ({}), packs: [charts, bad], want: "Bathy pack refused: see Settings, About" },
+            { tag: "none", bathy: ({}), packs: [charts], want: "No fishing chart installed" }
+        ]
+    }
+    function test_splashBathyLine(data) {
+        appInfoStub.chartsPack = ({})
+        appInfoStub.bathyPack = data.bathy
+        appInfoStub.packs = data.packs
+        const splash = createTemporaryObject(splashComp, testCase, { width: 1024, height: 600, appInfo: appInfoStub })
+        compare(byName(splash, "splashBathy").text, data.want)
+    }
 
     function test_noDataBanner() {
         const banner = createTemporaryObject(bannerComp, testCase, { width: 1000, live: false })

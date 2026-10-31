@@ -52,8 +52,12 @@ Rectangle {
             font.pixelSize: Units.mm(4.5)
         }
         Label {
+            objectName: "splashBathy"
             anchors.horizontalCenter: parent.horizontalCenter
-            text: splash.packText(splash.appInfo.bathyPack, "Bathy", "No fishing chart installed")
+            // A bathy pack can also go unused for another region: only a refused one says so.
+            text: splash.packText(splash.appInfo.bathyPack, "Bathy",
+                                  splash.appInfo.packs.some(p => p.kind === "bathy" && p.refused !== "") ? "Bathy pack refused: see Settings, About"
+                                                                                                         : "No fishing chart installed")
             color: Theme.text
             font.pixelSize: Units.mm(4.5)
         }
