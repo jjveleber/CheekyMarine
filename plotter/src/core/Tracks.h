@@ -36,8 +36,9 @@ public:
     bool append(qint64 id, const QList<TrackPoint>& points, QString* error = nullptr);
     // Newest first. The distance is summed over the stored points. A track's points are read once;
     // after that its count and distance are kept here and extended by append, so a refresh does not
-    // load every point of every track.
-    QList<TrackInfo> list();
+    // load every point of every track. A failed read logs its error, returns an empty list and sets
+    // `ok` (when given) to false.
+    QList<TrackInfo> list(bool* ok = nullptr);
     // A failed read logs its error, returns an empty list and sets `ok` (when given) to false.
     QList<LatLon> points(qint64 id, bool* ok = nullptr);
     // How many times a track's points have been read from the database (a seam for the tests).

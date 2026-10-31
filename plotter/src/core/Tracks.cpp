@@ -88,12 +88,17 @@ bool TrackStore::append(qint64 id, const QList<TrackPoint>& points, QString* err
     return true;
 }
 
-QList<TrackInfo> TrackStore::list() {
+QList<TrackInfo> TrackStore::list(bool* ok) {
     QSqlDatabase db = m_store.db();
     QList<TrackInfo> out;
     QSqlQuery q(db);
-    if (!q.exec(QStringLiteral("SELECT id, name, started, ended, visible FROM tracks ORDER BY started DESC, id DESC")))
+    const bool done = q.exec(QStringLiteral("SELECT id, name, started, ended, visible FROM tracks ORDER BY started DESC, id DESC"));
+    if (ok)
+        *ok = done;
+    if (!done) {
+        qWarning() << "cannot list tracks:" << q.lastError().text();
         return out;
+    }
     while (q.next()) {
         TrackInfo t;
         t.id = q.value(0).toLongLong();
@@ -280,7 +285,11 @@ void TracksController::refresh() {
     QVariantList rows;
     QList<qint64> finishedIds;
     QSet<qint64> finishedAll; // shown or hidden
-    for (const TrackInfo& t : m_store.list()) {
+    bool listed = false;
+    const QList<TrackInfo> tracks = m_store.list(&listed);
+    if (!listed)
+        return; // keep the rows and the lines; the next refresh reads again
+    for (const TrackInfo& t : tracks) {
         if (t.id != active)
             finishedAll.insert(t.id);
         QVariantMap row;

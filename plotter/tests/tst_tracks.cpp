@@ -572,6 +572,41 @@ private slots:
         QCOMPARE(r.tracks->points(late, &ok).size(), 2);
         QVERIFY(ok);
     }
+    void failedListKeepsTheCachedLines() {
+        Rig r(true, 1, 0);
+        for (double started : {100.0, 200.0}) {
+            const qint64 id = r.tracks->create(started);
+            TrackPoint a, b;
+            a.t = started; a.lat = 47.0; a.lon = -122.0;
+            b.t = started + 10; b.lat = 47.001; b.lon = -122.0;
+            if (!r.tracks->append(id, {a, b})) qFatal("append");
+        }
+        TracksController c(*r.tracks, *r.rec);
+        QCOMPARE(c.finished().size(), 2);
+        QCOMPARE(c.tracks().size(), 2);
+        QSignalSpy finishedSpy(&c, &TracksController::finishedChanged);
+        QSignalSpy rowsSpy(&c, &TracksController::tracksChanged);
+        QSqlQuery q(r.store->db());
+        QVERIFY(q.exec("ALTER TABLE tracks RENAME TO tracks_off")); // the list read now fails
+        const QRegularExpression listFailed("cannot list tracks");
+        QTest::ignoreMessage(QtWarningMsg, listFailed);
+        QTest::failOnWarning(listFailed); // logged once
+        c.refresh();
+        QVERIFY(q.exec("ALTER TABLE tracks_off RENAME TO tracks"));
+        QCOMPARE(finishedSpy.count(), 0);
+        QCOMPARE(rowsSpy.count(), 0);
+        QCOMPARE(c.finished().size(), 2);
+        QCOMPARE(c.finished().constFirst().size(), 2);
+        QCOMPARE(c.tracks().size(), 2);
+        bool ok = true;
+        QVERIFY(r.tracks->list(&ok).size() == 2);
+        QVERIFY(ok);
+        const int before = r.tracks->pointReads();
+        c.refresh(); // a later list works and nothing is read again
+        QCOMPARE(r.tracks->pointReads() - before, 0);
+        QCOMPARE(c.finished().size(), 2);
+        QCOMPARE(finishedSpy.count(), 0);
+    }
     void controllerRowsCarryTheDisplayFields() {
         Rig r(true, 1, 0);
         TracksController c(*r.tracks, *r.rec);
