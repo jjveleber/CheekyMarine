@@ -14,6 +14,9 @@ public:
     explicit N2kClient(QString socketPath, int staleMs = 3000, int reconnectMs = 2000, QObject *parent = nullptr);
     ~N2kClient() override;
     void start();
+    // Milliseconds until the connection goes stale, -1 when the stale timer is not running (a seam for
+    // the tests).
+    int staleRemainingMs() const { return m_staleTimer.remainingTime(); }
 
 signals:
     void vessel(const VesselState &s);

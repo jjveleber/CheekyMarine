@@ -123,17 +123,29 @@ private slots:
         QCOMPARE(am.rowCount(), 1);
         QCOMPARE(am.data(am.index(0), AisModel::MmsiRole).toUInt(), 7u);
     }
-    // Any data line after the hello keeps the connection live: an ais-only stream must not flap.
+    // Any data line after the hello keeps the connection live: an ais-only stream must not flap. Each ais line
+    // restarts the stale timer; the check reads the timer rather than waiting it out. The default coarse timer
+    // may move a timeout by 5% (whole seconds from 20 s), so staleMs stays under 20 s and the wait between
+    // the lines (2 s) is well over 10% of it: only a stall of about 1 s between the second line and reading
+    // the timer could fail the check.
     void aisOnlyStreamStaysLive() {
-        N2kClient c(path(), 1000, 100);
-        QSignalSpy cs(&c, &N2kClient::connectionChanged);
+        const int staleMs = 10000;
+        N2kClient c(path(), staleMs, 100);
+        QSignalSpy cs(&c, &N2kClient::connectionChanged), as(&c, &N2kClient::ais), dv(&c, &N2kClient::daemonVersion);
         c.start();
         QVERIFY(accept());
         send(kHello);
-        for (int i = 0; i < 26; ++i) {  // 26 x 100 ms = 2.6 s, well past staleMs
-            send(kAisLine);
-            QTest::qWait(100);
-        }
+        QVERIFY(dv.wait(10000));
+        QCOMPARE(c.staleRemainingMs(), -1); // a hello alone is not data
+        send(kAisLine);
+        QVERIFY(as.wait(10000));
+        QVERIFY(c.staleRemainingMs() > 0);
+        QTest::qWait(2000);
+        const int before = c.staleRemainingMs();
+        QVERIFY(before > 0 && before < staleMs);
+        send(kAisLine);
+        QVERIFY(as.wait(10000));
+        QVERIFY2(c.staleRemainingMs() > before, "the second ais line did not restart the stale timer");
         QCOMPARE(cs.count(), 1);
         QCOMPARE(cs.first().first().toBool(), true);
     }
