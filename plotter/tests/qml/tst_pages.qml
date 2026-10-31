@@ -412,14 +412,59 @@ TestCase {
         fuzzyCompare(fixture.settings.deepM, f0 - 0.9144, 1e-6)
     }
 
-    function test_settingsDepthLimits() {
+    // At a limit a further step is refused, and the reason is worded in the page's depth unit.
+    function test_settingsDepthLimits_data() {
+        return [{ tag: "ft", unit: "ft", min: "2 ft", max: "197 ft" },
+                { tag: "m", unit: "m", min: "0.5 m", max: "60.0 m" },
+                { tag: "fm", unit: "fm", min: "0.3 fm", max: "32.8 fm" }]
+    }
+    function test_settingsDepthLimits(data) {
         const page = makeSettings()
+        fixture.settings.depthUnit = data.unit
         verify(fixture.settings.setDepths(0.5, 1.0, 60.0))
+        const error = byName(page, "depthError")
         tap(byName(page, "deepPlus"))
         compare(fixture.settings.deepM, 60.0)
-        verify(byName(page, "depthError").visible)
+        verify(error.visible)
+        compare(error.text, "Depths must be at most " + data.max + ".")
+        compare(byName(page, "deepValue").text, data.max)
+        tap(byName(page, "deepMinus"))
+        verify(!error.visible)
         tap(byName(page, "shallowMinus"))
         compare(fixture.settings.shallowM, 0.5)
+        verify(error.visible)
+        compare(error.text, "Depths must be at least " + data.min + ".")
+        compare(byName(page, "shallowValue").text, data.min)
+    }
+
+    // A step that would pass a limit lands on it, so 60 m and 0.5 m are reachable in feet.
+    function test_settingsDepthStepClampsToLimit() {
+        const page = makeSettings()
+        verify(fixture.settings.setDepths(2 * 0.3048, 3.048, 196 * 0.3048))
+        compare(byName(page, "deepValue").text, "196 ft")
+        tap(byName(page, "deepPlus"))
+        compare(fixture.settings.deepM, 60.0)
+        compare(byName(page, "deepValue").text, "197 ft")
+        verify(!byName(page, "depthError").visible)
+        tap(byName(page, "shallowMinus"))
+        compare(fixture.settings.shallowM, 0.5)
+        compare(byName(page, "shallowValue").text, "2 ft")
+        verify(!byName(page, "depthError").visible)
+    }
+
+    // Switching units only changes the words: the stored metres stay, and ft to m to fm to ft
+    // shows the same values again.
+    function test_settingsDepthUnitRoundTrip() {
+        const page = makeSettings()
+        const texts = () => ["shallowValue", "safetyValue", "deepValue"].map(n => byName(page, n).text)
+        compare(texts(), ["6 ft", "10 ft", "30 ft"])
+        pick(page, "row-depthUnit", "m")
+        compare(texts(), ["1.8 m", "3.0 m", "9.1 m"])
+        pick(page, "row-depthUnit", "fm")
+        compare(texts(), ["1.0 fm", "1.7 fm", "5.0 fm"])
+        pick(page, "row-depthUnit", "ft")
+        compare(texts(), ["6 ft", "10 ft", "30 ft"])
+        compare([fixture.settings.shallowM, fixture.settings.safetyM, fixture.settings.deepM], [1.8288, 3.048, 9.144])
     }
 
     function test_settingsChoiceRows_data() {

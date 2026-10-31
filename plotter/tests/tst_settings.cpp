@@ -153,6 +153,34 @@ private slots:
         QCOMPARE(sp1.count() + sp2.count() + sp3.count(), 0);
         QCOMPARE(rawValue(**st, "shallowM"), QString());
     }
+    // A code and, for a range problem, the limit in metres: the page words it in the user's unit.
+    void depthsProblemGivesCodeAndLimit_data() {
+        QTest::addColumn<double>("a");
+        QTest::addColumn<double>("b");
+        QTest::addColumn<double>("c");
+        QTest::addColumn<QString>("code");
+        QTest::addColumn<double>("limitM");
+        QTest::newRow("ok") << 0.5 << 1.0 << 60.0 << QString() << -1.0;
+        QTest::newRow("below range") << 0.4 << 3.0 << 9.0 << "belowMin" << 0.5;
+        QTest::newRow("above range") << 1.0 << 3.0 << 61.0 << "aboveMax" << 60.0;
+        QTest::newRow("shallow not below safety") << 3.0 << 3.0 << 9.0 << "shallowSafety" << -1.0;
+        QTest::newRow("safety not below deep") << 1.0 << 9.0 << 9.0 << "safetyDeep" << -1.0;
+    }
+    void depthsProblemGivesCodeAndLimit() {
+        QFETCH(double, a);
+        QFETCH(double, b);
+        QFETCH(double, c);
+        QFETCH(QString, code);
+        QFETCH(double, limitM);
+        const QVariantMap p = Settings::depthsProblem(a, b, c);
+        if (code.isEmpty()) {
+            QVERIFY(p.isEmpty());
+            return;
+        }
+        QCOMPARE(p.value("code").toString(), code);
+        QCOMPARE(p.contains("limitM"), limitM >= 0);
+        if (limitM >= 0) QCOMPARE(p.value("limitM").toDouble(), limitM);
+    }
     void depthBoundsAreInclusive() {
         QTemporaryDir t;
         auto st = Store::open(t.path());

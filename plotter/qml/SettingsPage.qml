@@ -37,16 +37,33 @@ Item {
     }
     function round4(x) { return Math.round(x * 10000) / 10000 }
 
-    // which: "shallow", "safety" or "deep"; dir: +1 or -1.
+    // Why Settings refused the depths (Settings::depthsProblem), worded in the current depth unit.
+    function problemText(p) {
+        switch (p.code) {
+        case "belowMin": return "Depths must be at least " + depthText(p.limitM) + "."
+        case "aboveMax": return "Depths must be at most " + depthText(p.limitM) + "."
+        case "shallowSafety": return "Shallow must be less than safety."
+        case "safetyDeep": return "Safety must be less than deep."
+        default: return "The depths could not be saved."
+        }
+    }
+
+    // which: "shallow", "safety" or "deep"; dir: +1 or -1. A step that would pass the 0.5 or 60 m
+    // limit lands on it (whole feet do not land there); a step from the limit itself is refused.
     function stepDepth(which, dir) {
         let d = { shallow: settings.shallowM, safety: settings.safetyM, deep: settings.deepM }
-        d[which] = round4(d[which] + dir * metresPerStep)
-        if (settings.setDepths(d.shallow, d.safety, d.deep)) {
+        const old = d[which]
+        d[which] = round4(old + dir * metresPerStep)
+        let p = settings.depthsProblem(d.shallow, d.safety, d.deep)
+        if ((p.code === "belowMin" || p.code === "aboveMax") && old !== p.limitM) {
+            d[which] = p.limitM
+            p = settings.depthsProblem(d.shallow, d.safety, d.deep)
+        }
+        if (p.code === undefined && settings.setDepths(d.shallow, d.safety, d.deep)) {
             depthError = ""
             return
         }
-        const why = settings.depthsProblem(d.shallow, d.safety, d.deep)
-        depthError = why !== "" ? why : "The depths could not be saved."
+        depthError = problemText(p)
     }
     function stepDiagonal(dir) {
         const v = Math.round((settings.panelDiagonalIn + dir * 0.1) * 10) / 10

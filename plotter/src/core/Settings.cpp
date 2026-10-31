@@ -145,16 +145,16 @@ bool Settings::put(const QString& key, const QJsonValue& v) {
     return true;
 }
 
-QString Settings::depthsProblem(double a, double b, double c) {
+QVariantMap Settings::depthsProblem(double a, double b, double c) {
     if (a < kMinDepthM)
-        return QStringLiteral("Depths must be at least %1 m.").arg(kMinDepthM);
+        return {{QStringLiteral("code"), QStringLiteral("belowMin")}, {QStringLiteral("limitM"), kMinDepthM}};
     if (c > kMaxDepthM)
-        return QStringLiteral("Depths must be at most %1 m.").arg(kMaxDepthM);
+        return {{QStringLiteral("code"), QStringLiteral("aboveMax")}, {QStringLiteral("limitM"), kMaxDepthM}};
     if (!(a < b))
-        return QStringLiteral("Shallow must be less than safety.");
+        return {{QStringLiteral("code"), QStringLiteral("shallowSafety")}};
     if (!(b < c))
-        return QStringLiteral("Safety must be less than deep.");
-    return QString();
+        return {{QStringLiteral("code"), QStringLiteral("safetyDeep")}};
+    return {};
 }
 
 bool Settings::setDepths(double shallow, double safety, double deep) {

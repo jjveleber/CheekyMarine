@@ -5,6 +5,7 @@
 #include <QJsonValue>
 #include <QObject>
 #include <QStringList>
+#include <QVariantMap>
 
 // Typed view of the settings table (value column is JSON text). Every set writes immediately; a
 // NOTIFY fires only when the value really changed. Keys this version does not know are never touched.
@@ -80,8 +81,10 @@ public:
     // kMinDepthM <= shallow < safety < deep <= kMaxDepthM.
     Q_INVOKABLE bool setDepths(double shallowM, double safetyM, double deepM);
 
-    // Why setDepths would refuse these values (unit-free text), or an empty string if it would accept them.
-    Q_INVOKABLE static QString depthsProblem(double shallowM, double safetyM, double deepM);
+    // Why setDepths would refuse these values, or an empty map if it would accept them: {code} with
+    // code belowMin or aboveMax (plus limitM, the limit in metres), shallowSafety (shallow is not
+    // less than safety) or safetyDeep (safety is not less than deep). The page words it in its unit.
+    Q_INVOKABLE static QVariantMap depthsProblem(double shallowM, double safetyM, double deepM);
 
     UnitPrefs unitPrefs() const;
 
