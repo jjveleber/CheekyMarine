@@ -70,7 +70,8 @@ public:
     QHash<int, QByteArray> roleNames() const override;
 
     QList<SlotConfig> slotConfigs() const { return m_slots; }
-    // Changes one slot and stores the eight merged into the stored array (slotsToJson). Unknown id, field or size: logged, nothing changes.
+    // Changes one slot and stores the eight merged into the stored array (slotsToJson). Unknown id,
+    // field or size: logged, nothing changes.
     Q_INVOKABLE void setSlot(const QString& id, bool on, const QString& field, const QString& size);
     // Stores the given eight slots (the dev option --slots uses it).
     void setSlotConfigs(const QList<SlotConfig>& configs);
