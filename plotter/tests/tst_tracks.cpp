@@ -446,6 +446,49 @@ private slots:
         QCOMPARE(c.finished().size(), 2);
         QCOMPARE(c.active().size(), 0);
     }
+    // Finished tracks never change, so each is read from the database once: the tracks page's
+    // refresh, a visibility change and the end of a track read the same number of tracks however
+    // many finished tracks there are.
+    void pointReadsDoNotGrowWithFinishedTracks() {
+        QList<QList<int>> readsPerStep;
+        for (int n : {3, 12}) {
+            Rig r(true, 1, 0);
+            for (int k = 0; k < n; ++k) {
+                const qint64 id = r.tracks->create(k * 100);
+                TrackPoint a, b;
+                a.t = k * 100; a.lat = 47.0 + k * 0.01; a.lon = -122.0;
+                b.t = k * 100 + 10; b.lat = a.lat + 0.001; b.lon = -122.0;
+                QVERIFY(r.tracks->append(id, {a, b}));
+            }
+            TracksController c(*r.tracks, *r.rec);
+            QCOMPARE(c.finished().size(), n);
+            QList<int> reads;
+            int before = r.tracks->pointReads();
+            const auto step = [&] {
+                reads.append(r.tracks->pointReads() - before);
+                before = r.tracks->pointReads();
+            };
+            c.refresh();
+            c.refresh();
+            step();
+            const qint64 oldest = c.tracks().constLast().toMap()["id"].toLongLong();
+            c.setVisible(oldest, false);
+            step();
+            c.setVisible(oldest, true);
+            step();
+            QCOMPARE(c.finished().size(), n);
+            QCOMPARE(c.finished().constLast().size(), 2);
+            r.feed(10000, 48.0);
+            r.feed(10001, 48.001);
+            r.feed(20000, 49.0); // a gap: the recorded track is now a finished one
+            step();
+            QCOMPARE(c.finished().size(), n + 1);
+            QCOMPARE(c.finished().constFirst().size(), 2);
+            readsPerStep.append(reads);
+        }
+        QCOMPARE(readsPerStep[1], readsPerStep[0]);
+        QCOMPARE(readsPerStep[0].mid(0, 3), (QList<int>{0, 0, 0})); // refresh and visibility read nothing
+    }
     void controllerRowsCarryTheDisplayFields() {
         Rig r(true, 1, 0);
         TracksController c(*r.tracks, *r.rec);

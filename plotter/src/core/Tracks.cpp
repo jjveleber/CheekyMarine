@@ -1,6 +1,7 @@
 #include "Tracks.h"
 #include <QDateTime>
 #include <QMetaType>
+#include <QSet>
 #include <QSqlError>
 #include <QSqlQuery>
 #include <QVariantMap>
@@ -114,6 +115,7 @@ QList<TrackInfo> TrackStore::list() {
 }
 
 QList<LatLon> TrackStore::points(qint64 id) {
+    ++m_pointReads;
     QList<LatLon> out;
     QSqlQuery q(m_store.db());
     q.prepare(QStringLiteral("SELECT lat, lon FROM track_points WHERE track_id = ? ORDER BY t, rowid"));
@@ -253,7 +255,10 @@ void TracksController::refresh() {
     m_shownActive = active;
     QVariantList rows;
     QList<qint64> finishedIds;
+    QSet<qint64> finishedAll; // shown or hidden
     for (const TrackInfo& t : m_store.list()) {
+        if (t.id != active)
+            finishedAll.insert(t.id);
         QVariantMap row;
         row[QStringLiteral("id")] = t.id;
         row[QStringLiteral("name")] = t.name;
@@ -270,12 +275,18 @@ void TracksController::refresh() {
         m_rows = rows;
         emit tracksChanged();
     }
-    // Finished tracks never change, so their lines are read again only when the set changes.
+    // Finished tracks never change: each one's line is read once and kept while it is a finished
+    // track (deleted ones go, so a reused id is read again), and sent only when the set changes.
+    m_lines.removeIf([&finishedAll](const auto& it) { return !finishedAll.contains(it.key()); });
     if (finishedIds != m_finishedIds) {
         m_finishedIds = finishedIds;
         m_finished.clear();
-        for (qint64 id : finishedIds)
-            m_finished.append(m_store.points(id));
+        for (qint64 id : finishedIds) {
+            auto it = m_lines.find(id);
+            if (it == m_lines.end())
+                it = m_lines.insert(id, m_store.points(id));
+            m_finished.append(*it);
+        }
         emit finishedChanged();
     }
 }

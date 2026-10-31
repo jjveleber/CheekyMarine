@@ -39,6 +39,8 @@ public:
     // load every point of every track.
     QList<TrackInfo> list();
     QList<LatLon> points(qint64 id);
+    // How many times a track's points have been read from the database (a seam for the tests).
+    int pointReads() const { return m_pointReads; }
     void setVisible(qint64 id, bool visible);
     void remove(qint64 id);
 
@@ -51,6 +53,7 @@ private:
 
     Store& m_store;
     QHash<qint64, Totals> m_totals;
+    int m_pointReads = 0;
 };
 
 // Turns vessel updates into stored track points (rules in the plotter spec, 6.13).
@@ -132,6 +135,7 @@ private:
     QVariantList m_rows;
     QList<qint64> m_finishedIds; // the tracks in m_finished, in order
     QList<QList<LatLon>> m_finished;
+    QHash<qint64, QList<LatLon>> m_lines; // finished tracks' points, read once (they never change)
     QList<LatLon> m_activePoints;
     qint64 m_shownActive = 0;
 };
