@@ -35,7 +35,7 @@ Owner rules this revision follows (2026-10-31):
    |   from the battery)              |          [4b] SENSE TVS + INPUT (opto)
    |                                  |            |
    +--[2] TVS across + and -        [4c] CONTROLLER  <-- powered by the sense
-   |                                  |   ^             wire or the relay output
+ [2] LC FILTER (in line)              |   ^             wire or the relay output
    |              power going away ---+   | Pi 3.3 V
    |                                  v   |
    +------------------------------------+  (Pi GPIOs)
@@ -60,7 +60,7 @@ Owner rules this revision follows (2026-10-31):
 
 Mount [17] holds the enclosure [16] on the dash shelf. Glands [18] seal the two cable entries. Wire [19] covers the feed cable and everything inside the box.
 
-Order of the power path matters: fuse at the source (protects the cable), then the relay (open when off, so nothing draws from the battery), then the TVS, then the buck for the Pi and the display's own feed. The on/off switch only carries the sense signal.
+Order of the power path matters: fuse at the source (protects the cable), then the relay (open when off, so nothing draws from the battery), then the TVS and the LC filter, then the buck for the Pi and the display's own feed. The on/off switch only carries the sense signal.
 
 What happens when the main battery switch (or the unit's own switch) goes off: the Pi gets 2 s of grace for an engine-start dip, then shuts down cleanly on standby power, and the controller opens the relay: from then on the unit draws nothing. When the switch comes back on, the sense wire powers the controller, which closes the relay and the unit starts. Part 4 has the details.
 
@@ -69,7 +69,7 @@ What happens when the main battery switch (or the unit's own switch) goes off: t
 | # | Part | The one number that matters most | Reference price |
 |---|---|---|---|
 | 1 | Fuse + holder | 7.5 A blade fuse, sealed holder for 16 AWG | $4.58 (5 A bench fuse) |
-| 2 | TVS diode | Unidirectional, 15 to 18 V standoff, clamp 30 V or less | $1.06 |
+| 2 | TVS diode + LC filter | TVS: unidirectional, 15 to 18 V standoff, clamp 30 V or less. Inductor: 6 A saturation | $1.06 (TVS); LC not priced |
 | 3 | Unit on/off switch | Latching, sealed, reliable at 5 mA, rated 1 A (sense wire only) | not priced |
 | 4 | Standby power + shutdown controller | Standby feed, sense input, controller, relay that opens fully when off | not priced |
 | 5 | Buck regulator | 5 A continuous at 5.0 to 5.3 V, survives 30 V in | $47.95 |
@@ -150,9 +150,9 @@ Heat in the box: everything above ends up as heat inside the enclosure. In dayli
 
 ### 2. TVS diode and filtering
 
-**Job.** Sits across + and - just after the relay (part 4d). It does nothing at normal voltage, and clamps short spikes from the alternator, pumps and the starter before they reach the buck, the display and the controller. If a big spike kills it, it fails short and blows the fuse instead of letting the spike through.
+**Job.** Sits across + and - just after the relay (part 4d). It does nothing at normal voltage, and clamps short spikes from the alternator, pumps and the starter before they reach the buck, the display and the controller. If a big spike kills it, it fails short and blows the fuse instead of letting the spike through. An LC filter (an inductor in the + line, capacitors across + and - after it) follows the TVS and keeps the buck's switching noise off the boat wiring and the radios. The owner builds it from parts (owner, 2026-10-31).
 
-**Must have**
+**TVS: must have**
 
 | Spec | Requirement | How to check |
 |---|---|---|
@@ -163,24 +163,39 @@ Heat in the box: everything above ends up as heat inside the enclosure. In dayli
 | Leakage at standoff | 5 µA or less | Datasheet "IR at VRWM" |
 | Package | Through-hole axial or a part that mounts on a terminal strip | Datasheet package drawing |
 
+**LC filter: must have**
+
+| Spec | Requirement | How to check |
+|---|---|---|
+| Inductor value | 10 µH (4.7 to 22 µH) | Datasheet "inductance" |
+| Inductor saturation current | 6 A or more (3.6 A worst case, plus start-up surge) | Datasheet "Isat" |
+| Inductor resistance | 20 milliohm or less (0.07 V drop at 3.6 A) | Datasheet "DCR" |
+| Inductor type | Shielded power inductor, rated to 125 °C | Datasheet "shielded", operating temperature |
+| Ceramic capacitor | 10 µF, X7R, 50 V | Datasheet dielectric and voltage |
+| Electrolytic capacitor | 100 µF or more, 50 V, 105 °C, ripple current 1 A or more | Datasheet voltage, temperature, "ripple current" |
+| Damping | The electrolytic damps the filter's resonance, so a filter in front of a switching buck doesn't ring: ESR about 0.2 to 1 ohm (a general-purpose low-ESR part, not a polymer). Or add a series 1 ohm plus 100 µF across the output | Datasheet "ESR"; bench check: no ringing on the buck input, buck output steady on a load step |
+
 **Nice to have**
 
 - An automotive load-dump rated TVS (SM8S class, 6600 W, AEC-Q101) instead of a 1500 W part. A 1500 W TVS handles switching spikes, not a full alternator load dump.
-- A snap-on ferrite on the 12 V feed inside the box, plus a small LC filter (inductor plus capacitor), only if the VHF or AM radio picks up noise once installed. Don't buy until there is a symptom. (The design spec lists an LC filter as standard; this doc makes it optional, see "Departures from the design spec".)
+- A snap-on ferrite on the 12 V feed inside the box, only if the VHF or AM radio still picks up noise once installed. Don't buy until there is a symptom.
 
 **Disqualifiers**
 
 - Standoff below 15 V: the TVS starts conducting while the engine is charging and cooks.
 - Clamping above 30 V: every part after it is specified to survive 30 V, no more.
 - MOVs (varistors) in place of a TVS: they wear out with each spike and clamp loosely.
+- Unshielded inductors, or inductors rated only by "current" without a saturation figure.
+- Capacitors rated under 50 V, or 85 °C electrolytics: the box runs hot and the TVS lets about 28 V through.
 
 **Fits with**
 
 - Must be after the fuse (part 1), so a shorted TVS blows the fuse, and after the relay, so its leakage stops when the unit is off.
 - Its clamp voltage sets what everything downstream must survive: 30 V for the controller's regulator, the buck, and the display.
 - It doesn't protect the sense wire, which reaches the controller without passing the relay; that wire has its own TVS (part 4b).
+- LC filter order: after the TVS, ahead of the buck (part 5) and the display power (part 6). It sits after the relay, so it draws nothing when the unit is off.
 
-**Reference, not a requirement.** Littelfuse 1.5KE20A: 17.1 V standoff, 27.7 V clamp, 1500 W, unidirectional, $1.06, Digi-Key, 2026-10-30.
+**Reference, not a requirement.** Littelfuse 1.5KE20A: 17.1 V standoff, 27.7 V clamp, 1500 W, unidirectional, $1.06, Digi-Key, 2026-10-30. LC filter parts: none priced yet.
 
 ### 3. Unit on/off switch
 
@@ -923,7 +938,7 @@ Before ordering the boat parts, these have to agree with each other:
 6. **Enclosure size.** Inside depth 75 mm or more; display outline plus at least 15 mm per side; room beside the Pi for the micro-HDMI and USB-C plugs; a back-wall area for the heat sink and the mount.
 7. **Connector types.** Display's HDMI type matches the video cable; display's touch port matches the touch cable, with VBUS blocked; drop cable is male at the tee.
 8. **GPIO budget.** CAN HAT: 0, 1, 13, 16, 17, 18, 19, 20, 21, 22. Controller: "power going away" into the Pi on one other pin, plus the Pi's 3.3 V read by the controller (a "halted" GPIO only if the bench check needs it).
-9. **Current.** Fuse 7.5 A, relay contacts 10 A or more, buck 5 A, wire 16, 14 or 12 AWG, against a 3.6 A worst case at 10.5 V. Off draw zero.
+9. **Current.** Fuse 7.5 A, relay contacts 10 A or more, LC inductor 6 A saturation, buck 5 A, wire 16, 14 or 12 AWG, against a 3.6 A worst case at 10.5 V. Off draw zero.
 10. **Heat.** 15 to 18 W out of the box at 0.8 °C/W or better (part 20).
 
 ## Departures from the design spec
@@ -936,7 +951,7 @@ This doc changes some lines of `docs/superpowers/specs/2026-10-28-cheekymarine-d
 - **6.6, reverse-polarity protection.** Kept, as a fit check across the 12 V parts, covering any display regulator as well as the buck.
 - **6.7, "cable glands for 12V, N2K drop cable, and nothing else."** Still true for options A to C in part 20; option D would add more.
 - **ABYC E-11, connections ahead of the battery switch.** The standby feed is one. If E-11's list of allowed loads doesn't cover it, this is a deliberate departure, mitigated by a fuse at the source, "always live" labels, and a relay that disconnects completely when the unit is off.
-- **6.6, LC filter and a 9 to 36 V regulator.** The LC filter is optional (add it if radios pick up noise); parts must survive 30 V after the TVS.
+- **6.6, a 9 to 36 V regulator.** Parts must survive 30 V after the TVS instead. (The LC filter is kept, as the design spec has it.)
 - **6.6, "Output 5.1 V at 5 A."** Now 5.0 to 5.3 V.
 - **6.7, enclosure.** Adds a heat path: a finned aluminum heat sink in a gasketed cutout in the back wall (part 20, owner chose option A, 2026-10-31).
 - **7, NMEA 2000 interface.** The suggested Copperhill PiCAN-M is disqualified (not isolated); the interface must be galvanically isolated.
@@ -956,8 +971,11 @@ This doc changes some lines of `docs/superpowers/specs/2026-10-28-cheekymarine-d
 - **CAN HAT isolation voltage.** Not published. Optional question to Waveshare.
 - **Enclosure drawing.** Octopart's inside dimensions for the 1554X2GY need confirming on Hammond's drawing.
 - **Free tee port.** Look at the backbone. If none, add a Micro-C T-connector.
-- **Spare helm switch or fuse circuit.** If the helm panel has one, it can replace the inline fuse holder and the switch on the box.
-- **Fuse box under the helm (check on the boat).** The boat has one (owner, 2026-10-31). When the boat is back: with the main switch off, meter a slot's output against negative. Still live (standby): it can carry the 7.5 A feed and replace the inline holder (part 1, 4a). 0 V (switched): it can't carry the feed, but it can hold the 1 A sense-wire fuse (part 4b) if the tap stays live while cranking. Either way, check it takes ATO/ATC blades, has a free slot, and its own supply is fused and sized for another 3.6 A. Until metered, parts 1, 4a and 4b stay as written.
+- **Spare helm switch or fuse circuit.** A spare helm switch can replace the switch on the box (part 3). A spare fuse circuit can replace the inline fuse holder only if it is standby; see the next item.
+- **Fuse box under the helm (check on the boat).** The boat has one (owner, 2026-10-31). When the boat is back, meter the supply side of the slot you'd use (the box's bus, not an empty slot's output, which reads 0 V either way), with the main switch on and then off. One box can mix standby and switched slots, so check the slot itself.
+  - Live with the switch off (standby): trace the box's supply to the house battery side of the main switch (not a start or kicker battery), check the reading holds under a small load (not back-fed by another device), and check the box's own supply fuse is within 7 in of the battery. Then a slot can carry the 7.5 A feed and replace the inline holder (parts 1, 4a), if the box's supply is sized for another 3.6 A and the slot's terminal takes the part 19 gauge.
+  - About 12 V on, 0 V off (switched): it can't carry the feed, but a slot can hold the 1 A sense-wire fuse (part 4b) if that circuit stays live while cranking. The sense wire adds under 0.1 A.
+  - Either way: ATO/ATC blades and a free slot. Until metered, parts 1, 4a and 4b stay as written.
 - **Tariffs.** Digi-Key shows "tariff may apply" on several parts; the amount shows only in the cart.
 
 Prices are US, before tax and shipping, from product pages on the dates given. Recheck before ordering.
