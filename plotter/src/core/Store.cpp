@@ -1,5 +1,6 @@
 #include "Store.h"
 #include <QDateTime>
+#include <QDebug>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -11,17 +12,18 @@
 
 namespace {
 
+// apply returns the failing statement's error, or a QSqlError of type NoError.
 struct Migration {
     QVersionNumber to;
-    std::function<bool(QSqlDatabase&)> apply;
+    std::function<QSqlError(QSqlDatabase&)> apply;
 };
 
-bool execAll(QSqlDatabase& db, std::initializer_list<const char*> sqls) {
+QSqlError execAll(QSqlDatabase& db, std::initializer_list<const char*> sqls) {
     QSqlQuery q(db);
     for (const char* s : sqls)
         if (!q.exec(QString::fromLatin1(s)))
-            return false;
-    return true;
+            return q.lastError();
+    return {};
 }
 
 const std::array<Migration, 1> kMigrations{{
@@ -79,11 +81,23 @@ std::expected<void, StoreError> Store::init() {
     if (!q.exec(QStringLiteral("SELECT 1 FROM sqlite_master WHERE type='table' AND name='schema_version'")))
         return std::unexpected(classify(q.lastError()));
     if (q.next()) {
-        if (!q.exec(QStringLiteral("SELECT major, minor, patch FROM schema_version")))
+        if (!q.exec(QStringLiteral("SELECT count(*) FROM schema_version")) || !q.next())
             return std::unexpected(classify(q.lastError()));
-        if (!q.next())
+        const int rows = q.value(0).toInt();
+        if (rows == 0)
             return std::unexpected(StoreError::Corrupt);
+        if (rows > 1)
+            qWarning() << "plotter.db has" << rows << "schema_version rows; using the highest";
+        if (!q.exec(QStringLiteral("SELECT major, minor, patch FROM schema_version ORDER BY major DESC, minor DESC, patch DESC LIMIT 1")) ||
+            !q.next())
+            return std::unexpected(classify(q.lastError()));
         cur = QVersionNumber(q.value(0).toInt(), q.value(1).toInt(), q.value(2).toInt());
+    } else {
+        // Tables without a version are not a file this app made; a fresh file has none.
+        if (!q.exec(QStringLiteral("SELECT 1 FROM sqlite_master WHERE type='table'")))
+            return std::unexpected(classify(q.lastError()));
+        if (q.next())
+            return std::unexpected(StoreError::Corrupt);
     }
     if (cur.majorVersion() > kSchemaVersion.majorVersion())
         return std::unexpected(StoreError::NewerMajor);
@@ -93,20 +107,23 @@ std::expected<void, StoreError> Store::init() {
             continue;
         if (!d.transaction())
             return std::unexpected(classify(d.lastError()));
-        bool ok = m.apply(d);
-        if (ok) {
+        // Statement errors live on their QSqlQuery, not in d.lastError(): keep the failing one's.
+        QSqlError err = m.apply(d);
+        if (!err.isValid()) {
             QSqlQuery w(d);
-            ok = w.exec(QStringLiteral("DELETE FROM schema_version")) &&
-                 w.prepare(QStringLiteral("INSERT INTO schema_version(major, minor, patch) VALUES(?,?,?)"));
+            const bool ok = w.exec(QStringLiteral("DELETE FROM schema_version")) &&
+                            w.prepare(QStringLiteral("INSERT INTO schema_version(major, minor, patch) VALUES(?,?,?)"));
             if (ok) {
                 w.addBindValue(m.to.majorVersion());
                 w.addBindValue(m.to.minorVersion());
                 w.addBindValue(m.to.microVersion());
-                ok = w.exec();
             }
+            if (!ok || !w.exec())
+                err = w.lastError();
         }
-        if (!ok || !d.commit()) {
-            const QSqlError err = d.lastError();
+        if (!err.isValid() && !d.commit())
+            err = d.lastError();
+        if (err.isValid()) {
             d.rollback();
             return std::unexpected(classify(err));
         }

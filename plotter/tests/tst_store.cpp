@@ -130,6 +130,56 @@ private slots:
             QSKIP("running with privileges that ignore directory permissions");
         QCOMPARE(s2.error(), StoreError::Io);
     }
+    // A file with our tables but no schema_version is damaged, not an Io problem.
+    void tablesWithoutSchemaVersionAreCorrupt() {
+        QTemporaryDir t;
+        rawExec(t.path(), {"CREATE TABLE settings(key TEXT PRIMARY KEY, value TEXT NOT NULL)"});
+        auto s = Store::open(t.path());
+        QVERIFY(!s.has_value());
+        QCOMPARE(s.error(), StoreError::Corrupt);
+    }
+    void emptySchemaVersionIsCorrupt() {
+        QTemporaryDir t;
+        { QVERIFY(Store::open(t.path()).has_value()); }
+        rawExec(t.path(), {"DELETE FROM schema_version"});
+        auto s = Store::open(t.path());
+        QVERIFY(!s.has_value());
+        QCOMPARE(s.error(), StoreError::Corrupt);
+    }
+    // Several schema_version rows: the highest counts, whatever the row order.
+    void severalSchemaVersionRowsUseTheHighest() {
+        const QRegularExpression warning("2 schema_version rows");
+        QTemporaryDir t;
+        { QVERIFY(Store::open(t.path()).has_value()); }
+        rawExec(t.path(), {"INSERT INTO schema_version VALUES(1, 3, 0)"});
+        {
+            QTest::ignoreMessage(QtWarningMsg, warning);
+            auto s = Store::open(t.path());
+            QVERIFY(s.has_value());
+            QCOMPARE((*s)->schemaVersion(), QVersionNumber(1, 3, 0));
+        }
+        rawExec(t.path(), {"DELETE FROM schema_version WHERE minor = 3", "INSERT INTO schema_version VALUES(2, 0, 0)"});
+        QTest::ignoreMessage(QtWarningMsg, warning);
+        auto s = Store::open(t.path());
+        QVERIFY(!s.has_value());
+        QCOMPARE(s.error(), StoreError::NewerMajor);
+    }
+    // SQLITE_CORRUPT raised by a migration statement is classified from that statement's error.
+    // The file is valid up to its free list, which points past the end: the first page the
+    // migration allocates is where SQLite finds the damage.
+    void corruptionFoundByTheMigrationIsCorrupt() {
+        QTemporaryDir t;
+        rawExec(t.path(), {"PRAGMA user_version = 7"}); // one page, no tables
+        QFile f(t.filePath("plotter.db"));
+        QVERIFY(f.open(QIODevice::ReadWrite));
+        QVERIFY(f.seek(32));
+        const char freeList[8] = {0, 0, 0, 5, 0, 0, 0, 1}; // first free-list trunk page 5, 1 free page
+        QCOMPARE(f.write(freeList, 8), qint64(8));
+        f.close();
+        auto s = Store::open(t.path());
+        QVERIFY(!s.has_value());
+        QCOMPARE(s.error(), StoreError::Corrupt);
+    }
     void moveAsideThenOpen() {
         QTemporaryDir t;
         { QVERIFY(Store::open(t.path()).has_value()); }
