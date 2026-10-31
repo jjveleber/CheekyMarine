@@ -140,6 +140,36 @@ TestCase {
                   1000, "tab bar on the right edge")
     }
 
+    // A small panel diagonal leaves the column short of room: every tab and control stays inside
+    // the window at full size (the reserved spaces give way first). At 10.1 in they are kept.
+    function test_tabBarFitsTheWindow_data() {
+        let out = []
+        for (const s of sizes())
+            for (const d of [7, 10.1])
+                out.push({ tag: s.tag + " " + d + " in", w: s.w, h: s.h, diag: d })
+        return out
+    }
+    function test_tabBarFitsTheWindow(data) {
+        fixture.settings.panelDiagonalIn = data.diag
+        const main = makeMain(data.w, data.h)
+        compare(Units.diagonalIn, data.diag)
+        const bar = byName(main.contentItem, "tabBar")
+        waitForRendering(bar)
+        const buttons = findAll(bar, it => it.isBigButton === true)
+        compare(buttons.length, 6)
+        checkBigButtons(bar)
+        for (const t of buttons.filter(b => b.objectName.startsWith("tab-")))
+            verify(t.height >= Units.mm(15) - 0.5, t.objectName)
+        const reserved = ["reservedBrightness", "reservedMob"].map(n => byName(bar, n)).filter(it => it.visible)
+        for (const b of buttons.concat(reserved)) {
+            const p = b.mapToItem(main.contentItem, 0, 0)
+            verify(p.y >= 0 && p.y + b.height <= main.height + 0.5,
+                   b.objectName + " at " + Math.round(p.y) + ".." + Math.round(p.y + b.height) + ", window " + main.height)
+        }
+        if (data.diag === 10.1)
+            verify(byName(bar, "reservedBrightness").visible && byName(bar, "reservedMob").visible, "reserved spaces kept")
+    }
+
     function test_tabsSwitchPagesAndPaletteCycles() {
         const main = makeMain(1024, 600)
         byName(main.contentItem, "splash").visible = false

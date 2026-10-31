@@ -15,14 +15,26 @@ Rectangle {
     readonly property Item lockButton: lockBtn
 
     readonly property real tab: Units.mm(15)
+    readonly property real control: Units.mm(12)
+    // Room for all of it: four tabs, the gap, Lock, palette and both reserved spaces, at 1 mm
+    // spacing and margins.
+    readonly property bool roomy: height >= 4 * tab + 4 * control + Units.mm(2) + 10 * Units.mm(1)
+    // A short window (a small panel diagonal): the gap and the reserved spaces go, and the spacing
+    // tightens, so every tab and control stays inside the window at full size.
+    readonly property real spacing: roomy ? Units.mm(1)
+                                          : Math.max(0, Math.min(Units.mm(1), (height - 4 * tab - 2 * control) / 7))
     objectName: "tabBar"
     implicitWidth: tab + 2 * Units.mm(1)
     color: Theme.background
 
     Column {
         id: column
-        anchors { fill: parent; margins: Units.mm(1) }
-        spacing: Units.mm(1)
+        anchors {
+            fill: parent
+            leftMargin: Units.mm(1); rightMargin: Units.mm(1)
+            topMargin: bar.spacing; bottomMargin: bar.spacing
+        }
+        spacing: bar.spacing
 
         Repeater {
             id: tabs
@@ -42,7 +54,7 @@ Rectangle {
             }
         }
 
-        Item { width: 1; height: Units.mm(2) }
+        Item { visible: bar.roomy; width: 1; height: Units.mm(2) }
 
         BigButton {
             id: lockBtn
@@ -60,8 +72,8 @@ Rectangle {
             onClicked: bar.paletteCycled()
         }
         // Reserved: brightness (plan 5) and MOB (phase 2).
-        Item { objectName: "reservedBrightness"; width: bar.tab; height: Units.mm(12) }
-        Item { objectName: "reservedMob"; width: bar.tab; height: Units.mm(12) }
+        Item { objectName: "reservedBrightness"; visible: bar.roomy; width: bar.tab; height: bar.control }
+        Item { objectName: "reservedMob"; visible: bar.roomy; width: bar.tab; height: bar.control }
     }
 
     // Over the corner of the Tracks tab, so the column keeps its height.
