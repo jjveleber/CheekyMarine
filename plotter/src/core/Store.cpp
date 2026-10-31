@@ -7,6 +7,7 @@
 #include <QSqlError>
 #include <QSqlQuery>
 #include <QUuid>
+#include <algorithm>
 #include <array>
 #include <functional>
 
@@ -142,12 +143,29 @@ Store::~Store() {
     QSqlDatabase::removeDatabase(m_conn);
 }
 
-QString Store::moveAside(QString dir) {
+std::expected<QString, QString> Store::moveAside(QString dir, const QDateTime& now,
+                                                 const std::function<bool(const QString&, const QString&)>& rename) {
     const QString base = QDir(dir).filePath(QStringLiteral("plotter.db"));
-    const QString moved = base + QStringLiteral(".bad-") + QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd-HHmmss"));
+    const QStringList suffixes{QString(), QStringLiteral("-wal"), QStringLiteral("-shm")};
+    const QString stamp = base + QStringLiteral(".bad-") + now.toString(QStringLiteral("yyyyMMdd-HHmmss"));
+    QString moved = stamp;
+    const auto taken = [&suffixes](const QString& name) {
+        return std::ranges::any_of(suffixes, [&name](const QString& s) { return QFile::exists(name + s); });
+    };
+    for (int n = 2; taken(moved); ++n)
+        moved = stamp + QLatin1Char('-') + QString::number(n);
+
     QString result;
-    for (const QString& suffix : {QString(), QStringLiteral("-wal"), QStringLiteral("-shm")}) {
-        if (QFile::exists(base + suffix) && QFile::rename(base + suffix, moved + suffix) && suffix.isEmpty())
+    for (const QString& suffix : suffixes) {
+        if (!QFile::exists(base + suffix))
+            continue;
+        if (!(rename ? rename(base + suffix, moved + suffix) : QFile::rename(base + suffix, moved + suffix))) {
+            const QString failed = QStringLiteral("plotter.db%1 could not be moved aside").arg(suffix);
+            if (result.isEmpty())
+                return std::unexpected(failed);
+            return std::unexpected(QStringLiteral("plotter.db was moved to %1 but %2").arg(result, failed));
+        }
+        if (suffix.isEmpty())
             result = moved;
     }
     return result;

@@ -1,8 +1,10 @@
 #pragma once
+#include <QDateTime>
 #include <QSqlDatabase>
 #include <QString>
 #include <QVersionNumber>
 #include <expected>
+#include <functional>
 #include <memory>
 
 enum class StoreError { NewerMajor, Corrupt, Io };
@@ -14,9 +16,13 @@ public:
     static inline const QVersionNumber kSchemaVersion{1, 0, 0};
 
     static std::expected<std::unique_ptr<Store>, StoreError> open(QString dir);
-    // Renames plotter.db (and -wal, -shm) to plotter.db.bad-YYYYMMDD-HHMMSS[-wal|-shm]; returns the
-    // new main file path (empty if there was nothing to move). Destroy any Store on dir first.
-    static QString moveAside(QString dir);
+    // Renames plotter.db (and -wal, -shm) to plotter.db.bad-YYYYMMDD-HHMMSS[-N][-wal|-shm], N from 2
+    // when a name is taken; returns the new main file path (empty if there was nothing to move), or
+    // the error when any of the three could not be moved (a partial move says where the rest went).
+    // Destroy any Store on dir first. `now` and `rename` (QFile::rename when empty) are test seams.
+    static std::expected<QString, QString> moveAside(
+        QString dir, const QDateTime& now = QDateTime::currentDateTime(),
+        const std::function<bool(const QString& from, const QString& to)>& rename = {});
 
     ~Store();
     Store(const Store&) = delete;

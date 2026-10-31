@@ -183,15 +183,76 @@ private slots:
     void moveAsideThenOpen() {
         QTemporaryDir t;
         { QVERIFY(Store::open(t.path()).has_value()); }
-        const QString moved = Store::moveAside(t.path());
-        QVERIFY(moved.contains(QRegularExpression(R"(plotter\.db\.bad-\d{8}-\d{6}$)")));
-        QVERIFY(QFile::exists(moved));
+        const auto moved = Store::moveAside(t.path());
+        QVERIFY(moved.has_value());
+        QVERIFY(moved->contains(QRegularExpression(R"(plotter\.db\.bad-\d{8}-\d{6}$)")));
+        QVERIFY(QFile::exists(*moved));
         QVERIFY(!QFile::exists(t.filePath("plotter.db")));
         QVERIFY(!QFile::exists(t.filePath("plotter.db-wal")));
         QVERIFY(!QFile::exists(t.filePath("plotter.db-shm")));
         auto s = Store::open(t.path());
         QVERIFY(s.has_value());
         QCOMPARE((*s)->schemaVersion(), QVersionNumber(1, 0, 0));
+    }
+    void moveAsideNothingToMoveIsEmpty() {
+        QTemporaryDir t;
+        const auto moved = Store::moveAside(t.path());
+        QVERIFY(moved.has_value());
+        QVERIFY(moved->isEmpty());
+    }
+    // A name already taken (main, -wal or -shm) gets a numbered suffix; nothing is overwritten.
+    void moveAsideTwiceInTheSameSecondKeepsBoth() {
+        QTemporaryDir t;
+        const QDateTime now(QDate(2026, 10, 31), QTime(12, 0, 0));
+        { QVERIFY(Store::open(t.path()).has_value()); }
+        const auto first = Store::moveAside(t.path(), now);
+        QVERIFY(first.has_value());
+        QVERIFY(first->endsWith("plotter.db.bad-20261031-120000"));
+        { QVERIFY(Store::open(t.path()).has_value()); }
+        const auto second = Store::moveAside(t.path(), now);
+        QVERIFY2(second.has_value(), qPrintable(second.error_or(QString())));
+        QVERIFY(second->endsWith("plotter.db.bad-20261031-120000-2"));
+        QVERIFY(QFile::exists(*first));
+        QVERIFY(QFile::exists(*second));
+        QVERIFY(!QFile::exists(t.filePath("plotter.db")));
+        { QVERIFY(Store::open(t.path()).has_value()); }
+        QFile taken(t.filePath("plotter.db.bad-20261031-120000-3-wal"));
+        QVERIFY(taken.open(QIODevice::WriteOnly));
+        taken.close();
+        const auto third = Store::moveAside(t.path(), now);
+        QVERIFY(third.has_value());
+        QVERIFY(third->endsWith("plotter.db.bad-20261031-120000-4"));
+    }
+    void moveAsideFailedRenameIsAnError() {
+        QTemporaryDir t;
+        { QVERIFY(Store::open(t.path()).has_value()); }
+        QFile::setPermissions(t.path(), QFile::ReadOwner | QFile::ExeOwner); // rename impossible
+        const bool ignored = QFileInfo(t.path()).isWritable();
+        const auto moved = Store::moveAside(t.path());
+        QFile::setPermissions(t.path(), QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner);
+        if (ignored)
+            QSKIP("running with privileges that ignore directory permissions");
+        QVERIFY(!moved.has_value());
+        QVERIFY(moved.error().contains("plotter.db could not be moved aside"));
+        QVERIFY(QFile::exists(t.filePath("plotter.db")));
+    }
+    // The main file moved but its -wal did not: reported, with where the main file went.
+    void moveAsidePartialMoveIsAnError() {
+        QTemporaryDir t;
+        { QVERIFY(Store::open(t.path()).has_value()); }
+        QFile wal(t.filePath("plotter.db-wal"));
+        QVERIFY(wal.open(QIODevice::WriteOnly));
+        wal.close();
+        const auto failWal = [](const QString& from, const QString& to) {
+            return !from.endsWith("-wal") && QFile::rename(from, to);
+        };
+        const QDateTime now(QDate(2026, 10, 31), QTime(12, 0, 0));
+        const auto moved = Store::moveAside(t.path(), now, failWal);
+        QVERIFY(!moved.has_value());
+        QVERIFY(moved.error().contains("plotter.db-wal could not be moved aside"));
+        QVERIFY(moved.error().contains("plotter.db.bad-20261031-120000"));
+        QVERIFY(!QFile::exists(t.filePath("plotter.db")));
+        QVERIFY(QFile::exists(t.filePath("plotter.db-wal")));
     }
     // Review Focus 4: SIGKILL a child mid-write; the database must open and pass integrity_check.
     void powerCutKeepsDatabaseIntact() {
