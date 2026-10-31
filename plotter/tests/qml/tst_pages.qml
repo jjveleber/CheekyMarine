@@ -338,21 +338,28 @@ TestCase {
         verify(!button.visible)
     }
 
-    function test_allSlotsOnFitWithoutOverlap_data() { return sizes() }
+    // TR and BR both large: the least room for the zoom column between them. The last row puts the
+    // live two-line position in TR over a large BR: less room between the right corners than the
+    // column needs, so it has to go beside them. (A large position does not fit a 1024x600 page at
+    // all: it is wider than the page.)
+    function test_allSlotsOnFitWithoutOverlap_data() {
+        const both = ["large", "large", "medium", "large", "small", "small", "medium", "medium"]
+        const fields = ["depth", "sog", "cog", "wtemp", "time", "pos", "stw", "hdg"]
+        return sizes().map(s => Object.assign({ fields: fields, sizes: both }, s)).concat([
+            { tag: "1024x600 position in TR", w: 1024, h: 600, position: true,
+              fields: ["depth", "pos", "cog", "wtemp", "time", "sog", "stw", "hdg"], sizes: both.map((z, i) => i === 1 ? "medium" : z) }])
+    }
     function test_allSlotsOnFitWithoutOverlap(data) {
         Units.windowWidth = data.w
         Units.windowHeight = data.h
-        for (const id of ["TL", "TR", "BL", "BR", "Top", "Bottom", "Left", "Right"]) {
-            const m = fixture.slotsModel
-            const i = ["TL", "TR", "BL", "BR", "Top", "Bottom", "Left", "Right"].indexOf(id)
-            const field = ["depth", "sog", "cog", "wtemp", "time", "pos", "stw", "hdg"][i]
-            // TR and BR both large: the least room for the zoom column between them.
-            const size = ["large", "large", "medium", "large", "small", "small", "medium", "medium"][i]
-            m.setSlot(id, true, field, size)
-        }
-        // Every chart control on: recenter (not following) and the no-position chip too.
+        if (data.position) fixture.setPosition(47.98, -122.23)
+        const ids = ["TL", "TR", "BL", "BR", "Top", "Bottom", "Left", "Right"]
+        for (let i = 0; i < ids.length; ++i)
+            fixture.slotsModel.setSlot(ids[i], true, data.fields[i], data.sizes[i])
+        // Every chart control on: recenter (not following) and the no-position chip too (not with a
+        // live position).
         chartStub.follow = false
-        chartStub.noPosition = true
+        chartStub.noPosition = !data.position
         const chart = createTemporaryObject(chartPageComp, testCase, {
             width: data.w - Units.mm(17), height: data.h,
             chart: chartStub, chartMap: createTemporaryObject(mapStub, testCase), slotsModel: fixture.slotsModel })
@@ -370,9 +377,10 @@ TestCase {
                 verify(!overlaps(slots[a], slots[b]), where(slots[a]) + " overlaps " + where(slots[b]))
         // The chart's controls clear every slot and each other, and stay inside the page.
         const controls = findAll(chart, it => it.isBigButton === true && it.visible && !it.objectName.startsWith("slot-"))
-                         .concat([byName(chart, "noPositionChip")])
+                         .concat([byName(chart, "noPositionChip")].filter(it => it.visible))
         compare(controls.map(c => c.objectName).sort(),
-                ["legendButton", "modeButton", "noPositionChip", "recenterButton", "zoomInButton", "zoomOutButton"])
+                ["legendButton", "modeButton"].concat(data.position ? [] : ["noPositionChip"],
+                                                      ["recenterButton", "zoomInButton", "zoomOutButton"]))
         for (let a = 0; a < controls.length; ++a) {
             const c = box(controls[a])
             verify(c.x >= 0 && c.y >= 0 && c.x + c.w <= chart.width + 0.5 && c.y + c.h <= chart.height + 0.5,

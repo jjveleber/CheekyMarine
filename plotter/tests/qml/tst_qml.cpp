@@ -85,6 +85,15 @@ public:
         m_vessel.setLive(true);
         m_vessel.setState(s);
     }
+    // Live data with a position only (the two-line field).
+    Q_INVOKABLE void setPosition(double lat, double lon) {
+        VesselState s;
+        s.t = 1;
+        s.lat = lat;
+        s.lon = lon;
+        m_vessel.setLive(true);
+        m_vessel.setState(s);
+    }
 
 public slots:
     // The setup object exists before the application: the database is opened here.

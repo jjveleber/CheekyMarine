@@ -19,9 +19,11 @@ Item {
     property real rightInset: 0
     readonly property real margin: Units.mm(1.5)
     // Inner edges of the right corner slots (the corner area's edge when a slot is off): the zoom
-    // column sits centred between them.
+    // column sits centred between them, or left of them when the gap is too small.
     property real trBottom: cornerArea.y
     property real brTop: cornerArea.y + cornerArea.height
+    property real trLeft: cornerArea.x + cornerArea.width
+    property real brLeft: cornerArea.x + cornerArea.width
 
     objectName: "chartPage"
 
@@ -151,6 +153,8 @@ Item {
             Binding { when: slotView.slotId === "Right"; target: page; property: "rightInset"; value: slotView.takesRoom ? slotView.width : 0 }
             Binding { when: slotView.slotId === "TR"; target: page; property: "trBottom"; value: slotView.on ? slotView.y + slotView.height : cornerArea.y }
             Binding { when: slotView.slotId === "BR"; target: page; property: "brTop"; value: slotView.on ? slotView.y : cornerArea.y + cornerArea.height }
+            Binding { when: slotView.slotId === "TR"; target: page; property: "trLeft"; value: slotView.on ? slotView.x : cornerArea.x + cornerArea.width }
+            Binding { when: slotView.slotId === "BR"; target: page; property: "brLeft"; value: slotView.on ? slotView.x : cornerArea.x + cornerArea.width }
         }
     }
 
@@ -186,10 +190,13 @@ Item {
     }
 
     // In the gap between the TR and BR slots. No vertical padding, so each button is 12 mm tall and
-    // the column fits between two large corners at 1024x600.
+    // the column fits between two large corners at 1024x600. A smaller gap (a tall corner, such as
+    // the two-line position) puts it left of both corners, at the gap's height inside the area.
     Column {
-        anchors.right: cornerArea.right
-        y: page.trBottom + (page.brTop - page.trBottom - height) / 2
+        readonly property bool fitsGap: page.brTop - page.trBottom >= height
+        x: fitsGap ? cornerArea.x + cornerArea.width - width : Math.min(page.trLeft, page.brLeft) - page.margin - width
+        y: Math.max(cornerArea.y, Math.min(cornerArea.y + cornerArea.height - height,
+                                           page.trBottom + (page.brTop - page.trBottom - height) / 2))
         visible: !page.editing
         spacing: Units.mm(1.5)
         BigButton {
