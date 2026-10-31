@@ -12,6 +12,8 @@ How to read each section:
 
 If a product page doesn't state a must-have number, treat it as missing. Ask the seller or move on.
 
+Where a part is shopped by parametric search, a **Mouser filters** table gives Mouser's own filter names and the values to tick, read from Mouser's category page. Filters not listed can stay open. Anything Mouser can't filter is still a datasheet check.
+
 Owner rules this revision follows (2026-10-31):
 
 - **Clean shutdown when the boat's main battery switch goes off is mandatory.** It must never corrupt the SSD. The unit runs from the house battery's standby (unswitched) power and watches a sense wire from the switched side (part 4).
@@ -163,6 +165,21 @@ Heat in the box: everything above ends up as heat inside the enclosure. In dayli
 | Leakage at standoff | 5 µA or less | Datasheet "IR at VRWM" |
 | Package | Through-hole axial or a part that mounts on a terminal strip | Datasheet package drawing |
 
+**TVS: Mouser filters** (Circuit Protection > ESD Protection Diodes / TVS Diodes, mouser.com/c/circuit-protection/esd-protection-diodes-tvs-diodes/, read 2026-10-31)
+
+| Mouser filter | Set to | Must-have it covers |
+|---|---|---|
+| Product | TVS Diodes (not ESD Suppressors, the data-line parts) | |
+| Polarity | Unidirectional | Polarity |
+| Number of Channels | 1 Channel | |
+| Working Voltage | Range 15 V to 18 V (or tick 15 V through 18 V) | Standoff voltage |
+| Clamping Voltage | Range up to 30 V | Clamping voltage; confirm on the datasheet it is VC at the rated IPP |
+| Pppm - Peak Pulse Power Dissipation | 1.5 kW and every larger value | Peak pulse power; confirm on the datasheet it is a 10/1000 µs rating, not 8/20 µs |
+| Termination Style | Axial, Through Hole | Package |
+| Packaging | Bulk, Cut Tape (not Reel) | |
+
+Leave open: Manufacturer, Breakdown Voltage (it follows from the working voltage), Package / Case, Peak Pulse Current (it follows from Pppm), Cd, both Vesd filters (data-line ratings), the operating temperatures (nearly every power TVS covers -40 to +150 °C), Series, Qualification. For the SM8S load-dump nice-to-have: Qualification AEC-Q101, Termination Style SMD/SMT, Pppm 6.6 kW. Not filterable: leakage at standoff.
+
 **LC filter: must have**
 
 | Spec | Requirement | How to check |
@@ -268,7 +285,7 @@ It has four pieces:
 | Isolation | Optocoupler (the 12 V side and the logic side share nothing but light) | Datasheet "optocoupler", "photocoupler" |
 | Where it connects | On the sense wire itself, before the diode that feeds the controller. Never at the point where the two diodes join: that point is live whenever the relay is closed, and the unit would never shut down | Circuit |
 | Pull-down | A resistor (about 10 kOhm) from the sense wire to negative inside the box, so an open switch reads "off" even with diode leakage | Circuit |
-| Surge clamp | Its own small TVS (600 W class, 15 to 18 V standoff) where the sense wire enters the box: the main TVS sits after the relay and can't protect this wire | Datasheet, as for part 2 |
+| Surge clamp | Its own small TVS (600 W class, 15 to 18 V standoff) where the sense wire enters the box: the main TVS sits after the relay and can't protect this wire | Datasheet, as for part 2; Mouser: part 2's TVS filters with Pppm set to 600 W (P6KE20A is the axial 600 W part) |
 | Threshold | On above about 8 V, off below about 5 V (a resistor and a zener or a divider set this) | Circuit values; bench check with the bench supply |
 | Sense current | About 5 mA into the optocoupler LED at 12 V | Resistor value |
 | LED current at 30 V | Half the optocoupler LED's absolute maximum or less. With a 5 mA design point and an 8 V threshold, a plain resistor gives about 27 mA at 30 V, so a current-limiting part (constant-current diode or transistor) is required | Optocoupler datasheet "IF absolute maximum" |

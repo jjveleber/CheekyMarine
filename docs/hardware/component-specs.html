@@ -56,6 +56,10 @@ where to find each one on a product page or datasheet.</li>
 </ul>
 <p>If a product page doesn’t state a must-have number, treat it as
 missing. Ask the seller or move on.</p>
+<p>Where a part is shopped by parametric search, a <strong>Mouser
+filters</strong> table gives Mouser’s own filter names and the values to
+tick, read from Mouser’s category page. Filters not listed can stay
+open. Anything Mouser can’t filter is still a datasheet check.</p>
 <p>Owner rules this revision follows (2026-10-31):</p>
 <ul>
 <li><strong>Clean shutdown when the boat’s main battery switch goes off
@@ -489,6 +493,75 @@ to about 32 V on the capacitors).</p>
 </tr>
 </tbody>
 </table>
+<p><strong>TVS: Mouser filters</strong> (Circuit Protection &gt; ESD
+Protection Diodes / TVS Diodes,
+mouser.com/c/circuit-protection/esd-protection-diodes-tvs-diodes/, read
+2026-10-31)</p>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Mouser filter</th>
+<th>Set to</th>
+<th>Must-have it covers</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Product</td>
+<td>TVS Diodes (not ESD Suppressors, the data-line parts)</td>
+<td></td>
+</tr>
+<tr class="even">
+<td>Polarity</td>
+<td>Unidirectional</td>
+<td>Polarity</td>
+</tr>
+<tr class="odd">
+<td>Number of Channels</td>
+<td>1 Channel</td>
+<td></td>
+</tr>
+<tr class="even">
+<td>Working Voltage</td>
+<td>Range 15 V to 18 V (or tick 15 V through 18 V)</td>
+<td>Standoff voltage</td>
+</tr>
+<tr class="odd">
+<td>Clamping Voltage</td>
+<td>Range up to 30 V</td>
+<td>Clamping voltage; confirm on the datasheet it is VC at the rated
+IPP</td>
+</tr>
+<tr class="even">
+<td>Pppm - Peak Pulse Power Dissipation</td>
+<td>1.5 kW and every larger value</td>
+<td>Peak pulse power; confirm on the datasheet it is a 10/1000 µs
+rating, not 8/20 µs</td>
+</tr>
+<tr class="odd">
+<td>Termination Style</td>
+<td>Axial, Through Hole</td>
+<td>Package</td>
+</tr>
+<tr class="even">
+<td>Packaging</td>
+<td>Bulk, Cut Tape (not Reel)</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<p>Leave open: Manufacturer, Breakdown Voltage (it follows from the
+working voltage), Package / Case, Peak Pulse Current (it follows from
+Pppm), Cd, both Vesd filters (data-line ratings), the operating
+temperatures (nearly every power TVS covers -40 to +150 °C), Series,
+Qualification. For the SM8S load-dump nice-to-have: Qualification
+AEC-Q101, Termination Style SMD/SMT, Pppm 6.6 kW. Not filterable:
+leakage at standoff.</p>
 <p><strong>LC filter: must have</strong></p>
 <table>
 <colgroup>
@@ -845,7 +918,8 @@ the box, so an open switch reads “off” even with diode leakage</td>
 <td>Its own small TVS (600 W class, 15 to 18 V standoff) where the sense
 wire enters the box: the main TVS sits after the relay and can’t protect
 this wire</td>
-<td>Datasheet, as for part 2</td>
+<td>Datasheet, as for part 2; Mouser: part 2’s TVS filters with Pppm set
+to 600 W (P6KE20A is the axial 600 W part)</td>
 </tr>
 <tr class="odd">
 <td>Threshold</td>
