@@ -135,6 +135,25 @@ private slots:
         QCOMPARE(r.ctrl->palette(), QStringLiteral("dusk"));
     }
 
+    // Every applied palette is stored as lastPalette; an auto start without a fix begins in it, so a
+    // night start does not flash the day palette.
+    void autoStartsInLastPalette() {
+        Rig r;
+        QVERIFY(r.settings);
+        r.make();
+        r.vessel.setState(seattleAt(utc("2026-06-21T05:00:00Z"))); // night
+        QCOMPARE(r.settings->lastPalette(), QStringLiteral("night"));
+        r.settings->setPaletteMode("dusk");
+        QCOMPARE(r.settings->lastPalette(), QStringLiteral("dusk"));
+        r.settings->setPaletteMode("auto");
+        QCOMPARE(r.settings->lastPalette(), QStringLiteral("night"));
+        r.ctrl.reset();
+        r.vessel.setLive(false); // restart with no position yet
+        Settings reopened(*r.store);
+        PaletteController c(reopened, r.vessel, [&r] { return r.now; });
+        QCOMPARE(c.palette(), QStringLiteral("night"));
+    }
+
     // Startup has no position; the first fix decides at once rather than up to a minute later.
     void firstPositionEvaluatesAtOnce() {
         Rig r;

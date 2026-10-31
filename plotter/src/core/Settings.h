@@ -19,6 +19,7 @@ class Settings : public QObject {
     Q_PROPERTY(double deepM READ deepM WRITE setDeepM NOTIFY deepMChanged)
     Q_PROPERTY(QString orientation READ orientation WRITE setOrientation NOTIFY orientationChanged)
     Q_PROPERTY(QString paletteMode READ paletteMode WRITE setPaletteMode NOTIFY paletteModeChanged)
+    Q_PROPERTY(QString lastPalette READ lastPalette WRITE setLastPalette NOTIFY lastPaletteChanged)
     Q_PROPERTY(QString chartMode READ chartMode WRITE setChartMode NOTIFY chartModeChanged)
     Q_PROPERTY(int touchLockTimeoutS READ touchLockTimeoutS WRITE setTouchLockTimeoutS NOTIFY touchLockTimeoutSChanged)
     Q_PROPERTY(double panelDiagonalIn READ panelDiagonalIn WRITE setPanelDiagonalIn NOTIFY panelDiagonalInChanged)
@@ -45,6 +46,7 @@ public:
     double deepM() const { return m_v.value("deepM").toDouble(); }
     QString orientation() const { return str("orientation"); }
     QString paletteMode() const { return str("paletteMode"); }
+    QString lastPalette() const { return str("lastPalette"); }
     QString chartMode() const { return str("chartMode"); }
     int touchLockTimeoutS() const { return m_v.value("touchLockTimeoutS").toInt(); }
     double panelDiagonalIn() const { return m_v.value("panelDiagonalIn").toDouble(); }
@@ -64,6 +66,7 @@ public:
     void setDeepM(double v) { setDepths(shallowM(), safetyM(), v); }
     void setOrientation(const QString& v) { if (put("orientation", v)) emit orientationChanged(); }
     void setPaletteMode(const QString& v) { if (put("paletteMode", v)) emit paletteModeChanged(); }
+    void setLastPalette(const QString& v) { if (put("lastPalette", v)) emit lastPaletteChanged(); }
     void setChartMode(const QString& v) { if (put("chartMode", v)) emit chartModeChanged(); }
     void setTouchLockTimeoutS(int v) { if (put("touchLockTimeoutS", v)) emit touchLockTimeoutSChanged(); }
     void setPanelDiagonalIn(double v) { if (put("panelDiagonalIn", v)) emit panelDiagonalInChanged(); }
@@ -92,6 +95,7 @@ signals:
     void deepMChanged();
     void orientationChanged();
     void paletteModeChanged();
+    void lastPaletteChanged();
     void chartModeChanged();
     void touchLockTimeoutSChanged();
     void panelDiagonalInChanged();

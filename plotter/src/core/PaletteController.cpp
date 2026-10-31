@@ -6,7 +6,8 @@
 
 PaletteController::PaletteController(Settings& settings, VesselModel& vessel, std::function<QDateTime()> nowUtc,
                                      QObject* parent)
-    : QObject(parent), m_settings(settings), m_vessel(vessel), m_nowUtc(std::move(nowUtc)), m_timer(this) {
+    : QObject(parent), m_settings(settings), m_vessel(vessel), m_nowUtc(std::move(nowUtc)),
+      m_palette(settings.lastPalette()), m_timer(this) {
     connect(&m_timer, &QTimer::timeout, this, &PaletteController::evaluate);
     connect(&m_settings, &Settings::paletteModeChanged, this, &PaletteController::evaluate);
     connect(&m_vessel, &VesselModel::changed, this, [this] {
@@ -35,5 +36,6 @@ void PaletteController::evaluate() {
 void PaletteController::set(const QString& palette) {
     if (palette == m_palette) return;
     m_palette = palette;
+    m_settings.setLastPalette(palette);
     emit paletteChanged();
 }

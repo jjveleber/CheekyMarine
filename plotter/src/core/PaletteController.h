@@ -11,7 +11,7 @@ class VesselModel;
 // The palette in use ("day", "dusk", "night"). Manual paletteMode values are used as is; "auto"
 // follows the sun at the vessel position, at the GNSS time when known, else nowUtc(). Re-evaluated
 // every 60 s, on a paletteMode change and when a position arrives after none. Without a position it
-// keeps the last palette (initially day).
+// keeps the last palette, initially the lastPalette setting; every palette applied is stored there.
 class PaletteController : public QObject {
     Q_OBJECT
     Q_PROPERTY(QString palette READ palette NOTIFY paletteChanged)
@@ -35,7 +35,7 @@ private:
     Settings& m_settings;
     VesselModel& m_vessel;
     std::function<QDateTime()> m_nowUtc;
-    QString m_palette = QStringLiteral("day");
+    QString m_palette;
     bool m_hadPosition = false; // the last evaluation had a position
     QTimer m_timer;
 };

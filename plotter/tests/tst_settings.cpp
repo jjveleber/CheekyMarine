@@ -35,6 +35,7 @@ private slots:
         QCOMPARE(s.deepM(), 9.144);
         QCOMPARE(s.orientation(), QStringLiteral("head"));
         QCOMPARE(s.paletteMode(), QStringLiteral("auto"));
+        QCOMPARE(s.lastPalette(), QStringLiteral("day"));
         QCOMPARE(s.chartMode(), QStringLiteral("nav"));
         QCOMPARE(s.touchLockTimeoutS(), 120);
         QCOMPARE(s.panelDiagonalIn(), 10.1);
@@ -73,12 +74,19 @@ private slots:
             QCOMPARE(s.chartMode(), QStringLiteral("nav"));
             s.setChartMode("fish");
             QCOMPARE(s.chartMode(), QStringLiteral("fish"));
+            QSignalSpy lastSpy(&s, &Settings::lastPaletteChanged);
+            s.setLastPalette("night");
+            QCOMPARE(lastSpy.count(), 1);
+            QTest::ignoreMessage(QtWarningMsg, QRegularExpression("lastPalette"));
+            s.setLastPalette("auto"); // rejected: only an applied palette is stored
+            QCOMPARE(s.lastPalette(), QStringLiteral("night"));
         }
         auto st = Store::open(t.path());
         Settings s(**st);
         QCOMPARE(s.orientation(), QStringLiteral("north"));
         QCOMPARE(s.bigNumbers(), (QStringList{"depth", "stw", "cog"}));
         QCOMPARE(s.touchLockTimeoutS(), 0);
+        QCOMPARE(s.lastPalette(), QStringLiteral("night"));
         QVERIFY(s.trackRecording());
         const UnitPrefs p = s.unitPrefs();
         QCOMPARE(p.depth, DepthUnit::Metres);

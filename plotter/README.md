@@ -101,6 +101,7 @@ Stored in `plotter.db`, changed in the Settings page. Defaults:
 | `shallowM`, `safetyM`, `deepM` | 1.8288, 3.048, 9.144 m (6, 10, 30 ft) | 0.5 to 60 m, shallow < safety < deep |
 | `orientation` | `head` | `north`, `head`, `course` |
 | `paletteMode` | `auto` | `auto`, `day`, `dusk`, `night` |
+| `lastPalette` | `day` | `day`, `dusk`, `night`: the palette last applied, where auto mode starts before the first fix |
 | `chartMode` | `nav` | `nav`, `fish` (anything else is rejected and not stored) |
 | `touchLockTimeoutS` | 120 | seconds, 0 for never |
 | `panelDiagonalIn` | 10.1 | inches, sizes the touch targets |
