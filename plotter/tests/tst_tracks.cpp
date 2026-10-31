@@ -1,3 +1,4 @@
+#include "core/MonotonicClock.h"
 #include "core/Tracks.h"
 #include <QCoreApplication>
 #include <QDateTime>
@@ -5,6 +6,7 @@
 #include <QSignalSpy>
 #include <QSqlQuery>
 #include <QTemporaryDir>
+#include <QThread>
 #include <QtTest>
 #include <cstdio>
 
@@ -182,6 +184,27 @@ private slots:
         r.now = 31;
         r.rec->tick();
         QCOMPARE(r.stored(r.rec->activeId()), 5);
+    }
+    // The 30 s write interval runs on the injected monotonic clock: a backward step of the time
+    // the updates carry (a GNSS or NTP correction) neither delays nor blocks the write.
+    void writeIntervalIgnoresABackwardTimeStep() {
+        Rig r(true, 1, 10);
+        for (int i = 0; i < 5; ++i) r.feed(1.7e9 + i, 47.0 + i * 20 * kLatPerM);
+        const qint64 id = r.rec->activeId();
+        r.now = 1.7e9 + 31; // 31 s since the track began, on the recorder's clock
+        r.rec->onVessel(at(1.7e9 - 3600, 47.0 + 5 * 20 * kLatPerM)); // the updates' clock went back an hour
+        QCOMPARE(r.stored(id), 5);
+        QCOMPARE(r.rec->activeId(), id);
+    }
+    // The clock main.cpp gives the recorder is Qt's monotonic clock in seconds.
+    void productionClockIsMonotonicSeconds() {
+        QCOMPARE(QElapsedTimer::clockType(), QElapsedTimer::MonotonicClock);
+        const auto clock = monotonicSecondsClock();
+        const double start = clock();
+        QVERIFY(start >= 0 && start < 1);
+        QThread::msleep(50);
+        const double later = clock();
+        QVERIFY(later - start >= 0.045 && later - start < 5);
     }
     void turningRecordingOffFlushes() {
         Rig r;

@@ -3,6 +3,8 @@
 #include <QObject>
 #include <functional>
 
+class QTimer;
+
 // The touch lock state machine, with an injectable clock (milliseconds). Locks on lockNow() or when
 // the idle time reaches timeoutS (0 = never by idle); unlocks by a hold of kHoldMs on the lock icon.
 // poll() does the time-based work; production calls it every kPollMs.
@@ -47,6 +49,10 @@ private:
     qint64 m_lastActivity = 0;
     qint64 m_holdStarted = 0;
 };
+
+// Makes `timer` call lock.poll() every kPollMs, running only while polling can change something:
+// a timeout is set or the lock is on. Both must outlive the connection.
+void pollWhileNeeded(TouchLock& lock, QTimer& timer);
 
 // Installed on the application window: any touch, mouse or wheel event is activity for the lock.
 // Never consumes an event (the overlay does the swallowing while locked).

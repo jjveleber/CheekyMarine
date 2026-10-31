@@ -1,4 +1,7 @@
+#include "core/MonotonicClock.h"
 #include "core/TouchLock.h"
+#include <QThread>
+#include <QTimer>
 #include <QtGui/QMouseEvent>
 #include <QtTest>
 
@@ -102,6 +105,43 @@ private slots:
         l.lockNow();
         QVERIFY(l.locked());
         QCOMPARE(spy.count(), 1);
+    }
+
+    // The clock main.cpp gives the lock is Qt's monotonic clock, not the wall clock, which steps
+    // when NTP or GNSS time corrects it (no RTC on the Pi): it never goes back and counts real time.
+    void productionClockIsMonotonic() {
+        QCOMPARE(QElapsedTimer::clockType(), QElapsedTimer::MonotonicClock);
+        const auto clock = monotonicMsClock();
+        const qint64 start = clock();
+        QVERIFY(start >= 0 && start < 1000);
+        qint64 prev = start;
+        for (int i = 0; i < 1000; ++i) {
+            const qint64 t = clock();
+            QVERIFY(t >= prev);
+            prev = t;
+        }
+        QThread::msleep(50);
+        QVERIFY(clock() - start >= 45);
+    }
+    // The 100 ms poll runs only while it can change something: a timeout is set, or the lock is on
+    // (a hold in progress needs it).
+    void pollTimerRunsOnlyWhileTimeoutSetOrLocked() {
+        TouchLock l([this] { return now; });
+        QTimer timer;
+        pollWhileNeeded(l, timer);
+        QCOMPARE(timer.interval(), TouchLock::kPollMs);
+        QVERIFY(!timer.isActive()); // timeout off, unlocked
+        l.setTimeoutS(30);
+        QVERIFY(timer.isActive());
+        l.setTimeoutS(0);
+        QVERIFY(!timer.isActive());
+        l.lockNow();
+        QVERIFY(timer.isActive());
+        // The timer drives poll(): a completed hold unlocks without anyone calling poll().
+        l.holdStart();
+        now += TouchLock::kHoldMs;
+        QTRY_VERIFY_WITH_TIMEOUT(!l.locked(), 2000);
+        QVERIFY(!timer.isActive()); // unlocked with the timeout off again
     }
 
     void filterReportsInputAsActivity() {

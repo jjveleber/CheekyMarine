@@ -1,4 +1,5 @@
 #include "core/TouchLock.h"
+#include <QTimer>
 #include <algorithm>
 
 TouchLock::TouchLock(std::function<qint64()> nowMs, QObject* parent)
@@ -61,6 +62,20 @@ void TouchLock::setProgress(double p) {
     if (p == m_progress) return;
     m_progress = p;
     emit holdProgressChanged();
+}
+
+void pollWhileNeeded(TouchLock& lock, QTimer& timer) {
+    timer.setInterval(TouchLock::kPollMs);
+    QObject::connect(&timer, &QTimer::timeout, &lock, &TouchLock::poll);
+    const auto update = [&lock, &timer] {
+        if (lock.timeoutS() == 0 && !lock.locked())
+            timer.stop();
+        else if (!timer.isActive())
+            timer.start();
+    };
+    QObject::connect(&lock, &TouchLock::lockedChanged, &timer, update);
+    QObject::connect(&lock, &TouchLock::timeoutSChanged, &timer, update);
+    update();
 }
 
 bool TouchActivityFilter::eventFilter(QObject* watched, QEvent* event) {

@@ -3,6 +3,7 @@
 #include "core/AisModel.h"
 #include "core/AppInfo.h"
 #include "core/ChartController.h"
+#include "core/MonotonicClock.h"
 #include "core/N2kClient.h"
 #include "core/NumbersModel.h"
 #include "core/PackCatalog.h"
@@ -19,7 +20,6 @@
 #include <QCommandLineParser>
 #include <QDateTime>
 #include <QDebug>
-#include <QElapsedTimer>
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
 #include <QtQml/qqmlextensionplugin.h>
@@ -30,7 +30,6 @@
 #include <QScreen>
 #include <QStandardPaths>
 #include <QTimer>
-#include <chrono>
 #include <memory>
 
 Q_IMPORT_QML_PLUGIN(CheekyMarinePlugin)
@@ -173,9 +172,7 @@ int main(int argc, char* argv[]) {
     // Recording follows the setting; the vessel feeds it. The timer writes a buffer a quiet data
     // feed would leave waiting. Declared before the engine and the chart so they go first.
     TrackStore trackStore(*store);
-    TrackRecorder recorder(trackStore, settings, [] { // monotonic: the wall clock steps when GPS or NTP corrects it
-                                 return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
-                             });
+    TrackRecorder recorder(trackStore, settings, monotonicSecondsClock()); // the wall clock steps when GPS or NTP corrects it
     TracksController tracksController(trackStore, recorder);
     QObject::connect(&vessel, &VesselModel::changed, &recorder, [&] { recorder.onVessel(vessel.state()); });
     QTimer recorderTimer;
@@ -238,18 +235,15 @@ int main(int argc, char* argv[]) {
     applyPalette();
     QObject::connect(&palette, &PaletteController::paletteChanged, &chart, applyPalette);
 
-    // The lock follows the timeout setting live. poll() runs every 100 ms; the window filter below
-    // reports touches as activity. The clock is monotonic: the wall clock steps when GPS or NTP corrects it.
-    QElapsedTimer lockClock;
-    lockClock.start();
-    TouchLock touchLock([&lockClock] { return lockClock.elapsed(); });
+    // The lock follows the timeout setting live. poll() runs every 100 ms while a timeout is set or
+    // the lock is on; the window filter below reports touches as activity. The clock is monotonic:
+    // the wall clock steps when GPS or NTP corrects it.
+    TouchLock touchLock(monotonicMsClock());
     touchLock.setTimeoutS(settings.touchLockTimeoutS());
     QObject::connect(&settings, &Settings::touchLockTimeoutSChanged, &touchLock,
                      [&] { touchLock.setTimeoutS(settings.touchLockTimeoutS()); });
     QTimer lockTimer;
-    lockTimer.setInterval(TouchLock::kPollMs);
-    QObject::connect(&lockTimer, &QTimer::timeout, &touchLock, &TouchLock::poll);
-    lockTimer.start();
+    pollWhileNeeded(touchLock, lockTimer);
     if (cli.isSet(lockOpt)) touchLock.lockNow();
 
     QQmlApplicationEngine engine;
