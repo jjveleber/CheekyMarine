@@ -29,11 +29,47 @@ build="$work/build"
 
 if [ ! -d "$src/.git" ]; then
     mkdir -p "$work"
-    git clone "$MLN_QT_REPO" "$src"
+    git clone --quiet "$MLN_QT_REPO" "$src"
 fi
-git -C "$src" fetch --quiet origin
+# Fetch only when the pinned commit is not already present, so a rerun works offline.
+if ! git -C "$src" cat-file -e "$MLN_QT_COMMIT^{commit}" 2>/dev/null; then
+    git -C "$src" fetch --quiet origin
+fi
 git -C "$src" checkout --quiet --detach "$MLN_QT_COMMIT"
-git -C "$src" submodule update --init --recursive
+
+# Initialise only the submodules the core library build needs, each shallow. The full
+# recursive checkout is about 8.5 GB (Windows vcpkg, boost history, Vulkan, docs themes).
+git -C "$src" submodule update --init --depth 1 vendor/maplibre-native
+git -C "$src/vendor/maplibre-native" submodule update --init --depth 1 -- \
+    vendor/PMTiles \
+    vendor/benchmark \
+    vendor/boost \
+    vendor/earcut.hpp \
+    vendor/eternal \
+    vendor/expected-lite \
+    vendor/filesystem \
+    vendor/googletest \
+    vendor/kdbush.hpp \
+    vendor/maplibre-native-base/deps/cheap-ruler-cpp \
+    vendor/maplibre-native-base/deps/geojson-vt-cpp \
+    vendor/maplibre-native-base/deps/geojson.hpp \
+    vendor/maplibre-native-base/deps/geometry.hpp \
+    vendor/maplibre-native-base/deps/jni.hpp \
+    vendor/maplibre-native-base/deps/pixelmatch-cpp \
+    vendor/maplibre-native-base/deps/shelf-pack-cpp \
+    vendor/maplibre-native-base/deps/variant \
+    vendor/maplibre-tile-spec \
+    vendor/polylabel \
+    vendor/protozero \
+    vendor/rapidjson \
+    vendor/supercluster \
+    vendor/unique_resource \
+    vendor/unordered_dense \
+    vendor/vector-tile \
+    vendor/wagyu
+git -C "$src/vendor/maplibre-native/vendor/maplibre-tile-spec" submodule update --init --depth 1 -- \
+    cpp/vendor/earcut \
+    cpp/vendor/fsst
 
 # Options (see docs/plotter/spike-findings.md): OpenGL renderer (GLES on the
 # Pi 5); bundled ICU so the build does not depend on the distro ICU version.
