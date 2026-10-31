@@ -42,8 +42,12 @@ Rectangle {
             font.pixelSize: Units.mm(5)
         }
         Label {
+            objectName: "splashCharts"
             anchors.horizontalCenter: parent.horizontalCenter
-            text: splash.packText(splash.appInfo.chartsPack, "Charts", "No charts pack installed")
+            // No pack in use: either none is installed, or every one was refused (About says why).
+            text: splash.packText(splash.appInfo.chartsPack, "Charts",
+                                  splash.appInfo.packs.some(p => p.kind === "charts") ? "Charts pack refused: see Settings, About"
+                                                                                      : "No charts pack installed")
             color: Theme.text
             font.pixelSize: Units.mm(4.5)
         }

@@ -389,6 +389,34 @@ TestCase {
         verify(map.x >= left.width - 0.5, "map right of the left bar")
     }
 
+    // The charts line tells "nothing installed" from "installed but refused" (the About page lists
+    // refusals with reasons).
+    Component { id: splashComp; Splash {} }
+    QtObject {
+        id: appInfoStub
+        property string appVersion: "0.1.0"
+        property var chartsPack: ({})
+        property var bathyPack: ({})
+        property var packs: []
+    }
+    function test_splashChartsLine_data() {
+        const ok = { kind: "charts", region: "puget-north", version: "1.0.0", notice: "", refused: "", inUse: true }
+        const bad = { kind: "charts", region: "puget-north", version: "2.0.0", notice: "", refused: "styles/nav-day.json: bad", inUse: false }
+        const bathy = { kind: "bathy", region: "puget-north", version: "1.0.0", notice: "", refused: "", inUse: false }
+        return [
+            { tag: "in use", charts: ok, packs: [ok, bad], want: "Charts: puget-north 1.0.0" },
+            { tag: "all refused", charts: ({}), packs: [bad, bathy], want: "Charts pack refused: see Settings, About" },
+            { tag: "none", charts: ({}), packs: [bathy], want: "No charts pack installed" },
+            { tag: "no packs", charts: ({}), packs: [], want: "No charts pack installed" }
+        ]
+    }
+    function test_splashChartsLine(data) {
+        appInfoStub.chartsPack = data.charts
+        appInfoStub.packs = data.packs
+        const splash = createTemporaryObject(splashComp, testCase, { width: 1024, height: 600, appInfo: appInfoStub })
+        compare(byName(splash, "splashCharts").text, data.want)
+    }
+
     function test_noDataBanner() {
         const banner = createTemporaryObject(bannerComp, testCase, { width: 1000, live: false })
         verify(banner.visible)
