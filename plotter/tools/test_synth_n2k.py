@@ -111,7 +111,7 @@ class SynthN2kTest(unittest.TestCase):
         # generator's [300, 315) gap and none appear once the frames resume at 315.
         gap = [v for v in self.vessel if v["pos"] is None and v["t"] >= T0 + 60]
         self.assertTrue(gap)
-        self.assertGreaterEqual(min(v["t"] for v in gap), T0 + 300)
+        self.assertGreaterEqual(min(v["t"] for v in gap), T0 + 305 - 1e-6)  # n2kd holds the position 5 s
         self.assertLess(max(v["t"] for v in gap), T0 + 315)
         before = [v for v in self.vessel if T0 + 290 <= v["t"] <= T0 + 300]
         self.assertTrue(before)
