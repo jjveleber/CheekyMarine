@@ -30,7 +30,8 @@ TestCase {
         function clearTarget() { aisSelection = ({}) }
         function zoomIn() {}
         function zoomOut() {}
-        function zoomBy(d) {}
+        property var zooms: [] // zoomBy calls: log2 deltas
+        function zoomBy(d) { zooms.push(d) }
         function recenter() { follow = true }
     }
     QtObject {
@@ -42,8 +43,12 @@ TestCase {
         id: mapStub
         Item {
             signal userGesture()
-            function moveBy(p) {}
-            function scaleBy(f, p) {}
+            property int gestures: 0
+            property int moves: 0
+            property var scales: [] // scaleBy factors
+            onUserGesture: gestures++
+            function moveBy(p) { moves++ }
+            function scaleBy(f, p) { scales.push(f) }
         }
     }
     Component { id: mainComp; Main {} }
@@ -67,6 +72,7 @@ TestCase {
         chartStub.follow = true
         chartStub.noPosition = false
         chartStub.selected = []
+        chartStub.zooms = []
         Units.windowWidth = 1280
         Units.windowHeight = 800
         Units.diagonalIn = 10.1
@@ -256,6 +262,39 @@ TestCase {
             verify(Math.abs(got.x - want[i].x) < 1 && Math.abs(got.y - want[i].y) < 1, what)
             fuzzyCompare(got.r, Units.mm(8), 1e-6)
         }
+    }
+
+    // R25: wheel and pinch while following zoom through the controller (about the boat) and keep
+    // follow; not following, they scale the map about the point. Only a pan ends follow.
+    function test_chartZoomGesturesKeepFollow() {
+        const mapItem = createTemporaryObject(mapStub, testCase)
+        const chart = createTemporaryObject(chartPageComp, testCase, {
+            width: 1280 - Units.mm(17), height: 800, chart: chartStub, chartMap: mapItem, slotsModel: fixture.slotsModel })
+        waitForRendering(chart)
+        const map = byName(chart, "mapArea")
+        mouseWheel(map, 300, 300, 0, 120)
+        compare(chartStub.zooms.length, 1)
+        fuzzyCompare(chartStub.zooms[0], 0.5, 1e-9)
+        touchEvent(map).press(0, map, 300, 300).press(1, map, 400, 300).commit()
+        for (let i = 1; i <= 10; ++i)
+            touchEvent(map).move(0, map, 300 - 10 * i, 300).move(1, map, 400 + 10 * i, 300).commit()
+        touchEvent(map).release(0, map, 200, 300).release(1, map, 500, 300).commit()
+        verify(chartStub.zooms.length > 1, "pinch zooms through the controller")
+        verify(chartStub.zooms.slice(1).every(d => d > 0), "spreading fingers zooms in")
+        compare(mapItem.gestures, 0)
+        compare(mapItem.scales.length, 0)
+
+        chartStub.follow = false
+        const n = chartStub.zooms.length
+        mouseWheel(map, 300, 300, 0, -120)
+        compare(mapItem.scales.length, 1)
+        fuzzyCompare(mapItem.scales[0], Math.pow(2, -0.5), 1e-9)
+        compare(chartStub.zooms.length, n)
+
+        chartStub.follow = true
+        mouseDrag(map, 300, 300, 120, 0)
+        compare(mapItem.gestures, 1, "a pan ends follow")
+        verify(mapItem.moves > 0)
     }
 
     // No legend (no pack, or no legend.json): no button that would open a blank sheet.
