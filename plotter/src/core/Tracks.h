@@ -32,13 +32,14 @@ public:
     // A new visible track named after `started` (epoch seconds) in local time, "yyyy-MM-dd HH:mm".
     qint64 create(double started);
     // Adds the points in one transaction and moves `ended` to the last one's time. False (nothing
-    // written) on a database error.
-    bool append(qint64 id, const QList<TrackPoint>& points);
+    // written) on a database error, which is put in `error` when given and logged otherwise.
+    bool append(qint64 id, const QList<TrackPoint>& points, QString* error = nullptr);
     // Newest first. The distance is summed over the stored points. A track's points are read once;
     // after that its count and distance are kept here and extended by append, so a refresh does not
     // load every point of every track.
     QList<TrackInfo> list();
-    QList<LatLon> points(qint64 id);
+    // A failed read logs its error, returns an empty list and sets `ok` (when given) to false.
+    QList<LatLon> points(qint64 id, bool* ok = nullptr);
     // How many times a track's points have been read from the database (a seam for the tests).
     int pointReads() const { return m_pointReads; }
     void setVisible(qint64 id, bool visible);
@@ -95,6 +96,7 @@ private:
     // track, dropped with a warning when the track changes after a failed write.
     QList<TrackPoint> m_buffer;
     qint64 m_bufferId = 0;
+    bool m_writeFailing = false; // the buffer's last write failed (and was reported)
     QList<LatLon> m_activePoints;
     std::optional<TrackPoint> m_last; // last stored point of the active track
     std::optional<double> m_lastPosT; // last vessel update that carried a position, stored or not

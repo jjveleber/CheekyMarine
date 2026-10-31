@@ -6,6 +6,7 @@
 #include <QSqlQuery>
 #include <QVariantMap>
 #include <QtLogging>
+#include <algorithm>
 
 namespace {
 
@@ -28,12 +29,15 @@ qint64 TrackStore::create(double started) {
     return q.lastInsertId().toLongLong();
 }
 
-bool TrackStore::append(qint64 id, const QList<TrackPoint>& points) {
+bool TrackStore::append(qint64 id, const QList<TrackPoint>& points, QString* error) {
     if (points.isEmpty())
         return true;
     QSqlDatabase db = m_store.db();
     if (!db.transaction()) {
-        qWarning() << "cannot write track points:" << db.lastError().text();
+        if (error)
+            *error = db.lastError().text();
+        else
+            qWarning() << "cannot write track points:" << db.lastError().text();
         return false;
     }
     // The failing statement's own error (QSqlQuery errors are not in db.lastError()).
@@ -64,7 +68,10 @@ bool TrackStore::append(qint64 id, const QList<TrackPoint>& points) {
     if (!err.isValid() && !db.commit())
         err = db.lastError();
     if (err.isValid()) {
-        qWarning() << "cannot write track points:" << err.text();
+        if (error)
+            *error = err.text();
+        else
+            qWarning() << "cannot write track points:" << err.text();
         db.rollback();
         return false;
     }
@@ -99,7 +106,12 @@ QList<TrackInfo> TrackStore::list() {
     for (TrackInfo& t : out) {
         auto it = m_totals.find(t.id);
         if (it == m_totals.end()) {
-            const QList<LatLon> pts = points(t.id);
+            bool ok = false;
+            const QList<LatLon> pts = points(t.id, &ok);
+            if (!ok) {
+                t.points = 0; // read again on the next list()
+                continue;
+            }
             Totals totals;
             totals.points = int(pts.size());
             for (qsizetype i = 1; i < pts.size(); ++i)
@@ -114,16 +126,19 @@ QList<TrackInfo> TrackStore::list() {
     return out;
 }
 
-QList<LatLon> TrackStore::points(qint64 id) {
+QList<LatLon> TrackStore::points(qint64 id, bool* ok) {
     ++m_pointReads;
     QList<LatLon> out;
     QSqlQuery q(m_store.db());
     q.prepare(QStringLiteral("SELECT lat, lon FROM track_points WHERE track_id = ? ORDER BY t, rowid"));
     q.addBindValue(id);
-    if (!q.exec())
-        return out;
-    while (q.next())
+    const bool done = q.exec();
+    if (!done)
+        qWarning() << "cannot read track points:" << q.lastError().text();
+    while (done && q.next())
         out.append({q.value(0).toDouble(), q.value(1).toDouble()});
+    if (ok)
+        *ok = done;
     return out;
 }
 
@@ -171,6 +186,7 @@ void TrackRecorder::dropUnwritten() {
     // a full batch could not be written.
     qWarning() << "dropping" << m_buffer.size() << "unwritten track points";
     m_buffer.clear();
+    m_writeFailing = false;
 }
 
 void TrackRecorder::startTrack(double t) {
@@ -220,11 +236,19 @@ void TrackRecorder::flush() {
     if (m_buffer.isEmpty())
         return;
     m_lastWriteS = m_nowS();
-    if (m_store.append(m_bufferId, m_buffer))
+    QString error;
+    if (m_store.append(m_bufferId, m_buffer, &error)) {
         m_buffer.clear();
-    else if (m_buffer.size() >= kWriteBatch)
+        m_writeFailing = false;
+        return;
+    }
+    // One warning when the buffer first fails and one when it is dropped; the retries between
+    // (every 30 s, and at a full batch) are silent.
+    if (!m_writeFailing)
+        qWarning() << "cannot write track points:" << error;
+    m_writeFailing = true;
+    if (m_buffer.size() >= kWriteBatch)
         dropUnwritten(); // writes keep failing: hold at most one batch
-    // else the points stay buffered and are retried in 30 s or at a full batch
 }
 
 void TrackRecorder::tick() {
@@ -277,17 +301,31 @@ void TracksController::refresh() {
     }
     // Finished tracks never change: each one's line is read once and kept while it is a finished
     // track (deleted ones go, so a reused id is read again), and sent only when the set changes.
+    // A failed read is not kept: it shows empty and is read again on the next refresh.
     m_lines.removeIf([&finishedAll](const auto& it) { return !finishedAll.contains(it.key()); });
-    if (finishedIds != m_finishedIds) {
-        m_finishedIds = finishedIds;
-        m_finished.clear();
+    const bool unread = std::ranges::any_of(finishedIds, [this](qint64 id) { return !m_lines.contains(id); });
+    if (finishedIds != m_finishedIds || unread) {
+        QList<QList<LatLon>> finished;
+        bool read = false; // a line was read now
         for (qint64 id : finishedIds) {
             auto it = m_lines.find(id);
-            if (it == m_lines.end())
-                it = m_lines.insert(id, m_store.points(id));
-            m_finished.append(*it);
+            if (it == m_lines.end()) {
+                bool ok = false;
+                const QList<LatLon> line = m_store.points(id, &ok);
+                if (!ok) {
+                    finished.append(QList<LatLon>());
+                    continue;
+                }
+                it = m_lines.insert(id, line);
+                read = true;
+            }
+            finished.append(*it);
         }
-        emit finishedChanged();
+        if (finishedIds != m_finishedIds || read) {
+            m_finishedIds = finishedIds;
+            m_finished = finished;
+            emit finishedChanged();
+        }
     }
 }
 

@@ -185,8 +185,10 @@ private slots:
         r.rec->tick();
         QCOMPARE(r.stored(r.rec->activeId()), 5);
     }
-    // The 30 s write interval runs on the injected monotonic clock: a backward step of the time
-    // the updates carry (a GNSS or NTP correction) neither delays nor blocks the write.
+    // The 30 s write interval runs on the recorder's injected clock, not on the vessel time the
+    // updates carry: an update whose vessel time is an hour behind the others neither delays nor
+    // blocks the write. Not covered here: the next update with the normal vessel time is then over
+    // 600 s after this one and starts a new track (the gap rule, which uses vessel time).
     void writeIntervalIgnoresABackwardTimeStep() {
         Rig r(true, 1, 10);
         for (int i = 0; i < 5; ++i) r.feed(1.7e9 + i, 47.0 + i * 20 * kLatPerM);
@@ -372,8 +374,7 @@ private slots:
         const qint64 first = r.rec->activeId();
         QTest::ignoreMessage(QtWarningMsg, failed);
         r.rec->flush();
-        QTest::ignoreMessage(QtWarningMsg, failed); // the flush that starts the next track
-        QTest::ignoreMessage(QtWarningMsg, dropped);
+        QTest::ignoreMessage(QtWarningMsg, dropped); // the flush that starts the next track fails silently
         r.feed(2000, 48.0);
         const qint64 second = r.rec->activeId();
         QVERIFY(second != first);
@@ -421,6 +422,25 @@ private slots:
         QVERIFY(q.exec("ALTER TABLE track_points_off RENAME TO track_points"));
         r.rec->flush();
         QCOMPARE(r.stored(r.rec->activeId()), 1); // the dropped batches are gone, the newer point is kept
+    }
+    // A batch that keeps failing through several 30 s retries warns once when it first fails and
+    // once when it is dropped, nothing in between; writing works again after the table is back.
+    void failingBatchWarnsOnceThroughRetries() {
+        Rig r(true, 5, 0); // a point every 5 s: 20 points take 100 s, three write intervals
+        QTest::failOnWarning(QRegularExpression(".*"));
+        QSqlQuery q(r.store->db());
+        QVERIFY(q.exec("ALTER TABLE track_points RENAME TO track_points_off"));
+        QTest::ignoreMessage(QtWarningMsg, QRegularExpression("cannot write track points"));
+        QTest::ignoreMessage(QtWarningMsg, QRegularExpression("dropping 20 unwritten track points"));
+        for (int i = 0; i < 20; ++i) {
+            r.feed(i * 5, 47.0 + i * 1e-3);
+            r.rec->tick();
+        }
+        QVERIFY(q.exec("ALTER TABLE track_points_off RENAME TO track_points"));
+        r.feed(100, 47.1);
+        r.now = 140;
+        r.rec->tick(); // 30 s after the last attempt: written, silently
+        QCOMPARE(r.stored(r.rec->activeId()), 1);
     }
 
     void controllerShowsActiveAlwaysAndOthersWhenVisible() {
@@ -515,6 +535,42 @@ private slots:
         }
         QCOMPARE(readsPerStep[1], readsPerStep[0]);
         QCOMPARE(readsPerStep[0].mid(0, 3), (QList<int>{0, 0, 0})); // refresh and visibility read nothing
+    }
+    // A failed read of a finished track's points is not kept: the next refresh reads it again,
+    // and the tracks already read are not.
+    void failedPointReadIsNotCached() {
+        Rig r(true, 1, 0);
+        auto addTrack = [&r](double started) {
+            const qint64 id = r.tracks->create(started);
+            TrackPoint a, b;
+            a.t = started; a.lat = 47.0; a.lon = -122.0;
+            b.t = started + 10; b.lat = 47.001; b.lon = -122.0;
+            if (!r.tracks->append(id, {a, b})) qFatal("append");
+            return id;
+        };
+        addTrack(100);
+        addTrack(200);
+        TracksController c(*r.tracks, *r.rec);
+        QCOMPARE(c.finished().size(), 2);
+        const qint64 late = addTrack(1000);
+        QSqlQuery q(r.store->db());
+        QVERIFY(q.exec("ALTER TABLE track_points RENAME TO track_points_off")); // reads now fail
+        const QRegularExpression readFailed("cannot read track points");
+        QTest::ignoreMessage(QtWarningMsg, readFailed); // the totals in list()
+        QTest::ignoreMessage(QtWarningMsg, readFailed); // the line
+        c.refresh();
+        QVERIFY(q.exec("ALTER TABLE track_points_off RENAME TO track_points"));
+        QCOMPARE(c.finished().size(), 3);
+        QCOMPARE(c.finished().constFirst().size(), 0); // shown empty for now
+        const int before = r.tracks->pointReads();
+        c.refresh();
+        QCOMPARE(c.finished().constFirst().size(), 2);
+        QCOMPARE(c.tracks().constFirst().toMap()["id"].toLongLong(), late);
+        QCOMPARE(c.tracks().constFirst().toMap()["points"].toInt(), 2);
+        QCOMPARE(r.tracks->pointReads() - before, 2); // the late track's totals and line only
+        bool ok = false;
+        QCOMPARE(r.tracks->points(late, &ok).size(), 2);
+        QVERIFY(ok);
     }
     void controllerRowsCarryTheDisplayFields() {
         Rig r(true, 1, 0);
