@@ -96,6 +96,9 @@ void N2kClient::handleLine(const QByteArray &line) {
             qWarning("n2kd: bad ais line skipped: %s", qPrintable(a.error()));
             return;
         }
+        // Any data after the hello (vessel or ais) makes the connection live and keeps it live.
+        m_staleTimer.start(m_staleMs);
+        setLive(true);
         emit ais(*a);
     }
 }

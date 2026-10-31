@@ -103,6 +103,35 @@ private slots:
         send(kHello + kVesselLine);
         QTRY_COMPARE_WITH_TIMEOUT(vs.count(), 2, 10000);
     }
+    // An ais line right after the hello (before any vessel line) reaches the model once the client is wired
+    // like main.cpp: connectionChanged drives setLive, ais drives setTargets.
+    void aisBeforeFirstVesselReachesModel() {
+        N2kClient c(path(), 3000, 100);
+        AisModel am;
+        connect(&c, &N2kClient::connectionChanged, &am, &AisModel::setLive);
+        connect(&c, &N2kClient::ais, &am, &AisModel::setTargets);
+        QSignalSpy as(&c, &N2kClient::ais);
+        c.start();
+        QVERIFY(accept());
+        send(kHello + kAisLine);
+        QTRY_COMPARE_WITH_TIMEOUT(as.count(), 1, 10000);
+        QCOMPARE(am.rowCount(), 1);
+        QCOMPARE(am.data(am.index(0), AisModel::MmsiRole).toUInt(), 7u);
+    }
+    // Any data line after the hello keeps the connection live: an ais-only stream must not flap.
+    void aisOnlyStreamStaysLive() {
+        N2kClient c(path(), 300, 100);
+        QSignalSpy cs(&c, &N2kClient::connectionChanged);
+        c.start();
+        QVERIFY(accept());
+        send(kHello);
+        for (int i = 0; i < 8; ++i) {  // 8 x 100 ms = 800 ms, well past staleMs
+            send(kAisLine);
+            QTest::qWait(100);
+        }
+        QCOMPARE(cs.count(), 1);
+        QCOMPARE(cs.first().first().toBool(), true);
+    }
     void lineSplitAcrossWrites() {
         N2kClient c(path(), 3000, 100);
         QSignalSpy vs(&c, &N2kClient::vessel);

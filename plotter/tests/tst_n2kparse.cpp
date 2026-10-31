@@ -51,6 +51,10 @@ private slots:
         QVERIFY(a.has_value());
         QVERIFY(!a->first().shipType);
         QVERIFY(!a->first().navStatus);
+        a = parse("5", "2147483647", "2147483648");  // exact INT_MAX is kept, one above reads as null
+        QVERIFY(a.has_value());
+        QCOMPARE(*a->first().shipType, 2147483647);
+        QVERIFY(!a->first().navStatus);
         a = parse("5", "1e300", "2");
         QVERIFY(a.has_value());
         QVERIFY(!a->first().shipType);
