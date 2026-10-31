@@ -171,24 +171,18 @@ VesselState boat() {
     return v;
 }
 
-// The runtime overlays are complete: images, four sources, layers above all style layers in the
-// order tracks, active track, ais, own, and the depcnt-safety filter.
+// The runtime overlays are complete: images, four sources, and exactly these layers above all
+// style layers, bottom first (tracks, active track, ais, own).
 void checkOverlays(const FakeChartMap& map) {
     for (const QString& id : kImageIds) QVERIFY2(map.images.contains(id), qPrintable(id));
     QCOMPARE(QSet<QString>(map.sources.keyBegin(), map.sources.keyEnd()), kSources);
     const int nStyle = styleLayerCount(map.styles.last());
-    QVERIFY(map.layerIds.size() >= nStyle + 7);
-    QStringList runtimeSources;
-    for (int i = nStyle; i < map.layerIds.size(); ++i) {
-        const QString src = map.layerSrc.value(map.layerIds[i]);
-        QVERIFY2(kSources.contains(src), qPrintable(map.layerIds[i]));
-        runtimeSources << src;
-    }
+    QCOMPARE(map.layerIds.mid(nStyle),
+             QStringList({"cm-tracks-line", "cm-track-active-line", "cm-ais-vector", "cm-ais-icon", "cm-own-heading",
+                          "cm-own-cog", "cm-own-boat"}));
+    for (int i = nStyle; i < map.layerIds.size(); ++i)
+        QVERIFY2(kSources.contains(map.layerSrc.value(map.layerIds[i])), qPrintable(map.layerIds[i]));
     QCOMPARE(map.layerIds.size() - nStyle, map.layerSrc.size()); // no runtime layer below a style layer
-    QStringList order = runtimeSources;
-    order.removeDuplicates();
-    QCOMPARE(order, QStringList({OverlayIds::kTracksSource, OverlayIds::kActiveTrackSource, OverlayIds::kAisSource,
-                                 OverlayIds::kOwnSource}));
     QCOMPARE(QSet<QString>(map.layerIds.begin(), map.layerIds.end()).size(), map.layerIds.size());
 }
 } // namespace
@@ -242,6 +236,29 @@ private slots:
         QCOMPARE(r.ctrl->mode(), QStringLiteral("nav"));
         QCOMPARE(r.settings->chartMode(), QStringLiteral("nav"));
         QCOMPARE(r.map.styles.size(), 1);
+    }
+
+    // Settings::chartMode is restored at start, and refused to nav when there is no bathy pack.
+    void savedFishModeLoadsFishDayFirst() {
+        Rig r;
+        QVERIFY(r.settings);
+        r.settings->setChartMode("fish");
+        r.make();
+        QCOMPARE(r.ctrl->mode(), QStringLiteral("fish"));
+        QCOMPARE(r.map.styles.size(), 1);
+        QVERIFY(spriteOf(r.map.styles[0]).endsWith("/bathy-puget-north-1.0.0/sprites/fish"));
+        QCOMPARE(paletteOf(r.map.styles[0]), QStringLiteral("day"));
+    }
+
+    void savedFishModeWithoutBathyLoadsNavDay() {
+        Rig r(false);
+        QVERIFY(r.settings);
+        r.settings->setChartMode("fish");
+        r.make();
+        QCOMPARE(r.ctrl->mode(), QStringLiteral("nav"));
+        QCOMPARE(r.map.styles.size(), 1);
+        QCOMPARE(spriteOf(r.map.styles[0]), "file://" + r.chartsDir() + "/sprites/nav");
+        QCOMPARE(paletteOf(r.map.styles[0]), QStringLiteral("day"));
     }
 
     void styleLoadedAddsOverlaysAndFilters() {
@@ -727,6 +744,39 @@ private slots:
         QVERIFY(r.ctrl->aisSelection().isEmpty());
         r.ctrl->selectAt(QPointF(0, 0), 5);
         QVERIFY(r.ctrl->aisSelection().isEmpty());
+    }
+
+    // A target whose position is over 60 s old (hollow on the chart) still shows range, bearing and
+    // SOG from its last position; the age printed beside them tells the reader how old they are.
+    void staleTargetKeepsValuesAndShowsAge() {
+        Rig r;
+        QVERIFY(r.settings);
+        r.make();
+        r.map.loaded();
+        r.vessel.setState(boat());
+        QList<AisTarget> targets = fixtureTargets();
+        targets[0].posAge = 61;
+        r.ais.setTargets(targets);
+        r.ctrl->selectMmsi(367000001);
+        const QVariantMap s = r.ctrl->aisSelection();
+        QCOMPARE(s["posAge"].toString(), QString("61 s"));
+        QCOMPARE(s["range"].toString(), QString("1.0"));
+        QCOMPARE(s["bearing"].toString(), QString("307"));
+        QCOMPARE(s["sog"].toString(), QString("10.0"));
+    }
+
+    void selectMmsiSelectsAKnownTargetAndClearsOnAnUnknownOne() {
+        Rig r;
+        QVERIFY(r.settings);
+        r.make();
+        r.ais.setTargets(fixtureTargets());
+        QSignalSpy changed(r.ctrl.get(), &ChartController::aisSelectionChanged);
+        r.ctrl->selectMmsi(367000002);
+        QCOMPARE(r.ctrl->aisSelection()["mmsi"].toString(), QString("367000002"));
+        QCOMPARE(changed.count(), 1);
+        r.ctrl->selectMmsi(999999999);
+        QVERIFY(r.ctrl->aisSelection().isEmpty());
+        QCOMPARE(changed.count(), 2);
     }
 
     // The first camera can come while the viewport has no height yet; a resize re-applies it so
