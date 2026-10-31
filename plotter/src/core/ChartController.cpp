@@ -64,26 +64,32 @@ QList<QJsonObject> runtimeLayers(const OverlayColours& c) {
     };
 }
 
-// The pack style <packDir>/styles/<name>.json, rewritten to load from local files.
-std::expected<QJsonObject, QString> readStyle(const QString& packDir, const QString& name, const QString& chartsDir,
-                                              const QString& bathyDir) {
-    QFile f(packDir + QStringLiteral("/styles/") + name + QStringLiteral(".json"));
+QString styleName(const QString& mode, const QString& palette) { return mode + QLatin1Char('-') + palette; }
+
+// The `mode` ("nav" or "fish") style for `palette`, read from its pack (bathy for fish, charts for
+// nav) and rewritten to load from local files. The start check and the runtime load both use it,
+// so they see the same pack directories. `bathy` is the bathy pack in use, if any.
+std::expected<QJsonObject, QString> readStyle(const QString& mode, const QString& palette, const PackInfo& charts,
+                                              const std::optional<PackInfo>& bathy) {
+    const QString bathyDir = bathy ? bathy->dir : QString();
+    const QString packDir = mode == QLatin1String("fish") ? bathyDir : charts.dir;
+    QFile f(packDir + QStringLiteral("/styles/") + styleName(mode, palette) + QStringLiteral(".json"));
     if (!f.open(QIODevice::ReadOnly)) return std::unexpected(QStringLiteral("cannot be read"));
     QJsonParseError err;
     const QJsonDocument doc = QJsonDocument::fromJson(f.readAll(), &err);
     if (err.error != QJsonParseError::NoError || !doc.isObject())
         return std::unexpected(QStringLiteral("bad JSON: ") + err.errorString());
-    return rewriteStyle(doc.object(), packDir, chartsDir, bathyDir);
+    return rewriteStyle(doc.object(), packDir, charts.dir, bathyDir);
 }
 
-// Why the day, dusk and night `mode` styles of the pack in `packDir` cannot be used (each must read,
-// rewrite and take the depth filters), or empty when all can. The error is the same for any depths.
-QString styleProblem(const QString& mode, const QString& packDir, const PackInfo& charts, const QString& bathyDir,
+// Why the day, dusk and night `mode` styles cannot be used with these packs (each must read, rewrite
+// and take the depth filters), or empty when all can. The error is the same for any depths.
+QString styleProblem(const QString& mode, const PackInfo& charts, const std::optional<PackInfo>& bathy,
                      const Depths& depths) {
-    for (const char* palette : {"day", "dusk", "night"}) {
-        const QString name = mode + QLatin1Char('-') + QLatin1String(palette);
+    for (const QString& palette : {QStringLiteral("day"), QStringLiteral("dusk"), QStringLiteral("night")}) {
+        const QString name = styleName(mode, palette);
         QString error;
-        if (auto style = readStyle(packDir, name, charts.dir, bathyDir)) {
+        if (auto style = readStyle(mode, palette, charts, bathy)) {
             if (auto filters = depthFilters(*style, depths, safetyContour(charts.valdco, depths.safetyM)); !filters)
                 error = filters.error();
         } else {
@@ -104,8 +110,14 @@ ChartController::ChartController(ChartMap& map, Settings& settings, VesselModel&
         for (PackInfo& p : m_packs)
             if (p.dir == dir) p.refused = reason;
     };
+    // The bathy pack is picked for each charts candidate first: nav styles load with it too.
     while ((m_charts = PackCatalog::best(m_packs, u"charts"))) {
-        const QString problem = styleProblem(QStringLiteral("nav"), m_charts->dir, *m_charts, {}, depths);
+        while ((m_bathy = PackCatalog::best(m_packs, u"bathy", m_charts->region))) {
+            const QString problem = styleProblem(QStringLiteral("fish"), *m_charts, m_bathy, depths);
+            if (problem.isEmpty()) break;
+            refuse(m_bathy->dir, problem);
+        }
+        const QString problem = styleProblem(QStringLiteral("nav"), *m_charts, m_bathy, depths);
         if (problem.isEmpty()) break;
         refuse(m_charts->dir, problem);
     }
@@ -113,14 +125,10 @@ ChartController::ChartController(ChartMap& map, Settings& settings, VesselModel&
         for (const LegendEntry& e : m_charts->legend)
             m_legend.append(QVariantMap{{QStringLiteral("abbr"), e.abbr}, {QStringLiteral("meaning"), e.meaning},
                                         {QStringLiteral("kind"), e.kind}});
-        while ((m_bathy = PackCatalog::best(m_packs, u"bathy", m_charts->region))) {
-            const QString problem = styleProblem(QStringLiteral("fish"), m_bathy->dir, *m_charts, m_bathy->dir, depths);
-            if (problem.isEmpty()) break;
-            refuse(m_bathy->dir, problem);
-        }
         m_minZoom = m_charts->minZoom >= 0 ? m_charts->minZoom : kFallbackMinZoom;
         m_maxZoom = m_charts->maxZoom >= 0 ? m_charts->maxZoom + kOverzoom : kFallbackMaxZoom;
     } else {
+        m_bathy.reset(); // the last refused charts pack's
         qWarning() << "ChartController: no usable charts pack";
     }
     if (m_settings.chartMode() == QLatin1String("fish") && fishAvailable()) m_mode = QStringLiteral("fish");
@@ -221,12 +229,9 @@ void ChartController::zoomBy(double log2Delta) {
 
 void ChartController::loadStyle() {
     if (!m_charts) return;
-    const bool fish = m_mode == QLatin1String("fish");
-    const QString packDir = fish ? m_bathy->dir : m_charts->dir;
-    const QString name = m_mode + QLatin1Char('-') + m_palette;
-    auto style = readStyle(packDir, name, m_charts->dir, m_bathy ? m_bathy->dir : QString());
+    auto style = readStyle(m_mode, m_palette, *m_charts, m_bathy);
     if (!style) { // the pack was checked at start; its files changed since
-        qWarning() << "ChartController: cannot use" << packDir + QStringLiteral("/styles/") + name << style.error();
+        qWarning() << "ChartController: cannot use" << styleName(m_mode, m_palette) << style.error();
         return;
     }
     m_style = *style;

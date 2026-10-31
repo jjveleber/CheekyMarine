@@ -22,6 +22,7 @@ std::expected<QJsonObject, QString> rewriteStyle(QJsonObject style, const QStrin
         if (src.value(QStringLiteral("url")).toString() != prefix + name)
             return std::unexpected(QStringLiteral("source %1 url is not %2%1").arg(name, prefix));
         const QString dir = name == QLatin1String("enc") ? chartsDir : bathyDir;
+        if (dir.isEmpty()) return std::unexpected(QStringLiteral("source %1 needs a pack that is not there").arg(name));
         auto url = tileUrl(dir + QLatin1Char('/') + name + QStringLiteral(".mbtiles"));
         if (!url) return std::unexpected(url.error());
         src[QStringLiteral("url")] = *url;

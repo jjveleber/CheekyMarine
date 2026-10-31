@@ -122,6 +122,14 @@ private slots:
         for (const char* d : {"rel", "/a?b", "/a%20b"})
             QVERIFY(!rewriteStyle(load("nav-day"), "/p/charts", d, "/p/bathy").has_value());
     }
+    // No bathy pack (empty bathyDir): a style using a bathy-pack source cannot be rewritten; one
+    // using only enc can.
+    void bathySourceWithoutBathyDirErrors() {
+        QVERIFY(!rewriteStyle(load("fish-day"), "/p/bathy", "/p/charts", "").has_value());
+        auto r = rewriteStyle(load("nav-day"), "/p/charts", "/p/charts", "");
+        QVERIFY2(r.has_value(), errText(r).constData());
+        QVERIFY(!rewriteStyle(load("nav-day"), "/p/charts", "", "/p/bathy").has_value());
+    }
 };
 
 QTEST_APPLESS_MAIN(TstStyleLoader)

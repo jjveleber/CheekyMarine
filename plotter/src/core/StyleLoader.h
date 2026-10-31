@@ -10,6 +10,7 @@ std::expected<QString, QString> tileUrl(const QString& absMbtilesPath);
 // Turns a pack's shipped style into one MapLibre can load from local files. `packDir` holds
 // sprites/ and glyphs/ (charts pack for nav styles, bathy pack for fish styles). Nothing but the
 // sources' urls, `sprite` and `glyphs` changes. A style with no `sprite` or no `glyphs` key passes
-// through unchanged: the pack contract does not require either key.
+// through unchanged: the pack contract does not require either key. An empty `bathyDir` means no
+// bathy pack: a `bathy` or `dem` source is then an error (likewise `enc` with an empty `chartsDir`).
 std::expected<QJsonObject, QString> rewriteStyle(QJsonObject style, const QString& packDir,
                                                  const QString& chartsDir, const QString& bathyDir);

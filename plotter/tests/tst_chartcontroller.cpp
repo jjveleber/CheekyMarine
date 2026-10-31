@@ -125,6 +125,19 @@ bool setLayerFilter(const QString& path, const QString& id, const QJsonValue& fi
     return f.write(QJsonDocument(style).toJson()) > 0;
 }
 
+// Adds the bathy pack's `bathy` source to the style file at `path`.
+bool addBathySource(const QString& path) {
+    QFile f(path);
+    if (!f.open(QIODevice::ReadOnly)) return false;
+    QJsonObject style = QJsonDocument::fromJson(f.readAll()).object();
+    f.close();
+    QJsonObject sources = style["sources"].toObject();
+    sources["bathy"] = QJsonObject{{"type", "vector"}, {"url", "mbtiles://bathy"}};
+    style["sources"] = sources;
+    if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) return false;
+    return f.write(QJsonDocument(style).toJson()) > 0;
+}
+
 struct Rig {
     QTemporaryDir tmp;
     std::unique_ptr<Store> store;
@@ -374,6 +387,30 @@ private slots:
         QCOMPARE(r.ctrl->mode(), QStringLiteral("nav")); // the saved fish mode falls back
         QCOMPARE(r.map.styles.size(), 1);
         QCOMPARE(spriteOf(r.map.styles[0]), "file://" + r.chartsDir() + "/sprites/nav");
+    }
+
+    // The start check prepares each style with the same pack directories as the runtime load: a nav
+    // style that uses the bathy source passes when a bathy pack is there, and loads from it.
+    void navStyleWithBathySourcePassesWithABathyPack() {
+        Rig r;
+        QVERIFY(r.settings);
+        QVERIFY(addBathySource(r.chartsDir() + "/styles/nav-day.json"));
+        r.make();
+        QVERIFY2(r.ctrl->packs()[0].refused.isEmpty(), qPrintable(r.ctrl->packs()[0].refused));
+        QCOMPARE(r.map.styles.size(), 1);
+        QCOMPARE(r.map.styles[0]["sources"].toObject()["bathy"].toObject()["url"].toString(),
+                 "mbtiles://" + r.tmp.path() + "/packs/bathy-puget-north-1.0.0/bathy.mbtiles");
+    }
+
+    // Without a bathy pack the runtime load could not use that style either, so the pack is refused.
+    void navStyleWithBathySourceRefusedWithoutABathyPack() {
+        Rig r(false);
+        QVERIFY(r.settings);
+        QVERIFY(addBathySource(r.chartsDir() + "/styles/nav-day.json"));
+        QTest::ignoreMessage(QtWarningMsg, "ChartController: no usable charts pack");
+        r.make();
+        QVERIFY2(r.ctrl->packs()[0].refused.startsWith("styles/nav-day.json: "), qPrintable(r.ctrl->packs()[0].refused));
+        QVERIFY(r.map.styles.isEmpty());
     }
 
     void paletteReloadReaddsRuntimeSources() {
