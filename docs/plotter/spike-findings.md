@@ -256,7 +256,7 @@ vendored code. Sources: maplibre-native-qt `LICENSES/` and SPDX tags, maplibre-n
 | nunicode | MIT | compiled in |
 | parsedate (from curl) | curl licence (MIT-style) | compiled in |
 | csscolorparser | MIT | compiled in |
-| maplibre-tile-spec C++ (`mlt-cpp`) | MIT or Apache-2.0 (dual) | compiled in |
+| maplibre-tile-spec C++ (`mlt-cpp`) | MIT or Apache-2.0 (dual); its LICENSE-CC0 covers documentation and specification content only, not the compiled code (confirmed in Task 19, see its `THIRD_PARTY_NOTICES` entry) | compiled in |
 | FastPFOR | Apache-2.0 | compiled in |
 | PMTiles (`MLN_WITH_PMTILES` ON) | BSD-3-Clause | header-only |
 | Boost (headers) | BSL-1.0 | header-only |

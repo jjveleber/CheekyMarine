@@ -41,7 +41,7 @@ const std::map<QString, Def>& defs() {
         {"deepM", {9.144, isNum(Settings::kMinDepthM, Settings::kMaxDepthM)}},
         {"orientation", {"head", oneOf({"north", "head", "course"})}},
         {"paletteMode", {"auto", oneOf({"auto", "day", "dusk", "night"})}},
-        {"chartMode", {"nav", [](const QJsonValue& v) { return v.isString() && !v.toString().isEmpty(); }}},
+        {"chartMode", {"nav", oneOf({"nav", "fish"})}},
         {"touchLockTimeoutS", {120, isInt(0)}},
         {"panelDiagonalIn", {10.1, isNum(1, 100)}},
         {"trackRecording", {false, isBool()}},

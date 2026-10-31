@@ -68,6 +68,11 @@ private slots:
             QTest::ignoreMessage(QtWarningMsg, QRegularExpression("paletteMode"));
             s.setPaletteMode("bogus"); // rejected
             QCOMPARE(s.paletteMode(), QStringLiteral("auto"));
+            QTest::ignoreMessage(QtWarningMsg, QRegularExpression("chartMode"));
+            s.setChartMode("bogus"); // rejected: only nav and fish are stored
+            QCOMPARE(s.chartMode(), QStringLiteral("nav"));
+            s.setChartMode("fish");
+            QCOMPARE(s.chartMode(), QStringLiteral("fish"));
         }
         auto st = Store::open(t.path());
         Settings s(**st);
