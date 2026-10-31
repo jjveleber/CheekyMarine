@@ -134,6 +134,8 @@ private slots:
         QTest::newRow("arithmetic") << QByteArray(R"(["<",["+",["get","VALSOU"],1],3.048])");
         QTest::newRow("4-arg comparison") << QByteArray(R"(["<",["get","depth"],3.048,["collator",{}]])");
         QTest::newRow("to-number default") << QByteArray(R"([">=",["to-number",["get","depth"],0],3.048])");
+        QTest::newRow("match raw array label") << QByteArray(R"(["match",["get","DRVAL1"],[9.144,10],true,false])");
+        QTest::newRow("in literal array") << QByteArray(R"(["in",["get","VALSOU"],["literal",[3.048,9.144]]])");
     }
     void depthReadOutsidePlainComparisonErrors() {
         QFETCH(QByteArray, filter);

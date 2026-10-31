@@ -27,6 +27,23 @@ bool readsDepth(const QJsonValue& v) {
     return false;
 }
 
+// True when JSON data (not an expression) holds a number anywhere.
+bool dataHasNumber(const QJsonValue& v) {
+    if (v.isDouble()) return true;
+    if (!v.isArray()) return false;
+    const QJsonArray a = v.toArray();
+    return std::any_of(a.begin(), a.end(), [](const QJsonValue& e) { return dataHasNumber(e); });
+}
+
+// True when an expression argument is a numeric literal, or a raw array or ["literal", ...] holding one.
+bool numericArgument(const QJsonValue& e) {
+    if (e.isDouble()) return true;
+    if (!e.isArray() || e.toArray().isEmpty()) return false;
+    const QJsonArray a = e.toArray();
+    if (!a[0].isString()) return dataHasNumber(a); // raw array, such as a match label list
+    return a[0].toString() == QLatin1String("literal") && a.size() == 2 && dataHasNumber(a[1]);
+}
+
 bool isComparison(const QString& op) {
     return op == QLatin1String("<") || op == QLatin1String("<=") || op == QLatin1String(">") ||
            op == QLatin1String(">=") || op == QLatin1String("==");
@@ -56,10 +73,10 @@ struct Mapper {
         if (a.isEmpty()) return v;
         if (a[0].isString() && a[0].toString() == QLatin1String("literal")) return v; // data, not a depth test
         const bool cmp = a.size() == 3 && a[0].isString() && isComparison(a[0].toString());
-        // A numeric literal next to a depth read outside a plain comparison may be a threshold the
-        // rule cannot map; refuse rather than draw a stale depth.
+        // A numeric literal (or an array holding one) next to a depth read outside a plain comparison
+        // may be a threshold the rule cannot map; refuse rather than draw a stale depth.
         if (!cmp && error.isEmpty() && readsDepth(v) &&
-            std::any_of(a.begin() + 1, a.end(), [](const QJsonValue& e) { return e.isDouble(); }))
+            std::any_of(a.begin() + 1, a.end(), numericArgument))
             error = QStringLiteral("layer %1: depth read in '%2' with a numeric literal, only a plain comparison "
                                    "can be mapped")
                         .arg(layer, a[0].toString());

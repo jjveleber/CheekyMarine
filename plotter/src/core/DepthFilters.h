@@ -19,6 +19,6 @@ double safetyContour(const QList<double>& valdco, double safetyM);
 // mapped from the style's own depths to `target` (and the depcnt-safety contour to `safetyContourM`).
 // Errors (each names the layer): a listed layer absent from the style, a depth literal the rule cannot
 // map, and a depth read in any expression other than a plain binary comparison that also holds a
-// numeric literal.
+// numeric literal, or a raw or ["literal", ...] array holding one.
 std::expected<QHash<QString, QJsonValue>, QString> depthFilters(const QJsonObject& style, const Depths& target,
                                                                 double safetyContourM);
