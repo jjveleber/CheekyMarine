@@ -71,6 +71,7 @@ private slots:
         v.cogRad = kPi / 2;
         v.sogMs = 3.0;
         QVERIFY(std::fabs(rotOf(byKind(ownShipGeoJson(v), "boat")[0]) - 90.0) < 1e-9);
+        QCOMPARE(byKind(ownShipGeoJson(v), "heading").size(), 0); // COG only: no heading line
     }
     // Without heading the boat turns to COG only above 0.5 kn, like the COG vector and the head-up
     // camera; slower, COG is noise and the icon points north (the camera's bearing then).
@@ -119,6 +120,7 @@ private slots:
         QCOMPARE(h[0]["geometry"].toObject()["coordinates"].toArray().size(), 2);
         QVERIFY(std::fabs(at(h[0], 0).lat - 48.0) < 1e-12 && std::fabs(at(h[0], 0).lon + 122.5) < 1e-12);
         QVERIFY(std::fabs(distanceM(at(h[0], 0), at(h[0], 1)) - 50000.0) < 0.1);
+        QVERIFY(std::fabs(bearingDeg(at(h[0], 0), at(h[0], 1)) - 90.0) < 0.01);
     }
     void cogVectorLength()
     {
@@ -136,6 +138,10 @@ private slots:
         v.cogRad = 1.0;
         v.sogMs = 0.1;
         QCOMPARE(byKind(ownShipGeoJson(v), "cog").size(), 0);
+        v.sogMs = 0.2572; // the 0.5 kn gate is strict
+        QCOMPARE(byKind(ownShipGeoJson(v), "cog").size(), 0);
+        v.sogMs = 0.2573;
+        QCOMPARE(byKind(ownShipGeoJson(v), "cog").size(), 1);
     }
     void noPositionNoFeatures()
     {
@@ -170,17 +176,20 @@ private slots:
         l << t;
         t.posAge.reset();
         l << t;
+        t.posAge = 60; // hollow only past 60 s
+        l << t;
         const QJsonObject fc = aisGeoJson(l, VesselState{});
         const auto pts = byKind(fc, "ais");
-        QCOMPARE(pts.size(), 3);
+        QCOMPARE(pts.size(), 4);
         QCOMPARE(pts[0]["properties"].toObject()["hollow"].toBool(), true);
         QCOMPARE(pts[1]["properties"].toObject()["hollow"].toBool(), false);
         QCOMPARE(pts[2]["properties"].toObject()["hollow"].toBool(), false);
+        QCOMPARE(pts[3]["properties"].toObject()["hollow"].toBool(), false);
         QCOMPARE(pts[0]["properties"].toObject()["cls"].toString(), QString("A"));
         QCOMPARE(pts[0]["properties"].toObject()["mmsi"].toDouble(), 366123456.0);
         QVERIFY(std::fabs(rotOf(pts[0]) - 0.5 * 180 / kPi) < 1e-9);
         const auto vecs = byKind(fc, "aisvec");
-        QCOMPARE(vecs.size(), 3);
+        QCOMPARE(vecs.size(), 4);
         QVERIFY(std::fabs(distanceM(at(vecs[0], 0), at(vecs[0], 1)) - 1440.0) < 0.1);
     }
     void aisNoPositionOrNoVector()
