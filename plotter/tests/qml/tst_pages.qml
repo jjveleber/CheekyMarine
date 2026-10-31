@@ -744,6 +744,14 @@ TestCase {
         compare(main.page, "chart")
         mouseClick(byName(main.contentItem, "paletteButton"))
         compare(fixture.settings.paletteMode, "auto")
+        // A mouse drag and a wheel turn on the chart stop at the lock too.
+        const map = byName(main.contentItem, "mapArea")
+        mouseDrag(map, 300, 300, 120, 0)
+        mouseWheel(map, 300, 300, 0, 120)
+        compare(main.chartMap.gestures, 0, "no pan while locked")
+        compare(main.chartMap.moves, 0)
+        compare(main.chartMap.scales.length, 0)
+        compare(chartStub.zooms.length, 0, "no zoom while locked")
 
         const hold = byName(overlay, "lockHold")
         mousePress(hold)
@@ -758,6 +766,10 @@ TestCase {
         mouseRelease(hold)
         verify(!fixture.touchLock.locked, "1.5 s unlocks")
         verify(!overlay.visible)
+        mouseWheel(map, 300, 300, 0, 120)
+        compare(chartStub.zooms.length, 1, "the wheel zooms once unlocked")
+        mouseDrag(map, 300, 300, 120, 0)
+        compare(main.chartMap.gestures, 1, "the drag pans once unlocked")
         mouseClick(byName(main.contentItem, "tab-numbers"))
         compare(main.page, "numbers")
     }
