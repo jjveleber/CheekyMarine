@@ -10,3 +10,6 @@ chartpack/dist/
 chartpack/**/__pycache__/
 chartpack/src/*.egg-info/
 chartpack/.pytest_cache/
+
+# Playwright MCP browser logs and snapshots
+.playwright-mcp/
