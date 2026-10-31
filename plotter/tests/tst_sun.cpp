@@ -112,6 +112,33 @@ private slots:
         QCOMPARE(paletteAt(after.sunset->addSecs(60), lat, lon), Palette::Dusk);
     }
 
+    // On the antimeridian the events match those a hair inside it, on either side.
+    void antimeridianMatchesNeighbour_data() {
+        QTest::addColumn<double>("lon");
+        QTest::addColumn<double>("near");
+        QTest::newRow("-180") << -180.0 << -179.99;
+        QTest::newRow("180") << 180.0 << 179.99;
+    }
+    void antimeridianMatchesNeighbour() {
+        QFETCH(double, lon);
+        QFETCH(double, near);
+        const double lat = 20.0;
+        for (QDate d(2026, 3, 18); d <= QDate(2026, 3, 22); d = d.addDays(1)) {
+            const SunEvents got = sunEvents(d, lat, lon);
+            const SunEvents want = sunEvents(d, lat, near);
+            for (const auto& [g, w] : {std::pair{got.civilDawn, want.civilDawn}, std::pair{got.sunrise, want.sunrise},
+                                       std::pair{got.sunset, want.sunset}, std::pair{got.civilDusk, want.civilDusk}}) {
+                QVERIFY2(w, qPrintable(d.toString(Qt::ISODate)));
+                QVERIFY2(errMin(g, *w) < 1.0, qPrintable(d.toString(Qt::ISODate) + ": got " + describe(g) +
+                                                          ", want " + describe(w)));
+            }
+            for (int h = 0; h < 24; h += 3) {
+                const QDateTime t(d, QTime(h, 30), QTimeZone::UTC);
+                QCOMPARE(paletteAt(t, lat, lon), paletteAt(t, lat, near));
+            }
+        }
+    }
+
     void paletteNames() {
         QCOMPARE(paletteName(Palette::Day), QStringLiteral("day"));
         QCOMPARE(paletteName(Palette::Dusk), QStringLiteral("dusk"));

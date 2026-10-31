@@ -75,8 +75,11 @@ std::optional<double> crossing(double noonGuess, double lat, double lon, double 
 enum class Kind { CivilDawn, Sunrise, Sunset, CivilDusk };
 
 // Every event of the solar days whose noon falls within [from - 1 day, to + 1 day], sorted by time.
-QList<std::pair<double, Kind>> eventsAround(double from, double to, double lat, double lon) {
+QList<std::pair<double, Kind>> eventsAround(double from, double to, double lat, double lonIn) {
     QList<std::pair<double, Kind>> out;
+    // Longitude in (-180, 180]: at -180 the noon guess below lands on 00:00 UTC of the next day, and
+    // crossing() would return the next solar day's event.
+    const double lon = 180.0 - std::fmod(540.0 - lonIn, 360.0);
     // Solar noon is near 12:00 UTC - lon/15 h; take the solar days of every UTC day in range.
     const double first = std::floor(from / 86400.0) - 2, last = std::floor(to / 86400.0) + 2;
     for (double day = first; day <= last; ++day) {
