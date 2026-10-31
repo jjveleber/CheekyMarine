@@ -957,6 +957,7 @@ This doc changes some lines of `docs/superpowers/specs/2026-10-28-cheekymarine-d
 - **Enclosure drawing.** Octopart's inside dimensions for the 1554X2GY need confirming on Hammond's drawing.
 - **Free tee port.** Look at the backbone. If none, add a Micro-C T-connector.
 - **Spare helm switch or fuse circuit.** If the helm panel has one, it can replace the inline fuse holder and the switch on the box.
+- **Fuse box under the helm (check on the boat).** The boat has one (owner, 2026-10-31). When the boat is back: with the main switch off, meter a slot's output against negative. Still live (standby): it can carry the 7.5 A feed and replace the inline holder (part 1, 4a). 0 V (switched): it can't carry the feed, but it can hold the 1 A sense-wire fuse (part 4b) if the tap stays live while cranking. Either way, check it takes ATO/ATC blades, has a free slot, and its own supply is fused and sized for another 3.6 A. Until metered, parts 1, 4a and 4b stay as written.
 - **Tariffs.** Digi-Key shows "tariff may apply" on several parts; the amount shows only in the cart.
 
 Prices are US, before tax and shipping, from product pages on the dates given. Recheck before ordering.
