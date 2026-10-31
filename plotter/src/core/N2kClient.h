@@ -37,4 +37,5 @@ private:
     bool m_live = false;
     bool m_mismatch = false;
     bool m_helloSeen = false;
+    bool m_preHelloWarned = false; // the data-before-hello warning was logged on this connection
 };

@@ -31,6 +31,7 @@ void N2kClient::connectNow() {
     m_buf.clear();
     m_mismatch = false;
     m_helloSeen = false;
+    m_preHelloWarned = false;
     m_sock.connectToServer(m_path);
 }
 
@@ -79,7 +80,14 @@ void N2kClient::handleLine(const QByteArray &line) {
             m_mismatch = true;
             emit schemaMismatch(*schema);
         }
-    } else if (!m_helloSeen || m_mismatch) {
+    } else if (!m_helloSeen) {
+        // Once per connection: a daemon that never says hello would otherwise warn on every line.
+        if (!m_preHelloWarned) {
+            m_preHelloWarned = true;
+            qWarning("n2kd sent data before hello; dropping it until the hello");
+        }
+        return;
+    } else if (m_mismatch) {
         return;
     } else if (type == "vessel") {
         const auto v = parseVessel(o);

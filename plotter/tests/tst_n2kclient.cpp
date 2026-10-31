@@ -80,12 +80,16 @@ private slots:
         QTest::qWait(200);
         QCOMPARE(vs.count(), 0);
     }
-    // Data before the first hello of a connection is ignored, on the first connect and after a reconnect.
+    // Data before the first hello of a connection is ignored, on the first connect and after a reconnect,
+    // with one warning per connection however many lines are dropped.
     void dataBeforeHelloIgnored() {
+        const QRegularExpression beforeHello("n2kd sent data before hello");
+        QTest::failOnWarning(beforeHello); // past the expected ones below
         N2kClient c(path(), 3000, 100);
         QSignalSpy vs(&c, &N2kClient::vessel), as(&c, &N2kClient::ais), cs(&c, &N2kClient::connectionChanged);
         c.start();
         QVERIFY(accept());
+        QTest::ignoreMessage(QtWarningMsg, beforeHello); // two lines, one warning
         send(kVesselLine + kAisLine);
         QTest::qWait(200);
         QCOMPARE(vs.count(), 0);
@@ -97,6 +101,7 @@ private slots:
         QTRY_COMPARE_WITH_TIMEOUT(cs.count(), 2, 10000);
         m_peer = nullptr;
         QVERIFY(accept());
+        QTest::ignoreMessage(QtWarningMsg, beforeHello); // warned again on the new connection
         send(kVesselLine);
         QTest::qWait(200);
         QCOMPARE(vs.count(), 1);
