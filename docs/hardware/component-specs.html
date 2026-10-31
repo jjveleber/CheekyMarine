@@ -151,7 +151,7 @@ Part 4 has the details.</p>
 <tr class="odd">
 <td>3</td>
 <td>Unit on/off switch</td>
-<td>Latching, sealed, reliable at 10 mA (sense wire only)</td>
+<td>Latching, sealed, reliable at 5 mA, rated 1 A (sense wire only)</td>
 <td>not priced</td>
 </tr>
 <tr class="even">
@@ -317,7 +317,8 @@ off</td>
 <td><strong>Unit off, main switch on or off</strong></td>
 <td>12 V</td>
 <td><strong>zero</strong></td>
-<td>relay open; the controller and TVS sit after it (part 4)</td>
+<td>relay open; the controller, TVS, buck and display all sit after it
+(part 4)</td>
 </tr>
 </tbody>
 </table>
@@ -328,7 +329,8 @@ nothing draws from the battery.</p>
 foot. A 3 ft run is 6 ft out and back, so 0.024 ohm at 3.6 A drops about
 0.09 V (under 1%). If the standby feed has to come from the battery, a
 20 ft run in 16 AWG drops about 0.58 V (5%); 14 AWG (about 2.5 milliohms
-per foot) brings it to about 0.36 V (3%). Part 19 sets the gauge by run
+per foot) brings it to about 0.36 V (3%); past 20 ft, 12 AWG (about 1.6
+milliohms per foot) keeps it under 3%. Part 19 sets the gauge by run
 length.</p>
 <p>Boat voltage the parts must live with: about 12.2 V resting, 14.4 to
 14.8 V while charging, dips toward 10 V during engine cranking, and
@@ -425,9 +427,9 @@ water-resistant inline ATO holder, 15 A, 16 AWG leads, $4.14, Digi-Key,
 <h3>2. TVS diode and filtering</h3>
 <p><strong>Job.</strong> Sits across + and - just after the relay (part
 4d). It does nothing at normal voltage, and clamps short spikes from the
-alternator, pumps and the starter before they reach the switch, buck and
-display. If a big spike kills it, it fails short and blows the fuse
-instead of letting the spike through.</p>
+alternator, pumps and the starter before they reach the buck, the
+display and the controller. If a big spike kills it, it fails short and
+blows the fuse instead of letting the spike through.</p>
 <p><strong>Must have</strong></p>
 <table>
 <colgroup>
@@ -467,7 +469,7 @@ instead of letting the spike through.</p>
 <tr class="odd">
 <td>Leakage at standoff</td>
 <td>5 µA or less</td>
-<td>Datasheet “IR at VRWM” (it counts in the off-state draw)</td>
+<td>Datasheet “IR at VRWM”</td>
 </tr>
 <tr class="even">
 <td>Package</td>
@@ -511,7 +513,9 @@ for the controller’s regulator, the buck, and the display.</li>
 stays on. It sits in the thin sense wire (part 4), not in the power
 feed, so turning it off looks to the controller exactly like the boat’s
 main switch going off: the Pi shuts down cleanly, then the controller
-cuts its power. It carries only about 10 mA.</p>
+opens the relay. It carries the sense wire’s current: about 5 mA for the
+sense input, plus the controller and relay coil (under 0.1 A in all)
+while it is powering them.</p>
 <p><strong>Must have</strong></p>
 <table>
 <colgroup>
@@ -540,8 +544,8 @@ pushbutton</td>
 </tr>
 <tr class="odd">
 <td>Low-current contacts</td>
-<td>Reliable at about 10 mA: gold-plated contacts, or a minimum load of
-10 mA or less</td>
+<td>Reliable at about 5 mA: gold-plated contacts, or a minimum load of 5
+mA or less</td>
 <td>Datasheet “contact material”, “minimum load”</td>
 </tr>
 <tr class="even">
@@ -577,12 +581,14 @@ switch on the box. No extra hole in the box.</li>
 simple.</strong> The controller in part 4 can read a momentary button
 instead: press to turn on, hold 2 s to shut down. That needs a momentary
 IP67 button with gold contacts and a few lines of controller firmware,
-and no latch module.</li>
+and no latch module. The catch: the controller then has to stay powered
+whenever the boat is on, so it draws a few milliamps from the switched
+side all day; with the latching switch it draws nothing.</li>
 </ul>
 <p><strong>Disqualifiers</strong></p>
 <ul>
 <li>Unsealed toggles or rockers.</li>
-<li>Silver contacts rated only for heavy loads (a minimum load above 10
+<li>Silver contacts rated only for heavy loads (a minimum load above 5
 mA): at sense-wire currents they can fail to make contact.</li>
 <li>Lit switches whose LED draws current when off.</li>
 </ul>
@@ -614,17 +620,27 @@ whenever the boat’s main battery switch is turned off (owner,
 <li>Main switch off (or the unit switch, part 3): the sense wire
 drops.</li>
 <li>After 2 s with no sense (longer than an engine-start dip), the
-controller tells the Pi power is going away. The display stays on
-through the shutdown, which is fine because the battery is still
-connected.</li>
-<li>The Pi shuts down and signals “halted” on a GPIO.</li>
-<li>The controller opens the relay. If the Pi never signals, it opens it
-after a timeout (about 90 s). The buck, the display and the controller
-itself lose power; nothing draws from the battery.</li>
+controller sets a “power going away” line to the Pi and holds it until
+the relay opens. It is a level, not a pulse, so a Pi that is still
+booting reads it when its service starts. The display stays on through
+the shutdown, which is fine because the battery is still connected.</li>
+<li>The Pi shuts down, set to finish within about 60 s (services get a
+30 s stop limit, plan 4), and signals “halted”: its 3.3 V rail drops
+when it powers off after halt, or a GPIO goes high (which one works on
+the Pi 5 is a bench check).</li>
+<li>The controller opens the relay. If the Pi never signals, the
+firmware opens it after about 3 minutes, and a hardware timer opens it
+after about 4 minutes even if the controller has hung. The buck, the
+display and the controller itself lose power; nothing draws from the
+battery.</li>
 <li>If the sense wire is live again (it came back during the shutdown),
 the controller is still powered from it: it keeps the relay open for at
 least 2 s, then closes it, and the Pi boots. If not, everything stays
 dead until the main switch comes back on.</li>
+<li>If the Pi halts on its own while the boat is on (a software
+power-off, or after an update), the controller sees “halted” with sense
+present and power-cycles it the same way, so the Pi reboots. The way to
+turn the unit off is the switch.</li>
 </ol>
 <p>It has four pieces:</p>
 <p><strong>4a. Standby feed.</strong> A fused circuit from the battery
@@ -651,7 +667,9 @@ near the helm, or a new run from the battery</td>
 </tr>
 <tr class="even">
 <td>Battery</td>
-<td>The house battery (the boat has one)</td>
+<td>The house battery (owner confirmed the boat has one). Until the
+diagram shows the house battery is kept apart from engine starting,
+assume a crank dips it</td>
 <td>Wiring diagram</td>
 </tr>
 <tr class="odd">
@@ -661,8 +679,23 @@ E-11), sized per part 1</td>
 <td>Install rule</td>
 </tr>
 <tr class="even">
+<td>ABYC</td>
+<td>Check the feed against ABYC E-11’s list of loads allowed ahead of
+the battery switch; if it isn’t covered, it is a deliberate departure
+(recorded below)</td>
+<td>ABYC E-11 text</td>
+</tr>
+<tr class="odd">
+<td>Labels</td>
+<td>“Always live” label at the fuse, on the cable at both ends, and
+inside the box: the box stays live for up to about 3 minutes after the
+main switch goes off</td>
+<td>Install rule</td>
+</tr>
+<tr class="even">
 <td>Wire</td>
-<td>Per part 19: 16 AWG up to a 10 ft run, 14 AWG for 10 to 25 ft</td>
+<td>Per part 19: 16 AWG up to a 10 ft run, 14 AWG for 10 to 20 ft, 12
+AWG for 20 to 25 ft</td>
 <td>Measure the run</td>
 </tr>
 </tbody>
@@ -690,25 +723,66 @@ light)</td>
 <td>Datasheet “optocoupler”, “photocoupler”</td>
 </tr>
 <tr class="even">
+<td>Where it connects</td>
+<td>On the sense wire itself, before the diode that feeds the
+controller. Never at the point where the two diodes join: that point is
+live whenever the relay is closed, and the unit would never shut
+down</td>
+<td>Circuit</td>
+</tr>
+<tr class="odd">
+<td>Pull-down</td>
+<td>A resistor (about 10 kOhm) from the sense wire to negative inside
+the box, so an open switch reads “off” even with diode leakage</td>
+<td>Circuit</td>
+</tr>
+<tr class="even">
+<td>Surge clamp</td>
+<td>Its own small TVS (600 W class, 15 to 18 V standoff) where the sense
+wire enters the box: the main TVS sits after the relay and can’t protect
+this wire</td>
+<td>Datasheet, as for part 2</td>
+</tr>
+<tr class="odd">
 <td>Threshold</td>
 <td>On above about 8 V, off below about 5 V (a resistor and a zener or a
 divider set this)</td>
 <td>Circuit values; bench check with the bench supply</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td>Sense current</td>
-<td>About 10 mA (keeps the switch contacts clean, part 3)</td>
+<td>About 5 mA into the optocoupler LED at 12 V</td>
 <td>Resistor value</td>
 </tr>
+<tr class="odd">
+<td>LED current at 30 V</td>
+<td>Half the optocoupler LED’s absolute maximum or less (use a
+current-limiting part, or size the resistor for 30 V)</td>
+<td>Optocoupler datasheet “IF absolute maximum”</td>
+</tr>
 <tr class="even">
+<td>Output to the Pi</td>
+<td>Open-collector, with its pull-up taken from the Pi’s 3.3 V, so it
+can’t power the Pi when the Pi is off</td>
+<td>Circuit</td>
+</tr>
+<tr class="odd">
 <td>Sense wire fuse</td>
 <td>1 A at the switched source, or tap an existing fused switched
 circuit</td>
 <td>Install rule</td>
 </tr>
+<tr class="even">
+<td>Sense source</td>
+<td>A circuit that stays live while the engine cranks (the helm panel’s
+main feed after the battery switch). Not an ignition or accessory
+circuit: those drop for the whole crank, and every slow start would
+become a reboot</td>
+<td>Wiring diagram</td>
+</tr>
 <tr class="odd">
 <td>Input survival</td>
-<td>30 V on the sense wire</td>
+<td>30 V on the sense wire, behind the sense TVS</td>
 <td>Resistor power rating at 30 V</td>
 </tr>
 </tbody>
@@ -716,8 +790,10 @@ circuit</td>
 <p><strong>4c. Controller.</strong> A small microcontroller running the
 sequence above. It is powered from the sense wire (after the on/off
 switch) or from the relay output, through two diodes, so it is unpowered
-whenever the unit is off. We write the firmware; it gets flashed once
-over USB.</p>
+whenever the unit is off. The diode from the sense wire is a low-leakage
+silicon diode (not a Schottky, whose leakage rises steeply with heat and
+could hold a dead sense wire high). We write the firmware; it gets
+flashed once over USB.</p>
 <table>
 <colgroup>
 <col style="width: 33%" />
@@ -734,7 +810,7 @@ over USB.</p>
 <tbody>
 <tr class="odd">
 <td>Inputs</td>
-<td>Sense (from 4b), Pi “halted” GPIO</td>
+<td>Sense (from 4b), Pi “halted”</td>
 <td>Pin count: 4 or more free I/O</td>
 </tr>
 <tr class="even">
@@ -744,8 +820,10 @@ over USB.</p>
 </tr>
 <tr class="odd">
 <td>Logic levels</td>
-<td>3.3 V, so its pins connect straight to the Pi</td>
-<td>Board spec</td>
+<td>3.3 V. Lines to the Pi go through series resistors (about 1 kOhm)
+and are driven low or released whenever the Pi’s 3.3 V is absent, so
+they can’t power a Pi that is off</td>
+<td>Board spec; circuit</td>
 </tr>
 <tr class="even">
 <td>Power</td>
@@ -756,15 +834,35 @@ regulator rated for 30 V</td>
 <tr class="odd">
 <td>Relay drive</td>
 <td>One output through a transistor to the relay coil, with a flyback
-diode</td>
+diode. The transistor’s control input has a pull-down, so the coil is
+off at reset and whenever the controller isn’t driving it</td>
 <td>Circuit</td>
 </tr>
 <tr class="even">
+<td>Watchdog</td>
+<td>Hardware watchdog and brown-out reset enabled</td>
+<td>Microcontroller datasheet</td>
+</tr>
+<tr class="odd">
+<td>Hardware time limit</td>
+<td>A hardware timer (RC or one-shot) on the coil drive: once the sense
+wire drops, the coil can stay on for at most about 4 minutes, whatever
+the firmware does. A hung controller can’t keep the unit on the
+battery</td>
+<td>Circuit; bench test</td>
+</tr>
+<tr class="even">
+<td>Firmware rule</td>
+<td>Drive the coil only while sense is on, or during one time-limited
+shutdown (firmware limit about 3 minutes)</td>
+<td>Firmware review</td>
+</tr>
+<tr class="odd">
 <td>Programming</td>
 <td>USB, with a free toolchain</td>
 <td>Product page</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td>Temperature</td>
 <td>Rated to +85 °C</td>
 <td>Datasheet</td>
@@ -807,13 +905,19 @@ ohms)</td>
 </tr>
 <tr class="even">
 <td>Must-operate voltage</td>
-<td>8.5 V or less (closes on a low battery)</td>
-<td>Datasheet “pick-up” or “must operate” voltage</td>
+<td>At 70 °C, at or below the lowest coil voltage while the unit runs:
+the house battery’s low point minus about 1 V of diode and wiring drop.
+For a house battery that engine starts don’t reach, that is about 10 V
+at the coil. If a crank does reach it, the low point is the crank dip
+(often 9 V or less), which needs a high-sensitivity coil (70% or lower
+must-operate) and a crank test</td>
+<td>Datasheet “must operate” (in % of nominal at 20 °C) plus its
+temperature rise, about 0.4% per °C</td>
 </tr>
 <tr class="odd">
-<td>Drop-out voltage</td>
-<td>5 V or less (stays closed through engine starts)</td>
-<td>Datasheet “must release” or “drop-out” voltage</td>
+<td>Maximum coil voltage</td>
+<td>15 V or more continuous at 70 °C (charging runs 14.8 V)</td>
+<td>Datasheet “maximum continuous coil voltage”</td>
 </tr>
 <tr class="even">
 <td>Sealing</td>
@@ -839,9 +943,12 @@ box</td>
 it.</li>
 <li>The controller on a small board with screw terminals.</li>
 <li>Relay with a built-in coil diode and an LED.</li>
-<li>A bench test from the bench supply: cut the “switched” supply
-mid-boot, mid-run and mid-shutdown, and check the Pi always comes
-back.</li>
+<li>Bench tests from the bench supply: cut the “switched” supply
+mid-boot, mid-run and mid-shutdown, and check the Pi always comes back;
+hang the controller on purpose and check the relay still opens within
+the hardware limit; dip the supply to the crank low point and check the
+relay stays closed; leave the unit switch off in a warm box (50 °C) and
+check the controller reads “off”.</li>
 </ul>
 <p><strong>Disqualifiers</strong></p>
 <ul>
@@ -855,7 +962,9 @@ and it can lose its state on dips), always-on controllers. The owner
 requires a complete disconnect.</li>
 <li>Latching (bistable) relays: they hold their last position without
 power, so a controller fault mid-shutdown could leave the unit connected
-to the battery.</li>
+to the battery. (A non-latching relay alone isn’t enough either: it is
+held by the controller it powers, which is why the hardware time limit
+in 4c is a must-have.)</li>
 <li>Relays with coil power over 1 W (most 30/40 A automotive relays draw
 1.5 to 2 W): extra heat in the box.</li>
 <li>Batteries or supercapacitors inside the box: not needed with standby
@@ -863,12 +972,15 @@ power, and lithium can’t be charged above about 45 °C.</li>
 </ul>
 <p><strong>Fits with</strong></p>
 <ul>
-<li>Two Pi GPIOs: “power going away” in and “halted” out. Use pins the
-CAN HAT doesn’t (part 11), and a “halted” pin that stays low through
-boot, with an external pull-down.</li>
-<li>Engine starts dip the same battery the unit runs on. The buck (part
-5) must keep running down to about 7 V; the 2 s sense delay keeps a
-crank from shutting the unit down.</li>
+<li>Two Pi GPIOs: “power going away” in and “halted” out (or the Pi’s
+3.3 V rail sensed by the controller). Use pins the CAN HAT doesn’t (part
+11), and a “halted” pin that stays low through boot, with an external
+pull-down.</li>
+<li>Until the wiring diagram shows otherwise, assume engine starts dip
+the battery the unit runs on (the boat has a main engine and a kicker).
+The buck (part 5) must keep running down to about 7 V, and the relay
+must stay closed (part 4d); the 2 s sense delay keeps a crank from
+shutting the unit down.</li>
 <li>The 12 V cable into the box becomes three conductors: standby +,
 sense, and negative (part 19).</li>
 <li>The filesystem design (read-only root, A/B slots, plan 4) still
@@ -1022,8 +1134,8 @@ unit.</p>
 <li><strong>A. 12 V input on the display</strong> rated 9 to 16 V
 continuous and 30 V or more absolute maximum, both stated by the
 maker.</li>
-<li><strong>B. Its own regulator</strong> for the display alone, from
-the switched 12 V, whenever A isn’t stated:
+<li><strong>B. Its own regulator</strong> for the display alone, fed
+from the relay output after the TVS, whenever A isn’t stated:
 <ul>
 <li>5 V displays: a second buck with 5.0 V output (not 5.3 V), rated
 1.5x the display’s current, 30 V input survival.</li>
@@ -2081,14 +2193,14 @@ Mounts, 2026-10-30.</p>
 <ul>
 <li>A bulkhead Micro-C connector for the N2K side (see part 12) instead
 of a gland, so the box unplugs.</li>
-<li>A sealed 2-pin connector (Deutsch DT class) on the 12 V side for the
-same reason.</li>
+<li>A sealed 3-pin connector (Deutsch DT class) on the feed cable for
+the same reason.</li>
 </ul>
 <p><strong>Disqualifiers</strong></p>
 <ul>
 <li>Grey nylon without UV stabilization.</li>
 <li>Running two loose single wires through one round gland: it can’t
-seal them. Use a round jacketed 2-conductor cable (part 19) or a
+seal them. Use the round jacketed 3-conductor feed cable (part 19) or a
 multi-hole insert.</li>
 </ul>
 <p><strong>Reference, not a requirement.</strong> Altech 5308 509, PG9
@@ -2120,8 +2232,9 @@ J1127/J1128)</td>
 </tr>
 <tr class="even">
 <td>Feed gauge</td>
-<td>16 AWG for a run up to 10 ft; 14 AWG for 10 to 25 ft (3% drop at 3.6
-A). The sense conductor can be the same gauge</td>
+<td>3% drop or less at 3.6 A: 16 AWG for a run up to 10 ft, 14 AWG for
+10 to 20 ft, 12 AWG for 20 to 25 ft. The sense conductor can be the same
+gauge</td>
 <td>Run length from the wiring diagram</td>
 </tr>
 <tr class="odd">
@@ -2171,8 +2284,8 @@ cable for the feed instead.</li>
 </ul>
 <p><strong>Reference, not a requirement.</strong> Ancor 16 AWG tinned
 primary wire, 25 ft red (182803) and 25 ft black (182003), $21.93 total,
-Amazon, 2026-10-30. That is single conductor; for a gland, duplex
-jacketed cable seals better.</p>
+Amazon, 2026-10-30. That is single conductor; the feed needs 3-conductor
+jacketed cable, which seals in the gland.</p>
 <h3>20. Heat path and heat sink</h3>
 <p><strong>Job.</strong> Gets the box’s 15 to 18 W out to the cabin air,
 so the inside stays cool enough for the parts with the lowest ratings:
@@ -2328,13 +2441,14 @@ other:</p>
 <ol type="1">
 <li><strong>Voltage chain.</strong> Boat 9 to 16 V, spikes clamped to
 about 28 V by the TVS. Everything after the TVS (controller regulator,
-buck, display) survives 30 V or has its own regulator. The 5.0 to 5.3 V
-rail goes only to the Pi.</li>
+buck, display) survives 30 V or has its own regulator. The sense wire
+has its own TVS. The 5.0 to 5.3 V rail goes only to the Pi.</li>
 <li><strong>Power loss.</strong> The unit runs from the house battery’s
 standby power; the sense wire drops when the main switch goes off; the
 controller gives 2 s of grace, lets the Pi shut down, opens the relay
 (zero draw after that), and restarts the unit whenever sense returns,
-including mid-shutdown.</li>
+including mid-shutdown. A hardware time limit opens the relay even if
+the controller hangs.</li>
 <li><strong>Under the Pi.</strong> The NVMe adapter mounts there;
 nothing else needs the spot.</li>
 <li><strong>Reverse polarity.</strong> Everything fed from 12 V either
@@ -2387,6 +2501,11 @@ the buck.</li>
 <li><strong>6.7, “cable glands for 12V, N2K drop cable, and nothing
 else.”</strong> Still true for options A to C in part 20; option D would
 add more.</li>
+<li><strong>ABYC E-11, connections ahead of the battery switch.</strong>
+The standby feed is one. If E-11’s list of allowed loads doesn’t cover
+it, this is a deliberate departure, mitigated by a fuse at the source,
+“always live” labels, and a relay that disconnects completely when the
+unit is off.</li>
 <li><strong>6.6, LC filter and a 9 to 36 V regulator.</strong> The LC
 filter is optional (add it if radios pick up noise); parts must survive
 30 V after the TVS.</li>
@@ -2408,7 +2527,12 @@ of the main switch (part 19 sets the gauge by length).</li>
 from the house battery (owner, 2026-10-31); find its battery-side
 connection on the diagram.</li>
 <li><strong>Sense source.</strong> Which switched circuit at the helm
-the sense wire taps (it needs a 1 A fuse).</li>
+the sense wire taps: one that stays live while cranking, not ignition or
+accessory (it needs a 1 A fuse).</li>
+<li><strong>Does cranking reach the house battery?</strong> The boat has
+a main engine and a kicker. If the house battery is kept apart from
+starting, the relay rule is easy; if not, it needs a high-sensitivity
+coil and a crank test (part 4d).</li>
 <li><strong>Relay and controller.</strong> Pick a relay that meets part
 4d (coil 0.6 W or less) and a controller board.</li>
 <li><strong>Display 12 V maximum.</strong> 4D gives “12.0 V typ” with no
