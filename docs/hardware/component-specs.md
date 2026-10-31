@@ -36,7 +36,7 @@ Owner rules this revision follows (2026-10-31):
    |                                  |            |
    +--[2] TVS across + and -        [4c] CONTROLLER  <-- powered by the sense
    |                                  |   ^             wire or the relay output
-   |              power going away ---+   | halted
+   |              power going away ---+   | Pi 3.3 V
    |                                  v   |
    +------------------------------------+  (Pi GPIOs)
    |                                    |
@@ -265,9 +265,9 @@ It has four pieces:
 
 | Spec | Requirement | How to check |
 |---|---|---|
-| Inputs | Sense (from 4b); the Pi's 3.3 V through a divider (required: "seen running" in step 6 needs it, since a halted GPIO reads low both when the Pi runs and when it is off); relay closed (the relay output through a divider). A halted GPIO is optional on top | Pin count: 6 or more free I/O, 7 with the halted GPIO |
+| Inputs | Sense (from 4b); the Pi's 3.3 V through a divider (required: "seen running" in step 6 needs it, since a halted GPIO reads low both when the Pi runs and when it is off); relay closed (read from the coil logic's output, a logic-level signal, not from the 12 V relay output, whose voltage sags with the battery). A halted GPIO is optional on top; if the bench check makes it required, "running" means 3.3 V present AND halted low everywhere (step 6, the 60 s rule) | Pin count: 6 or more free I/O, 7 with the halted GPIO |
 | Outputs | Hold line and cycle request (into the coil logic), "power going away" to a Pi GPIO | Same |
-| Start-up rule | At boot the controller raises hold only once it reads the relay as closed (so the hardware 2 s delay is never skipped), and starts the 60 s no-boot timer from the relay being seen closed, whether that happened before or after the controller booted | Firmware review |
+| Start-up rule | At boot the controller raises hold only once it reads the relay as closed (so the hardware 2 s delay is never skipped), and starts the 60 s no-boot timer from the relay being seen closed, whether that happened before or after the controller booted. Once raised, hold stays on until a deliberate release (step 4) or power-cycle; it is never dropped because the relay-closed input reads low | Firmware review |
 | Logic levels | 3.3 V. Lines to the Pi go through series resistors (about 1 kOhm) and are driven low or released whenever the Pi's 3.3 V is absent, so they can't power a Pi that is off | Board spec; circuit |
 | Power | From 12 V (sense wire or relay output, diode-ORed) through a regulator rated for 30 V | Regulator datasheet "absolute maximum" |
 | Coil logic | In hardware, not firmware alone: coil on when (sense present AND the controller isn't requesting a power-cycle) OR (the controller's hold line is on AND the hardware timer hasn't expired). The hold line is on continuously from boot whenever the relay is closed and no power-cycle is running, so it is already on at the instant sense drops (a relay releases in milliseconds). A power-cycle drops the hold line and raises the cycle request together. Both controller lines have pull-downs. The sense term's rising edge is delayed about 2 s in hardware (falling edge immediate), so the relay always stays open at least 2 s even if the controller is unpowered when sense returns. Result: a controller reset or hang never cuts the Pi while the boat is on, and can't keep the unit on the battery after it's off | Circuit; bench test: switch sense off with the Pi running and check it shuts down cleanly |
@@ -275,7 +275,7 @@ It has four pieces:
 | Watchdog | Hardware watchdog and brown-out reset enabled (with the coil logic above, a reset while the boat is on doesn't cut power) | Microcontroller datasheet |
 | Hardware timer | Separate from the microcontroller: a timer or counter IC (not a long RC on an electrolytic, whose leakage can stop it firing). Held reset while sense is present and expires 3.5 to 6 minutes after sense drops, across its tolerances, with a clean on/off output. It can't chatter: once the contacts open with sense absent, nothing powers the coil | Circuit; bench test hangs the controller |
 | One sense signal | The controller, the coil logic and the timer reset all use the same Schmitt-buffered signal from the optocoupler (8 V "on" threshold), so a back-fed sense wire sitting at a few volts reads "off" everywhere. The gates, the timer and the optocoupler's pull-up run from the controller's diode-ORed supply | Circuit |
-| Firmware rule | Hold line on from boot while the relay is closed. After sense drops, keep holding until the Pi signals halted, then release; give up after about 3 minutes (always shorter than the hardware timer's 3.5-minute minimum) | Firmware review |
+| Firmware rule | Hold per the start-up rule. After sense drops, keep holding until the Pi signals halted, then release. At about 3 minutes (always shorter than the hardware timer's 3.5-minute minimum): release hold if sense is still absent; power-cycle if sense has come back (counted toward the cap) | Firmware review |
 | Programming | USB, with a free toolchain | Product page |
 | Temperature | Rated to +85 °C | Datasheet |
 
@@ -578,7 +578,7 @@ Alternatives considered (2026-10-31):
 **Fits with**
 
 - Stacks on the 40-pin header above the Active Cooler: needs about 16 mm of standoff plus a header extender to clear the 13.7 mm cooler. Check what the board ships with.
-- GPIOs it takes with the Waveshare wiki's default setup: SPI1 (GPIO 19, 20, 21), chip selects GPIO 16, 17, 18, interrupts GPIO 22 and 13, and GPIO 0 and 1 for its ID EEPROM. The controller's two signals (part 4) must use other pins.
+- GPIOs it takes with the Waveshare wiki's default setup: SPI1 (GPIO 19, 20, 21), chip selects GPIO 16, 17, 18, interrupts GPIO 22 and 13, and GPIO 0 and 1 for its ID EEPROM. The controller's lines to the Pi (part 4) must use other pins.
 - Wires to the drop cable (part 12): CAN_H to NET-H (white), CAN_L to NET-L (blue), isolated GND to NET-C (black). NET-S (red) and the shield stay unconnected. Termination off.
 - The reference board also has its own 5 V / 7 to 36 V power input. Leave it unconnected on the boat: it would be a second feed into the Pi's 5 V rail. Set its logic-level jumper to 3.3 V.
 

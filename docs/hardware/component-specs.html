@@ -86,7 +86,7 @@ finned aluminum heat sink in the back wall (option A). See part 20.</li>
    |                                  |            |
    +--[2] TVS across + and -        [4c] CONTROLLER  &lt;-- powered by the sense
    |                                  |   ^             wire or the relay output
-   |              power going away ---+   | halted
+   |              power going away ---+   | Pi 3.3 V
    |                                  v   |
    +------------------------------------+  (Pi GPIOs)
    |                                    |
@@ -841,8 +841,11 @@ flashed once over USB.</p>
 <td>Inputs</td>
 <td>Sense (from 4b); the Pi’s 3.3 V through a divider (required: “seen
 running” in step 6 needs it, since a halted GPIO reads low both when the
-Pi runs and when it is off); relay closed (the relay output through a
-divider). A halted GPIO is optional on top</td>
+Pi runs and when it is off); relay closed (read from the coil logic’s
+output, a logic-level signal, not from the 12 V relay output, whose
+voltage sags with the battery). A halted GPIO is optional on top; if the
+bench check makes it required, “running” means 3.3 V present AND halted
+low everywhere (step 6, the 60 s rule)</td>
 <td>Pin count: 6 or more free I/O, 7 with the halted GPIO</td>
 </tr>
 <tr class="even">
@@ -856,7 +859,9 @@ away” to a Pi GPIO</td>
 <td>At boot the controller raises hold only once it reads the relay as
 closed (so the hardware 2 s delay is never skipped), and starts the 60 s
 no-boot timer from the relay being seen closed, whether that happened
-before or after the controller booted</td>
+before or after the controller booted. Once raised, hold stays on until
+a deliberate release (step 4) or power-cycle; it is never dropped
+because the relay-closed input reads low</td>
 <td>Firmware review</td>
 </tr>
 <tr class="even">
@@ -921,10 +926,11 @@ diode-ORed supply</td>
 </tr>
 <tr class="odd">
 <td>Firmware rule</td>
-<td>Hold line on from boot while the relay is closed. After sense drops,
-keep holding until the Pi signals halted, then release; give up after
-about 3 minutes (always shorter than the hardware timer’s 3.5-minute
-minimum)</td>
+<td>Hold per the start-up rule. After sense drops, keep holding until
+the Pi signals halted, then release. At about 3 minutes (always shorter
+than the hardware timer’s 3.5-minute minimum): release hold if sense is
+still absent; power-cycle if sense has come back (counted toward the
+cap)</td>
 <td>Firmware review</td>
 </tr>
 <tr class="even">
@@ -1699,8 +1705,8 @@ mm of standoff plus a header extender to clear the 13.7 mm cooler. Check
 what the board ships with.</li>
 <li>GPIOs it takes with the Waveshare wiki’s default setup: SPI1 (GPIO
 19, 20, 21), chip selects GPIO 16, 17, 18, interrupts GPIO 22 and 13,
-and GPIO 0 and 1 for its ID EEPROM. The controller’s two signals (part
-4) must use other pins.</li>
+and GPIO 0 and 1 for its ID EEPROM. The controller’s lines to the Pi
+(part 4) must use other pins.</li>
 <li>Wires to the drop cable (part 12): CAN_H to NET-H (white), CAN_L to
 NET-L (blue), isolated GND to NET-C (black). NET-S (red) and the shield
 stay unconnected. Termination off.</li>
