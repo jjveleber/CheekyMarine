@@ -248,6 +248,7 @@ Leave open: Manufacturer, Package / Case, Tolerance, Q Minimum, Self Resonant Fr
 | Panel hole | Round, 12 to 22 mm, so it is one drill or step-bit hole (owner, 2026-11-01); no rectangular rocker cutout | Datasheet "panel cutout" or "mounting hole" |
 | Behind-panel depth | 40 mm or less | Datasheet drawing |
 | Body | Stainless steel, anodized aluminum, or UV-stable plastic | Datasheet "material" |
+| Temperature | -20 to +70 °C or wider: it sits on the outside of the box, in sun through the cabin glass, and winters on the boat | Datasheet "operating temperature" |
 
 **Switch: Mouser filters** (Electromechanical > Switches > Rocker Switches, mouser.com/c/electromechanical/switches/rocker-switches/, read 2026-11-01)
 
@@ -263,7 +264,7 @@ Leave open: Manufacturer, Package / Case, Tolerance, Q Minimum, Self Resonant Fr
 | Termination Style | Quick Connect, Solder Lug, Solder Terminal, Wire Lead (easy to hand wire) | |
 | Packaging | Bulk, Bag, Box, Tray | |
 
-Not filterable, so check the datasheet: round panel cutout of 12 to 22 mm, depth behind the panel 40 mm or less, body material, and minimum load. Round rockers are a minority on this page; the Type and Actuator filters may list round or circular styles (the saved page only shows the first 20 values of each). If lit (Illuminated filter), the LED must be on the switched side. Leave open: Manufacturer, Product (but skip Circuit Breakers), Illumination Color, Lamp Type, Color, Terminal Seal, Voltage Rating AC.
+Not filterable, so check the datasheet: round panel cutout of 12 to 22 mm, depth behind the panel 40 mm or less, body material, operating temperature (-20 to +70 °C or wider), and minimum load. High-current rockers (10 A and up) usually have silver contacts and narrow consumer temperature ratings; a low-current switch with gold contacts suits this job better. Round rockers are a minority on this page; the Type and Actuator filters may list round or circular styles (the saved page only shows the first 20 values of each). If lit (Illuminated filter), the LED must be on the switched side. Leave open: Manufacturer, Product (but skip Circuit Breakers), Illumination Color, Lamp Type, Color, Terminal Seal, Voltage Rating AC.
 
 **Nice to have**
 
