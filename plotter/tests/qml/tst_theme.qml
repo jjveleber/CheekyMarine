@@ -92,15 +92,31 @@ TestCase {
         box.icon.height = Units.mm(12)
         tryCompare(box.icon, "status", Image.Ready)
         const img = grabImage(box)
-        let red = 0
+        let red = 0, bad = 0
         for (let y = 0; y < img.height; ++y) {
             for (let x = 0; x < img.width; ++x) {
-                const g = img.green(x, y), b = img.blue(x, y)
-                verify(g <= 0x20 && b <= 0x20, "pixel " + x + "," + y + " has green " + g + " blue " + b)
+                if (img.green(x, y) > 0x20 || img.blue(x, y) > 0x20) ++bad
                 if (img.red(x, y) > 0x80) ++red
             }
         }
+        verify(bad === 0, bad + " pixels have green or blue above 0x20")
         verify(red > 0, "the icon drew red pixels")
+    }
+
+    // A half-transparent colour draws half-strength pixels, not opaque ones.
+    function test_iconColorAlpha() {
+        const box = createTemporaryObject(iconBoxComp, testCase, { width: Units.mm(20), height: Units.mm(20) })
+        box.icon.name = "anchor"
+        box.icon.width = Units.mm(12)
+        box.icon.height = Units.mm(12)
+        box.icon.color = Qt.rgba(1, 0, 0, 0.5)
+        tryCompare(box.icon, "status", Image.Ready)
+        const img = grabImage(box)
+        let peak = 0
+        for (let y = 0; y < img.height; ++y)
+            for (let x = 0; x < img.width; ++x)
+                peak = Math.max(peak, img.red(x, y))
+        verify(peak > 0x40 && peak < 0xc0, "peak red is " + peak)
     }
 
     function test_unknownIconWarns() {
