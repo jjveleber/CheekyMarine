@@ -194,6 +194,25 @@ private slots:
         QVERIFY(s.has_value());
         QCOMPARE(scalar((*s)->db(), "SELECT value FROM settings WHERE key='a'"), QStringLiteral("1"));
     }
+    // Plan 3 rows that do not parse as their JSON arrays are logged and seed the defaults.
+    void plan3UnparseableRowsWarnAndSeedDefaults() {
+        QTemporaryDir t;
+        makePlan3Db(t.path());
+        rawExec(t.path(), {"UPDATE settings SET value='{not json' WHERE key='slots'",
+                           R"(UPDATE settings SET value='"oops"' WHERE key='bigNumbers')"});
+        QTest::ignoreMessage(QtWarningMsg, QRegularExpression("unusable value for \"slots\""));
+        QTest::ignoreMessage(QtWarningMsg, QRegularExpression("unusable value for \"bigNumbers\""));
+        auto s = Store::open(t.path());
+        QVERIFY(s.has_value());
+        const QSqlDatabase db = (*s)->db();
+        const QList<View> shipped = shippedViews(0);
+        for (int i = 0; i < 3; ++i) {
+            View v = viewFromJson(viewRow(db, i));
+            v.created = v.modified = 0;
+            QCOMPARE(v, shipped[i]);
+        }
+        QCOMPARE(scalar(db, "SELECT count(*) FROM settings WHERE key IN ('slots','bigNumbers')"), QStringLiteral("0"));
+    }
     void newerMajorRefused() {
         QTemporaryDir t;
         { QVERIFY(Store::open(t.path()).has_value()); }

@@ -65,6 +65,12 @@ QList<View> shippedViews(qint64 now);
 // the plan 3 bigNumbers list (padded with defaults to 2, cut to 4).
 QList<View> viewsFromPlan3(const QJsonArray& slotsJson, const QStringList& bigNumbers, qint64 now);
 
+// The json column text of a views row: viewToJson, compact.
+QString viewJsonText(const View&);
+// INSERT INTO views(id, ord, json). On failure logs and returns the statement's error; otherwise an
+// invalid QSqlError (kept as an error, not a bool, so the migration can classify it).
+QSqlError insertViewRow(QSqlDatabase& db, const View& view, qint64 ord);
+
 // Schema 1.1.0 migration step, run inside its transaction on a db that has the views table: inserts
 // viewsFromPlan3 of the settings rows slots and bigNumbers when either exists, else shippedViews,
 // with ord 0 to 2, then deletes the settings rows slots, bigNumbers, chartMode and touchLockTimeoutS.

@@ -70,11 +70,12 @@ public:
     Q_INVOKABLE void move(const QString& id, int delta);
     Q_INVOKABLE void setFavourite(const QString& id, bool on);
     // Replaces the view with this id (false when there is none): modified = now; its ord, created and
-    // stored extra keys are kept; name and short are cut to their caps and an empty short is made
-    // from the name.
+    // stored extra keys are kept; name and short are cut to their caps, an empty name becomes
+    // "View" and an empty short is made from the name.
     bool save(const View& view);
     Q_INVOKABLE bool saveJson(const QVariantMap& json);
     // Every row replaced by `views` in order; current is lastViewId when it names one, else the first.
+    // An empty list is refused (logged): there is always at least one view.
     void replaceAll(const QList<View>& views);
 
 signals:
@@ -85,7 +86,6 @@ signals:
 
 private:
     bool writeView(const View& v); // UPDATE of an existing row's json
-    bool insertView(const View& v, qint64 ord);
     void setCurrent(const QString& id, bool persist);
     void currentFromSettings();
     void tabsChanged(); // favourite, order or capacity changed: onTabBar of every row and tabViews

@@ -163,6 +163,21 @@ void ViewDraft::setFavourite(bool on) {
 
 void ViewDraft::load(const View& view) {
     m_view = view;
+    QList<ViewSlot>& slotList = m_view.slotList;
+    bool whole = slotList.size() == 8;
+    for (int i = 0; whole && i < 8; ++i) whole = int(slotList[i].id) == i;
+    if (!whole) {
+        // setSlot indexes by SlotId: rebuild in SlotId order, the first entry of an id winning.
+        qWarning() << "view draft: slot list of" << view.id << "is not the eight slots in order; made whole";
+        QList<ViewSlot> fixed = defaultViewSlots();
+        QList<bool> seen(fixed.size(), false);
+        for (const ViewSlot& s : view.slotList) {
+            if (seen[int(s.id)]) continue;
+            seen[int(s.id)] = true;
+            fixed[int(s.id)] = s;
+        }
+        slotList = fixed;
+    }
     m_slotsModel->setSlotList(m_view.slotList);
     m_cellsModel->setFields(m_view.cells.fields);
     for (auto sig : {&ViewDraft::idChanged, &ViewDraft::nameChanged, &ViewDraft::shortNameChanged, &ViewDraft::iconChanged,

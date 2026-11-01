@@ -1,5 +1,6 @@
 #include "Views.h"
 #include "Tilings.h"
+#include <QDebug>
 #include <QJsonDocument>
 #include <QSqlQuery>
 #include <algorithm>
@@ -163,6 +164,19 @@ QList<View> viewsFromPlan3(const QJsonArray& slotsJson, const QStringList& bigNu
     return views;
 }
 
+QString viewJsonText(const View& v) { return QString::fromUtf8(QJsonDocument(viewToJson(v)).toJson(QJsonDocument::Compact)); }
+
+QSqlError insertViewRow(QSqlDatabase& db, const View& view, qint64 ord) {
+    QSqlQuery q(db);
+    q.prepare(QStringLiteral("INSERT INTO views(id, ord, json) VALUES(?, ?, ?)"));
+    q.addBindValue(view.id);
+    q.addBindValue(ord);
+    q.addBindValue(viewJsonText(view));
+    if (q.exec()) return {};
+    qWarning() << "views: insert failed for" << view.id << q.lastError().text();
+    return q.lastError();
+}
+
 QSqlError seedViews(QSqlDatabase& db, qint64 now) {
     QSqlQuery q(db);
     if (!q.exec(QStringLiteral("SELECT key, value FROM settings WHERE key IN ('slots', 'bigNumbers')"))) return q.lastError();
@@ -171,20 +185,23 @@ QSqlError seedViews(QSqlDatabase& db, qint64 now) {
     QStringList bigNumbers;
     while (q.next()) {
         plan3 = true;
+        const QString key = q.value(0).toString();
         // Settings stores a bare JSON value; wrapped in [] it parses as a document (Settings::fromText).
-        const QJsonArray value = QJsonDocument::fromJson(("[" + q.value(1).toString() + "]").toUtf8()).array().at(0).toArray();
-        if (q.value(0).toString() == QLatin1String("slots")) slotsJson = value;
-        else
-            for (const QJsonValue& v : value) bigNumbers << v.toString();
+        QJsonParseError e;
+        const QJsonArray doc = QJsonDocument::fromJson(("[" + q.value(1).toString() + "]").toUtf8(), &e).array();
+        if (e.error != QJsonParseError::NoError || doc.size() != 1 || !doc.at(0).isArray()) {
+            qWarning() << "views: unusable value for" << key << "- using defaults";
+            continue;
+        }
+        if (key == QLatin1String("slots")) {
+            slotsJson = doc.at(0).toArray();
+        } else {
+            for (const QJsonValue& v : doc.at(0).toArray()) bigNumbers << v.toString();
+        }
     }
     const QList<View> views = plan3 ? viewsFromPlan3(slotsJson, bigNumbers, now) : shippedViews(now);
-    for (int i = 0; i < views.size(); ++i) {
-        q.prepare(QStringLiteral("INSERT INTO views(id, ord, json) VALUES(?, ?, ?)"));
-        q.addBindValue(views[i].id);
-        q.addBindValue(i);
-        q.addBindValue(QString::fromUtf8(QJsonDocument(viewToJson(views[i])).toJson(QJsonDocument::Compact)));
-        if (!q.exec()) return q.lastError();
-    }
+    for (int i = 0; i < views.size(); ++i)
+        if (QSqlError e = insertViewRow(db, views[i], i); e.isValid()) return e;
     if (!q.exec(QStringLiteral("DELETE FROM settings WHERE key IN ('slots', 'bigNumbers', 'chartMode', 'touchLockTimeoutS')")))
         return q.lastError();
     return {};

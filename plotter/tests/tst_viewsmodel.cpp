@@ -4,6 +4,7 @@
 #include "core/Views.h"
 #include "core/ViewsModel.h"
 #include "core/VesselModel.h"
+#include <QAbstractItemModelTester>
 #include <QJsonDocument>
 #include <QSignalSpy>
 #include <QSqlQuery>
@@ -294,6 +295,87 @@ private slots:
         QVERIFY(m.save(v));
         QCOMPARE(m.view("shipped-fish")->shortName, shortFromName("Bottom fish"));
         QCOMPARE(rawJson(*e.store, "shipped-fish").value("short").toString(), QStringLiteral("Bottom"));
+        v.name = "";
+        v.shortName = "";
+        QVERIFY(m.save(v));
+        QCOMPARE(m.view("shipped-fish")->name, QStringLiteral("View"));
+        QCOMPARE(m.view("shipped-fish")->shortName, QStringLiteral("View"));
+        QCOMPARE(rawJson(*e.store, "shipped-fish").value("name").toString(), QStringLiteral("View"));
+        QCOMPARE(rawJson(*e.store, "shipped-fish").value("short").toString(), QStringLiteral("View"));
+        ViewsModel again(*e.store, *e.settings, e.clock());
+        QCOMPARE(again.view("shipped-fish")->name, QStringLiteral("View"));
+    }
+
+    // There is always at least one view: an empty list changes nothing.
+    void replaceAllRefusesEmpty() {
+        Env e;
+        QVERIFY(e.settings);
+        ViewsModel m(*e.store, *e.settings, e.clock());
+        QSignalSpy reset(&m, &QAbstractItemModel::modelReset);
+        QTest::ignoreMessage(QtWarningMsg, QRegularExpression("views: replace refused"));
+        m.replaceAll({});
+        QCOMPARE(reset.count(), 0);
+        QCOMPARE(ids(m), (QStringList{"shipped-nav", "shipped-fish", "shipped-big"}));
+        ViewsModel again(*e.store, *e.settings, e.clock());
+        QCOMPARE(again.count(), 3);
+    }
+
+    // The model testers check every signal sequence of the mutations.
+    void modelTestersPassEveryMutation() {
+        Env e;
+        QVERIFY(e.settings);
+        ViewsModel m(*e.store, *e.settings, e.clock());
+        QAbstractItemModelTester mt(&m, QAbstractItemModelTester::FailureReportingMode::QtTest);
+        const QString a = m.add();
+        const QString d = m.duplicate("shipped-nav");
+        m.move(d, 1);
+        m.move("shipped-nav", 1);
+        m.move(a, -1);
+        QVERIFY(m.remove("shipped-fish"));
+        m.setFavourite(a, true);
+        View v = *m.view(a);
+        v.name = "Saved";
+        QVERIFY(m.save(v));
+        m.replaceAll(shippedViews(1));
+        QCOMPARE(m.count(), 3);
+
+        ViewDraft draft(e.vessel, *e.settings);
+        auto* slotRows = qobject_cast<QAbstractItemModel*>(draft.slotsModel());
+        auto* cells = qobject_cast<QAbstractItemModel*>(draft.cellsModel());
+        QAbstractItemModelTester st(slotRows, QAbstractItemModelTester::FailureReportingMode::QtTest);
+        QAbstractItemModelTester ct(cells, QAbstractItemModelTester::FailureReportingMode::QtTest);
+        draft.load(shippedViews(1)[2]);
+        draft.setLayout(kQuad);
+        draft.setLayout(kTwoColumns);
+        draft.setCellField(0, "rpm");
+        draft.setSlot("BL", true, "rpm", 10);
+        VesselState s;
+        s.depthM = 3;
+        e.vessel.setState(s);
+        QCOMPARE(cells->rowCount(), 2);
+    }
+
+    // A View with a short slot list is made whole on load: eight rows in SlotId order.
+    void draftLoadNormalisesShortSlotList() {
+        Env e;
+        QVERIFY(e.settings);
+        ViewDraft d(e.vessel, *e.settings);
+        View v = shippedViews(5)[0];
+        v.slotList = {ViewSlot{SlotId::BR, true, Field::Rpm, 10}, ViewSlot{SlotId::TL, false, Field::Cog, 9},
+                      ViewSlot{SlotId::BR, false, Field::Sog, 7}};
+        QTest::ignoreMessage(QtWarningMsg, QRegularExpression("slot list"));
+        d.load(v);
+        auto* slotRows = qobject_cast<QAbstractItemModel*>(d.slotsModel());
+        QCOMPARE(slotRows->rowCount(), 8);
+        const QList<ViewSlot> got = d.toView().slotList;
+        QCOMPARE(got.size(), 8);
+        for (int i = 0; i < 8; ++i) QCOMPARE(int(got[i].id), i);
+        QCOMPARE(got[int(SlotId::TL)], (ViewSlot{SlotId::TL, false, Field::Cog, 9}));
+        QCOMPARE(got[int(SlotId::BR)], (ViewSlot{SlotId::BR, true, Field::Rpm, 10})); // first entry wins
+        QCOMPARE(got[int(SlotId::Right)], defaultViewSlots()[int(SlotId::Right)]);
+        d.setSlot("Right", true, "depth", 12);
+        QCOMPARE(d.toView().slotList[int(SlotId::Right)], (ViewSlot{SlotId::Right, true, Field::Depth, 12}));
+        QCOMPARE(role(*slotRows, 7, "field").toString(), QStringLiteral("depth"));
     }
 
     void replaceAllResetsRowsAndCurrent() {

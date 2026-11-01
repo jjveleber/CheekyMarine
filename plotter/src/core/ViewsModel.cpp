@@ -10,8 +10,6 @@
 #include <utility>
 
 namespace {
-QString jsonText(const View& v) { return QString::fromUtf8(QJsonDocument(viewToJson(v)).toJson(QJsonDocument::Compact)); }
-
 QVariantList slotRows(const View& v) {
     QVariantList l;
     for (const ViewSlot& s : v.slotList)
@@ -148,7 +146,8 @@ QString ViewsModel::add() {
     v.cells = viewFromJson({}).cells; // two columns, Depth and SOG
     v.created = v.modified = m_now();
     const qint64 ord = m_ords.isEmpty() ? 0 : m_ords.last() + 1;
-    if (!insertView(v, ord)) return {};
+    QSqlDatabase db = m_store.db();
+    if (insertViewRow(db, v, ord).isValid()) return {};
     beginInsertRows({}, count(), count());
     m_views << v;
     m_ords << ord;
@@ -168,11 +167,14 @@ QString ViewsModel::duplicate(const QString& id) {
     v.created = v.modified = m_now();
     const qint64 ord = m_ords.at(i) + 1;
     QSqlDatabase db = m_store.db();
-    if (!db.transaction()) return {};
+    if (!db.transaction()) {
+        qWarning() << "views: duplicate failed to start a transaction:" << db.lastError().text();
+        return {};
+    }
     QSqlQuery q(db);
     q.prepare(QStringLiteral("UPDATE views SET ord = ord + 1 WHERE ord >= ?"));
     q.addBindValue(ord);
-    if (!q.exec() || !insertView(v, ord) || !db.commit()) {
+    if (!q.exec() || insertViewRow(db, v, ord).isValid() || !db.commit()) {
         qWarning() << "views: duplicate failed:" << q.lastError().text() << db.lastError().text();
         db.rollback();
         return {};
@@ -215,7 +217,10 @@ void ViewsModel::move(const QString& id, int delta) {
     const int j = i + delta;
     if (j < 0 || j >= count()) return;
     QSqlDatabase db = m_store.db();
-    if (!db.transaction()) return;
+    if (!db.transaction()) {
+        qWarning() << "views: move failed to start a transaction:" << db.lastError().text();
+        return;
+    }
     QSqlQuery q(db);
     bool ok = true;
     for (const auto& [row, ord] : {std::pair{i, m_ords[j]}, std::pair{j, m_ords[i]}}) {
@@ -252,6 +257,7 @@ bool ViewsModel::save(const View& view) {
     View v = view;
     const View& old = m_views.at(i);
     v.name = v.name.left(kMaxNameChars);
+    if (v.name.isEmpty()) v.name = QStringLiteral("View"); // the floor viewFromJson applies
     v.shortName = v.shortName.left(kMaxShortChars);
     if (v.shortName.isEmpty()) v.shortName = shortFromName(v.name);
     v.created = old.created;
@@ -268,11 +274,18 @@ bool ViewsModel::save(const View& view) {
 bool ViewsModel::saveJson(const QVariantMap& json) { return save(viewFromJson(QJsonObject::fromVariantMap(json))); }
 
 void ViewsModel::replaceAll(const QList<View>& views) {
+    if (views.isEmpty()) {
+        qWarning() << "views: replace refused: there must be at least one view";
+        return;
+    }
     QSqlDatabase db = m_store.db();
-    if (!db.transaction()) return;
+    if (!db.transaction()) {
+        qWarning() << "views: replace failed to start a transaction:" << db.lastError().text();
+        return;
+    }
     QSqlQuery q(db);
     bool ok = q.exec(QStringLiteral("DELETE FROM views"));
-    for (int i = 0; ok && i < views.size(); ++i) ok = insertView(views[i], i);
+    for (int i = 0; ok && i < views.size(); ++i) ok = !insertViewRow(db, views[i], i).isValid();
     if (!ok || !db.commit()) {
         qWarning() << "views: replace failed:" << q.lastError().text() << db.lastError().text();
         db.rollback();
@@ -292,21 +305,10 @@ void ViewsModel::replaceAll(const QList<View>& views) {
 bool ViewsModel::writeView(const View& v) {
     QSqlQuery q(m_store.db());
     q.prepare(QStringLiteral("UPDATE views SET json = ? WHERE id = ?"));
-    q.addBindValue(jsonText(v));
+    q.addBindValue(viewJsonText(v));
     q.addBindValue(v.id);
     if (q.exec()) return true;
     qWarning() << "views: write failed for" << v.id << q.lastError().text();
-    return false;
-}
-
-bool ViewsModel::insertView(const View& v, qint64 ord) {
-    QSqlQuery q(m_store.db());
-    q.prepare(QStringLiteral("INSERT INTO views(id, ord, json) VALUES(?, ?, ?)"));
-    q.addBindValue(v.id);
-    q.addBindValue(ord);
-    q.addBindValue(jsonText(v));
-    if (q.exec()) return true;
-    qWarning() << "views: insert failed for" << v.id << q.lastError().text();
     return false;
 }
 
