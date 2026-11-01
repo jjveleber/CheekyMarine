@@ -23,7 +23,7 @@ A touch UI for a 10 inch panel (the diagonal is a setting) with a tab bar on the
 - Numbers: big readouts (depth and speed by default).
 - Tracks: records the boat's track (off by default), lists saved tracks, shows or hides them on the chart.
 - Settings: units, depth thresholds, palette (auto follows the sun, or day, dusk, night), chart
-  mode, tab bar hide delay, panel size, overlay editing. About shows versions and installed packs.
+  mode, tab bar hide delay, panel size. About shows versions and installed packs.
 - Touch lock: the padlock in the tab bar locks the screen; hold the padlock for 1.5 s to unlock.
 - A no-data banner when n2kd is not running or sends nothing, and a recovery screen when
   `plotter.db` cannot be opened.

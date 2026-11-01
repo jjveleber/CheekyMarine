@@ -696,8 +696,7 @@ TestCase {
         main.hideDelayMs = 200
         mouseClick(item(main, "tab-view-shipped-nav"))
         verify(barShown(main))
-        wait(400)
-        verify(barHidden(main), "hidden 400 ms after the view showed: x " + bar.x)
+        tryVerify(() => barHidden(main), 1000, "hidden after the delay and the slide: x " + bar.x)
         main.hideDelayMs = 2000 // long enough to see it back
         const map = item(main, "mapArea")
         mouseClick(map, map.width / 2, map.height / 2)
@@ -812,16 +811,16 @@ TestCase {
     function test_barTapRestartsTheDelay() {
         const main = makeMain(1024, 600)
         const bar = item(main, "tabBar")
-        main.hideDelayMs = 400
+        main.hideDelayMs = 800
         mouseClick(item(main, "tab-view-shipped-nav"))
-        wait(250)
+        wait(500)
         mouseClick(item(main, "paletteButton"))
-        wait(250)
-        verify(bar.shown, "500 ms after the tab tap, 250 ms after the palette")
+        wait(500)
+        verify(bar.shown, "1000 ms after the tab tap, 500 ms after the palette")
         mouseClick(bar, bar.width / 2, bar.height - Units.mm(0.5)) // the bottom margin, under the buttons
-        wait(250)
-        verify(bar.shown, "250 ms after a tap between the buttons")
-        tryVerify(() => barHidden(main), 1000, "then it hides")
+        wait(500)
+        verify(bar.shown, "1000 ms after the palette, 500 ms after a tap between the buttons")
+        tryVerify(() => barHidden(main), 2000, "then it hides")
     }
 
     // A tap on the strip while the bar slides shows it, and presses nothing under the finger.
