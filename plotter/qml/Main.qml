@@ -237,6 +237,7 @@ ApplicationWindow {
         height: root.height
         enabled: root.editing
         visible: root.editing
+        preventStealing: true // the map's pan handler under the strip sees the press too
     }
 
     LockOverlay {

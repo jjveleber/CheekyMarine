@@ -7,7 +7,8 @@ import QtQuick.Controls.Basic
 // Right) shrink the chart viewport; the corners float over the chart. The notice is the bottom line,
 // under a bottom bar. Each slot is drawn at its clamped size (PanelMath.drawnSizesMm), so no slot
 // leaves the page or runs into another; the stored sizes are not changed. In edit mode every slot is
-// shown outlined (the bars as if on, so nothing overlaps) and a tap on one emits slotTapped; the
+// shown outlined (the layout stays the live one: an off slot is only a faint 12 mm outline, under the
+// on slots, and takes no room) and a tap on one emits slotTapped; the
 // selected slot shows its resize handle. On a live view a 0.6 s hold on a shown slot emits slotHeld.
 Item {
     id: page
@@ -213,9 +214,10 @@ Item {
             unit: model.unit
             widestSample: model.widestSample
             drawnMm: page.drawn[slotId] !== undefined ? page.drawn[slotId] : sizeMm
-            // In edit mode the bars take room as if on, so nothing overlaps; an off corner is only a
-            // 12 mm outline and takes none.
-            readonly property bool takesRoom: on || (page.editing && (horizontalBar || verticalBar))
+            // Only an on slot takes room, editing or not: the editor's layout is the live one.
+            readonly property bool takesRoom: on
+            // In edit mode the on slots lie over the off outlines, and an off corner over an off bar.
+            z: !editing ? 0 : on ? 2 : horizontalBar || verticalBar ? 0 : 1
 
             editing: page.editing
             selected: page.selectedSlot === slotId

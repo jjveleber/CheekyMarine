@@ -84,11 +84,11 @@ BigButton {
     readonly property real hPerMm: (heightAtMm(chordHiMm) - heightAtMm(chordLoMm)) / (chordHiMm - chordLoMm)
     readonly property real fixedHMm: heightAtMm(chordLoMm) - hPerMm * chordLoMm
 
-    // An off corner in edit mode is a faint outline at the 12 mm control floor with its position
-    // name, not a box at its digit height.
-    readonly property bool offCorner: editing && !on && !horizontalBar && !verticalBar
-    implicitWidth: offCorner ? minimumSize : Math.max(minimumSize, implicitContentWidth + leftPadding + rightPadding)
-    implicitHeight: offCorner ? minimumSize : Math.max(minimumSize, implicitContentHeight + topPadding + bottomPadding)
+    // An off slot in edit mode is a faint outline at the 12 mm control floor with its position name,
+    // not a box at its digit height: a 12 mm square for a corner, a 12 mm strip along its edge for a
+    // bar (the page sets a bar's length).
+    implicitWidth: editing && !on ? minimumSize : Math.max(minimumSize, implicitContentWidth + leftPadding + rightPadding)
+    implicitHeight: editing && !on ? minimumSize : Math.max(minimumSize, implicitContentHeight + topPadding + bottomPadding)
 
     objectName: "slot-" + slotId
     enabled: editing
@@ -142,7 +142,7 @@ BigButton {
             anchors.centerIn: parent
             rowSpacing: Units.mm(1)
             columnSpacing: Units.mm(1.5)
-            // An off slot in edit mode keeps its box (as if on) but shows only its position name.
+            // An off slot in edit mode shows only its position name.
             opacity: slot.on ? 1 : 0
 
             Label {

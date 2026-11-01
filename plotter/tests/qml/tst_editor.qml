@@ -110,13 +110,6 @@ TestCase {
     function inside(a, b) {
         return a.x >= b.x - 0.5 && a.y >= b.y - 0.5 && a.x + a.w <= b.x + b.w + 0.5 && a.y + a.h <= b.y + b.h + 0.5
     }
-    // Stores the shipped Navigation view with TL at `mm`, before Main loads it.
-    function setStoredTL(mm) {
-        const v = fixture.views.viewJson("shipped-nav")
-        v.slots = v.slots.map(s => s.id === "TL" ? Object.assign({}, s, { sizeMm: mm }) : s)
-        verify(fixture.views.saveJson(v))
-        fixture.draft.loadJson(fixture.views.viewJson("shipped-nav"))
-    }
 
     function test_editorButtonsAndInertBar_data() { return H.sizes() }
     function test_editorButtonsAndInertBar(data) {
@@ -154,37 +147,53 @@ TestCase {
         verify(barShown(main))
     }
 
-    // An off corner in the editor is a 12 mm outline at its position that takes no room: on corners
-    // draw the same whatever its stored size, and it overlaps nothing.
-    function test_offCornersTakeNoRoomInTheEditor_data() { return H.sizes() }
-    function test_offCornersTakeNoRoomInTheEditor(data) {
+    // The editor's layout is the live one: on slots draw at their live sizes, and every off slot is
+    // a 12 mm outline (a square for a corner, a strip along its edge for a bar) inside the page that
+    // takes no room. An off corner overlaps no on slot; an off bar is a faint hint an on corner may
+    // lie over, under it.
+    function test_offSlotsTakeNoRoomInTheEditor_data() { return H.sizes() }
+    function test_offSlotsTakeNoRoomInTheEditor(data) {
         const main = makeMain(data.w, data.h)
-        main.editView("shipped-nav")
         const page = m(main, "chartPage")
         waitForRendering(page)
-        const before = [page.drawn.TL, page.drawn.TR]
-        const area = H.box(m(main, "cornerArea"), main.contentItem)
-        const slots = H.findAll(page, it => it.objectName.startsWith("slot-") && it.visible)
-        compare(slots.length, 8)
-        for (const id of ["BL", "BR"]) {
+        const live = [page.drawn.TL, page.drawn.TR]
+        const liveMap = H.box(m(main, "mapArea"), page)
+        main.editView("shipped-nav")
+        waitForRendering(page)
+        compare([page.drawn.TL, page.drawn.TR], live, "TL and TR drawn as on the live view")
+        compare(H.box(m(main, "mapArea"), page), liveMap, "the map area as on the live view")
+        const room = { x: 0, y: 0, w: page.width - page.rightInset, h: page.height }
+        const on = ["TL", "TR"].map(id => m(main, "slot-" + id))
+        for (const id of ["BL", "BR", "Top", "Bottom", "Left", "Right"]) {
             const s = m(main, "slot-" + id)
-            verify(!s.on && !s.takesRoom, id + " off, no room")
-            fuzzyCompare(s.width, Units.mm(12), 0.5)
-            fuzzyCompare(s.height, Units.mm(12), 0.5)
-            verify(inside(H.box(s, main.contentItem), area), id + " inside the corner area")
-            for (const o of slots) if (o !== s) verify(!H.overlaps(s, o, main.contentItem), id + " clear of " + o.objectName)
+            verify(s.visible && !s.on && !s.takesRoom, id + " outlined, off, no room")
+            const b = H.box(s, page)
+            verify(inside(b, room), id + " inside the page")
+            const bar = id === "Top" || id === "Bottom" || id === "Left" || id === "Right"
+            if (id !== "Left" && id !== "Right") fuzzyCompare(b.h, Units.mm(12), 0.5)
+            if (id !== "Top" && id !== "Bottom") fuzzyCompare(b.w, Units.mm(12), 0.5)
+            for (const o of on) {
+                if (bar) verify(s.z < o.z, id + " under " + o.objectName)
+                else verify(!H.overlaps(s, o, page), id + " clear of " + o.objectName)
+            }
         }
+        fuzzyCompare(H.box(m(main, "slot-Top"), page).w, room.w, 0.5)
+        fuzzyCompare(H.box(m(main, "slot-Left"), page).h, page.height - m(main, "noticeBar").height, 0.5)
         fixture.draft.setSlot("BL", false, "cog", 40)
-        fixture.draft.setSlot("BR", false, "wtemp", 40)
-        compare([page.drawn.TL, page.drawn.TR], before, "off corners change nothing")
-        for (const id of ["BL", "BR"]) fuzzyCompare(m(main, "slot-" + id).height, Units.mm(12), 0.5)
+        fixture.draft.setSlot("Top", false, "time", 30)
+        compare([page.drawn.TL, page.drawn.TR], live, "off slots change nothing")
+        fuzzyCompare(m(main, "slot-BL").height, Units.mm(12), 0.5)
+        fuzzyCompare(m(main, "slot-Top").height, Units.mm(12), 0.5)
+        // A tap on an off bar's strip opens its sheet.
+        mouseClick(m(main, "slot-Bottom"))
+        compare(find(m(main, "viewEditor"), "slotSheet").slotId, "Bottom")
     }
 
-    // Turning a corner On from its sheet makes it take room at once, clamped against the others.
+    // Turning a slot On from its sheet makes it take room at once, clamped against the others.
     function test_cornerOnTakesRoomAtOnce() {
         const main = makeMain(1024, 600)
         main.editView("shipped-nav")
-        fixture.draft.setSlot("BL", false, "cog", 60)
+        fixture.draft.setSlot("BL", false, "cog", 100)
         const page = m(main, "chartPage")
         mouseClick(m(main, "slot-BL"))
         const sheet = find(m(main, "viewEditor"), "slotSheet")
@@ -193,13 +202,28 @@ TestCase {
         const bl = m(main, "slot-BL")
         verify(bl.on && bl.takesRoom)
         const applied = draftSlot("BL").sizeMm
-        verify(applied < 60, "clamped: " + applied)
+        verify(applied < 100, "clamped: " + applied)
         verify(applied <= page.maxMmFor("BL") + 0.05, applied + " within " + page.maxMmFor("BL"))
         compare(sheet.sizeMm, applied, "the sheet shows the applied size")
         fuzzyCompare(sheet.maxMm, page.maxMmFor("BL"), 0.05)
         waitForRendering(page)
         verify(bl.height > Units.mm(12) + 0.5, "BL is a full box now")
         verify(!H.overlaps(bl, m(main, "slot-TL"), page), "BL clear of TL")
+        mouseClick(find(sheet, "sheetDone"))
+
+        // A bar: Top On moves the map area and the top corners down.
+        const map = m(main, "mapArea"), tl = m(main, "slot-TL")
+        const mapY = H.box(map, page).y, tlY = H.box(tl, page).y
+        mouseClick(m(main, "slot-Top")) // mid-length, clear of the corners
+        compare(sheet.slotId, "Top")
+        mouseClick(find(sheet, "choice-on"))
+        const top = m(main, "slot-Top")
+        verify(top.on && top.takesRoom)
+        compare(sheet.sizeMm, draftSlot("Top").sizeMm)
+        waitForRendering(page)
+        verify(H.box(map, page).y > mapY + 0.5, "the map area moved down")
+        verify(H.box(tl, page).y > tlY + 0.5, "TL moved down")
+        verify(!H.overlaps(top, tl, page), "Top clear of TL")
     }
 
     // The dimmed bar swallows presses: a drag on it pans nothing.
@@ -208,8 +232,7 @@ TestCase {
         main.editView("shipped-nav")
         const bar = m(main, "tabBar")
         const touched = createTemporaryObject(spyComp, testCase, { target: bar, signalName: "touched" })
-        // The map runs under the strip only when no Right bar takes room, as in the editor it
-        // always does: so check the press is taken over the bar, not just that nothing panned.
+        // The map runs under the strip (no Right bar is on): the press is taken over the bar.
         const cover = m(main, "inertBarCover")
         mousePress(bar, bar.width / 2, bar.height / 2)
         verify(cover.pressed, "the press is taken over the bar")
@@ -224,15 +247,17 @@ TestCase {
     }
 
     function test_slotSheetEditsTheDraftAndDoneSaves() {
-        // In the editor the Left and Right bars take room: with TL at 25 mm the TL and TR row holds
-        // TR at about 14 mm. TL at 6 mm leaves TR room to grow past 25 mm.
-        setStoredTL(6)
         const main = makeMain(1024, 600)
         editFromHome(main, "shipped-nav")
         compare(main.editorFrom, "home")
         const editor = m(main, "viewEditor")
         const sheet = find(editor, "slotSheet")
         verify(!sheet.visible)
+        // TL and TR at 25 mm leave no room in their row to grow: TL off first.
+        mouseClick(m(main, "slot-TL"))
+        mouseClick(find(sheet, "choice-off"))
+        mouseClick(find(sheet, "sheetDone"))
+        verify(!draftSlot("TL").on)
         mouseClick(m(main, "slot-TR"))
         verify(sheet.visible, "the slot sheet")
         compare(editor.selectedSlot, "TR")
@@ -393,12 +418,15 @@ TestCase {
         verify(shrunk < start && shrunk >= 6, "shrinks: " + start + " to " + shrunk)
         compare(sheet.sizeMm, shrunk, "the sheet shows it")
         waitForRendering(page)
-        // As far left as the window goes: the size there would be under 6.
-        const h = find(page, "handle-TL")
-        dragBy(main, h, 2 - h.mapToItem(main.contentItem, h.width / 2, 0).x)
+        // As far left as the window goes, again until it stops: it stops at 6.
+        for (let i = 0; i < 6 && draftSlot("TL").sizeMm > 6; ++i) {
+            const h = find(page, "handle-TL")
+            dragBy(main, h, 2 - h.mapToItem(main.contentItem, h.width / 2, 0).x)
+            waitForRendering(page)
+        }
         compare(draftSlot("TL").sizeMm, 6, "never below 6")
         waitForRendering(page)
-        dragBy(main, find(page, "handle-TL"), Units.mm(60))
+        dragBy(main, find(page, "handle-TL"), Units.mm(100)) // 60 mm from 6 mm does not reach the room left now
         const max = page.maxMmFor("TL")
         const grown = draftSlot("TL").sizeMm
         verify(grown > 6, "grows: " + grown)
