@@ -878,15 +878,17 @@ TestCase {
     function test_barTapRestartsTheDelay() {
         const main = makeMain(1024, 600)
         const bar = item(main, "tabBar")
-        main.hideDelayMs = 3000
+        // Each check is past the deadline before it (so only a restart keeps the bar) and 800 ms
+        // before its own (so a slow wait cannot fail it).
+        main.hideDelayMs = 2000
         mouseClick(item(main, "tab-view-shipped-nav"))
-        wait(500)
+        wait(1200)
         mouseClick(item(main, "paletteButton"))
-        wait(500)
-        verify(bar.shown, "500 ms after the palette")
+        wait(1200)
+        verify(bar.shown, "2400 ms after the tab tap, 1200 ms after the palette")
         mouseClick(bar, bar.width / 2, bar.height - Units.mm(0.5)) // the bottom margin, under the buttons
-        wait(500)
-        verify(bar.shown, "500 ms after a tap between the buttons")
+        wait(1200)
+        verify(bar.shown, "2400 ms after the palette, 1200 ms after a tap between the buttons")
         tryVerify(() => barHidden(main), 5000, "then it hides")
     }
 
