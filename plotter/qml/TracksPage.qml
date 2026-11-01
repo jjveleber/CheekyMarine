@@ -7,6 +7,7 @@ Item {
     id: page
     required property QtObject tracks   // TracksController
     required property QtObject settings // Settings
+    property real rightInset: 0         // the tab bar strip over the page's right edge
 
     objectName: "tracksPage"
 
@@ -51,7 +52,7 @@ Item {
     }
 
     Flickable {
-        anchors { top: recordButton.bottom; left: parent.left; right: parent.right; bottom: parent.bottom; margins: Units.mm(3) }
+        anchors { top: recordButton.bottom; left: parent.left; right: parent.right; bottom: parent.bottom; margins: Units.mm(3); rightMargin: Units.mm(3) + page.rightInset }
         contentHeight: column.implicitHeight
         clip: true
 
@@ -121,7 +122,7 @@ Item {
     Rectangle {
         id: confirm
         objectName: "confirmDelete"
-        anchors.fill: parent
+        anchors { fill: parent; rightMargin: page.rightInset }
         visible: false
         color: Theme.background
 

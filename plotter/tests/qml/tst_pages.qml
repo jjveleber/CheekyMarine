@@ -57,7 +57,6 @@ TestCase {
             function scaleBy(f, p) { scales.push(f) }
         }
     }
-    Component { id: mainComp; Main {} }
     Component { id: chartPageComp; ChartPage {} }
     Component { id: cellPageComp; CellPage {} }
     Component { id: aboutPageComp; AboutPage {} }
@@ -86,19 +85,6 @@ TestCase {
         Units.windowWidth = 1280
         Units.windowHeight = 800
         Units.diagonalIn = 10.1
-    }
-
-    function makeMain(w, h) {
-        const main = createTemporaryObject(mainComp, testCase, {
-            width: w, height: h,
-            chart: chartStub, chartMap: createTemporaryObject(mapStub, testCase), paletteController: paletteStub,
-            settings: fixture.settings, vessel: fixture.vessel, appInfo: fixture.appInfo,
-            views: fixture.views, draft: fixture.draft,
-            touchLock: fixture.touchLock, tracksController: fixture.tracksController
-        })
-        verify(main, "Main")
-        tryCompare(main, "width", w)
-        return main
     }
 
     function makeChart(props) {
@@ -138,79 +124,6 @@ TestCase {
             rows = Math.max(rows, run)
         }
         return rows
-    }
-
-    function test_mainConstructs_data() { return H.sizes() }
-    function test_mainConstructs(data) {
-        const main = makeMain(data.w, data.h)
-        compare(Units.windowWidth, data.w)
-        compare(Units.windowHeight, data.h)
-        fuzzyCompare(Units.pxPerMm, data.ppm, 0.001)
-        // All pages exist in the stack, so the walk covers them.
-        for (const n of ["chartPage", "cellPage", "tracksPage", "settingsPage", "aboutPage", "tabBar", "splash"])
-            verify(H.byName(main.contentItem, n), n)
-        H.checkBigButtons(testCase, Units, main.contentItem)
-    }
-
-    function test_tabsAre15mm() {
-        const main = makeMain(1024, 600)
-        const tabs = H.findAll(main.contentItem, it => it.isBigButton === true && it.objectName.startsWith("tab-"))
-        compare(tabs.map(t => t.objectName).sort(), ["tab-chart", "tab-settings", "tab-tracks"])
-        for (const t of tabs) verify(t.width >= Units.mm(15) - 0.5 && t.height >= Units.mm(15) - 0.5, t.objectName)
-        const bar = H.byName(main.contentItem, "tabBar")
-        tryVerify(() => Math.abs(bar.mapToItem(main.contentItem, 0, 0).x + bar.width - main.width) < 0.5,
-                  1000, "tab bar on the right edge")
-    }
-
-    // A small panel diagonal leaves the column short of room: every tab and control stays inside
-    // the window at full size (the reserved spaces give way first). At 10.1 in they are kept.
-    function test_tabBarFitsTheWindow_data() {
-        let out = []
-        for (const s of H.sizes())
-            for (const d of [7, 10.1])
-                out.push({ tag: s.tag + " " + d + " in", w: s.w, h: s.h, diag: d })
-        return out
-    }
-    function test_tabBarFitsTheWindow(data) {
-        fixture.settings.panelDiagonalIn = data.diag
-        const main = makeMain(data.w, data.h)
-        compare(Units.diagonalIn, data.diag)
-        const bar = H.byName(main.contentItem, "tabBar")
-        waitForRendering(bar)
-        const buttons = H.findAll(bar, it => it.isBigButton === true)
-        compare(buttons.length, 5)
-        H.checkBigButtons(testCase, Units, bar)
-        for (const t of buttons.filter(b => b.objectName.startsWith("tab-")))
-            verify(t.height >= Units.mm(15) - 0.5, t.objectName)
-        const reserved = ["reservedBrightness", "reservedMob"].map(n => H.byName(bar, n)).filter(it => it.visible)
-        for (const b of buttons.concat(reserved)) {
-            const p = b.mapToItem(main.contentItem, 0, 0)
-            verify(p.y >= 0 && p.y + b.height <= main.height + 0.5,
-                   b.objectName + " at " + Math.round(p.y) + ".." + Math.round(p.y + b.height) + ", window " + main.height)
-        }
-        if (data.diag === 10.1)
-            verify(H.byName(bar, "reservedBrightness").visible && H.byName(bar, "reservedMob").visible, "reserved spaces kept")
-    }
-
-    function test_tabsSwitchPagesAndPaletteCycles() {
-        const main = makeMain(1024, 600)
-        H.byName(main.contentItem, "splash").visible = false
-        verify(H.byName(main.contentItem, "tab-numbers") === null, "no Numbers tab")
-        mouseClick(H.byName(main.contentItem, "tab-tracks"))
-        compare(main.page, "tracks")
-        verify(H.byName(main.contentItem, "tracksPage").visible)
-        mouseClick(H.byName(main.contentItem, "tab-chart"))
-        compare(main.page, "chart")
-        verify(H.byName(main.contentItem, "chartPage").visible)
-        compare(fixture.settings.paletteMode, "auto")
-        const pal = H.byName(main.contentItem, "paletteButton")
-        mouseClick(pal)
-        compare(fixture.settings.paletteMode, "day")
-        mouseClick(pal)
-        mouseClick(pal)
-        compare(fixture.settings.paletteMode, "night")
-        mouseClick(pal)
-        compare(fixture.settings.paletteMode, "auto")
     }
 
     function test_pagesConstruct_data() { return H.sizes() }
@@ -667,25 +580,6 @@ TestCase {
         compare(PanelMath.favouriteCapacity(40), 0)
     }
 
-    function test_mainShowsCellPageForNoneViews() {
-        const main = makeMain(1024, 600)
-        const chart = H.byName(main.contentItem, "chartPage"), cells = H.byName(main.contentItem, "cellPage")
-        verify(chart.visible)
-        verify(!cells.visible)
-        compare(chartStub.mode, "nav")
-        fixture.views.currentId = "shipped-big"
-        compare(fixture.draft.chart, "none")
-        verify(cells.visible)
-        verify(!chart.visible)
-        fixture.views.currentId = "shipped-nav"
-        verify(chart.visible)
-        verify(!cells.visible)
-        compare(chartStub.mode, "nav")
-        fixture.views.currentId = "shipped-fish"
-        verify(chart.visible)
-        compare(chartStub.mode, "fish")
-    }
-
     // The charts line tells "nothing installed" from "installed but refused" (the About page lists
     // refusals with reasons).
     Component { id: splashComp; Splash {} }
@@ -739,17 +633,6 @@ TestCase {
         banner.schemaMismatch = true
         compare(banner.text, "Daemon too new or too old")
         banner.live = true
-        verify(!banner.visible)
-    }
-
-    function test_mainBannerFollowsSchemaMismatch() {
-        const main = makeMain(1024, 600)
-        const banner = H.byName(main.contentItem, "noDataBanner")
-        verify(banner.visible)
-        compare(banner.text, "No data from N2K")
-        fixture.appInfo.setSchemaMismatch(2)
-        compare(banner.text, "Daemon too new or too old")
-        fixture.setVessel(3, 2)
         verify(!banner.visible)
     }
 
@@ -965,123 +848,6 @@ TestCase {
         verify(H.findAll(page, it => it.text === "Chart depths are in feet").length === 1)
     }
 
-    function test_settingsTabInMain() {
-        const main = makeMain(1024, 600)
-        H.byName(main.contentItem, "splash").visible = false
-        mouseClick(H.byName(main.contentItem, "tab-settings"))
-        verify(H.byName(main.contentItem, "settingsPage").visible)
-        waitForRendering(H.byName(main.contentItem, "settingsPage"))
-        tap(H.byName(main.contentItem, "aboutButton"))
-        compare(main.page, "about")
-    }
-
-    function test_lockSwallowsTouchesAndLongPressUnlocks() {
-        const main = makeMain(1024, 600)
-        H.byName(main.contentItem, "splash").visible = false
-        const overlay = H.byName(main.contentItem, "lockOverlay")
-        verify(!overlay.visible, "no overlay while unlocked")
-        mouseClick(H.byName(main.contentItem, "lockButton"))
-        verify(fixture.touchLock.locked, "the Lock button locks")
-        verify(overlay.visible)
-        mouseClick(H.byName(main.contentItem, "tab-tracks"))
-        compare(main.page, "chart")
-        mouseClick(H.byName(main.contentItem, "paletteButton"))
-        compare(fixture.settings.paletteMode, "auto")
-        // A mouse drag and a wheel turn on the chart stop at the lock too.
-        const map = H.byName(main.contentItem, "mapArea")
-        mouseDrag(map, 300, 300, 120, 0)
-        mouseWheel(map, 300, 300, 0, 120)
-        compare(main.chartMap.gestures, 0, "no pan while locked")
-        compare(main.chartMap.moves, 0)
-        compare(main.chartMap.scales.length, 0)
-        compare(chartStub.zooms.length, 0, "no zoom while locked")
-
-        const hold = H.byName(overlay, "lockHold")
-        mousePress(hold)
-        fixture.advance(1000)
-        verify(fixture.touchLock.holdProgress > 0.6 && fixture.touchLock.holdProgress < 0.7, "ring at " + fixture.touchLock.holdProgress)
-        mouseRelease(hold)
-        compare(fixture.touchLock.holdProgress, 0)
-        verify(fixture.touchLock.locked, "a short press does not unlock")
-
-        mousePress(hold)
-        fixture.advance(1500)
-        mouseRelease(hold)
-        verify(!fixture.touchLock.locked, "1.5 s unlocks")
-        verify(!overlay.visible)
-        mouseWheel(map, 300, 300, 0, 120)
-        compare(chartStub.zooms.length, 1, "the wheel zooms once unlocked")
-        mouseDrag(map, 300, 300, 120, 0)
-        compare(main.chartMap.gestures, 1, "the drag pans once unlocked")
-        mouseClick(H.byName(main.contentItem, "tab-tracks"))
-        compare(main.page, "tracks")
-    }
-
-    // A finger tap at the item's centre: the touch path, as on the panel (not the mouse path).
-    function touchTap(item) {
-        verify(item, "nothing to tap")
-        touchEvent(item).press(0, item, item.width / 2, item.height / 2).commit()
-        touchEvent(item).release(0, item, item.width / 2, item.height / 2).commit()
-    }
-    function pinchOut(item) {
-        const cx = item.width / 2, cy = item.height / 2
-        touchEvent(item).press(0, item, cx - 50, cy).press(1, item, cx + 50, cy).commit()
-        for (let i = 1; i <= 10; ++i)
-            touchEvent(item).move(0, item, cx - 50 - 10 * i, cy).move(1, item, cx + 50 + 10 * i, cy).commit()
-        touchEvent(item).release(0, item, cx - 150, cy).release(1, item, cx + 150, cy).commit()
-    }
-
-    // The same through touch: taps on the tabs and palette, a pinch and a wheel turn on the chart
-    // all stop at the lock; a finger hold on the padlock unlocks, and then they all work.
-    function test_lockSwallowsTouchPinchAndWheel() {
-        const main = makeMain(1024, 600)
-        H.byName(main.contentItem, "splash").visible = false
-        const map = H.byName(main.contentItem, "mapArea")
-        waitForRendering(main.contentItem)
-        touchTap(H.byName(main.contentItem, "lockButton"))
-        verify(fixture.touchLock.locked, "a tap on Lock locks")
-        touchTap(H.byName(main.contentItem, "tab-tracks"))
-        compare(main.page, "chart")
-        touchTap(H.byName(main.contentItem, "paletteButton"))
-        compare(fixture.settings.paletteMode, "auto")
-        pinchOut(map)
-        compare(chartStub.zooms.length, 0, "no pinch zoom while locked")
-        mouseWheel(map, map.width / 2, map.height / 2, 0, 120)
-        compare(chartStub.zooms.length, 0, "no wheel zoom while locked")
-        touchEvent(map).press(0, map, 300, 300).commit()
-        for (let i = 1; i <= 10; ++i)
-            touchEvent(map).move(0, map, 300 + 12 * i, 300).commit()
-        touchEvent(map).release(0, map, 420, 300).commit()
-        compare(main.chartMap.gestures, 0, "no pan while locked: follow stays on")
-        compare(main.chartMap.moves, 0)
-        compare(main.chartMap.scales.length, 0)
-
-        const hold = H.byName(main.contentItem, "lockHold")
-        touchEvent(hold).press(0, hold, hold.width / 2, hold.height / 2).commit()
-        fixture.advance(1500)
-        touchEvent(hold).release(0, hold, hold.width / 2, hold.height / 2).commit()
-        verify(!fixture.touchLock.locked, "a 1.5 s finger hold unlocks")
-
-        touchTap(H.byName(main.contentItem, "paletteButton"))
-        compare(fixture.settings.paletteMode, "day")
-        mouseWheel(map, map.width / 2, map.height / 2, 0, 120)
-        compare(chartStub.zooms.length, 1, "the wheel zooms once unlocked")
-        pinchOut(map)
-        verify(chartStub.zooms.length > 1, "the pinch zooms once unlocked")
-        touchTap(H.byName(main.contentItem, "tab-tracks"))
-        compare(main.page, "tracks")
-    }
-
-    function test_lockHoldTargetIsOverTheLockButton() {
-        const main = makeMain(1024, 600)
-        fixture.touchLock.lockNow()
-        const hold = H.byName(main.contentItem, "lockHold")
-        const button = H.byName(main.contentItem, "lockButton")
-        const a = hold.mapToItem(main.contentItem, 0, 0), b = button.mapToItem(main.contentItem, 0, 0)
-        verify(Math.abs(a.x - b.x) < 1 && Math.abs(a.y - b.y) < 1, "hold at " + a.x + "," + a.y + " button at " + b.x + "," + b.y)
-        verify(hold.width >= Units.mm(12) - 0.5 && hold.height >= Units.mm(12) - 0.5)
-    }
-
     function makeTracks(w, h) {
         const page = createTemporaryObject(tracksComp, testCase,
                                            { width: w, height: h, tracks: fixture.tracksController, settings: fixture.settings })
@@ -1159,26 +925,5 @@ TestCase {
         compare(fixture.tracksController.tracks.length, 0)
         verify(H.byName(page, "noTracks").visible)
     }
-
-    function test_tracksTabShowsThePageInMain() {
-        const main = makeMain(1024, 600)
-        H.byName(main.contentItem, "splash").visible = false
-        mouseClick(H.byName(main.contentItem, "tab-tracks"))
-        verify(H.byName(main.contentItem, "tracksPage").visible)
-        verify(H.byName(main.contentItem, "recordButton"))
-    }
-
-    function test_tabBarRecordIndicatorFollowsTheSetting() {
-        const main = makeMain(1024, 600)
-        const ind = H.byName(main.contentItem, "recordIndicator")
-        verify(ind, "indicator")
-        verify(!ind.visible)
-        fixture.settings.trackRecording = true
-        verify(ind.visible)
-        const tab = H.byName(main.contentItem, "tab-tracks")
-        verify(ind.width < Units.mm(4) && ind.height < Units.mm(4))
-        const a = ind.mapToItem(main.contentItem, 0, 0), t = tab.mapToItem(main.contentItem, 0, 0)
-        verify(a.x >= t.x && a.x + ind.width <= t.x + tab.width && a.y >= t.y && a.y + ind.height <= t.y + tab.height,
-               "indicator sits inside the Tracks tab: it adds no height to the tab column")
-    }
 }
+

@@ -1,7 +1,7 @@
 import QtQuick
 import QtQuick.Controls.Basic
 
-// Boot splash: app version, the charts and bathy packs (version and region) and the nav notice,
+// Boot splash: the sailboat icon, app version, the charts and bathy packs (version and region) and the nav notice,
 // shown for at least `minimumMs`, then it hides itself.
 Rectangle {
     id: splash
@@ -28,6 +28,13 @@ Rectangle {
         width: Math.min(parent.width - Units.mm(10), Units.mm(170))
         spacing: Units.mm(3)
 
+        Icon {
+            anchors.horizontalCenter: parent.horizontalCenter
+            width: Units.mm(16)
+            height: Units.mm(16)
+            name: "sailboat"
+            color: Theme.text
+        }
         Label {
             anchors.horizontalCenter: parent.horizontalCenter
             text: "CheekyMarine"

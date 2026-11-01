@@ -1,28 +1,27 @@
 import QtQuick
 import QtQuick.Controls.Basic
 
-// The right edge: page tabs (Chart, Tracks, Settings), then the global controls: touch
-// lock, palette cycle (auto, day, dusk, night), and two reserved spaces
-// (brightness, MOB).
+// The right edge, top to bottom: one tab per favourite view that fits (tabViews), the house tab
+// (Home), a 2 mm gap, then the global controls: touch lock and palette cycle (auto, day, dusk,
+// night). Main sizes tabViews to what fits, so the column never scrolls. A tap on a view tab
+// selects it, a 0.6 s hold emits viewHeld; every button press emits touched.
 Rectangle {
     id: bar
-    property string current: "chart"
+    property var tabViews: []          // [{id, shortName, icon}]
+    property string currentId: ""      // the shown view's id: its tab is highlighted
+    property bool homeHighlighted: false
     property string paletteMode: "auto"
-    property bool recording: false // track recording on: a dot on the Tracks tab
-    signal pageSelected(string page)
-    signal paletteCycled()
+    property bool recording: false     // track recording on: a dot on the house tab's corner
+    property bool shown: true
+    signal viewSelected(string id)
+    signal viewHeld(string id)
+    signal homeSelected()
     signal lockRequested()
+    signal paletteCycled()
+    signal touched()
     readonly property Item lockButton: lockBtn
 
     readonly property real tab: Units.mm(15)
-    readonly property real control: Units.mm(12)
-    // Room for all of it: three tabs, the gap, Lock, palette and both reserved spaces, at 1 mm
-    // spacing and margins.
-    readonly property bool roomy: height >= 3 * tab + 4 * control + Units.mm(2) + 9 * Units.mm(1)
-    // A short window (a small panel diagonal): the gap and the reserved spaces go, and the spacing
-    // tightens, so every tab and control stays inside the window at full size.
-    readonly property real spacing: roomy ? Units.mm(1)
-                                          : Math.max(0, Math.min(Units.mm(1), (height - 3 * tab - 2 * control) / 6))
     objectName: "tabBar"
     implicitWidth: tab + 2 * Units.mm(1)
     color: Theme.background
@@ -31,30 +30,72 @@ Rectangle {
         id: column
         anchors {
             fill: parent
-            leftMargin: Units.mm(1); rightMargin: Units.mm(1)
-            topMargin: bar.spacing; bottomMargin: bar.spacing
+            margins: Units.mm(1)
         }
-        spacing: bar.spacing
+        spacing: Units.mm(1)
 
         Repeater {
-            id: tabs
-            model: [{ page: "chart", label: "Chart" }, { page: "tracks", label: "Tracks" },
-                    { page: "settings", label: "Settings" }]
+            model: bar.tabViews
             BigButton {
+                id: viewTab
                 required property var modelData
-                objectName: "tab-" + modelData.page
+                property bool wasHeld: false
+                objectName: "tab-view-" + modelData.id
                 width: bar.tab
                 height: bar.tab
-                leftPadding: Units.mm(0.3)
-                rightPadding: Units.mm(0.3)
-                font.pixelSize: Units.mm(2.9)
-                text: modelData.label
-                highlighted: bar.current === modelData.page
-                onClicked: bar.pageSelected(modelData.page)
+                padding: Units.mm(0.3)
+                highlighted: modelData.id === bar.currentId
+                onPressed: { wasHeld = false; bar.touched() }
+                onClicked: if (!wasHeld) bar.viewSelected(modelData.id)
+                contentItem: Column {
+                    spacing: Units.mm(0.3)
+                    topPadding: (viewTab.availableHeight - icon.height - name.implicitHeight - spacing) / 2
+                    Icon {
+                        id: icon
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        width: Units.mm(6.5)
+                        height: Units.mm(6.5)
+                        name: viewTab.modelData.icon
+                    }
+                    Label {
+                        id: name
+                        width: parent.width
+                        text: viewTab.modelData.shortName
+                        color: Theme.buttonText
+                        font.pixelSize: Units.mm(2.9)
+                        horizontalAlignment: Text.AlignHCenter
+                        elide: Text.ElideRight
+                    }
+                }
+                TapHandler {
+                    longPressThreshold: 0.6
+                    onLongPressed: {
+                        viewTab.wasHeld = true
+                        bar.viewHeld(viewTab.modelData.id)
+                    }
+                }
             }
         }
 
-        Item { visible: bar.roomy; width: 1; height: Units.mm(2) }
+        BigButton {
+            id: homeTab
+            objectName: "tab-home"
+            width: bar.tab
+            height: bar.tab
+            highlighted: bar.homeHighlighted
+            onPressed: bar.touched()
+            onClicked: bar.homeSelected()
+            contentItem: Item {
+                Icon {
+                    anchors.centerIn: parent
+                    width: Units.mm(7.5)
+                    height: Units.mm(7.5)
+                    name: "home"
+                }
+            }
+        }
+
+        Item { width: 1; height: Units.mm(2) }
 
         BigButton {
             id: lockBtn
@@ -62,6 +103,7 @@ Rectangle {
             width: bar.tab
             font.pixelSize: Units.mm(2.9)
             text: "Lock"
+            onPressed: bar.touched()
             onClicked: bar.lockRequested()
         }
         BigButton {
@@ -69,23 +111,20 @@ Rectangle {
             width: bar.tab
             font.pixelSize: Units.mm(2.9)
             text: bar.paletteMode.charAt(0).toUpperCase() + bar.paletteMode.slice(1)
+            onPressed: bar.touched()
             onClicked: bar.paletteCycled()
         }
-        // Reserved: brightness (plan 5) and MOB (phase 2).
-        Item { objectName: "reservedBrightness"; visible: bar.roomy; width: bar.tab; height: bar.control }
-        Item { objectName: "reservedMob"; visible: bar.roomy; width: bar.tab; height: bar.control }
     }
 
-    // Over the corner of the Tracks tab, so the column keeps its height.
+    // Over the corner of the house tab, so the column keeps its height.
     Rectangle {
         objectName: "recordIndicator"
-        readonly property Item tracksTab: tabs.count > 1 ? tabs.itemAt(1) : null
-        visible: bar.recording && tracksTab !== null
+        visible: bar.recording
         width: Units.mm(2.6)
         height: width
         radius: width / 2
-        x: tracksTab ? column.x + tracksTab.x + tracksTab.width - width - Units.mm(1.2) : 0
-        y: tracksTab ? column.y + tracksTab.y + Units.mm(1.2) : 0
+        x: column.x + homeTab.x + homeTab.width - width - Units.mm(1.2)
+        y: column.y + homeTab.y + Units.mm(1.2)
         color: Theme.alertBackground
         border.color: Theme.buttonText
         border.width: 1

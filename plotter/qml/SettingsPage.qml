@@ -6,6 +6,7 @@ import QtQuick.Controls.Basic
 Item {
     id: page
     required property QtObject settings // Settings
+    property real rightInset: 0         // the tab bar strip over the page's right edge
     signal editOverlays()
     signal showAbout()
 
@@ -128,6 +129,7 @@ Item {
         objectName: "settingsScroller"
         anchors.fill: parent
         anchors.margins: Units.mm(3)
+        anchors.rightMargin: Units.mm(3) + page.rightInset
         contentWidth: width
         contentHeight: column.implicitHeight
         clip: true
@@ -249,7 +251,7 @@ Item {
         property var choices: []
         property var current: null
         property var apply: null
-        anchors.fill: parent
+        anchors { fill: parent; rightMargin: page.rightInset }
         visible: false
         color: Theme.background
 

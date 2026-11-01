@@ -93,6 +93,7 @@ qt_add_qml_module(plotterqml
     QML_FILES qml/Main.qml qml/ChartPage.qml qml/Theme.qml qml/Units.qml qml/BigButton.qml qml/Icon.qml qml/TabBar.qml
         qml/Splash.qml qml/SlotView.qml qml/CellPage.qml qml/AboutPage.qml
         qml/NoDataBanner.qml qml/RecoveryScreen.qml qml/SettingsPage.qml qml/LockOverlay.qml qml/TracksPage.qml qml/LegendSheet.qml qml/AisSheet.qml
+        qml/HomePage.qml qml/ViewTile.qml qml/ViewThumb.qml qml/TileMenu.qml
     SOURCES src/qml/PanelMath.h src/qml/IconsQml.h src/qml/LayoutsQml.h
     RESOURCES fonts/NotoSans-Regular.ttf fonts/NotoSans-Bold.ttf
         icons/tabler/anchor.svg icons/tabler/fish.svg icons/tabler/hash.svg icons/tabler/sailboat.svg

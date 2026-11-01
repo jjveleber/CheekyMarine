@@ -93,7 +93,7 @@ int main(int argc, char* argv[]) {
     // Dev and checkpoint aids: write Settings::paletteMode at start (it persists); choose the page
     // shown first (not stored).
     QCommandLineOption paletteOpt("palette", "Set the palette mode: auto, day, dusk or night.", "mode");
-    QCommandLineOption pageOpt("page", "Page shown first: chart, tracks, settings or about.", "page");
+    QCommandLineOption pageOpt("page", "Page shown first: home, view, tracks, settings or about.", "page");
     QCommandLineOption sheetOpt("sheet", "Open a sheet on the chart page: legend or ais.", "sheet");
     QCommandLineOption lockOpt("lock", "Start with the touch lock on.");
     QCommandLineOption recordOpt("record", "Turn track recording on at start (it persists).");
@@ -122,7 +122,7 @@ int main(int argc, char* argv[]) {
         qCritical() << "--palette wants auto, day, dusk or night, got" << cli.value(paletteOpt);
         return 2;
     }
-    const QStringList pages{"chart", "tracks", "settings", "about"};
+    const QStringList pages{"home", "view", "tracks", "settings", "about"};
     if (cli.isSet(pageOpt) && !pages.contains(cli.value(pageOpt))) {
         qCritical() << "--page wants one of" << pages << "got" << cli.value(pageOpt);
         return 2;
@@ -248,7 +248,7 @@ int main(int argc, char* argv[]) {
                                  {"draft", QVariant::fromValue(&draft)},
                                  {"touchLock", QVariant::fromValue(&touchLock)},
                                  {"tracksController", QVariant::fromValue(&tracksController)},
-                                 {"page", cli.isSet(pageOpt) ? cli.value(pageOpt) : QStringLiteral("chart")},
+                                 {"page", cli.isSet(pageOpt) ? cli.value(pageOpt) : QStringLiteral("view")},
                                  {"legendOpen", cli.value(sheetOpt) == "legend"}});
     engine.loadFromModule("CheekyMarine", "Main");
     if (engine.rootObjects().isEmpty()) {
