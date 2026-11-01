@@ -43,8 +43,6 @@ private slots:
         QVERIFY(!s.trackRecording());
         QCOMPARE(s.trackIntervalS(), 5);
         QCOMPARE(s.trackMinDistanceM(), 10.0);
-        QVERIFY(s.slotsJson().toArray().isEmpty());
-        QCOMPARE(s.bigNumbers(), (QStringList{"depth", "sog"}));
         const UnitPrefs p = s.unitPrefs();
         QCOMPARE(p.depth, DepthUnit::Feet);
         QCOMPARE(p.speed, SpeedUnit::Knots);
@@ -64,7 +62,6 @@ private slots:
             s.setSpeedUnit("kmh");
             s.setTempUnit("C");
             s.setApplyDepthOffset(false);
-            s.setBigNumbers({"depth", "stw", "cog"});
             s.setTouchLockTimeoutS(0);
             s.setTrackRecording(true);
             QTest::ignoreMessage(QtWarningMsg, QRegularExpression("paletteMode"));
@@ -83,7 +80,6 @@ private slots:
         auto st = Store::open(t.path());
         Settings s(**st);
         QCOMPARE(s.orientation(), QStringLiteral("north"));
-        QCOMPARE(s.bigNumbers(), (QStringList{"depth", "stw", "cog"}));
         QCOMPARE(s.touchLockTimeoutS(), 0);
         QCOMPARE(s.lastPalette(), QStringLiteral("night"));
         QCOMPARE(s.lastViewId(), QStringLiteral("shipped-big"));

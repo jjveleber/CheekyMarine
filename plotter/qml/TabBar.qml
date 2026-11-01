@@ -1,7 +1,7 @@
 import QtQuick
 import QtQuick.Controls.Basic
 
-// The right edge: page tabs (Chart, Numbers, Tracks, Settings), then the global controls: touch
+// The right edge: page tabs (Chart, Tracks, Settings), then the global controls: touch
 // lock, palette cycle (auto, day, dusk, night), and two reserved spaces
 // (brightness, MOB).
 Rectangle {
@@ -16,13 +16,13 @@ Rectangle {
 
     readonly property real tab: Units.mm(15)
     readonly property real control: Units.mm(12)
-    // Room for all of it: four tabs, the gap, Lock, palette and both reserved spaces, at 1 mm
+    // Room for all of it: three tabs, the gap, Lock, palette and both reserved spaces, at 1 mm
     // spacing and margins.
-    readonly property bool roomy: height >= 4 * tab + 4 * control + Units.mm(2) + 10 * Units.mm(1)
+    readonly property bool roomy: height >= 3 * tab + 4 * control + Units.mm(2) + 9 * Units.mm(1)
     // A short window (a small panel diagonal): the gap and the reserved spaces go, and the spacing
     // tightens, so every tab and control stays inside the window at full size.
     readonly property real spacing: roomy ? Units.mm(1)
-                                          : Math.max(0, Math.min(Units.mm(1), (height - 4 * tab - 2 * control) / 7))
+                                          : Math.max(0, Math.min(Units.mm(1), (height - 3 * tab - 2 * control) / 6))
     objectName: "tabBar"
     implicitWidth: tab + 2 * Units.mm(1)
     color: Theme.background
@@ -38,8 +38,8 @@ Rectangle {
 
         Repeater {
             id: tabs
-            model: [{ page: "chart", label: "Chart" }, { page: "numbers", label: "Numbers" },
-                    { page: "tracks", label: "Tracks" }, { page: "settings", label: "Settings" }]
+            model: [{ page: "chart", label: "Chart" }, { page: "tracks", label: "Tracks" },
+                    { page: "settings", label: "Settings" }]
             BigButton {
                 required property var modelData
                 objectName: "tab-" + modelData.page
@@ -79,7 +79,7 @@ Rectangle {
     // Over the corner of the Tracks tab, so the column keeps its height.
     Rectangle {
         objectName: "recordIndicator"
-        readonly property Item tracksTab: tabs.count > 2 ? tabs.itemAt(2) : null
+        readonly property Item tracksTab: tabs.count > 1 ? tabs.itemAt(1) : null
         visible: bar.recording && tracksTab !== null
         width: Units.mm(2.6)
         height: width

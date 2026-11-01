@@ -12,11 +12,11 @@ ApplicationWindow {
     required property QtObject settings           // Settings
     required property QtObject vessel             // VesselModel
     required property QtObject appInfo            // AppInfo
-    required property var slotsModel              // SlotsModel
-    required property var numbersModel            // NumbersModel
+    required property QtObject views              // ViewsModel
+    required property QtObject draft              // ViewDraft: the shown view
     required property QtObject touchLock          // TouchLock
     required property QtObject tracksController   // TracksController
-    // chart, numbers, tracks, settings or about
+    // chart (the shown view), tracks, settings or about
     property string page: "chart"
     property bool legendOpen: false // dev option --sheet legend
 
@@ -32,7 +32,18 @@ ApplicationWindow {
     Binding { target: Units; property: "windowHeight"; value: root.height }
     Binding { target: Units; property: "diagonalIn"; value: root.settings.panelDiagonalIn }
 
-    readonly property var pages: ["chart", "numbers", "tracks", "settings", "about"]
+    readonly property var pages: ["chart", "tracks", "settings", "about"]
+
+    // The current view into the draft; its chart picks the chart mode.
+    function showCurrentView() {
+        root.draft.loadJson(root.views.viewJson(root.views.currentId))
+        root.chart.mode = root.draft.chart === "fish" ? "fish" : "nav"
+    }
+    Component.onCompleted: showCurrentView()
+    Connections {
+        target: root.views
+        function onCurrentIdChanged() { root.showCurrentView() }
+    }
 
     RowLayout {
         anchors.fill: parent
@@ -54,15 +65,22 @@ ApplicationWindow {
                 Layout.fillHeight: true
                 currentIndex: Math.max(0, root.pages.indexOf(root.page))
 
-                ChartPage {
-                    id: chartPage
-                    chart: root.chart
-                    chartMap: root.chartMap
-                    slotsModel: root.slotsModel
-                    Component.onCompleted: if (root.legendOpen) openLegend()
-                }
-                NumbersPage {
-                    model: root.numbersModel
+                // A view with a chart shows the chart page, one without the cell page.
+                Item {
+                    ChartPage {
+                        id: chartPage
+                        anchors.fill: parent
+                        visible: root.draft.chart !== "none"
+                        chart: root.chart
+                        chartMap: root.chartMap
+                        draft: root.draft
+                        Component.onCompleted: if (root.legendOpen) openLegend()
+                    }
+                    CellPage {
+                        anchors.fill: parent
+                        visible: root.draft.chart === "none"
+                        draft: root.draft
+                    }
                 }
                 TracksPage {
                     tracks: root.tracksController

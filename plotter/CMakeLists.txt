@@ -36,7 +36,6 @@ add_library(plottercore STATIC
     src/core/ViewsModel.cpp
     src/core/ViewDraft.cpp
     src/core/SlotClamp.cpp
-    src/core/NumbersModel.cpp
     src/core/AppInfo.cpp
     src/core/Recovery.cpp
     src/core/TouchLock.cpp
@@ -92,16 +91,16 @@ qt_add_qml_module(plotterqml
     URI CheekyMarine
     VERSION 1.0
     QML_FILES qml/Main.qml qml/ChartPage.qml qml/Theme.qml qml/Units.qml qml/BigButton.qml qml/Icon.qml qml/TabBar.qml
-        qml/Splash.qml qml/SlotView.qml qml/SlotEditor.qml qml/NumbersPage.qml qml/AboutPage.qml
+        qml/Splash.qml qml/SlotView.qml qml/CellPage.qml qml/AboutPage.qml
         qml/NoDataBanner.qml qml/RecoveryScreen.qml qml/SettingsPage.qml qml/LockOverlay.qml qml/TracksPage.qml qml/LegendSheet.qml qml/AisSheet.qml
-    SOURCES src/qml/PanelMath.h src/qml/IconsQml.h
+    SOURCES src/qml/PanelMath.h src/qml/IconsQml.h src/qml/LayoutsQml.h
     RESOURCES fonts/NotoSans-Regular.ttf fonts/NotoSans-Bold.ttf
         icons/tabler/anchor.svg icons/tabler/fish.svg icons/tabler/hash.svg icons/tabler/sailboat.svg
         icons/tabler/ship.svg icons/tabler/lifebuoy.svg icons/tabler/map.svg icons/tabler/compass.svg
         icons/tabler/gauge.svg icons/tabler/sun.svg icons/tabler/moon.svg icons/tabler/ripple.svg
         icons/tabler/flag.svg icons/tabler/star.svg icons/tabler/settings.svg icons/tabler/home.svg)
 target_link_libraries(plotterqml PRIVATE plottercore Qt6::Quick Qt6::QuickControls2)
-# The generated type registration includes PanelMath.h and IconsQml.h by their bare names.
+# The generated type registration includes PanelMath.h, IconsQml.h and LayoutsQml.h by their bare names.
 target_include_directories(plotterqml PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src/qml)
 
 qt_add_executable(cheekyplotter src/app/main.cpp src/app/MapLibreChartMap.cpp src/app/Icons.cpp)

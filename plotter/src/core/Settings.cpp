@@ -51,15 +51,6 @@ const std::map<QString, Def>& defs() {
         {"trackRecording", {false, isBool()}},
         {"trackIntervalS", {5, isInt(1)}},
         {"trackMinDistanceM", {10, isNum(0)}},
-        {"slots", {QJsonArray(), [](const QJsonValue&) { return true; }}}, // owned by the slot editor (Task 12)
-        {"bigNumbers", {QJsonArray{"depth", "sog"}, [](const QJsonValue& v) {
-                            if (!v.isArray())
-                                return false;
-                            for (const auto& e : v.toArray())
-                                if (!e.isString())
-                                    return false;
-                            return true;
-                        }}},
     };
     return d;
 }
@@ -108,18 +99,6 @@ Settings::Settings(Store& store, QObject* parent) : QObject(parent), m_store(sto
         for (const char* k : {"shallowM", "safetyM", "deepM"})
             m_v.insert(k, defs().at(k).def);
     }
-}
-
-QStringList Settings::bigNumbers() const {
-    QStringList l;
-    for (const auto& e : m_v.value("bigNumbers").toArray())
-        l << e.toString();
-    return l;
-}
-
-void Settings::setBigNumbers(const QStringList& v) {
-    if (put("bigNumbers", QJsonArray::fromStringList(v)))
-        emit bigNumbersChanged();
 }
 
 bool Settings::write(const QString& key, const QJsonValue& v) {

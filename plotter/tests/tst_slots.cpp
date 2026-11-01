@@ -1,21 +1,14 @@
-#include "core/NumbersModel.h"
 #include "core/Settings.h"
 #include "core/Slots.h"
 #include "core/Store.h"
 #include "core/Units.h"
 #include "core/VesselModel.h"
 #include <QJsonDocument>
-#include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QtTest>
 
 namespace {
 QJsonArray parse(const char* json) { return QJsonDocument::fromJson(json).array(); }
-
-QString row(const QAbstractItemModel& m, int r, const char* role) {
-    const QHash<int, QByteArray> names = m.roleNames();
-    return m.data(m.index(r, 0), names.key(role)).toString();
-}
 
 // A Store, Settings and VesselModel in a temporary directory.
 struct Env {
@@ -94,175 +87,44 @@ private slots:
         QCOMPARE(c.at(1).toMap().value("label").toString(), QStringLiteral("SOG"));
     }
 
-    void slotsModelReadsAndWritesSettings() {
+    // The formatted and unit texts the slot and cell models show follow the vessel and the unit settings.
+    void fieldRoleTextFollowsVesselAndUnits() {
         Env e;
         QVERIFY(e.settings);
-        e.settings->setSlotsJson(parse(R"([{"id":"BR","on":true,"field":"rpm","size":"small"}])"));
-        SlotsModel m(*e.settings, e.vessel);
-        QCOMPARE(m.rowCount(), 8);
-        QCOMPARE(row(m, 3, "slotId"), QStringLiteral("BR"));
-        QCOMPARE(m.data(m.index(3, 0), SlotsModel::OnRole).toBool(), true);
-        QCOMPARE(row(m, 3, "field"), QStringLiteral("rpm"));
-        QCOMPARE(row(m, 3, "fieldLabel"), QStringLiteral("RPM"));
-        QCOMPARE(row(m, 3, "size"), QStringLiteral("small"));
-        QCOMPARE(row(m, 0, "formatted"), QStringLiteral("--"));
-        QCOMPARE(row(m, 0, "unit"), QStringLiteral("ft"));
-
-        QSignalSpy changed(&m, &QAbstractItemModel::dataChanged);
-        m.setSlot("Left", true, "cog", "large");
-        QCOMPARE(changed.count(), 1);
-        QCOMPARE(m.slotConfigs().at(6), (SlotConfig{SlotId::Left, true, Field::Cog, SlotSize::Large}));
-        QCOMPARE(slotsFromJson(e.settings->slotsJson().toArray()), m.slotConfigs());
-
-        // Rejected: unknown id, field or size.
-        QTest::ignoreMessage(QtWarningMsg, QRegularExpression("slots: rejected"));
-        m.setSlot("Middle", true, "cog", "large");
-        QTest::ignoreMessage(QtWarningMsg, QRegularExpression("slots: rejected"));
-        m.setSlot("TL", true, "warp", "large");
-        QTest::ignoreMessage(QtWarningMsg, QRegularExpression("slots: rejected"));
-        m.setSlot("TL", true, "depth", "huge");
-        QCOMPARE(m.slotConfigs().at(0), defaultSlots().at(0));
-
-        // A second model on the same settings sees the stored slots.
-        SlotsModel again(*e.settings, e.vessel);
-        QCOMPARE(again.slotConfigs(), m.slotConfigs());
-    }
-
-    void slotsModelFormattedFollowsVesselAndUnits() {
-        Env e;
-        SlotsModel m(*e.settings, e.vessel);
-        QSignalSpy changed(&m, &QAbstractItemModel::dataChanged);
+        QCOMPARE(fieldRoleText(Field::Depth, false, e.vessel, *e.settings), QStringLiteral("--"));
+        QCOMPARE(fieldRoleText(Field::Depth, true, e.vessel, *e.settings), QStringLiteral("ft"));
         VesselState s;
         s.depthM = 12 * 0.3048;
         s.sogMs = 5.2 * 1852.0 / 3600.0;
         e.vessel.setLive(true);
         e.vessel.setState(s);
-        QVERIFY(changed.count() >= 1);
-        QCOMPARE(row(m, 0, "formatted"), QStringLiteral("12"));
-        QCOMPARE(row(m, 1, "formatted"), QStringLiteral("5.2"));
-        QCOMPARE(row(m, 1, "unit"), QStringLiteral("kn"));
-        const int before = changed.count();
+        QCOMPARE(fieldRoleText(Field::Depth, false, e.vessel, *e.settings), QStringLiteral("12"));
+        QCOMPARE(fieldRoleText(Field::Sog, false, e.vessel, *e.settings), QStringLiteral("5.2"));
+        QCOMPARE(fieldRoleText(Field::Sog, true, e.vessel, *e.settings), QStringLiteral("kn"));
         e.settings->setDepthUnit("m");
-        QVERIFY(changed.count() > before);
-        QCOMPARE(row(m, 0, "formatted"), QStringLiteral("3.7"));
-        QCOMPARE(row(m, 0, "unit"), QStringLiteral("m"));
+        QCOMPARE(fieldRoleText(Field::Depth, false, e.vessel, *e.settings), QStringLiteral("3.7"));
+        QCOMPARE(fieldRoleText(Field::Depth, true, e.vessel, *e.settings), QStringLiteral("m"));
         e.settings->setSpeedUnit("kmh");
-        QCOMPARE(row(m, 1, "unit"), QStringLiteral("km/h"));
+        QCOMPARE(fieldRoleText(Field::Sog, true, e.vessel, *e.settings), QStringLiteral("km/h"));
     }
 
-    // A newer app's extra slot, per-slot keys and field name survive an edit of one slot (Review Focus 5, R34).
-    void unknownSlotsAndKeysSurviveSave() {
-        Env e;
-        QVERIFY(e.settings);
-        const QJsonArray stored = parse(R"([
-            {"id":"TL","on":true,"field":"depth","size":"large","colour":"red"},
-            {"id":"Centre","on":true,"field":"aws","size":"small"},
-            {"id":"TR","on":true,"field":"sog","size":"large","colour":"blue"},
-            {"id":"BL","on":false,"field":"cog","size":"medium","blink":true},
-            {"id":"BR","on":false,"field":"wtemp","size":"medium","blink":false},
-            {"id":"Top","on":false,"field":"aws","size":"small","x":1},
-            {"id":"Bottom","on":false,"field":"pos","size":"small","x":2},
-            {"id":"Left","on":false,"field":"stw","size":"medium","x":3},
-            {"id":"Right","on":false,"field":"hdg","size":"medium","x":4}])");
-        e.settings->setSlotsJson(stored);
-        SlotsModel m(*e.settings, e.vessel);
-        m.setSlot("BL", true, "rpm", "large");
-        QJsonArray want = stored;
-        QJsonObject bl = want.at(3).toObject();
-        bl["on"] = true;
-        bl["field"] = "rpm";
-        bl["size"] = "large";
-        want[3] = bl;
-        QCOMPARE(e.settings->slotsJson().toArray(), want);
-    }
-
-    // Picking the default field over a newer app's unknown one stores the default's name.
-    void choosingDefaultOverUnknownFieldIsSaved() {
-        Env e;
-        QVERIFY(e.settings);
-        e.settings->setSlotsJson(parse(R"([{"id":"Top","on":false,"field":"aws","size":"small","x":1}])"));
-        SlotsModel m(*e.settings, e.vessel);
-        QCOMPARE(m.slotConfigs().at(4).field, Field::Time); // aws is unknown here: the slot default
-        m.setSlot("Top", false, "time", "small");
-        QCOMPARE(e.settings->slotsJson().toArray(),
-                 parse(R"([{"id":"Top","on":false,"field":"time","size":"small","x":1}])"));
-    }
-
-    // Each unit setting refreshes the formatted and unit roles of both models.
-    void unitSettingsRefreshBothModels_data() {
+    // Each unit setting calls the refresh once.
+    void unitSettingsCallRefresh_data() {
         QTest::addColumn<QString>("setting");
         for (const char* s : {"depthUnit", "speedUnit", "tempUnit", "applyDepthOffset"}) QTest::newRow(s) << QString(s);
     }
-    void unitSettingsRefreshBothModels() {
+    void unitSettingsCallRefresh() {
         QFETCH(QString, setting);
         Env e;
         QVERIFY(e.settings);
-        SlotsModel m(*e.settings, e.vessel);
-        NumbersModel n(*e.settings, e.vessel);
-        QSignalSpy slotsChanged(&m, &QAbstractItemModel::dataChanged);
-        QSignalSpy numbersChanged(&n, &QAbstractItemModel::dataChanged);
+        QObject context;
+        int calls = 0;
+        onUnitSettingsChanged(*e.settings, &context, [&calls] { ++calls; });
         if (setting == "depthUnit") e.settings->setDepthUnit("m");
         if (setting == "speedUnit") e.settings->setSpeedUnit("kmh");
         if (setting == "tempUnit") e.settings->setTempUnit("C");
         if (setting == "applyDepthOffset") e.settings->setApplyDepthOffset(false);
-        QCOMPARE(slotsChanged.count(), 1);
-        QCOMPARE(numbersChanged.count(), 1);
-        const QList<int> roles{SlotsModel::FormattedRole, SlotsModel::UnitRole};
-        QCOMPARE(slotsChanged.at(0).at(2).value<QList<int>>(), roles);
-        QCOMPARE(numbersChanged.at(0).at(2).value<QList<int>>(), (QList<int>{NumbersModel::FormattedRole, NumbersModel::UnitRole}));
-    }
-
-    void slotsModelReloadsOnExternalChange() {
-        Env e;
-        SlotsModel m(*e.settings, e.vessel);
-        e.settings->setSlotsJson(parse(R"([{"id":"Top","on":true,"field":"time","size":"medium"}])"));
-        QCOMPARE(m.slotConfigs().at(4), (SlotConfig{SlotId::Top, true, Field::Time, SlotSize::Medium}));
-    }
-
-    void numbersDefaults() {
-        Env e;
-        NumbersModel n(*e.settings, e.vessel);
-        QCOMPARE(n.count(), 2);
-        QCOMPARE(n.rowCount(), 2);
-        QCOMPARE(n.fields(), (QList<Field>{Field::Depth, Field::Sog}));
-        QCOMPARE(row(n, 0, "field"), QStringLiteral("depth"));
-        QCOMPARE(row(n, 0, "fieldLabel"), QStringLiteral("Depth"));
-        QCOMPARE(row(n, 1, "formatted"), QStringLiteral("--"));
-        QCOMPARE(row(n, 1, "unit"), QStringLiteral("kn"));
-    }
-
-    void numbersCountAndFields() {
-        Env e;
-        NumbersModel n(*e.settings, e.vessel);
-        QSignalSpy count(&n, &NumbersModel::countChanged);
-        n.setCount(4);
-        QCOMPARE(count.count(), 1);
-        QCOMPARE(n.fields(), (QList<Field>{Field::Depth, Field::Sog, Field::Cog, Field::Stw}));
-        QCOMPARE(e.settings->bigNumbers(), (QStringList{"depth", "sog", "cog", "stw"}));
-        n.setField(2, "wtemp");
-        QCOMPARE(n.fields().at(2), Field::WaterTemp);
-        QCOMPARE(e.settings->bigNumbers(), (QStringList{"depth", "sog", "wtemp", "stw"}));
-        n.setCount(3);
-        QCOMPARE(e.settings->bigNumbers(), (QStringList{"depth", "sog", "wtemp"}));
-        QTest::ignoreMessage(QtWarningMsg, QRegularExpression("numbers: rejected"));
-        n.setCount(5);
-        QTest::ignoreMessage(QtWarningMsg, QRegularExpression("numbers: rejected"));
-        n.setCount(1);
-        QTest::ignoreMessage(QtWarningMsg, QRegularExpression("numbers: rejected"));
-        n.setField(3, "cog");
-        QTest::ignoreMessage(QtWarningMsg, QRegularExpression("numbers: rejected"));
-        n.setField(0, "warp");
-        QCOMPARE(n.count(), 3);
-        QCOMPARE(n.fields(), (QList<Field>{Field::Depth, Field::Sog, Field::WaterTemp}));
-    }
-
-    void numbersSanitiseStoredList() {
-        Env e;
-        e.settings->setBigNumbers({"warp", "cog", "rpm", "pos", "time", "hdg"});
-        NumbersModel n(*e.settings, e.vessel);
-        QCOMPARE(n.fields(), (QList<Field>{Field::Depth, Field::Cog, Field::Rpm, Field::Position}));
-        e.settings->setBigNumbers({"stw"});
-        QCOMPARE(n.fields(), (QList<Field>{Field::Stw, Field::Sog}));
+        QCOMPARE(calls, 1);
     }
 
     void widestSamples() {
@@ -288,18 +150,6 @@ private slots:
             for (int i = 0; i < got.size(); ++i)
                 QVERIFY2(got.at(i).size() <= want.at(i).size(), qPrintable(fieldName(f)));
         }
-    }
-
-    void numbersFormattedFollowsVessel() {
-        Env e;
-        NumbersModel n(*e.settings, e.vessel);
-        QSignalSpy changed(&n, &QAbstractItemModel::dataChanged);
-        VesselState s;
-        s.depthM = 3 * 0.3048;
-        e.vessel.setLive(true);
-        e.vessel.setState(s);
-        QVERIFY(changed.count() >= 1);
-        QCOMPARE(row(n, 0, "formatted"), QStringLiteral("3.0"));
     }
 };
 

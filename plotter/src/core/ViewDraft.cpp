@@ -48,6 +48,7 @@ QVariant DraftSlotsModel::data(const QModelIndex& index, int role) const {
     case FieldRole: return fieldName(s.field);
     case FieldLabelRole: return fieldLabel(s.field);
     case SizeMmRole: return s.sizeMm;
+    case WidestSampleRole: return widestSample(s.field);
     case FormattedRole:
     case UnitRole: return fieldRoleText(s.field, role == UnitRole, m_vessel, m_settings);
     }
@@ -56,7 +57,7 @@ QVariant DraftSlotsModel::data(const QModelIndex& index, int role) const {
 
 QHash<int, QByteArray> DraftSlotsModel::roleNames() const {
     return {{SlotIdRole, "slotId"},   {OnRole, "on"},           {FieldRole, "field"}, {FieldLabelRole, "fieldLabel"},
-            {SizeMmRole, "sizeMm"}, {FormattedRole, "formatted"}, {UnitRole, "unit"}};
+            {SizeMmRole, "sizeMm"}, {FormattedRole, "formatted"}, {UnitRole, "unit"}, {WidestSampleRole, "widestSample"}};
 }
 
 void DraftSlotsModel::setSlotList(const QList<ViewSlot>& slotList) {

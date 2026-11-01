@@ -1,6 +1,5 @@
 #pragma once
 #include "Fields.h"
-#include <QAbstractListModel>
 #include <QJsonArray>
 #include <QList>
 #include <QStringView>
@@ -8,6 +7,7 @@
 #include <functional>
 #include <optional>
 
+class QObject;
 class Settings;
 class VesselModel;
 
@@ -51,40 +51,7 @@ QString widestSample(Field field);
 // Every field in enum order as {name, label} maps, for the QML pickers.
 QVariantList fieldChoices();
 
-// Shared by SlotsModel and NumbersModel. The `formatted` (unit false) or `unit` (unit true) role of a field.
+// Shared by DraftSlotsModel and DraftCellsModel. The `formatted` (unit false) or `unit` (unit true) role of a field.
 QString fieldRoleText(Field field, bool unit, const VesselModel& vessel, const Settings& settings);
 // Calls `refresh` while `context` lives, whenever a unit setting changes those role texts.
 void onUnitSettingsChanged(Settings& settings, QObject* context, const std::function<void()>& refresh);
-
-// The slots for QML, one row per slot in SlotId order. Reads Settings::slotsJson and writes it on
-// setSlot. `formatted` and `unit` are refreshed on every vessel change and unit setting change.
-class SlotsModel : public QAbstractListModel {
-    Q_OBJECT
-    Q_PROPERTY(QVariantList fieldChoices READ fieldChoicesList CONSTANT)
-
-public:
-    enum Role { SlotIdRole = Qt::UserRole + 1, OnRole, FieldRole, FieldLabelRole, SizeRole, FormattedRole, UnitRole };
-
-    // The references must outlive the model.
-    SlotsModel(Settings& settings, VesselModel& vessel, QObject* parent = nullptr);
-
-    int rowCount(const QModelIndex& parent = {}) const override;
-    QVariant data(const QModelIndex& index, int role) const override;
-    QHash<int, QByteArray> roleNames() const override;
-
-    QList<SlotConfig> slotConfigs() const { return m_slots; }
-    // Writes this one slot into the stored array (slotsToJson); the other entries are untouched.
-    // Unknown id, field or size: logged, nothing changes.
-    Q_INVOKABLE void setSlot(const QString& id, bool on, const QString& field, const QString& size);
-    // Writes the given slots into the stored array (the dev option --slots passes all eight).
-    void setSlotConfigs(const QList<SlotConfig>& configs);
-
-private:
-    QVariantList fieldChoicesList() const { return fieldChoices(); }
-    void reload();
-    void refreshValues();
-
-    Settings& m_settings;
-    VesselModel& m_vessel;
-    QList<SlotConfig> m_slots;
-};

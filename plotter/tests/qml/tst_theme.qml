@@ -1,6 +1,7 @@
 import QtQuick
 import QtTest
 import CheekyMarine
+import "Helpers.js" as H
 
 TestCase {
     id: testCase

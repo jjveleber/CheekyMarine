@@ -5,17 +5,17 @@
 #include "core/ChartController.h"
 #include "core/MonotonicClock.h"
 #include "core/N2kClient.h"
-#include "core/NumbersModel.h"
 #include "core/PackCatalog.h"
 #include "core/PaletteController.h"
 #include "core/Recovery.h"
 #include "core/Settings.h"
-#include "core/Slots.h"
 #include "core/Store.h"
 #include "core/TouchLock.h"
 #include "core/Tracks.h"
 #include "core/Units.h"
 #include "core/VesselModel.h"
+#include "core/ViewDraft.h"
+#include "core/ViewsModel.h"
 
 #include <QCommandLineParser>
 #include <QDateTime>
@@ -90,21 +90,17 @@ int main(int argc, char* argv[]) {
     // Dev and checkpoint aids: save a window grab N ms after start. Repeatable; paired in order.
     QCommandLineOption shotOpt("screenshot", "Save a window grab to PATH.", "path");
     QCommandLineOption shotAfterOpt("screenshot-after-ms", "Delay for the matching --screenshot.", "ms");
-    // Dev and checkpoint aids: write Settings::paletteMode at start (it persists); set the chart mode
-    // at start (not stored).
+    // Dev and checkpoint aids: write Settings::paletteMode at start (it persists); choose the page
+    // shown first (not stored).
     QCommandLineOption paletteOpt("palette", "Set the palette mode: auto, day, dusk or night.", "mode");
-    QCommandLineOption modeOpt("mode", "Set the chart mode: nav or fish.", "mode");
-    // Dev and checkpoint aids: write the overlay slots at start (the defaults, or the defaults all
-    // on; they persist) and choose the page shown first (not stored).
-    QCommandLineOption slotsOpt("slots", "Set the overlay slots: default or all.", "set");
-    QCommandLineOption pageOpt("page", "Page shown first: chart, numbers, tracks, settings or about.", "page");
+    QCommandLineOption pageOpt("page", "Page shown first: chart, tracks, settings or about.", "page");
     QCommandLineOption sheetOpt("sheet", "Open a sheet on the chart page: legend or ais.", "sheet");
     QCommandLineOption lockOpt("lock", "Start with the touch lock on.");
     QCommandLineOption recordOpt("record", "Turn track recording on at start (it persists).");
-    for (QCommandLineOption* o : {&shotOpt, &shotAfterOpt, &paletteOpt, &modeOpt, &slotsOpt, &pageOpt, &sheetOpt, &lockOpt, &recordOpt})
+    for (QCommandLineOption* o : {&shotOpt, &shotAfterOpt, &paletteOpt, &pageOpt, &sheetOpt, &lockOpt, &recordOpt})
         o->setFlags(QCommandLineOption::HiddenFromHelp);
     cli.addOptions(
-        {socketOpt, packsOpt, dataOpt, windowOpt, shotOpt, shotAfterOpt, paletteOpt, modeOpt, slotsOpt, pageOpt, sheetOpt, lockOpt, recordOpt});
+        {socketOpt, packsOpt, dataOpt, windowOpt, shotOpt, shotAfterOpt, paletteOpt, pageOpt, sheetOpt, lockOpt, recordOpt});
     cli.process(app);
 
     QSize windowSize;
@@ -121,20 +117,12 @@ int main(int argc, char* argv[]) {
         qCritical() << "each --screenshot needs a --screenshot-after-ms";
         return 2;
     }
-    const QStringList paletteModes{"auto", "day", "dusk", "night"}, chartModes{"nav", "fish"};
+    const QStringList paletteModes{"auto", "day", "dusk", "night"};
     if (cli.isSet(paletteOpt) && !paletteModes.contains(cli.value(paletteOpt))) {
         qCritical() << "--palette wants auto, day, dusk or night, got" << cli.value(paletteOpt);
         return 2;
     }
-    if (cli.isSet(modeOpt) && !chartModes.contains(cli.value(modeOpt))) {
-        qCritical() << "--mode wants nav or fish, got" << cli.value(modeOpt);
-        return 2;
-    }
-    if (cli.isSet(slotsOpt) && cli.value(slotsOpt) != "default" && cli.value(slotsOpt) != "all") {
-        qCritical() << "--slots wants default or all, got" << cli.value(slotsOpt);
-        return 2;
-    }
-    const QStringList pages{"chart", "numbers", "tracks", "settings", "about"};
+    const QStringList pages{"chart", "tracks", "settings", "about"};
     if (cli.isSet(pageOpt) && !pages.contains(cli.value(pageOpt))) {
         qCritical() << "--page wants one of" << pages << "got" << cli.value(pageOpt);
         return 2;
@@ -180,14 +168,9 @@ int main(int argc, char* argv[]) {
     QObject::connect(&recorderTimer, &QTimer::timeout, &recorder, &TrackRecorder::tick);
     recorderTimer.start();
 
-    SlotsModel slotsModel(settings, vessel);
-    NumbersModel numbersModel(settings, vessel);
-    if (cli.value(slotsOpt) == "default") slotsModel.setSlotConfigs(defaultSlots());
-    if (cli.value(slotsOpt) == "all") {
-        QList<SlotConfig> all = defaultSlots();
-        for (SlotConfig& c : all) c.on = true;
-        slotsModel.setSlotConfigs(all);
-    }
+    // The saved views and the draft of the shown one (Main.qml loads the current view into it).
+    ViewsModel views(*store, settings, [] { return QDateTime::currentSecsSinceEpoch(); });
+    ViewDraft draft(vessel, settings);
 
     const QString packsDir = cli.isSet(packsOpt) ? cli.value(packsOpt) : cli.value(dataOpt) + "/packs";
     const QList<PackInfo> packs = PackCatalog::scan(packsDir);
@@ -197,7 +180,6 @@ int main(int argc, char* argv[]) {
     auto mapItem = std::make_unique<MapLibreChartMap>();
     QQmlEngine::setObjectOwnership(mapItem.get(), QQmlEngine::CppOwnership);
     ChartController chart(mapItem->port(), settings, vessel, ais, packs);
-    if (cli.isSet(modeOpt)) chart.setMode(cli.value(modeOpt));
     mapItem->setZoomRange(chart.minZoom(), chart.maxZoom());
     // The controller adds its own refusals (a style it cannot use) to the scan's.
     for (const PackInfo& p : chart.packs())
@@ -262,8 +244,8 @@ int main(int argc, char* argv[]) {
                                  {"settings", QVariant::fromValue(&settings)},
                                  {"vessel", QVariant::fromValue(&vessel)},
                                  {"appInfo", QVariant::fromValue(&appInfo)},
-                                 {"slotsModel", QVariant::fromValue(&slotsModel)},
-                                 {"numbersModel", QVariant::fromValue(&numbersModel)},
+                                 {"views", QVariant::fromValue(&views)},
+                                 {"draft", QVariant::fromValue(&draft)},
                                  {"touchLock", QVariant::fromValue(&touchLock)},
                                  {"tracksController", QVariant::fromValue(&tracksController)},
                                  {"page", cli.isSet(pageOpt) ? cli.value(pageOpt) : QStringLiteral("chart")},

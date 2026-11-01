@@ -8,13 +8,13 @@ class Settings;
 class VesselModel;
 
 // The eight slots of a ViewDraft in SlotId order. `formatted` and `unit` follow vessel and unit
-// setting changes.
+// setting changes; `widestSample` is the field's widestSample, for the page's size clamp.
 class DraftSlotsModel : public QAbstractListModel {
     Q_OBJECT
     Q_PROPERTY(QVariantList fieldChoices READ fieldChoicesList CONSTANT)
 
 public:
-    enum Role { SlotIdRole = Qt::UserRole + 1, OnRole, FieldRole, FieldLabelRole, SizeMmRole, FormattedRole, UnitRole };
+    enum Role { SlotIdRole = Qt::UserRole + 1, OnRole, FieldRole, FieldLabelRole, SizeMmRole, FormattedRole, UnitRole, WidestSampleRole };
 
     DraftSlotsModel(VesselModel& vessel, Settings& settings, QObject* parent = nullptr);
     int rowCount(const QModelIndex& parent = {}) const override;

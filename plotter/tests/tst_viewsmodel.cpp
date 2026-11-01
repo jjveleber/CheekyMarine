@@ -472,6 +472,18 @@ private slots:
         QCOMPARE(d.layout(), kTwoColumns);
     }
 
+    // Each slot row carries its field's widest sample, for the page's size clamp.
+    void draftSlotsHaveWidestSample() {
+        Env e;
+        QVERIFY(e.settings);
+        ViewDraft d(e.vessel, *e.settings);
+        d.load(shippedViews(5)[0]);
+        auto* slotRows = qobject_cast<QAbstractItemModel*>(d.slotsModel());
+        QCOMPARE(role(*slotRows, 0, "widestSample").toString(), widestSample(Field::Depth));
+        d.setSlot("TL", true, "pos", 14);
+        QCOMPARE(role(*slotRows, 0, "widestSample").toString(), widestSample(Field::Position));
+    }
+
     void draftFormattedFollowsVesselAndUnits() {
         Env e;
         QVERIFY(e.settings);

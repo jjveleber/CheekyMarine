@@ -3,8 +3,8 @@ import QtQuick
 import CheekyMarine
 
 // Physical sizes. Main.qml binds the window size and the panel diagonal setting; every size in the
-// UI is mm(x). Slot digit sizes small, medium and large make a "8" 8, 14 and 25 mm tall: the font
-// pixel size is calibrated from the bold font's tight bounding box of "8".
+// UI is mm(x). A slot's digit height in mm makes a "8" that tall: the font pixel size is calibrated
+// from the bold font's tight bounding box of "8".
 QtObject {
     id: units
 
@@ -13,8 +13,6 @@ QtObject {
     property real diagonalIn: 10.1
     readonly property real pxPerMm: PanelMath.pxPerMm(windowWidth, windowHeight, diagonalIn)
     function mm(x) { return x * pxPerMm }
-
-    readonly property var digitMm: ({ small: 8, medium: 14, large: 25 })
 
     // Noto Sans, bundled, so the panel and the dev desktop draw the same glyphs.
     readonly property FontLoader regularFont: FontLoader { source: "../fonts/NotoSans-Regular.ttf" }
@@ -39,6 +37,13 @@ QtObject {
     }
     // Font pixel size whose "8" is heightMm tall.
     function digitPixelSize(heightMm) { return Math.ceil(mm(heightMm) / digitRatio) }
-    // The digit height in mm of a slot size name.
-    function slotDigitMm(size) { return digitMm[size] !== undefined ? digitMm[size] : digitMm.medium }
+    // Width of `text` in the bold digit face per mm of digit height; a two-line text takes its wider
+    // line. Like digitRatio it is measured on the loaded fonts: a binding calling this reads
+    // fontsReady, the family and digitRatio, so it re-evaluates when the fonts arrive.
+    function textWidthPerDigitMm(text) {
+        void fontsReady, digitMetrics.font.family // advanceWidth() is a call: these are the dependencies
+        let widest = 0
+        for (const line of text.split("\n")) widest = Math.max(widest, digitMetrics.advanceWidth(line))
+        return widest / (200 * digitRatio)
+    }
 }

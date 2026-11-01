@@ -4,7 +4,6 @@
 #include <QHash>
 #include <QJsonValue>
 #include <QObject>
-#include <QStringList>
 #include <QVariantMap>
 
 // Typed view of the settings table (value column is JSON text). Every set writes immediately; a
@@ -28,8 +27,6 @@ class Settings : public QObject {
     Q_PROPERTY(bool trackRecording READ trackRecording WRITE setTrackRecording NOTIFY trackRecordingChanged)
     Q_PROPERTY(int trackIntervalS READ trackIntervalS WRITE setTrackIntervalS NOTIFY trackIntervalSChanged)
     Q_PROPERTY(double trackMinDistanceM READ trackMinDistanceM WRITE setTrackMinDistanceM NOTIFY trackMinDistanceMChanged)
-    Q_PROPERTY(QJsonValue slotsJson READ slotsJson WRITE setSlotsJson NOTIFY slotsJsonChanged)
-    Q_PROPERTY(QStringList bigNumbers READ bigNumbers WRITE setBigNumbers NOTIFY bigNumbersChanged)
 
 public:
     // The Store must outlive the Settings.
@@ -56,8 +53,6 @@ public:
     bool trackRecording() const { return m_v.value("trackRecording").toBool(); }
     int trackIntervalS() const { return m_v.value("trackIntervalS").toInt(); }
     double trackMinDistanceM() const { return m_v.value("trackMinDistanceM").toDouble(); }
-    QJsonValue slotsJson() const { return m_v.value("slots"); }
-    QStringList bigNumbers() const;
 
     // Setters ignore values outside the key's domain (logged) and write nothing for unchanged values.
     void setDepthUnit(const QString& v) { if (put("depthUnit", v)) emit depthUnitChanged(); }
@@ -77,8 +72,6 @@ public:
     void setTrackRecording(bool v) { if (put("trackRecording", v)) emit trackRecordingChanged(); }
     void setTrackIntervalS(int v) { if (put("trackIntervalS", v)) emit trackIntervalSChanged(); }
     void setTrackMinDistanceM(double v) { if (put("trackMinDistanceM", v)) emit trackMinDistanceMChanged(); }
-    void setSlotsJson(const QJsonValue& v) { if (put("slots", v)) emit slotsJsonChanged(); }
-    void setBigNumbers(const QStringList& v);
 
     // Validates and writes the three depth keys in one transaction. False (nothing changed) if not
     // kMinDepthM <= shallow < safety < deep <= kMaxDepthM.
@@ -109,8 +102,6 @@ signals:
     void trackRecordingChanged();
     void trackIntervalSChanged();
     void trackMinDistanceMChanged();
-    void slotsJsonChanged();
-    void bigNumbersChanged();
 
 private:
     QString str(const char* key) const { return m_v.value(key).toString(); }
