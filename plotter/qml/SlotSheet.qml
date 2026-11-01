@@ -112,7 +112,8 @@ Rectangle {
     }
 
     // A tap steps 0.5 mm. Held, after 400 ms the size follows the hold at 2 mm per second from where
-    // it was, by the clock (so a late tick does not lose any of it), each 125 ms and on release.
+    // it was, by the clock (so a late tick does not lose any of it), on the 0.5 mm grid, each 125 ms
+    // and on release. Sliding off the button stops it.
     component SizeButton: BigButton {
         id: button
         property int direction: 1
@@ -122,10 +123,10 @@ Rectangle {
         topPadding: 0
         bottomPadding: 0
         font.pixelSize: Units.mm(8)
-        function follow() { sheet.setSize(base + direction * 2 * (Date.now() - since) / 1000) }
+        function follow() { sheet.setSize(Math.round((base + direction * 2 * (Date.now() - since) / 1000) * 2) / 2) }
         onPressed: { repeating = false; delay.restart() }
-        onReleased: { delay.stop(); if (repeating) { repeat.stop(); follow() } }
-        onCanceled: { delay.stop(); repeat.stop() }
+        onPressedChanged: if (!pressed) { delay.stop(); repeat.stop() }
+        onReleased: if (repeating) follow()
         onClicked: if (!repeating) sheet.setSize(sheet.sizeMm + direction * 0.5)
         Timer {
             id: delay

@@ -71,12 +71,16 @@ Item {
         draft.setSlot(slotId, on, field, Math.max(6, Math.min(wantedMm, chartPage.maxMmFor(slotId))))
         if (sheet === "slot" && slotSheet.slotId === slotId) showSlot(slotJson(slotId))
     }
-    // A handle drag: the size whose modelled box reaches the dragged inner corner (or edge).
+    // A handle drag: the size whose modelled box reaches the dragged inner corner (or edge). The
+    // distance is measured inwards from the outer edge and stops at 0, so a finger past the outer
+    // edge holds the size at the floor.
     function dragSlot(slotId, innerX, innerY) {
         const it = chartPage.slotItem(slotId)
         const s = slotJson(slotId)
-        const mm = it.horizontalBar ? (Math.abs(innerY - it.outerY) / Units.pxPerMm - it.fixedHMm) / it.hPerMm
-                                    : (Math.abs(innerX - it.outerX) / Units.pxPerMm - it.fixedWMm) / it.wPerMm
+        const d = Math.max(0, it.horizontalBar ? (it.topSide ? innerY - it.outerY : it.outerY - innerY)
+                                               : (it.leftSide ? innerX - it.outerX : it.outerX - innerX))
+        const mm = it.horizontalBar ? (d / Units.pxPerMm - it.fixedHMm) / it.hPerMm
+                                    : (d / Units.pxPerMm - it.fixedWMm) / it.wPerMm
         applySlot(slotId, s.on, s.field, mm)
     }
 

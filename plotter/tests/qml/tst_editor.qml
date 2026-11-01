@@ -279,10 +279,18 @@ TestCase {
         compare(value.text, "25.5 mm")
         compare(draftSlot("TR").sizeMm, 25.5)
         mousePress(plus)
-        wait(1400) // the hold under test: 400 ms, then 2 mm per second
+        // The hold under test: 400 ms, then 2 mm per second; every value it shows on the way is on
+        // the 0.5 mm grid.
+        const seen = []
+        for (const t0 = Date.now(); Date.now() - t0 < 1400;) {
+            wait(40)
+            seen.push(sheet.sizeMm)
+        }
         mouseRelease(plus)
+        for (const v of seen) compare(v * 2, Math.round(v * 2), "on the 0.5 mm grid while held: " + v)
         const grown = draftSlot("TR").sizeMm
         verify(Math.abs(grown - 27.5) <= 0.5, "about 2 mm more: " + grown)
+        compare(grown * 2, Math.round(grown * 2), "on the 0.5 mm grid: " + grown)
         compare(value.text, grown.toFixed(1) + " mm")
         compare(sheet.sizeMm, grown)
 
@@ -301,6 +309,24 @@ TestCase {
         compare(main.page, "view")
         verify(!sheet.visible)
         verify(m(main, "tabBar").enabled, "the bar back")
+    }
+
+    // Sliding off a held + stops the repeat.
+    function test_slideOffStopsTheRepeat() {
+        const main = makeMain(1024, 600)
+        main.editView("shipped-nav")
+        mouseClick(m(main, "slot-BL"))
+        const sheet = find(m(main, "viewEditor"), "slotSheet")
+        const plus = find(sheet, "sizePlus")
+        const start = sheet.sizeMm
+        mousePress(plus)
+        tryVerify(() => sheet.sizeMm > start, 2000, "the repeat runs")
+        mouseMove(plus, -Units.mm(20), plus.height / 2, -1, Qt.LeftButton) // off the button, still pressed
+        const at = sheet.sizeMm
+        wait(600) // the repeat would move it 1.2 mm in this time
+        compare(sheet.sizeMm, at, "stopped")
+        mouseRelease(plus, -Units.mm(20), plus.height / 2)
+        compare(sheet.sizeMm, at)
     }
 
     function test_minusStepsAndFloorsAtSix() {
@@ -341,6 +367,7 @@ TestCase {
 
     function test_cancelOnNewViewRemovesIt() {
         const main = makeMain(1024, 600)
+        fixture.views.currentId = "shipped-fish"
         mouseClick(m(main, "tab-home"))
         mouseClick(m(main, "tile-new"))
         compare(fixture.views.count, 4)
@@ -352,6 +379,8 @@ TestCase {
         mouseClick(m(main, "editorCancel"))
         compare(fixture.views.count, 3)
         compare(fixture.views.indexOf(id), -1)
+        compare(fixture.views.currentId, "shipped-fish", "the view current before New")
+        compare(fixture.draft.id, "shipped-fish")
         compare(main.page, "home")
         compare(main.editing, false)
         verify(!main.editingNew)
@@ -432,6 +461,17 @@ TestCase {
         verify(grown > 6, "grows: " + grown)
         verify(Math.abs(grown - max) <= 0.11, "stops at the clamp: " + grown + " vs " + max)
 
+        // TR's handle dragged out past the page's right edge: the size stays at the floor.
+        mouseClick(m(main, "slot-TR"))
+        // Until it reaches the floor, then once more, each drag out past the outer edge.
+        for (let i = 0, extra = 1; i < 6 && (draftSlot("TR").sizeMm > 6 || extra-- > 0); ++i) {
+            const t = find(page, "handle-TR")
+            dragBy(main, t, main.width + Units.mm(40) - t.mapToItem(main.contentItem, t.width / 2, 0).x)
+            waitForRendering(page)
+        }
+        compare(draftSlot("TR").sizeMm, 6, "past the outer edge: still 6")
+        mouseClick(m(main, "slot-TL"))
+
         // A finger, as on the panel.
         waitForRendering(page)
         const w = main.contentItem
@@ -465,6 +505,22 @@ TestCase {
         compare(fixture.views.viewJson("shipped-big").cells.fields, ["depth", "wtemp"])
         compare(main.page, "view")
         compare(main.editing, false)
+
+        // The sheet takes the half away from the cell.
+        main.editView("shipped-big")
+        fixture.draft.layout = "2x2:0,0,1,1;1,0,1,1;0,1,1,1;1,1,1,1"
+        waitForRendering(cells)
+        mouseClick(m(main, "cell-0"))
+        verify(sheet.visible)
+        verify(!sheet.atTop, "a top-half cell: the bottom half")
+        fuzzyCompare(H.box(sheet, editor).y, editor.height / 2, 1)
+        mouseClick(find(sheet, "sheetDone"))
+        mouseClick(m(main, "cell-3"))
+        verify(sheet.visible)
+        verify(sheet.atTop, "a bottom-half cell: the top half")
+        fuzzyCompare(H.box(sheet, editor).y, 0, 1)
+        mouseClick(find(sheet, "sheetDone"))
+        mouseClick(m(main, "editorCancel"))
     }
 
     function test_liveHoldOpensSheetAndSaves() {
@@ -481,10 +537,15 @@ TestCase {
         compare(slotOf(fixture.views.viewJson("shipped-nav"), "TL").field, "cog")
         compare(main.editing, false)
 
-        const tl = m(main, "slot-TL")
-        mouseDrag(tl, tl.width / 2, tl.height / 2, Units.mm(15), 0)
+        // A 15 mm drag from TL, then held still past the hold time: it pans and opens no sheet.
+        const tl = m(main, "slot-TL"), w = main.contentItem
+        const p = tl.mapToItem(w, tl.width / 2, tl.height / 2)
+        mousePress(w, p.x, p.y)
+        for (let i = 1; i <= 5; ++i) mouseMove(w, p.x + Units.mm(3) * i, p.y, -1, Qt.LeftButton)
+        wait(900) // still pressed, longer than the 0.6 s hold: the hold under test
+        verify(!sheet.visible, "a drag opens no sheet")
         verify(main.chartMap.moves > 0, "a drag from a slot pans the map")
-        wait(800) // longer than the hold: a drag opens no sheet
+        mouseRelease(w, p.x + Units.mm(15), p.y)
         verify(!sheet.visible)
     }
 

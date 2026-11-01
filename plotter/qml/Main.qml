@@ -23,6 +23,7 @@ ApplicationWindow {
     property bool editing: false    // the view editor is open
     property string editorFrom: "view" // the page the editor returns to on Cancel
     property bool editingNew: false // the edited view was just added
+    property string idBeforeNew: "" // the view current before New, shown again on its Cancel
     property bool setupRequestedOnOpen: false // the editor was asked to open its Setup sheet first
     // On a view the bar slides off after this delay (0: never); tests set it shorter.
     property int hideDelayMs: root.settings.tabBarHideS * 1000
@@ -63,6 +64,7 @@ ApplicationWindow {
         root.showBar()
     }
     function newView() {
+        root.idBeforeNew = root.views.currentId
         const id = root.views.add()
         root.editingNew = true
         root.editView(id, true)
@@ -80,6 +82,7 @@ ApplicationWindow {
         if (root.editingNew) {
             root.editingNew = false
             root.views.remove(id)
+            if (root.views.indexOf(root.idBeforeNew) >= 0) root.views.currentId = root.idBeforeNew
             root.page = "home"
         } else {
             root.showCurrentView()
