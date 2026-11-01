@@ -866,13 +866,49 @@ TestCase {
                "indicator sits inside the house tab: it adds no height to the tab column")
     }
 
-    // The splash draws an Icon: Qt Svg loads in the test process (no image format warning).
-    function test_splashShowsAnIcon() {
-        const splash = createTemporaryObject(splashComp, testCase, { width: 1024, height: 600, appInfo: fixture.appInfo })
-        const icons = H.findAll(splash, it => it.sourceSize !== undefined && it.name !== undefined && it.name !== "")
+    // The house tab draws an Icon: Qt Svg loads in the test process (no image format warning).
+    function test_houseTabIconLoads() {
+        const main = makeMain(1024, 600)
+        const icons = H.findAll(item(main, "tab-home"), it => it.sourceSize !== undefined && it.name === "home")
         compare(icons.length, 1)
         tryCompare(icons[0], "status", Image.Ready)
-        verify(icons[0].width >= Units.mm(10), "a visible icon")
+        verify(icons[0].width >= Units.mm(6), "a visible icon")
+        waitForRendering(main.contentItem)
+    }
+
+    function test_splashShowsTheLogo_data() {
+        return [
+            { tag: "1024x600", w: 1024, h: 600, mm60: true },
+            { tag: "1280x800", w: 1280, h: 800, mm60: false }
+        ]
+    }
+    function test_splashShowsTheLogo(data) {
+        const splash = createTemporaryObject(splashComp, testCase, { width: data.w, height: data.h, appInfo: fixture.appInfo })
+        verify(splash, "splash")
+        const logo = H.byName(splash, "splashLogo")
+        verify(logo, "splashLogo")
+        tryCompare(logo, "status", Image.Ready)
         waitForRendering(splash)
+        const p = logo.mapToItem(splash, 0, 0)
+        verify(p.x >= 0 && p.y >= 0 && p.x + logo.width <= splash.width && p.y + logo.height <= splash.height, "logo inside the splash")
+        if (data.mm60) verify(logo.width >= Units.mm(60), "logo at least 60 mm wide: " + logo.width)
+        verify(Math.abs(logo.paintedHeight - logo.paintedWidth * 768 / 1408) <= 1, "aspect 1408:768")
+        verify(Math.abs((p.x + logo.width / 2) - splash.width / 2) <= 1, "centred")
+        for (const n of ["splashCharts", "splashBathy"]) {
+            const l = H.byName(splash, n)
+            verify(l && l.visible, n)
+            const q = l.mapToItem(splash, 0, 0)
+            verify(q.y >= p.y + logo.height - 1, n + " below the logo")
+            verify(q.y + l.height <= splash.height, n + " inside the page")
+        }
+        const version = H.findAll(splash, it => it.text !== undefined && it.text.startsWith("Plotter "))
+        compare(version.length, 1)
+        verify(version[0].mapToItem(splash, 0, 0).y >= p.y + logo.height - 1, "version below the logo")
+        compare(logo.opacity, 1)
+        Theme.palette = "night"
+        compare(logo.opacity, 0.3)
+        Theme.palette = "dusk"
+        compare(logo.opacity, 1)
+        Theme.palette = "day"
     }
 }

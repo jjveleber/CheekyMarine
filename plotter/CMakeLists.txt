@@ -96,7 +96,7 @@ qt_add_qml_module(plotterqml
         qml/HomePage.qml qml/ViewTile.qml qml/ViewThumb.qml qml/TileMenu.qml
         qml/ViewEditor.qml qml/SlotSheet.qml qml/CellSheet.qml
     SOURCES src/qml/PanelMath.h src/qml/IconsQml.h src/qml/LayoutsQml.h
-    RESOURCES fonts/NotoSans-Regular.ttf fonts/NotoSans-Bold.ttf
+    RESOURCES fonts/NotoSans-Regular.ttf fonts/NotoSans-Bold.ttf assets/CheekyMarine-logo.jpg
         icons/tabler/anchor.svg icons/tabler/fish.svg icons/tabler/hash.svg icons/tabler/sailboat.svg
         icons/tabler/ship.svg icons/tabler/lifebuoy.svg icons/tabler/map.svg icons/tabler/compass.svg
         icons/tabler/gauge.svg icons/tabler/sun.svg icons/tabler/moon.svg icons/tabler/ripple.svg
