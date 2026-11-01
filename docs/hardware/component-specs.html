@@ -109,9 +109,12 @@ finned aluminum heat sink in the back wall (option A). See part 20.</li>
                        [12] N2K DROP CABLE, Micro-C male, 1 m
                             |
                        free tee on the existing NMEA 2000 backbone</code></pre>
-<p>Mount [17] holds the enclosure [16] on the dash shelf. Glands [18]
-seal the two cable entries. Wire [19] covers the feed cable and
-everything inside the box.</p>
+<p>The diagram shows the on/off switch [3] in the box. The plan is a
+spare rocker on the helm switch panel instead (part 3): then the sense
+wire runs panel breaker, rocker, 1 A fuse [4b], and into the box, and
+the box has no switch. Mount [17] holds the enclosure [16] on the dash
+shelf. Glands [18] seal the two cable entries. Wire [19] covers the feed
+cable and everything inside the box.</p>
 <p>Order of the power path matters: fuse at the source (protects the
 cable), then the relay (open when off, so nothing draws from the
 battery), then the LC filter with the TVS across its output, then the
@@ -156,8 +159,8 @@ the filter output. Inductor: 10 µH, 6 A saturation</td>
 <tr class="odd">
 <td>3</td>
 <td>Unit on/off switch</td>
-<td>Latching, sealed, reliable at 5 mA, rated 1 A (sense wire only)</td>
-<td>not priced</td>
+<td>Spare helm panel rocker: latching, 1 A sense fuse after it</td>
+<td>$0 (on the boat)</td>
 </tr>
 <tr class="even">
 <td>4</td>
@@ -769,6 +772,15 @@ main switch going off: the Pi shuts down cleanly, then the controller
 opens the relay. It carries the sense wire’s current: about 5 mA for the
 sense input, plus the controller and relay coil (under 0.1 A in all)
 while it is powering them.</p>
+<p><strong>Plan (owner, 2026-11-01): a spare rocker on the helm switch
+panel.</strong> The owner has unused rockers there. That saves a hole in
+the box, and the front sealing, panel hole, depth and body rows below
+apply only if a switch ever goes on the box instead. Check on the boat:
+the rocker is latching (no momentary position), it is fed from the
+panel’s main switched bus (live while cranking, 0 V with the main switch
+off, as part 4b requires), and a lit rocker’s lamp doesn’t feed the
+switch output when off. Note the make and model off the back so its
+contact rating can be checked.</p>
 <p><strong>Must have</strong></p>
 <table>
 <colgroup>
@@ -797,9 +809,12 @@ pushbutton</td>
 </tr>
 <tr class="odd">
 <td>Low-current contacts</td>
-<td>Reliable at about 5 mA: gold-plated contacts, or a minimum load of 5
-mA or less</td>
-<td>Datasheet “contact material”, “minimum load”</td>
+<td>Reliable at the sense wire’s current: about 5 mA for the sense input
+plus the controller and relay coil (tens of mA) while it powers them.
+Gold-plated contacts, or a minimum load at or below that. A panel rocker
+with silver contacts is acceptable if it passes a bench check of the
+sense input through that switch</td>
+<td>Datasheet “contact material”, “minimum load”; bench check</td>
 </tr>
 <tr class="even">
 <td>Front sealing</td>
@@ -841,20 +856,25 @@ side all day; with the latching switch it draws nothing.</li>
 <p><strong>Disqualifiers</strong></p>
 <ul>
 <li>Unsealed toggles or rockers.</li>
-<li>Silver contacts rated only for heavy loads (a minimum load above 5
-mA): at sense-wire currents they can fail to make contact.</li>
+<li>Silver contacts rated only for heavy loads (a minimum load above the
+tens of mA the sense wire carries) that fail the bench check: at
+sense-wire currents they can fail to make contact.</li>
 <li>Lit switches whose LED draws current when off.</li>
 </ul>
 <p><strong>Fits with</strong></p>
 <ul>
 <li>Wired in series with the sense wire (part 4), between the boat’s
-switched 12 V and the controller’s sense input.</li>
+switched 12 V and the controller’s sense input. With a panel rocker, the
+1 A sense fuse (part 4b) goes right after the rocker’s output: the panel
+breaker feeding the rocker (often 10 to 15 A) is too big to protect the
+sense wire’s thin runs.</li>
 <li>Its hole goes in the enclosure (part 16) away from where a hand
 rests on the display, or on the helm switch panel.</li>
 </ul>
-<p><strong>Reference, not a requirement.</strong> None priced yet. The
-first pick (EAO 82-5751.1000) was a momentary button and doesn’t fit
-this job.</p>
+<p><strong>Reference, not a requirement.</strong> A spare rocker already
+on the helm panel (owner’s boat; make and model to note). The first pick
+for a box switch (EAO 82-5751.1000) was a momentary button and doesn’t
+fit this job.</p>
 <h3>4. Standby power and shutdown controller</h3>
 <p><strong>Job.</strong> Makes power loss safe, using the boat’s own
 battery as the backup. The unit is powered from <strong>standby
@@ -1038,8 +1058,10 @@ off: every cold start and every restart)</td>
 </tr>
 <tr class="odd">
 <td>Sense wire fuse</td>
-<td>1 A at the switched source, or tap an existing fused switched
-circuit</td>
+<td>1 A, at the switched source or right after the panel rocker (part
+3). An existing breaker or fuse alone isn’t enough unless it is rated
+for the thinnest wire on the sense path, which includes 22 AWG inside
+the box (part 19)</td>
 <td>Install rule</td>
 </tr>
 <tr class="even">
@@ -2969,9 +2991,10 @@ the 1554X2GY need confirming on Hammond’s drawing.</li>
 <li><strong>Free tee port.</strong> Look at the backbone. If none, add a
 Micro-C T-connector.</li>
 <li><strong>Spare helm switch or fuse circuit.</strong> A spare helm
-switch can replace the switch on the box (part 3). A spare fuse circuit
-can replace the inline fuse holder only if it is standby; see the next
-item.</li>
+rocker is the plan for the unit switch (part 3); check it on the boat
+(latching, fed from the main switched bus, 0 V with the main switch off,
+make and model). A spare fuse circuit can replace the inline fuse holder
+only if it is standby; see the next item.</li>
 <li><strong>Fuse box under the helm (check on the boat).</strong> The
 boat has one (owner, 2026-10-31). When the boat is back, meter the
 supply side of the slot you’d use (the box’s bus, not an empty slot’s
