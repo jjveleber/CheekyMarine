@@ -24,9 +24,9 @@ Rectangle {
     function open(title, text, maxChars) {
         keyboard.title = title
         keyboard.maxChars = maxChars
-        keyboard.text = text
-        _old = text
-        shift = text.length === 0
+        keyboard.text = text.slice(0, maxChars)
+        _old = keyboard.text
+        shift = keyboard.text.length === 0
         visible = true
     }
     function type(ch) {
@@ -41,7 +41,7 @@ Rectangle {
         property string label: ""
         readonly property bool letter: label.length === 1 && label >= "A" && label <= "Z"
         objectName: "key-" + label
-        minimumSize: Units.mm(12)
+        width: Units.mm(12)
         padding: 0
         text: letter && !keyboard.shift ? label.toLowerCase() : label
         onClicked: {
@@ -55,7 +55,7 @@ Rectangle {
         spacing: Units.mm(1)
         Repeater {
             model: keys.split("")
-            Key { required property string modelData; label: modelData; width: Units.mm(12) }
+            Key { required property string modelData; label: modelData }
         }
     }
 
@@ -111,7 +111,7 @@ Rectangle {
             }
             Repeater {
                 model: "ZXCVBNM".split("")
-                Key { required property string modelData; label: modelData; width: Units.mm(12) }
+                Key { required property string modelData; label: modelData }
             }
             BigButton {
                 objectName: "key-backspace"

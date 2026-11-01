@@ -600,6 +600,8 @@ TestCase {
         compare(done.enabled, false, "Done needs text")
         tap(kb, "key-N"); tap(kb, "key-A"); tap(kb, "key-V")
         compare(kb.text, "Nav")
+        compare(find(kb, "keyboardCount").text, "3/6")
+        verify(find(kb, "keyboardText").height >= Units.mm(12) - 0.5, "text box 12 mm tall")
         compare(kb.shift, false)
         compare(done.enabled, true)
         tap(kb, "key-space"); tap(kb, "key-shift")
@@ -650,5 +652,11 @@ TestCase {
         compare(accepted.count, 1)
         compare(accepted.signalArguments[0][0], "OldZ")
         verify(!kb.visible)
+
+        kb.open("Name", "0123456789", 6)
+        compare(kb.text, "012345")
+        compare(find(kb, "keyboardCount").text, "6/6")
+        tap(kb, "key-cancel")
+        compare(kb.text, "012345")
     }
 }
