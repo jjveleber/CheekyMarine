@@ -46,6 +46,10 @@ TestCase {
     }
     Component { id: mainComp; Main {} }
     Component { id: spyComp; SignalSpy {} }
+    Component {
+        id: pageComp
+        Item { property alias keyboard: kb; Keyboard { id: kb; rightInset: Units.mm(17) } }
+    }
 
     function init() {
         failOnWarning(/.*/)
@@ -571,5 +575,80 @@ TestCase {
         mouseClick(find(cellSheet, "sheetDone"))
         verify(!bar.shown)
         compare(fixture.views.viewJson("shipped-big").cells.fields, ["stw", "sog"])
+    }
+
+    // The on-screen keyboard, standalone at both sizes.
+    function makeKeyboard(w, h) {
+        const page = createTemporaryObject(pageComp, testCase, { width: w, height: h })
+        verify(page, "page")
+        return page.keyboard
+    }
+    function tap(kb, name) { mouseClick(find(kb, name)) }
+
+    function test_keyboardTypesShiftsAndCaps_data() { return H.sizes() }
+    function test_keyboardTypesShiftsAndCaps(data) {
+        Units.windowWidth = data.w
+        Units.windowHeight = data.h
+        const kb = makeKeyboard(data.w, data.h)
+        verify(!kb.visible)
+        kb.open("Name", "", 6)
+        verify(kb.visible)
+        compare(kb.objectName, "keyboard")
+        compare(kb.shift, true)
+        waitForRendering(kb)
+        const done = find(kb, "key-done")
+        compare(done.enabled, false, "Done needs text")
+        tap(kb, "key-N"); tap(kb, "key-A"); tap(kb, "key-V")
+        compare(kb.text, "Nav")
+        compare(kb.shift, false)
+        compare(done.enabled, true)
+        tap(kb, "key-space"); tap(kb, "key-shift")
+        compare(kb.shift, true)
+        tap(kb, "key-X")
+        compare(kb.text, "Nav X")
+        tap(kb, "key-backspace"); tap(kb, "key-backspace")
+        compare(kb.text, "Nav")
+        tap(kb, "key-1"); tap(kb, "key-2"); tap(kb, "key-3")
+        compare(kb.text, "Nav123")
+        tap(kb, "key-4")
+        compare(kb.text, "Nav123", "capped at maxChars")
+        for (let i = 0; i < 6; ++i) tap(kb, "key-backspace")
+        compare(kb.text, "")
+        compare(done.enabled, false)
+        tap(kb, "key-backspace")
+        compare(kb.text, "")
+
+        const room = { x: 0, y: 0, w: kb.width - kb.rightInset, h: kb.height }
+        const keys = H.findAll(kb, it => it.isBigButton === true && it.visible)
+        verify(keys.length >= 40, "keys: " + keys.length)
+        H.checkBigButtons(testCase, Units, kb)
+        for (const k of keys) verify(inside(H.box(k, kb), room), k.objectName + " inside width - rightInset")
+        for (const n of ["key-1", "key-0", "key-Q", "key-P", "key-A", "key-L", "key-Z", "key-M", "key-shift", "key-backspace", "key-space", "key-cancel", "key-done"])
+            find(kb, n)
+    }
+
+    function test_keyboardCancelKeepsOldText() {
+        const kb = makeKeyboard(1024, 600)
+        const cancelled = createTemporaryObject(spyComp, testCase, { target: kb, signalName: "cancelled" })
+        const accepted = createTemporaryObject(spyComp, testCase, { target: kb, signalName: "accepted" })
+        kb.open("Name", "Old", 24)
+        compare(kb.shift, false)
+        compare(kb.title, "Name")
+        compare(kb.maxChars, 24)
+        waitForRendering(kb)
+        tap(kb, "key-backspace"); tap(kb, "key-X")
+        compare(kb.text, "Olx")
+        tap(kb, "key-cancel")
+        compare(cancelled.count, 1)
+        compare(accepted.count, 0)
+        compare(kb.text, "Old")
+        verify(!kb.visible)
+
+        kb.open("Name", "Old", 24)
+        tap(kb, "key-shift"); tap(kb, "key-Z")
+        tap(kb, "key-done")
+        compare(accepted.count, 1)
+        compare(accepted.signalArguments[0][0], "OldZ")
+        verify(!kb.visible)
     }
 }
