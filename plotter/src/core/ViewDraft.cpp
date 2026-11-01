@@ -204,8 +204,8 @@ void ViewDraft::setSlot(const QString& slotId, bool on, const QString& field, do
         qWarning() << "view draft: rejected slot" << slotId << field;
         return;
     }
-    const ViewSlot s{*id, on, *f, std::max(kMinSizeMm, std::round(sizeMm * 10.0) / 10.0)};
     ViewSlot& cur = m_view.slotList[int(*id)];
+    const ViewSlot s{*id, on, *f, std::max(kMinSizeMm, std::round(sizeMm * 10.0) / 10.0), cur.extra};
     if (s == cur) return;
     cur = s;
     m_slotsModel->setSlotList(m_view.slotList);

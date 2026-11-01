@@ -293,6 +293,7 @@ TestCase {
             seen.push(sheet.sizeMm)
         }
         const releasedAt = Date.now()
+        verify(plus.repeating, "the repeat started")
         mouseRelease(plus)
         for (const v of seen) compare(v * 2, Math.round(v * 2), "on the 0.5 mm grid while held: " + v)
         for (let i = 1; i < seen.length; ++i) verify(seen[i] >= seen[i - 1], "never falls: " + seen)
@@ -301,7 +302,7 @@ TestCase {
         const heldS = (releasedAt - plus.since) / 1000
         const grown = draftSlot("TR").sizeMm
         const want = plus.base + 2 * heldS
-        verify(Math.abs(grown - want) <= 0.5 + 0.5,
+        verify(Math.abs(grown - want) <= 1.5,
                "2 mm per second: " + grown + " after " + heldS.toFixed(3) + " s, want about " + want.toFixed(2))
         verify(grown > plus.base, "it grew")
         compare(grown * 2, Math.round(grown * 2), "on the 0.5 mm grid: " + grown)

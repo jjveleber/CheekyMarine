@@ -59,6 +59,11 @@ private slots:
         const QJsonObject o = parse(R"({"id":"a","name":"X","colour":"red","slots":[{"id":"TL","on":true,"glow":true}]})");
         const QJsonObject back = viewToJson(viewFromJson(o));
         QCOMPARE(back.value("colour").toString(), QStringLiteral("red"));
+        const QJsonObject tl = back.value("slots").toArray().at(int(SlotId::TL)).toObject();
+        QCOMPARE(tl.value("glow"), QJsonValue(true));
+        QCOMPARE(tl.value("on"), QJsonValue(true));
+        QVERIFY(!back.value("slots").toArray().at(int(SlotId::TR)).toObject().contains("glow"));
+        QCOMPARE(viewFromJson(back), viewFromJson(o));
     }
 
     void badFieldsTakeDefaults() {

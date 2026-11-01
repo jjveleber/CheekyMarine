@@ -148,7 +148,7 @@ Home order; favourite tabs follow it) and `json`, one JSON object per view:
   `Right`; `sizeMm` is the digit height, one decimal, at least 6. Fields `depth`, `sog`, `stw`,
   `cog`, `hdg`, `wtemp`, `pos`, `time`, `rpm`. `created` and `modified` are Unix seconds. Every view
   stores both `slots` and `cells`, so a switch to None and back keeps both. Unknown keys are kept on
-  save.
+  save, at the top level and inside a slot entry.
 - Shipped on a fresh file, all favourites, in this order: Navigation (`Nav`, nav chart), Fishing
   (`Fish`, fish chart), both with TL Depth and TR SOG on at 25 mm and the other six slots off, and
   Big numbers (`Big #`, no chart) with two cells side by side, Depth and SOG.

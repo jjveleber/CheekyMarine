@@ -13,6 +13,7 @@
 #include <QDateTime>
 #include <QQmlContext>
 #include <QQmlEngine>
+#include <QSqlQuery>
 #include <QTemporaryDir>
 #include <QtQml/qqmlextensionplugin.h>
 #include <QtQuickTest>
@@ -43,6 +44,7 @@ public:
 
     // Default settings, the shipped views with Navigation shown, no data, no daemon state.
     Q_INVOKABLE void reset() {
+        failViewInserts(false);
         m_views->replaceAll(shippedViews(QDateTime::currentSecsSinceEpoch()));
         m_views->setCurrentId("shipped-nav");
         m_draft->load(*m_views->view("shipped-nav"));
@@ -63,6 +65,13 @@ public:
         }
         m_vessel.setLive(false);
         m_appInfo->setDaemonVersion(QString());
+    }
+    // While on, every insert into the views table fails (a temporary trigger on this connection).
+    Q_INVOKABLE void failViewInserts(bool on) {
+        QSqlQuery q(m_store->db());
+        q.exec(on ? QStringLiteral("CREATE TEMP TRIGGER IF NOT EXISTS fail_view_insert BEFORE INSERT ON views "
+                                   "BEGIN SELECT RAISE(ABORT, 'test insert failure'); END")
+                  : QStringLiteral("DROP TRIGGER IF EXISTS temp.fail_view_insert"));
     }
     // A stored track of two points about 1.1 km apart, ten minutes long; returns its id.
     Q_INVOKABLE qint64 addTrack(double started) {

@@ -121,8 +121,11 @@ Item {
 
         // Gestures are ours, not the map item's. Only a pan stops follow mode; while following, zoom
         // goes through the controller so the boat keeps its place, else it scales about the point.
+        // Neither takes over from an item (the map item takes no input, a live slot is disabled):
+        // a drag that starts on a tab or a chart button stays that button's.
         DragHandler {
             target: null
+            grabPermissions: PointerHandler.CanTakeOverFromHandlersOfDifferentType | PointerHandler.ApprovesTakeOverByAnything
             minimumPointCount: 1
             maximumPointCount: 1
             property vector2d last: Qt.vector2d(0, 0)
@@ -148,6 +151,7 @@ Item {
         }
         PinchHandler {
             target: null
+            grabPermissions: PointerHandler.CanTakeOverFromHandlersOfDifferentType | PointerHandler.ApprovesTakeOverByAnything
             minimumPointCount: 2
             rotationAxis.enabled: false
             property real last: 1

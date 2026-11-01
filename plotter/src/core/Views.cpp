@@ -10,6 +10,7 @@ namespace {
 const QString kDefaultLayout = QStringLiteral("2x2:0,0,1,2;1,0,1,2");
 
 const QStringList kKnownKeys{"id", "name", "short", "icon", "chart", "favourite", "slots", "cells", "created", "modified"};
+const QStringList kKnownSlotKeys{"id", "on", "field", "sizeMm", "size"};
 
 QList<ViewSlot> toViewSlots(const QList<SlotConfig>& configs) {
     QList<ViewSlot> out;
@@ -92,8 +93,14 @@ QJsonObject viewToJson(const View& v) {
     o["chart"] = viewChartName(v.chart);
     o["favourite"] = v.favourite;
     QJsonArray slotArray;
-    for (const ViewSlot& s : v.slotList)
-        slotArray.append(QJsonObject{{"id", slotIdName(s.id)}, {"on", s.on}, {"field", fieldName(s.field)}, {"sizeMm", s.sizeMm}});
+    for (const ViewSlot& s : v.slotList) {
+        QJsonObject so = s.extra;
+        so["id"] = slotIdName(s.id);
+        so["on"] = s.on;
+        so["field"] = fieldName(s.field);
+        so["sizeMm"] = s.sizeMm;
+        slotArray.append(so);
+    }
     o["slots"] = slotArray;
     QJsonArray fields;
     for (Field f : v.cells.fields) fields.append(fieldName(f));
@@ -128,6 +135,8 @@ View viewFromJson(const QJsonObject& o) {
         if (const auto f = fieldFromName(so.value("field").toString())) s.field = *f;
         if (so.value("sizeMm").isDouble()) s.sizeMm = std::max(kMinSizeMm, std::round(so.value("sizeMm").toDouble() * 10.0) / 10.0);
         else if (const auto z = slotSizeFromName(so.value("size").toString())) s.sizeMm = sizeMmFromSlotSize(*z);
+        for (auto it = so.begin(); it != so.end(); ++it)
+            if (!kKnownSlotKeys.contains(it.key())) s.extra.insert(it.key(), it.value());
     }
 
     const QJsonObject co = o.value("cells").toObject();

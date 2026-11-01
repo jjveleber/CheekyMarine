@@ -395,6 +395,22 @@ private slots:
         QCOMPARE(m.currentId(), QStringLiteral("shipped-fish"));
     }
 
+    // An edit to a slot keeps that slot's unknown keys; the same values again change nothing.
+    void draftSetSlotKeepsSlotExtra() {
+        Env e;
+        QVERIFY(e.settings);
+        ViewDraft d(e.vessel, *e.settings);
+        View v = shippedViews(5)[0];
+        v.slotList[int(SlotId::TR)].extra = QJsonObject{{"glow", true}};
+        d.load(v);
+        const ViewSlot tr = v.slotList[int(SlotId::TR)];
+        d.setSlot("TR", tr.on, fieldName(tr.field), tr.sizeMm);
+        QVERIFY(!d.dirty());
+        d.setSlot("TR", true, "stw", 20);
+        QVERIFY(d.dirty());
+        QCOMPARE(d.toView().slotList[int(SlotId::TR)].extra, (QJsonObject{{"glow", true}}));
+    }
+
     void draftRoundTrip() {
         Env e;
         QVERIFY(e.settings);

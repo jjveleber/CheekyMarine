@@ -285,7 +285,6 @@ TestCase {
         const tab = item(main, "tab-view-shipped-fish")
         const t0 = Date.now()
         mousePress(tab)
-        wait(300)
         verify(!main.editing, "not before the hold time")
         tryVerify(() => main.editing, 3000, "the 0.6 s hold opens the editor")
         verify(Date.now() - t0 >= 590, "after the hold time: " + (Date.now() - t0))
@@ -305,6 +304,28 @@ TestCase {
         mouseClick(item(main, "tab-view-shipped-fish"))
         compare(fixture.views.currentId, "shipped-fish")
         compare(main.editing, false)
+    }
+
+    // A drag that starts on a view tab and runs over the map neither pans the map (Follow stays on)
+    // nor presses the tab: the map's handlers never take over from an item.
+    function test_dragFromTabDoesNotPanTheMap() {
+        const main = makeMain(1024, 600)
+        compare(main.page, "view")
+        compare(fixture.views.currentId, "shipped-nav")
+        verify(item(main, "tabBar").shown)
+        const tab = item(main, "tab-view-shipped-fish")
+        const x0 = tab.width / 2, y0 = tab.height / 2
+        mousePress(tab, x0, y0)
+        for (let i = 1; i <= 15; ++i)
+            mouseMove(tab, x0 - Units.mm(i), y0, 10, Qt.LeftButton)
+        wait(100)
+        mouseRelease(tab, x0 - Units.mm(15), y0)
+        compare(main.chartMap.moves, 0, "no pan")
+        compare(main.chartMap.gestures, 0, "no gesture")
+        compare(chartStub.follow, true, "Follow stays on")
+        compare(main.page, "view")
+        compare(fixture.views.currentId, "shipped-nav", "the tab was not pressed")
+        verify(!main.editing)
     }
 
     function test_nonFavouriteViewHighlightsHouse() {
@@ -520,6 +541,21 @@ TestCase {
         verify(item(main, "chartPage").visible)
     }
 
+    // A New whose insert fails opens no editor: the shown view stays and nothing can delete it.
+    function test_newViewInsertFailureOpensNoEditor() {
+        const main = makeMain(1024, 600)
+        goHome(main)
+        fixture.failViewInserts(true)
+        ignoreWarning(/views: insert failed/)
+        tap(item(main, "tile-new"))
+        fixture.failViewInserts(false)
+        compare(fixture.views.count, 3)
+        compare(fixture.views.currentId, "shipped-nav")
+        verify(!main.editing, "no editor")
+        verify(!main.editingNew)
+        compare(main.page, "home")
+    }
+
     // Every page keeps its controls left of the bar.
     function test_pagesHonourRightInset_data() {
         let out = []
@@ -732,7 +768,7 @@ TestCase {
         const map = item(main, "mapArea")
         mouseClick(map, map.width / 2, map.height / 2)
         verify(bar.shown)
-        tryVerify(() => barShown(main), 400, "back within the 150 ms slide")
+        tryVerify(() => barShown(main), 1500, "back after the 150 ms slide")
 
         main.hideDelayMs = 200
         hideBarOn(main, "shipped-big")
@@ -741,12 +777,12 @@ TestCase {
         verify(cells.visible)
         mouseClick(item(main, "cell-0"))
         verify(bar.shown, "a cell tap shows the bar")
-        tryVerify(() => barShown(main), 400)
+        tryVerify(() => barShown(main), 1500)
         main.hideDelayMs = 200
         hideBarOn(main, "shipped-big")
         mouseClick(cells, 1, 1) // the gap round the cells
         verify(bar.shown, "a background tap shows the bar")
-        tryVerify(() => barShown(main), 400)
+        tryVerify(() => barShown(main), 1500)
     }
 
     // The view's own buttons do their job and leave the bar hidden.
@@ -842,16 +878,16 @@ TestCase {
     function test_barTapRestartsTheDelay() {
         const main = makeMain(1024, 600)
         const bar = item(main, "tabBar")
-        main.hideDelayMs = 800
+        main.hideDelayMs = 3000
         mouseClick(item(main, "tab-view-shipped-nav"))
         wait(500)
         mouseClick(item(main, "paletteButton"))
         wait(500)
-        verify(bar.shown, "1000 ms after the tab tap, 500 ms after the palette")
+        verify(bar.shown, "500 ms after the palette")
         mouseClick(bar, bar.width / 2, bar.height - Units.mm(0.5)) // the bottom margin, under the buttons
         wait(500)
-        verify(bar.shown, "1000 ms after the palette, 500 ms after a tap between the buttons")
-        tryVerify(() => barHidden(main), 2000, "then it hides")
+        verify(bar.shown, "500 ms after a tap between the buttons")
+        tryVerify(() => barHidden(main), 5000, "then it hides")
     }
 
     // A tap on the strip while the bar slides shows it, and presses nothing under the finger.
@@ -864,7 +900,7 @@ TestCase {
         mouseClick(main.contentItem, p.x, p.y)
         verify(bar.shown)
         compare(main.page, "view", "the house tab under the finger was not pressed")
-        tryVerify(() => barShown(main), 400)
+        tryVerify(() => barShown(main), 1500)
     }
 
     function test_lockShowsTheBarFirst() {

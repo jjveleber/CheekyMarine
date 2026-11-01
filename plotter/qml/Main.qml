@@ -73,6 +73,7 @@ ApplicationWindow {
     function newView() {
         root.idBeforeNew = root.views.currentId
         const id = root.views.add()
+        if (id === "") return // the insert failed and the model logged it: nothing to edit
         root.editingNew = true
         root.editView(id, true)
     }

@@ -20,7 +20,8 @@ struct ViewSlot {
     bool on;
     Field field;
     double sizeMm; // digit height
-    bool operator==(const ViewSlot&) const = default;
+    QJsonObject extra = {}; // unknown keys of the slot entry, kept through a round trip
+    bool operator==(const ViewSlot&) const = default; // extra included, as in View
 };
 
 struct ViewCells {
@@ -55,9 +56,10 @@ QString shortFromName(const QString& name);
 // name + " 2", cut to 24 characters.
 QString duplicateName(const QString& name);
 
-// `extra` keys first, then the known keys over them.
+// `extra` keys first, then the known keys over them (each slot entry the same with its own `extra`).
 QJsonObject viewToJson(const View&);
-// A missing or invalid field takes its default; unknown top-level keys go to `extra`.
+// A missing or invalid field takes its default; unknown keys go to `extra`: the view's for top-level
+// keys, the slot's for keys inside a slot entry (the plan 3 "size" is read, not kept).
 View viewFromJson(const QJsonObject&);
 
 QList<View> shippedViews(qint64 now);
