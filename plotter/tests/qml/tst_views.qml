@@ -65,6 +65,8 @@ TestCase {
         Units.diagonalIn = 10.1
     }
 
+    function cleanup() { Theme.palette = "day" }
+
     function makeMain(w, h) {
         const main = createTemporaryObject(mainComp, testCase, {
             width: w, height: h,
@@ -891,15 +893,20 @@ TestCase {
         waitForRendering(splash)
         const p = logo.mapToItem(splash, 0, 0)
         verify(p.x >= 0 && p.y >= 0 && p.x + logo.width <= splash.width && p.y + logo.height <= splash.height, "logo inside the splash")
-        if (data.mm60) verify(logo.width >= Units.mm(60), "logo at least 60 mm wide: " + logo.width)
-        verify(Math.abs(logo.paintedHeight - logo.paintedWidth * 768 / 1408) <= 1, "aspect 1408:768")
+        if (data.mm60) verify(logo.paintedWidth >= Units.mm(60), "logo at least 60 mm wide: " + logo.paintedWidth)
+        compare(logo.sourceSize.width, 1408)
+        compare(logo.sourceSize.height, 768)
+        verify(Math.abs(logo.paintedWidth / logo.paintedHeight - logo.sourceSize.width / logo.sourceSize.height) < 0.01, "painted aspect is the file's")
+        verify(Math.abs(logo.height - Math.min(logo.width * 768 / 1408, splash.height * 0.45)) <= 1, "height rule: aspect box capped at 45% of the page")
         verify(Math.abs((p.x + logo.width / 2) - splash.width / 2) <= 1, "centred")
-        for (const n of ["splashCharts", "splashBathy"]) {
+        let prevBottom = p.y + logo.height - 1
+        for (const n of ["splashCharts", "splashBathy", "splashNotice"]) {
             const l = H.byName(splash, n)
             verify(l && l.visible, n)
             const q = l.mapToItem(splash, 0, 0)
-            verify(q.y >= p.y + logo.height - 1, n + " below the logo")
+            verify(q.y >= prevBottom, n + " below the previous line")
             verify(q.y + l.height <= splash.height, n + " inside the page")
+            prevBottom = q.y + l.height - 1
         }
         const version = H.findAll(splash, it => it.text !== undefined && it.text.startsWith("Plotter "))
         compare(version.length, 1)
@@ -909,6 +916,5 @@ TestCase {
         compare(logo.opacity, 0.3)
         Theme.palette = "dusk"
         compare(logo.opacity, 1)
-        Theme.palette = "day"
     }
 }

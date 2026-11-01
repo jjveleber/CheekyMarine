@@ -67,6 +67,7 @@ Rectangle {
             font.pixelSize: Units.mm(4.5)
         }
         Label {
+            objectName: "splashNotice"
             width: parent.width
             visible: text !== ""
             text: splash.appInfo.chartsPack.notice !== undefined ? splash.appInfo.chartsPack.notice : ""
