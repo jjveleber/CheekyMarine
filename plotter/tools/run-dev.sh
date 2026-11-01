@@ -5,7 +5,7 @@
 # for example (an empty FIXTURE is the default log):
 #   plotter/tools/run-dev.sh "" --palette night --view Fish
 #   plotter/tools/run-dev.sh "" --view "Big #" --sheet cell --window 1280x800 \
-#       --screenshot /tmp/cell.png --screenshot-after-ms 5000 --exit-after-ms 6000
+#       --screenshot /tmp/cell.png --screenshot-after-ms 7000 --exit-after-ms 8000
 # PACKS: $CM_PACKS_DIR when set, else a temp dir of symlinks to the puget-north packs in
 # chartpack/work (worktrees have no chartpack/work: set CM_PACKS_DIR there).
 set -euo pipefail
