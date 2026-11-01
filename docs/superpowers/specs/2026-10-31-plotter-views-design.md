@@ -18,7 +18,7 @@ The owner's moment: "going from navigation to fishing. I'd switch my garmin to f
 3. Favourites in the tab bar: favourite views get their own tab (icon over short name), as many as fit. One tap to switch.
 4. Home page (house tab): tiles for every view, New view, Tracks, Settings, About.
 5. One editor: the live view with its slots or cells outlined, a Setup sheet for the view's own properties, per-slot and per-cell sheets.
-6. Cell views: a layout chosen from a gallery of every rectangular tiling of a 2x3 and a 3x2 grid (60 shapes, at most 6 cells), fields per cell, digits auto-sized to fill.
+6. Cell views: a layout chosen from a gallery of every rectangular tiling of a 2x2, a 2x3 and a 3x2 grid (72 shapes, at most 6 cells; see 6.4), fields per cell, digits auto-sized to fill.
 7. Remove the Navigation/Fishing mode button and the idle auto-lock; the tab bar auto-hides on views so the chart gets the whole width, any tap brings it back.
 8. Three shipped views on first run: Navigation, Fishing, Big numbers.
 9. Both 1024x600 and 1280x800 keep the 12 mm control floor and the 15 mm tab size; screenshots at both sizes at every checkpoint.
@@ -115,9 +115,9 @@ Slot sheet (half height, owner mockup 05 option B; sits in the half of the page 
 
 Cell sheet: Field list, Done.
 
-Layout gallery: 60 landscape thumbnails, at least 12 mm tall, scrolling, the current one highlighted; tap to apply and close.
+Layout gallery: 72 landscape thumbnails, at least 12 mm tall, scrolling, the current one highlighted; tap to apply and close.
 
-Note (builder): the count is 72, not 60 (see 6.4).
+Note (builder): this said 60 before the builder check; the count is 72 (see 6.4).
 
 Keyboard: our own QML keyboard (Qt Virtual Keyboard is GPL): letters, digits, space, backspace, Done; 12 mm keys; uppercase first letter by default, a shift key. Short name capped at 6, name at 24.
 
@@ -154,9 +154,9 @@ A bundled subset of Tabler Icons (MIT) as SVG (Qt Svg becomes a dependency, LGPL
 
 ### 6.12 Storage (my call)
 
-New table `views` (id, order, json) in the settings database, plus `lastViewId` in settings. JSON per view as in 6.1; unknown keys kept on save (R34 rule). Pure C++ `Views` model with unit tests: CRUD, order moves, favourite count given a bar height, migration from the plan 3 keys, clamp math for slot sizes, the tiling generator (exactly 60 distinct shapes, every one a complete tiling, stable keys).
+New table `views` (id, order, json) in the settings database, plus `lastViewId` in settings. JSON per view as in 6.1; unknown keys kept on save (R34 rule). Pure C++ `Views` model with unit tests: CRUD, order moves, favourite count given a bar height, migration from the plan 3 keys, clamp math for slot sizes, the tiling generator (exactly 72 distinct shapes, every one a complete tiling, stable keys).
 
-Note (builder): the count is 72, not 60 (see 6.4).
+Note (builder): this said 60 before the builder check; the count is 72 (see 6.4).
 
 ### 6.13 What the chart page keeps (unchanged)
 

@@ -139,7 +139,8 @@ int main(int argc, char* argv[]) {
         qCritical() << "--sheet wants one of" << sheets << "got" << cli.value(sheetOpt);
         return 2;
     }
-    const bool editorOpen = cli.isSet(editorOpt) || sheets.indexOf(cli.value(sheetOpt)) >= 2;
+    const QStringList editorSheets{"setup", "slot", "cell", "gallery", "keyboard"};
+    const bool editorOpen = cli.isSet(editorOpt) || editorSheets.contains(cli.value(sheetOpt));
     bool exitAfterOk = true;
     const int exitAfterMs = cli.value(exitAfterOpt).toInt(&exitAfterOk);
     if (cli.isSet(exitAfterOpt) && (!exitAfterOk || exitAfterMs < 0)) {
@@ -194,6 +195,14 @@ int main(int argc, char* argv[]) {
             return 2;
         }
         views.setCurrentId(id);
+    }
+    // The cell sheet and the layout gallery belong to a view with no chart (R85).
+    if (const QString s = cli.value(sheetOpt); s == "cell" || s == "gallery") {
+        const auto shown = views.view(views.currentId());
+        if (!shown || shown->chart != ViewChart::None) {
+            qCritical().noquote() << "--sheet" << s << "needs a None view (for example --view \"Big #\")";
+            return 2;
+        }
     }
 
     const QString packsDir = cli.isSet(packsOpt) ? cli.value(packsOpt) : cli.value(dataOpt) + "/packs";

@@ -162,7 +162,8 @@ Home order; favourite tabs follow it) and `json`, one JSON object per view:
 - Schema 1.1.0 adds the `views` table. Opening a plan 3 database (schema 1.0.0) migrates it once: the
   stored `slots` become the Navigation view's slots (small, medium and large map to 8, 14 and 25 mm),
   the stored `bigNumbers` become the Big numbers view's cells (2 fields side by side, 3 in a row of
-  three, 4 in the equal 2x2 quad), a Fishing view is added, and `slots`, `bigNumbers`, `chartMode`
+  three, 4 in the equal 2x2 quad; 0 or 1 fields are padded to two with the defaults, Depth then SOG,
+  and more than 4 are cut to the first 4), a Fishing view is added, and `slots`, `bigNumbers`, `chartMode`
   and `touchLockTimeoutS` are deleted from `settings`.
 
 ## Dev run
@@ -181,8 +182,9 @@ options of `cheekyplotter` (not in `--help`):
 - `--sheet legend|ais|setup|slot|cell|gallery|keyboard`: `legend` opens the seabed legend sheet;
   `ais` selects the first AIS target that arrives and so opens its sheet; the rest open the editor
   too and then a sheet: `setup` the Setup sheet, `slot` the TL slot's sheet, `cell` the first cell's
-  sheet (a view with no chart: `--view "Big #"`), `gallery` Setup then the layout gallery,
-  `keyboard` Setup then the keyboard on Name (not stored).
+  sheet, `gallery` Setup then the layout gallery, `keyboard` Setup then the keyboard on Name (not
+  stored). `cell` and `gallery` need the shown view to have no chart (for example `--view "Big #"`);
+  on a chart view they exit 2.
 - `--lock`: starts with the touch lock on (hold the padlock for 1.5 s to unlock).
 - `--record`: turns track recording on at start (it persists in the data dir).
 - `--screenshot PATH --screenshot-after-ms N`: saves a grab of the window N ms after start;
@@ -198,9 +200,8 @@ in `docs/plotter/renders/views/`, named `<name>-<day|night>-<WxH>.png`. They com
 --screenshot-after-ms 5000 --exit-after-ms 6000` plus `--view`, `--page`, `--editor`, `--sheet`,
 `--lock` or `--record` as needed (`splash` is taken at 800 ms, `nav-barhidden` at 10000 ms, after
 the 8 s hide). The earlier walkthrough renders in `docs/plotter/renders/final/` predate views; they
-keep the no-data banner
-(the app run without n2kd, `nodata-*.png`) and the recovery screen (`--data` pointing at a
-directory whose `plotter.db` is junk, `recovery-*.png`).
+keep the no-data banner (the app run without n2kd, `nodata-*.png`) and the recovery screen
+(`--data` pointing at a directory whose `plotter.db` is junk, `recovery-*.png`).
 
 ## Bring-up checks
 

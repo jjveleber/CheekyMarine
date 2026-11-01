@@ -108,8 +108,9 @@ ApplicationWindow {
         root.page = "home"
     }
     Component.onCompleted: showCurrentView()
-    // The editor and its sheet open once the page has laid out, so a sheet takes the right half
-    // (the splash covers it for its first 2 s).
+    // Dev aid for the --editor and --sheet options only; no user path uses it. The 300 ms is a fixed
+    // delay that lets the first view load and lay out before the editor opens, so a sheet takes the
+    // right half (the splash covers it for its first 2 s).
     function openInitialEditor() {
         root.editView(root.views.currentId, false)
         if (root.sheet === "slot") editor.openSlotSheet("TL")
