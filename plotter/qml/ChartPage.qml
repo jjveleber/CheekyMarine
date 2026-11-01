@@ -3,7 +3,10 @@ import QtQuick.Controls.Basic
 
 // The chart of the shown view: map, the view's overlay slots, zoom, recenter, the "No position" and
 // "No fishing chart installed" chips and the pack notice. The map runs under the tab bar strip on
-// the right (rightInset); everything else stops at its edge. Bars that are on (Top, Bottom, Left,
+// the right (rightInset); everything else stops at its edge. When the bar slides off (barInset, 0
+// while hidden), the right corners, the Right bar and the ends of Top, Bottom and the notice slide
+// to the page's edge with it and back when it returns; slot sizes never change with it, and +, -
+// and Legend hide while it is hidden. Bars that are on (Top, Bottom, Left,
 // Right) shrink the chart viewport; the corners float over the chart. The notice is the bottom line,
 // under a bottom bar. Each slot is drawn at its clamped size (PanelMath.drawnSizesMm), so no slot
 // leaves the page or runs into another; the stored sizes are not changed. In edit mode every slot is
@@ -16,6 +19,8 @@ Item {
     required property Item chartMap    // MapLibreChartMap, created in main.cpp
     required property var draft        // ViewDraft
     property real rightInset: 0        // the tab bar strip over the page's right edge
+    property real barInset: rightInset // the part of the strip the bar covers now (0 while hidden)
+    property bool barShown: true
     property bool editing: false
     property string selectedSlot: ""   // the slot whose resize handle shows (the editor's)
     signal slotTapped(string slotId)
@@ -107,7 +112,7 @@ Item {
             topMargin: page.topInset
             bottomMargin: page.bottomInset > 0 ? page.bottomInset + noticeBar.height : 0
             leftMargin: page.leftInset
-            rightMargin: page.rightBarInset > 0 ? page.rightInset + page.rightBarInset : 0
+            rightMargin: page.rightBarInset > 0 ? page.barInset + page.rightBarInset : 0
         }
         function zoomBy(factor, point) {
             if (page.chart.follow) page.chart.zoomBy(Math.log2(factor))
@@ -181,15 +186,27 @@ Item {
             bottom: page.bottomInset > 0 ? mapArea.bottom : noticeBar.top
             topMargin: page.margin
             leftMargin: page.margin
-            rightMargin: page.rightInset + page.rightBarInset + page.margin
+            rightMargin: page.barInset + page.rightBarInset + page.margin
             bottomMargin: page.margin
+        }
+    }
+    // The corner area with the bar shown: Recenter, the chips and the AIS sheet keep their centre
+    // on it while the bar is hidden.
+    Item {
+        id: shownCornerArea
+        anchors {
+            top: cornerArea.top
+            bottom: cornerArea.bottom
+            left: cornerArea.left
+            right: parent.right
+            rightMargin: page.rightInset + page.rightBarInset + page.margin
         }
     }
 
     Rectangle {
         id: noticeBar
         objectName: "noticeBar"
-        anchors { left: parent.left; right: parent.right; bottom: parent.bottom; rightMargin: page.rightInset }
+        anchors { left: parent.left; right: parent.right; bottom: parent.bottom; rightMargin: page.barInset }
         height: noticeText.implicitHeight + Units.mm(1)
         color: Theme.noticeBackground
         Label {
@@ -231,11 +248,11 @@ Item {
             // The bars span their edge up to the strip (clipped there); Left and Right sit between
             // the Top and Bottom bars.
             clip: horizontalBar
-            width: horizontalBar ? Math.max(minimumSize, page.width - page.rightInset) : implicitWidth
+            width: horizontalBar ? Math.max(minimumSize, page.width - page.barInset) : implicitWidth
             height: verticalBar ? Math.max(implicitHeight, page.height - page.topInset - page.bottomInset - noticeBar.height)
                                 : implicitHeight
             x: slotId === "Left" ? 0
-             : slotId === "Right" ? page.width - page.rightInset - width
+             : slotId === "Right" ? page.width - page.barInset - width
              : slotId === "TL" || slotId === "BL" ? cornerArea.x
              : slotId === "TR" || slotId === "BR" ? cornerArea.x + cornerArea.width - width
              : 0
@@ -260,7 +277,7 @@ Item {
 
     BigButton {
         objectName: "recenterButton"
-        anchors { horizontalCenter: cornerArea.horizontalCenter; bottom: cornerArea.bottom }
+        anchors { horizontalCenter: shownCornerArea.horizontalCenter; bottom: cornerArea.bottom }
         visible: !page.chart.follow && !page.editing
         width: Math.max(implicitWidth, Units.mm(30))
         text: "Recenter"
@@ -275,7 +292,7 @@ Item {
         x: fitsGap ? cornerArea.x + cornerArea.width - width : Math.min(page.trLeft, page.brLeft) - page.margin - width
         y: Math.max(cornerArea.y, Math.min(cornerArea.y + cornerArea.height - height,
                                            page.trBottom + (page.brTop - page.trBottom - height) / 2))
-        visible: !page.editing
+        visible: !page.editing && page.barShown
         spacing: Units.mm(1.5)
         BigButton {
             objectName: "zoomInButton"
@@ -297,7 +314,7 @@ Item {
 
     // Top centre: a Fishing view without a bathy pack says so, then the position chip.
     Column {
-        anchors { horizontalCenter: cornerArea.horizontalCenter; top: cornerArea.top }
+        anchors { horizontalCenter: shownCornerArea.horizontalCenter; top: cornerArea.top }
         spacing: Units.mm(1)
         Rectangle {
             objectName: "noFishChip"
@@ -343,14 +360,14 @@ Item {
     BigButton {
         objectName: "legendButton"
         anchors { left: cornerArea.left; verticalCenter: cornerArea.verticalCenter }
-        visible: !page.editing && page.chart.legend.length > 0 // an empty legend would open a blank sheet
+        visible: !page.editing && page.barShown && page.chart.legend.length > 0 // an empty legend would open a blank sheet
         text: "Legend"
         onClicked: legendSheet.visible = true
     }
 
     AisSheet {
         id: aisSheet
-        anchors { horizontalCenter: cornerArea.horizontalCenter; top: cornerArea.top; topMargin: Units.mm(14) }
+        anchors { horizontalCenter: shownCornerArea.horizontalCenter; top: cornerArea.top; topMargin: Units.mm(14) }
         info: page.chart.aisSelection
         onClosed: page.chart.clearTarget()
     }

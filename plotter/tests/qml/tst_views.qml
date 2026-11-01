@@ -795,13 +795,8 @@ TestCase {
             verify(!bar.shown, what + " leaves the bar hidden")
             verify(barHidden(main), what)
         }
-        mouseClick(item(main, "zoomInButton"))
-        stillHidden("+")
-        mouseClick(item(main, "legendButton"))
-        verify(item(main, "legendSheet").visible)
-        stillHidden("Legend")
-        mouseClick(item(main, "legendCloseButton"))
-        stillHidden("the legend's close")
+        verify(!item(main, "zoomInButton").visible, "+ hides with the bar")
+        verify(!item(main, "legendButton").visible, "Legend hides with the bar")
         chartStub.follow = false
         const recenter = item(main, "recenterButton")
         waitForRendering(recenter)
@@ -825,31 +820,61 @@ TestCase {
         stillHidden("the No fishing chart chip")
     }
 
-    // The hide moves nothing: the slots, the zoom buttons, Legend and the chip keep their boxes and
-    // only the map runs under the strip.
-    function test_nothingMovesWhenTheBarHides() {
+    // The hide slides the slots to the right edge with the bar (TR, BR, Right, Top and Bottom
+    // follow it; TL, BL, Recenter and the chip stay put) and hides +, - and Legend; drawn sizes do
+    // not change. The bar's return puts everything back.
+    function test_slotsFollowTheBarAndTheButtonsHide() {
         chartStub.fishAvailable = false
+        chartStub.follow = false
         const main = makeMain(1024, 600)
-        main.hideDelayMs = 200
+        main.hideDelayMs = 2000
         mouseClick(item(main, "tab-view-shipped-fish"))
+        compare(main.page, "view")
+        for (const [id, field, mm] of [["BL", "cog", 8], ["BR", "stw", 8], ["Top", "time", 6], ["Bottom", "pos", 5], ["Right", "hdg", 8]])
+            fixture.draft.setSlot(id, true, field, mm)
         const page = item(main, "chartPage")
         const map = item(main, "mapArea")
         waitForRendering(page)
-        const watched = () => H.findAll(page, it => it.slotId !== undefined && it.drawnMm !== undefined && it.visible)
-            .concat(["zoomInButton", "zoomOutButton", "legendButton", "noFishChip"].map(n => item(main, n)))
-        const boxes = () => watched().map(it => {
-            const b = H.box(it, main.contentItem)
-            return [it.objectName || it.slotId, b.x, b.y, b.w, b.h]
-        })
-        verify(item(main, "noFishChip").visible)
-        verify(watched().length >= 6, "slots and controls: " + watched().length)
-        const before = boxes()
+        const slots = H.findAll(page, it => it.slotId !== undefined && it.drawnMm !== undefined && it.visible)
+        const slot = id => slots.find(s => s.slotId === id)
+        for (const id of ["TL", "TR", "BL", "BR", "Top", "Bottom", "Right"]) verify(slot(id), id + " shown")
+        const fixed = ["recenterButton", "noFishChip"].map(n => item(main, n))
+        const hidden = ["zoomInButton", "zoomOutButton", "legendButton"].map(n => item(main, n))
+        for (const it of fixed.concat(hidden)) verify(it.visible, it.objectName)
+        const boxOf = it => H.box(it, main.contentItem)
+        const watched = slots.concat(fixed, hidden)
+        const before = watched.map(boxOf)
+        const drawn = slots.map(s => s.drawnMm)
+        const margin = Units.mm(1.5)
+
+        main.hideDelayMs = 200
+        tryVerify(() => barHidden(main), 1500, "the bar slid off")
+        const right = boxOf(slot("Right"))
+        fuzzyCompare(right.x + right.w, main.width, 1)
+        for (const id of ["TR", "BR"]) {
+            const b = boxOf(slot(id))
+            fuzzyCompare(b.x + b.w, right.x - margin, 1, id + " at the edge, clear of the Right bar")
+        }
+        for (const id of ["Top", "Bottom"]) compare(boxOf(slot(id)).w, main.width, id)
+        for (const it of [slot("TL"), slot("BL")].concat(fixed))
+            compare(boxOf(it), before[watched.indexOf(it)], it.objectName || it.slotId)
+        for (const it of hidden) verify(!it.visible, it.objectName + " hidden with the bar")
+        fuzzyCompare(boxOf(map).x + map.width, right.x, 1, "the map runs up to the Right bar, at the edge")
+        compare(slots.map(s => s.drawnMm), drawn, "drawn sizes unchanged")
+
+        main.hideDelayMs = 2000 // long enough to see it back
+        mouseClick(map, map.width / 2, map.height / 2)
+        verify(item(main, "tabBar").shown)
+        tryVerify(() => barShown(main) && JSON.stringify(watched.map(boxOf)) === JSON.stringify(before), 1500,
+                  "every box back: " + JSON.stringify(watched.map(boxOf)))
+        for (const it of hidden) verify(it.visible, it.objectName + " back with the bar")
+        compare(slots.map(s => s.drawnMm), drawn)
+
+        // With no Right bar the map runs under the strip, shown or hidden.
+        fixture.draft.setSlot("Right", false, "hdg", 8)
         compare(map.width, main.width)
-        tryVerify(() => {
-            compare(map.width, main.width)
-            return barHidden(main)
-        }, 1000, "the bar slid off")
-        compare(boxes(), before)
+        main.hideDelayMs = 200
+        tryVerify(() => barHidden(main), 1500, "the bar slid off again")
         compare(map.width, main.width)
     }
 

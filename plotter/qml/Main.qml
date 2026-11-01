@@ -196,6 +196,8 @@ ApplicationWindow {
                     chartMap: root.chartMap
                     draft: root.draft
                     rightInset: tabBar.width
+                    barInset: root.width - tabBar.x
+                    barShown: tabBar.shown
                     editing: root.editing
                     selectedSlot: root.editing ? editor.selectedSlot : ""
                     onPlainTap: root.showBar()
