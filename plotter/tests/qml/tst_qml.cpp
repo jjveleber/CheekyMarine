@@ -1,17 +1,19 @@
 // QuickTest runner for every tests/qml/tst_*.qml. The CheekyMarine QML module is linked in statically.
 // The `fixture` context property gives the tests real models over a throw-away database.
 #include "core/AppInfo.h"
-#include "core/NumbersModel.h"
 #include "core/Recovery.h"
 #include "core/Settings.h"
-#include "core/Slots.h"
 #include "core/Store.h"
 #include "core/TouchLock.h"
 #include "core/Tracks.h"
 #include "core/VesselModel.h"
+#include "core/ViewDraft.h"
+#include "core/Views.h"
+#include "core/ViewsModel.h"
 #include <QDateTime>
 #include <QQmlContext>
 #include <QQmlEngine>
+#include <QSqlQuery>
 #include <QTemporaryDir>
 #include <QtQml/qqmlextensionplugin.h>
 #include <QtQuickTest>
@@ -23,8 +25,8 @@ class Fixture : public QObject {
     Q_OBJECT
     Q_PROPERTY(QObject* settings READ settings CONSTANT)
     Q_PROPERTY(QObject* vessel READ vessel CONSTANT)
-    Q_PROPERTY(QObject* slotsModel READ slotsModel CONSTANT)
-    Q_PROPERTY(QObject* numbersModel READ numbersModel CONSTANT)
+    Q_PROPERTY(QObject* views READ views CONSTANT)
+    Q_PROPERTY(QObject* draft READ draft CONSTANT)
     Q_PROPERTY(QObject* appInfo READ appInfo CONSTANT)
     Q_PROPERTY(QObject* recovery READ recovery CONSTANT)
     Q_PROPERTY(QObject* touchLock READ touchLock CONSTANT)
@@ -33,17 +35,21 @@ class Fixture : public QObject {
 public:
     QObject* settings() const { return m_settings.get(); }
     QObject* vessel() { return &m_vessel; }
-    QObject* slotsModel() const { return m_slots.get(); }
-    QObject* numbersModel() const { return m_numbers.get(); }
+    QObject* views() const { return m_views.get(); }
+    QObject* draft() const { return m_draft.get(); }
     QObject* appInfo() const { return m_appInfo.get(); }
     QObject* recovery() const { return m_recovery.get(); }
     QObject* touchLock() { return &m_lock; }
     QObject* tracksController() const { return m_tracksController.get(); }
 
-    // Default settings, no data, no daemon state.
+    // Default settings, the shipped views with Navigation shown, no data, no daemon state.
     Q_INVOKABLE void reset() {
-        m_settings->setSlotsJson(QJsonArray());
-        m_settings->setBigNumbers({"depth", "sog"});
+        failViewInserts(false);
+        m_views->replaceAll(shippedViews(QDateTime::currentSecsSinceEpoch()));
+        m_views->setCurrentId("shipped-nav");
+        m_draft->load(*m_views->view("shipped-nav"));
+        m_settings->setTabBarHideS(8);
+        m_settings->setLastViewId("");
         m_settings->setPaletteMode("auto");
         m_settings->setDepthUnit("ft");
         m_settings->setDepths(1.8288, 3.048, 9.144);
@@ -52,7 +58,6 @@ public:
         m_settings->setTrackRecording(false);
         for (const TrackInfo& t : m_trackStore->list()) m_trackStore->remove(t.id);
         m_tracksController->refresh();
-        m_lock.setTimeoutS(0);
         m_lock.holdEnd();
         if (m_lock.locked()) { // unlock the way the user does
             m_lock.holdStart();
@@ -60,6 +65,13 @@ public:
         }
         m_vessel.setLive(false);
         m_appInfo->setDaemonVersion(QString());
+    }
+    // While on, every insert into the views table fails (a temporary trigger on this connection).
+    Q_INVOKABLE void failViewInserts(bool on) {
+        QSqlQuery q(m_store->db());
+        q.exec(on ? QStringLiteral("CREATE TEMP TRIGGER IF NOT EXISTS fail_view_insert BEFORE INSERT ON views "
+                                   "BEGIN SELECT RAISE(ABORT, 'test insert failure'); END")
+                  : QStringLiteral("DROP TRIGGER IF EXISTS temp.fail_view_insert"));
     }
     // A stored track of two points about 1.1 km apart, ten minutes long; returns its id.
     Q_INVOKABLE qint64 addTrack(double started) {
@@ -102,8 +114,8 @@ public slots:
         if (!s) qFatal("fixture: cannot open the store");
         m_store = std::move(*s);
         m_settings = std::make_unique<Settings>(*m_store);
-        m_slots = std::make_unique<SlotsModel>(*m_settings, m_vessel);
-        m_numbers = std::make_unique<NumbersModel>(*m_settings, m_vessel);
+        m_views = std::make_unique<ViewsModel>(*m_store, *m_settings, [] { return QDateTime::currentSecsSinceEpoch(); });
+        m_draft = std::make_unique<ViewDraft>(m_vessel, *m_settings);
         m_trackStore = std::make_unique<TrackStore>(*m_store);
         m_recorder = std::make_unique<TrackRecorder>(*m_trackStore, *m_settings, [] { return QDateTime::currentSecsSinceEpoch() * 1.0; });
         m_tracksController = std::make_unique<TracksController>(*m_trackStore, *m_recorder);
@@ -130,8 +142,8 @@ public slots:
         m_recorder.reset();
         m_trackStore.reset();
         m_appInfo.reset();
-        m_numbers.reset();
-        m_slots.reset();
+        m_draft.reset();
+        m_views.reset();
         m_settings.reset();
         m_store.reset();
     }
@@ -143,8 +155,8 @@ private:
     VesselModel m_vessel;
     qint64 m_nowMs = 1000000;
     TouchLock m_lock{[this] { return m_nowMs; }};
-    std::unique_ptr<SlotsModel> m_slots;
-    std::unique_ptr<NumbersModel> m_numbers;
+    std::unique_ptr<ViewsModel> m_views;
+    std::unique_ptr<ViewDraft> m_draft;
     std::unique_ptr<TrackStore> m_trackStore;
     std::unique_ptr<TrackRecorder> m_recorder;
     std::unique_ptr<TracksController> m_tracksController;

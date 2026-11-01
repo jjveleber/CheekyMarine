@@ -1,0 +1,94 @@
+<style>
+.scr{display:flex;width:400px;height:250px;border:2px solid #555;border-radius:4px;background:#fff;position:relative;overflow:hidden;font-family:sans-serif;color:#111;flex:none}
+.scr .tabs{width:52px;background:#f3f3f3;border-left:1px solid #999;display:flex;flex-direction:column;align-items:center;padding-top:4px;gap:4px;opacity:.4}
+.tab{width:44px;height:30px;border:1px solid #888;border-radius:3px;background:#fff;font-size:8px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;line-height:1;gap:2px}
+.tab .ic{font-size:12px;line-height:1}
+.tab.fav{background:#fff6d6;border-color:#c9a227}
+.tab.on{background:#cfe3f7;border:2px solid #4a7fb5}
+.tab.sm{height:22px}
+.tab.push{margin-top:auto}
+.cells{flex:1;display:grid;gap:4px;padding:4px;position:relative}
+.cell{border:2px dashed #d08a00;border-radius:3px;position:relative;display:flex;align-items:center;justify-content:center;font-weight:700}
+.cell.sel{border:3px solid #d08a00}
+.cell small{position:absolute;left:5px;top:3px;font-weight:400;font-size:8px}
+.cell em{position:absolute;right:5px;bottom:3px;font-weight:400;font-style:normal;font-size:8px}
+.fab{position:absolute;border:1px solid #888;border-radius:3px;background:#fff;padding:4px 8px;font-size:9px;font-weight:700}
+.fab.pri{background:#cfe3f7;border:2px solid #4a7fb5}
+.sheet{position:absolute;left:0;right:0;bottom:0;top:46%;background:#f3f3f3;border-top:1px solid #777;display:flex;flex-direction:column;padding:6px;font-size:9px;gap:4px}
+.sheet .cols{display:flex;gap:8px;flex:1}
+.sheet .list{flex:1;display:flex;flex-direction:column;gap:3px}
+.sheet .list div{border:1px solid #888;border-radius:3px;background:#fff;padding:3px 5px;text-align:center}
+.sheet .list div.on{background:#cfe3f7;border:2px solid #4a7fb5}
+.sheet .list div.dis{color:#aaa;border-color:#ccc}
+.sheet .list .ttl{border:none;background:none;color:#555;text-align:left;padding:0}
+.btn{border:1px solid #888;border-radius:3px;background:#fff;padding:3px 8px;font-size:9px;display:inline-flex;align-items:center}
+.btn.pri{background:#cfe3f7;border:2px solid #4a7fb5;font-weight:700}
+.gal{position:absolute;left:0;right:0;top:0;bottom:0;background:#f3f3f3;padding:6px;display:flex;flex-direction:column;gap:4px;font-size:9px}
+.thumbs{flex:1;display:grid;grid-template-columns:repeat(7,1fr);gap:5px}
+.th{border:1px solid #888;border-radius:3px;background:#fff;display:grid;gap:2px;padding:3px}
+.th.on{outline:3px solid #4a7fb5}
+.th i{display:block;background:#cfe3f7;border:1px solid #7aa;border-radius:1px}
+.cap{font-size:11px;color:#666;margin:4px 0 0}
+</style>
+
+<h2>Editing a cell view</h2>
+<p class="subtitle">Grid rule: up to 2 columns, up to 3 rows, a cell may span both columns, 6 cells max. That gives 14 possible layouts. Two ways to edit. Click one, or describe another.</p>
+
+<div class="options">
+
+<div class="option" data-choice="percell" onclick="toggleSelect(this)">
+  <div class="letter">A</div>
+  <div class="content">
+    <h3>Tap a cell, change it in place</h3>
+    <p>Edit mode outlines the cells. Tap one: a half-height sheet with its field list plus layout buttons that act on that cell: <b>Split</b> (one cell becomes two side by side) / <b>Merge</b> (two in the row become one), <b>Add row</b> below, <b>Remove row</b>. Buttons grey out at the limits. Same shape as the slot sheet, no gallery to learn.</p>
+    <div class="scr">
+      <div class="cells" style="grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr">
+        <div class="cell sel" style="font-size:36px;grid-column:1/3"><small>Depth</small>137<em>ft</em></div>
+        <div class="cell" style="font-size:30px"><small>SOG</small>6.0<em>kn</em></div>
+        <div class="cell" style="font-size:30px"><small>Water</small>54.2<em>F</em></div>
+        <div class="sheet">
+          <div style="display:flex;justify-content:space-between"><b>Cell 1</b><span class="btn pri">Done</span></div>
+          <div class="cols">
+            <div class="list"><div class="ttl">Field</div><div class="on">Depth</div><div>SOG</div><div>STW</div><div>more...</div></div>
+            <div class="list"><div class="ttl">Layout</div><div>Split cell</div><div class="dis">Merge row</div><div>Add row below</div><div>Remove row</div></div>
+          </div>
+        </div>
+      </div>
+      <div class="tabs"><div class="tab fav"><span class="ic">&#9875;</span>Nav</div><div class="tab fav"><span class="ic">&#127907;</span>Fish</div><div class="tab fav on"><span class="ic">#</span>Big #</div><div class="tab"><span class="ic">&#8962;</span></div><div class="tab sm push">Lock</div><div class="tab sm">Day</div></div>
+    </div>
+    <p class="cap">Setup and Done float in the top half, like the chart editor. A new None view starts as one row of two cells (Depth, SOG).</p>
+  </div>
+</div>
+
+<div class="option" data-choice="gallery" onclick="toggleSelect(this)">
+  <div class="letter">B</div>
+  <div class="content">
+    <h3>Pick the layout from a gallery, then fill the cells</h3>
+    <p>Setup sheet gets a <b>Layout</b> row: tap it, a gallery of the 14 shapes as thumbnails. Pick one, then tap each cell for its field. Shows every possibility at once; fields are re-asked when the cell count changes.</p>
+    <div class="scr">
+      <div class="gal">
+        <div style="display:flex;justify-content:space-between"><b>Layout</b><span class="btn pri">Done</span></div>
+        <div class="thumbs">
+          <div class="th" style="grid-template-rows:1fr"><i></i></div>
+          <div class="th" style="grid-template-columns:1fr 1fr"><i></i><i></i></div>
+          <div class="th" style="grid-template-rows:1fr 1fr"><i></i><i></i></div>
+          <div class="th" style="grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr"><i style="grid-column:1/3"></i><i></i><i></i></div>
+          <div class="th" style="grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr"><i></i><i></i><i style="grid-column:1/3"></i></div>
+          <div class="th on" style="grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr"><i></i><i></i><i></i><i></i></div>
+          <div class="th" style="grid-template-rows:1fr 1fr 1fr"><i></i><i></i><i></i></div>
+          <div class="th" style="grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr 1fr"><i style="grid-column:1/3"></i><i style="grid-column:1/3"></i><i></i><i></i></div>
+          <div class="th" style="grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr 1fr"><i style="grid-column:1/3"></i><i></i><i></i><i style="grid-column:1/3"></i></div>
+          <div class="th" style="grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr 1fr"><i></i><i></i><i style="grid-column:1/3"></i><i style="grid-column:1/3"></i></div>
+          <div class="th" style="grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr 1fr"><i style="grid-column:1/3"></i><i></i><i></i><i></i><i></i></div>
+          <div class="th" style="grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr 1fr"><i></i><i></i><i style="grid-column:1/3"></i><i></i><i></i></div>
+          <div class="th" style="grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr 1fr"><i></i><i></i><i></i><i></i><i style="grid-column:1/3"></i></div>
+          <div class="th" style="grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr 1fr"><i></i><i></i><i></i><i></i><i></i><i></i></div>
+        </div>
+      </div>
+      <div class="tabs"><div class="tab fav"><span class="ic">&#9875;</span>Nav</div><div class="tab fav"><span class="ic">&#127907;</span>Fish</div><div class="tab fav on"><span class="ic">#</span>Big #</div><div class="tab"><span class="ic">&#8962;</span></div><div class="tab sm push">Lock</div><div class="tab sm">Day</div></div>
+    </div>
+    <p class="cap">Thumbnails must be 12 mm tall at least: 14 of them fit in two rows at both sizes.</p>
+  </div>
+</div>
+
+</div>

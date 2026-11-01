@@ -1,0 +1,109 @@
+<style>
+.scr{display:flex;width:420px;height:262px;border:2px solid #555;border-radius:4px;background:#e9e4d2;position:relative;overflow:hidden;font-family:sans-serif;color:#111}
+.scr .map{flex:1;position:relative;background:linear-gradient(135deg,#f1ecd8 0 45%,#bcd6ee 45% 70%,#e2e0c8 70%)}
+.scr .tabs{width:52px;background:#f3f3f3;border-left:1px solid #999;display:flex;flex-direction:column;align-items:center;padding-top:4px;gap:4px}
+.tab{width:44px;height:30px;border:1px solid #888;border-radius:3px;background:#fff;font-size:8px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;line-height:1;gap:2px}
+.tab .ic{font-size:12px;line-height:1}
+.tab.fav{background:#fff6d6;border-color:#c9a227}
+.tab.on{background:#cfe3f7;border:2px solid #4a7fb5}
+.tab.sm{height:22px}
+.tab.push{margin-top:auto}
+.slot{position:absolute;background:rgba(255,255,255,.85);border-radius:3px;padding:2px 4px;font-weight:700;line-height:1}
+.slot small{display:block;font-weight:400;font-size:7px}
+.slot.edit{outline:2px dashed #d08a00;outline-offset:2px}
+.slot.off{background:rgba(255,255,255,.35);color:#888;font-weight:400;font-size:8px}
+.hdr{height:34px;background:#f3f3f3;border-bottom:1px solid #999;display:flex;align-items:center;gap:6px;padding:0 6px;font-size:9px}
+.fld{border:1px solid #888;border-radius:3px;background:#fff;padding:3px 6px;height:20px;box-sizing:border-box;display:flex;align-items:center;gap:4px}
+.fld.on{background:#cfe3f7;border:2px solid #4a7fb5}
+.btn{border:1px solid #888;border-radius:3px;background:#fff;padding:3px 8px;font-size:9px;height:20px;box-sizing:border-box;display:flex;align-items:center}
+.btn.pri{background:#cfe3f7;border:2px solid #4a7fb5;font-weight:700}
+.body{flex:1;display:flex;flex-direction:column}
+.form{flex:1;background:#f3f3f3;padding:8px;font-size:9px;display:flex;flex-direction:column;gap:6px}
+.row{display:flex;align-items:center;gap:6px}
+.row .k{width:60px;color:#555}
+.pair{display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap}
+.arrow{align-self:center;font-size:20px;color:#888}
+.cap{font-size:11px;color:#666;margin:4px 0 0}
+.sheet{position:absolute;left:0;top:0;right:0;bottom:0;background:#f3f3f3;display:flex;flex-direction:column;padding:6px;font-size:9px;gap:4px}
+.sheet .cols{display:flex;gap:8px;flex:1}
+.sheet .list{flex:1;display:flex;flex-direction:column;gap:3px}
+.sheet .list div{border:1px solid #888;border-radius:3px;background:#fff;padding:3px 5px;text-align:center}
+.sheet .list div.on{background:#cfe3f7;border:2px solid #4a7fb5}
+.sheet .list .ttl{border:none;background:none;color:#555;text-align:left;padding:0}
+.icons{display:flex;gap:4px;flex-wrap:wrap}
+.icons span{width:22px;height:22px;border:1px solid #888;border-radius:3px;background:#fff;display:flex;align-items:center;justify-content:center;font-size:13px}
+.icons span.on{background:#cfe3f7;border:2px solid #4a7fb5}
+</style>
+
+<h2>Creating or editing a view</h2>
+<p class="subtitle">From Home, tap <b>+ New view</b> (or hold a tile, Edit). Two shapes for the editor. Both end with the same slot sheet you have today (on/off, field, size from big lists, no keyboard). Tab bar shown with the icon-over-short-name tabs you asked for.</p>
+
+<div class="options">
+
+<div class="option" data-choice="inplace" onclick="toggleSelect(this)">
+  <div class="letter">A</div>
+  <div class="content">
+    <h3>Edit in place (Garmin Edit Overlays)</h3>
+    <p>The editor <i>is</i> the view, live, with a strip across the top. Strip: icon, short name, full name, background (Nav, Fish, None), Cancel, Done. Below it every slot is outlined; off slots show faintly with their position name. Tap a slot: the slot sheet. What you see is what you save.</p>
+    <div class="pair">
+      <div class="scr">
+        <div class="body">
+          <div class="hdr">
+            <div class="fld">&#127907; Fish</div>
+            <div class="fld">Fishing chart</div>
+            <div class="fld on">Fish</div><div class="fld">Nav</div><div class="fld">None</div>
+            <div style="flex:1"></div>
+            <div class="btn">Cancel</div><div class="btn pri">Done</div>
+          </div>
+          <div class="map" style="background:linear-gradient(135deg,#7fb3d5,#2b5f8c)">
+            <div class="slot edit" style="left:6px;top:6px;font-size:30px">137<small>Depth ft</small></div>
+            <div class="slot edit off" style="right:6px;top:6px">TR off</div>
+            <div class="slot edit" style="left:6px;bottom:6px;font-size:18px">54.2<small>Water F</small></div>
+            <div class="slot edit" style="right:6px;bottom:6px;font-size:18px">2.1<small>SOG kn</small></div>
+            <div class="slot edit off" style="left:50%;top:6px;transform:translateX(-50%)">Top off</div>
+            <div class="slot edit off" style="left:50%;bottom:6px;transform:translateX(-50%)">Bottom off</div>
+          </div>
+        </div>
+        <div class="tabs"><div class="tab fav"><span class="ic">&#9875;</span>Nav</div><div class="tab fav on"><span class="ic">&#127907;</span>Fish</div><div class="tab fav"><span class="ic">#</span>Big #</div><div class="tab"><span class="ic">&#8962;</span></div><div class="tab sm push">Lock</div><div class="tab sm">Day</div></div>
+      </div>
+      <div class="arrow">tap TL &rarr;</div>
+      <div class="scr" style="width:300px">
+        <div class="sheet">
+          <div style="display:flex;justify-content:space-between"><b>Overlay TL</b><span class="btn">Done</span></div>
+          <div class="cols">
+            <div class="list"><div class="ttl">Show</div><div class="on">On</div><div>Off</div></div>
+            <div class="list"><div class="ttl">Field</div><div class="on">Depth</div><div>SOG</div><div>STW</div><div>COG</div><div>Heading</div><div>Water temp</div><div>Position</div><div>Time</div><div>RPM</div></div>
+            <div class="list"><div class="ttl">Size</div><div>Small 8 mm</div><div>Medium 14 mm</div><div class="on">Large 25 mm</div><div>Huge 40 mm</div></div>
+          </div>
+        </div>
+        <div class="tabs"><div class="tab fav"><span class="ic">&#9875;</span>Nav</div><div class="tab fav on"><span class="ic">&#127907;</span>Fish</div><div class="tab fav"><span class="ic">#</span>Big #</div><div class="tab"><span class="ic">&#8962;</span></div><div class="tab sm push">Lock</div><div class="tab sm">Day</div></div>
+      </div>
+    </div>
+    <p class="cap">Tapping the icon field opens an icon grid; the name fields open a big on-screen keyboard (first keyboard in the app, short name capped at 6 characters). "Huge" is a guess at your "custom sizes": a fourth step, clamped to the space left (R51). Say if you meant a free slider instead.</p>
+  </div>
+</div>
+
+<div class="option" data-choice="wizard" onclick="toggleSelect(this)">
+  <div class="letter">B</div>
+  <div class="content">
+    <h3>Form first, then slots</h3>
+    <p>A settings-style page: name, short name, icon, background, favourite, then a "Edit overlays" button that opens the in-place slot outline from A. Simpler strip, one more step to reach the slots. Good if the strip in A feels cramped at 1024x600.</p>
+    <div class="pair">
+      <div class="scr">
+        <div class="form">
+          <div class="row"><b style="flex:1">New view</b><span class="btn">Cancel</span><span class="btn pri">Save</span></div>
+          <div class="row"><span class="k">Name</span><span class="fld" style="flex:1">Fishing chart</span></div>
+          <div class="row"><span class="k">Short name</span><span class="fld" style="width:70px">Fish</span><span style="color:#777">tab label, 6 max</span></div>
+          <div class="row"><span class="k">Icon</span><span class="icons"><span>&#9875;</span><span class="on">&#127907;</span><span>#</span><span>&#9973;</span><span>&#9875;</span><span>&#9888;</span><span>&#9728;</span><span>&#127754;</span></span></div>
+          <div class="row"><span class="k">Background</span><span class="fld">Nav</span><span class="fld on">Fish</span><span class="fld">None</span></div>
+          <div class="row"><span class="k">Favourite</span><span class="fld on">On tab bar</span><span class="fld">Home only</span></div>
+          <div class="row" style="margin-top:auto"><span class="btn" style="flex:1;justify-content:center">Edit overlays &rarr;</span></div>
+        </div>
+        <div class="tabs"><div class="tab fav"><span class="ic">&#9875;</span>Nav</div><div class="tab fav"><span class="ic">#</span>Big #</div><div class="tab on"><span class="ic">&#8962;</span></div><div class="tab sm push">Lock</div><div class="tab sm">Day</div></div>
+      </div>
+    </div>
+    <p class="cap">Favourite toggle and icon grid live here in both options (A puts them behind the icon field and a star on the Home tile).</p>
+  </div>
+</div>
+
+</div>

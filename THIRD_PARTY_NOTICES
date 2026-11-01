@@ -51,7 +51,7 @@ SOFTWARE.
 Third-party components used by the plotter
 ==========================================
 
-Qt 6 (Core, Gui, Qml, Quick, Network, Sql, OpenGL, Quick Controls)
+Qt 6 (Core, Gui, Qml, Quick, Network, Sql, OpenGL, Quick Controls, Svg)
   License: LGPL-3.0 (full text: https://www.gnu.org/licenses/lgpl-3.0.html)
   Source: https://download.qt.io (installed with aqtinstall, version 6.8.3)
   Linked dynamically, unmodified, so it can be replaced by another build of the same Qt 6 version.
@@ -111,6 +111,13 @@ Noto Sans v2.015 (Regular, Bold; plotter/fonts/)
   License: SIL Open Font License 1.1 (full text in plotter/fonts/OFL.txt)
   Source: https://github.com/notofonts/latin-greek-cyrillic (release NotoSans-v2.015)
   Bundled unmodified in the app.
+
+Tabler Icons (16 outline icons)
+  License: MIT (full text: plotter/icons/tabler/LICENSE)
+  Source: tabler/tabler-icons on GitHub, tag v3.37.1, icons/outline/<name>.svg
+  Files: anchor, fish, hash, sailboat, ship, lifebuoy, map, compass, gauge, sun, moon, ripple, flag,
+  star, settings, home (plotter/icons/tabler/<name>.svg). Unmodified, bundled in the app. No name
+  was substituted. Qt Svg (above) renders them.
 
 Qt Test is used only to build and run the tests and is not distributed.
 

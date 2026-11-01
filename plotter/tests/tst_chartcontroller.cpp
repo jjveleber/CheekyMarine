@@ -10,6 +10,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QSet>
+#include <QSqlQuery>
 #include <QTemporaryDir>
 #include <QtTest>
 #include <cmath>
@@ -249,7 +250,6 @@ private slots:
         r.map.loaded();
         r.ctrl->setMode("fish");
         QCOMPARE(r.ctrl->mode(), QStringLiteral("fish"));
-        QCOMPARE(r.settings->chartMode(), QStringLiteral("fish"));
         QCOMPARE(r.map.styles.size(), 2);
         QVERIFY(spriteOf(r.map.styles[1]).endsWith("/bathy-puget-north-1.0.0/sprites/fish"));
         QCOMPARE(paletteOf(r.map.styles[1]), QStringLiteral("day"));
@@ -264,31 +264,35 @@ private slots:
         QTest::ignoreMessage(QtWarningMsg, "ChartController: no bathy pack for the charts region, staying in nav");
         r.ctrl->setMode("fish");
         QCOMPARE(r.ctrl->mode(), QStringLiteral("nav"));
-        QCOMPARE(r.settings->chartMode(), QStringLiteral("nav"));
         QCOMPARE(r.map.styles.size(), 1);
     }
 
-    // Settings::chartMode is restored at start, and refused to nav when there is no bathy pack.
-    void savedFishModeLoadsFishDayFirst() {
+    // The mode is the current view's, not a setting: a plan 3 chartMode row does not change the start.
+    void startsInNav() {
         Rig r;
         QVERIFY(r.settings);
-        r.settings->setChartMode("fish");
-        r.make();
-        QCOMPARE(r.ctrl->mode(), QStringLiteral("fish"));
-        QCOMPARE(r.map.styles.size(), 1);
-        QVERIFY(spriteOf(r.map.styles[0]).endsWith("/bathy-puget-north-1.0.0/sprites/fish"));
-        QCOMPARE(paletteOf(r.map.styles[0]), QStringLiteral("day"));
-    }
-
-    void savedFishModeWithoutBathyLoadsNavDay() {
-        Rig r(false);
-        QVERIFY(r.settings);
-        r.settings->setChartMode("fish");
+        QSqlQuery q(r.store->db());
+        QVERIFY(q.exec(R"(INSERT INTO settings VALUES('chartMode','"fish"'))"));
+        r.settings = std::make_unique<Settings>(*r.store); // reads the rows afresh
         r.make();
         QCOMPARE(r.ctrl->mode(), QStringLiteral("nav"));
         QCOMPARE(r.map.styles.size(), 1);
         QCOMPARE(spriteOf(r.map.styles[0]), "file://" + r.chartsDir() + "/sprites/nav");
         QCOMPARE(paletteOf(r.map.styles[0]), QStringLiteral("day"));
+    }
+
+    void setModeWritesNoSetting() {
+        Rig r;
+        QVERIFY(r.settings);
+        r.make();
+        r.map.loaded();
+        QSqlQuery q(r.store->db());
+        QVERIFY(q.exec("SELECT group_concat(key || '=' || value) FROM settings") && q.next());
+        const QString before = q.value(0).toString();
+        r.ctrl->setMode("fish");
+        QCOMPARE(r.ctrl->mode(), QStringLiteral("fish"));
+        QVERIFY(q.exec("SELECT group_concat(key || '=' || value) FROM settings") && q.next());
+        QCOMPARE(q.value(0).toString(), before);
     }
 
     void styleLoadedAddsOverlaysAndFilters() {
@@ -365,7 +369,6 @@ private slots:
     void depthFilterErrorRefusesTheBathyPack() {
         Rig r;
         QVERIFY(r.settings);
-        r.settings->setChartMode("fish");
         const QString path = r.tmp.path() + "/packs/bathy-puget-north-1.0.0/styles/fish-night.json";
         QFile f(path);
         QVERIFY(f.open(QIODevice::ReadOnly));
@@ -384,7 +387,7 @@ private slots:
                  qPrintable(r.ctrl->packs()[1].refused));
         QVERIFY(r.ctrl->packs()[0].refused.isEmpty());
         QVERIFY(!r.ctrl->fishAvailable());
-        QCOMPARE(r.ctrl->mode(), QStringLiteral("nav")); // the saved fish mode falls back
+        QCOMPARE(r.ctrl->mode(), QStringLiteral("nav"));
         QCOMPARE(r.map.styles.size(), 1);
         QCOMPARE(spriteOf(r.map.styles[0]), "file://" + r.chartsDir() + "/sprites/nav");
     }

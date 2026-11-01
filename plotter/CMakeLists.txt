@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.25)
 # The app's semver, independent of the root project's (n2kd) version.
 set(PLOTTER_VERSION 0.1.0)
 
-find_package(Qt6 6.5 REQUIRED COMPONENTS Core Gui Network Sql Quick QuickControls2 Test QuickTest)
+find_package(Qt6 6.5 REQUIRED COMPONENTS Core Gui Network Sql Quick QuickControls2 Svg Test QuickTest)
 qt_standard_project_setup(REQUIRES 6.5)
 qt_policy(SET QTP0004 NEW)
 find_package(QMapLibre REQUIRED COMPONENTS Core)
@@ -24,6 +24,7 @@ add_library(plottercore STATIC
     src/core/StyleLoader.cpp
     src/core/DepthFilters.cpp
     src/core/Geo.cpp
+    src/core/Tilings.cpp
     src/core/Overlays.cpp
     src/core/ChartMap.h
     src/core/ChartController.cpp
@@ -31,7 +32,10 @@ add_library(plottercore STATIC
     src/core/PaletteController.cpp
     src/core/Units.cpp
     src/core/Slots.cpp
-    src/core/NumbersModel.cpp
+    src/core/Views.cpp
+    src/core/ViewsModel.cpp
+    src/core/ViewDraft.cpp
+    src/core/SlotClamp.cpp
     src/core/AppInfo.cpp
     src/core/Recovery.cpp
     src/core/TouchLock.cpp
@@ -64,10 +68,14 @@ plotter_add_test(tst_packcatalog tests/tst_packcatalog.cpp)
 plotter_add_test(tst_styleloader tests/tst_styleloader.cpp)
 plotter_add_test(tst_depthfilters tests/tst_depthfilters.cpp)
 plotter_add_test(tst_geo tests/tst_geo.cpp)
+plotter_add_test(tst_tilings tests/tst_tilings.cpp)
 plotter_add_test(tst_overlays tests/tst_overlays.cpp)
 plotter_add_test(tst_chartcontroller tests/tst_chartcontroller.cpp)
 plotter_add_test(tst_sun tests/tst_sun.cpp)
 plotter_add_test(tst_slots tests/tst_slots.cpp)
+plotter_add_test(tst_views tests/tst_views.cpp)
+plotter_add_test(tst_viewsmodel tests/tst_viewsmodel.cpp)
+plotter_add_test(tst_slotclamp tests/tst_slotclamp.cpp)
 plotter_add_test(tst_appshell tests/tst_appshell.cpp)
 plotter_add_test(tst_touchlock tests/tst_touchlock.cpp)
 plotter_add_test(tst_tracks tests/tst_tracks.cpp)
@@ -82,17 +90,24 @@ qt_add_library(plotterqml STATIC)
 qt_add_qml_module(plotterqml
     URI CheekyMarine
     VERSION 1.0
-    QML_FILES qml/Main.qml qml/ChartPage.qml qml/Theme.qml qml/Units.qml qml/BigButton.qml qml/TabBar.qml
-        qml/Splash.qml qml/SlotView.qml qml/SlotEditor.qml qml/NumbersPage.qml qml/AboutPage.qml
+    QML_FILES qml/Main.qml qml/ChartPage.qml qml/Theme.qml qml/Units.qml qml/BigButton.qml qml/Icon.qml qml/TabBar.qml
+        qml/Splash.qml qml/SlotView.qml qml/CellPage.qml qml/AboutPage.qml
         qml/NoDataBanner.qml qml/RecoveryScreen.qml qml/SettingsPage.qml qml/LockOverlay.qml qml/TracksPage.qml qml/LegendSheet.qml qml/AisSheet.qml
-    SOURCES src/qml/PanelMath.h
-    RESOURCES fonts/NotoSans-Regular.ttf fonts/NotoSans-Bold.ttf)
+        qml/HomePage.qml qml/ViewTile.qml qml/ViewThumb.qml qml/TileMenu.qml
+        qml/ViewEditor.qml qml/SlotSheet.qml qml/CellSheet.qml qml/Keyboard.qml
+        qml/SetupSheet.qml qml/LayoutGallery.qml qml/LayoutThumb.qml
+    SOURCES src/qml/PanelMath.h src/qml/IconsQml.h src/qml/LayoutsQml.h
+    RESOURCES fonts/NotoSans-Regular.ttf fonts/NotoSans-Bold.ttf assets/CheekyMarine-logo.jpg
+        icons/tabler/anchor.svg icons/tabler/fish.svg icons/tabler/hash.svg icons/tabler/sailboat.svg
+        icons/tabler/ship.svg icons/tabler/lifebuoy.svg icons/tabler/map.svg icons/tabler/compass.svg
+        icons/tabler/gauge.svg icons/tabler/sun.svg icons/tabler/moon.svg icons/tabler/ripple.svg
+        icons/tabler/flag.svg icons/tabler/star.svg icons/tabler/settings.svg icons/tabler/home.svg)
 target_link_libraries(plotterqml PRIVATE plottercore Qt6::Quick Qt6::QuickControls2)
-# The generated type registration includes PanelMath.h by its bare name.
+# The generated type registration includes PanelMath.h, IconsQml.h and LayoutsQml.h by their bare names.
 target_include_directories(plotterqml PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src/qml)
 
 qt_add_executable(cheekyplotter src/app/main.cpp src/app/MapLibreChartMap.cpp src/app/Icons.cpp)
-target_link_libraries(cheekyplotter PRIVATE plottercore plotterqmlplugin Qt6::Quick Qt6::QuickControls2 Qt6::Sql
+target_link_libraries(cheekyplotter PRIVATE plottercore plotterqmlplugin Qt6::Quick Qt6::QuickControls2 Qt6::Sql Qt6::Svg
     QMapLibre::Core)
 set_target_properties(cheekyplotter PROPERTIES AUTOMOC ON)
 # The linker drops Qt6::Sql (nothing in the app uses it directly) and RUNPATH is not searched for the
@@ -102,7 +117,7 @@ target_link_options(cheekyplotter PRIVATE -Wl,--disable-new-dtags)
 # QuickTest runner: runs every tests/qml/tst_*.qml against the CheekyMarine module, offscreen.
 add_executable(tst_qml tests/qml/tst_qml.cpp)
 set_target_properties(tst_qml PROPERTIES AUTOMOC ON)
-target_link_libraries(tst_qml PRIVATE plotterqmlplugin plottercore Qt6::QuickTest Qt6::Quick Qt6::QuickControls2)
+target_link_libraries(tst_qml PRIVATE plotterqmlplugin plottercore Qt6::QuickTest Qt6::Quick Qt6::QuickControls2 Qt6::Svg)
 target_compile_definitions(tst_qml PRIVATE QUICK_TEST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/qml")
 add_test(NAME tst_qml COMMAND tst_qml)
 set_tests_properties(tst_qml PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")

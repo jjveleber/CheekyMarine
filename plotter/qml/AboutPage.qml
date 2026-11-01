@@ -5,6 +5,7 @@ import QtQuick.Controls.Basic
 Item {
     id: page
     required property QtObject appInfo // AppInfo
+    property real rightInset: 0        // the tab bar strip over the page's right edge
     signal back()
 
     objectName: "aboutPage"
@@ -24,7 +25,7 @@ Item {
     }
 
     Flickable {
-        anchors { top: backButton.bottom; left: parent.left; right: parent.right; bottom: parent.bottom; margins: Units.mm(3) }
+        anchors { top: backButton.bottom; left: parent.left; right: parent.right; bottom: parent.bottom; margins: Units.mm(3); rightMargin: Units.mm(3) + page.rightInset }
         contentHeight: column.implicitHeight
         clip: true
 

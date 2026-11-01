@@ -4,7 +4,6 @@
 #include <QHash>
 #include <QJsonValue>
 #include <QObject>
-#include <QStringList>
 #include <QVariantMap>
 
 // Typed view of the settings table (value column is JSON text). Every set writes immediately; a
@@ -21,14 +20,13 @@ class Settings : public QObject {
     Q_PROPERTY(QString orientation READ orientation WRITE setOrientation NOTIFY orientationChanged)
     Q_PROPERTY(QString paletteMode READ paletteMode WRITE setPaletteMode NOTIFY paletteModeChanged)
     Q_PROPERTY(QString lastPalette READ lastPalette WRITE setLastPalette NOTIFY lastPaletteChanged)
-    Q_PROPERTY(QString chartMode READ chartMode WRITE setChartMode NOTIFY chartModeChanged)
-    Q_PROPERTY(int touchLockTimeoutS READ touchLockTimeoutS WRITE setTouchLockTimeoutS NOTIFY touchLockTimeoutSChanged)
+    Q_PROPERTY(QString lastViewId READ lastViewId WRITE setLastViewId NOTIFY lastViewIdChanged)
+    Q_PROPERTY(int tabBarHideS READ tabBarHideS WRITE setTabBarHideS NOTIFY tabBarHideSChanged)
+    Q_PROPERTY(bool showChartNotice READ showChartNotice WRITE setShowChartNotice NOTIFY showChartNoticeChanged)
     Q_PROPERTY(double panelDiagonalIn READ panelDiagonalIn WRITE setPanelDiagonalIn NOTIFY panelDiagonalInChanged)
     Q_PROPERTY(bool trackRecording READ trackRecording WRITE setTrackRecording NOTIFY trackRecordingChanged)
     Q_PROPERTY(int trackIntervalS READ trackIntervalS WRITE setTrackIntervalS NOTIFY trackIntervalSChanged)
     Q_PROPERTY(double trackMinDistanceM READ trackMinDistanceM WRITE setTrackMinDistanceM NOTIFY trackMinDistanceMChanged)
-    Q_PROPERTY(QJsonValue slotsJson READ slotsJson WRITE setSlotsJson NOTIFY slotsJsonChanged)
-    Q_PROPERTY(QStringList bigNumbers READ bigNumbers WRITE setBigNumbers NOTIFY bigNumbersChanged)
 
 public:
     // The Store must outlive the Settings.
@@ -48,14 +46,13 @@ public:
     QString orientation() const { return str("orientation"); }
     QString paletteMode() const { return str("paletteMode"); }
     QString lastPalette() const { return str("lastPalette"); }
-    QString chartMode() const { return str("chartMode"); }
-    int touchLockTimeoutS() const { return m_v.value("touchLockTimeoutS").toInt(); }
+    QString lastViewId() const { return str("lastViewId"); }
+    int tabBarHideS() const { return m_v.value("tabBarHideS").toInt(); }
+    bool showChartNotice() const { return m_v.value("showChartNotice").toBool(); }
     double panelDiagonalIn() const { return m_v.value("panelDiagonalIn").toDouble(); }
     bool trackRecording() const { return m_v.value("trackRecording").toBool(); }
     int trackIntervalS() const { return m_v.value("trackIntervalS").toInt(); }
     double trackMinDistanceM() const { return m_v.value("trackMinDistanceM").toDouble(); }
-    QJsonValue slotsJson() const { return m_v.value("slots"); }
-    QStringList bigNumbers() const;
 
     // Setters ignore values outside the key's domain (logged) and write nothing for unchanged values.
     void setDepthUnit(const QString& v) { if (put("depthUnit", v)) emit depthUnitChanged(); }
@@ -68,14 +65,13 @@ public:
     void setOrientation(const QString& v) { if (put("orientation", v)) emit orientationChanged(); }
     void setPaletteMode(const QString& v) { if (put("paletteMode", v)) emit paletteModeChanged(); }
     void setLastPalette(const QString& v) { if (put("lastPalette", v)) emit lastPaletteChanged(); }
-    void setChartMode(const QString& v) { if (put("chartMode", v)) emit chartModeChanged(); }
-    void setTouchLockTimeoutS(int v) { if (put("touchLockTimeoutS", v)) emit touchLockTimeoutSChanged(); }
+    void setLastViewId(const QString& v) { if (put("lastViewId", v)) emit lastViewIdChanged(); }
+    void setTabBarHideS(int v) { if (put("tabBarHideS", v)) emit tabBarHideSChanged(); }
+    void setShowChartNotice(bool v) { if (put("showChartNotice", v)) emit showChartNoticeChanged(); }
     void setPanelDiagonalIn(double v) { if (put("panelDiagonalIn", v)) emit panelDiagonalInChanged(); }
     void setTrackRecording(bool v) { if (put("trackRecording", v)) emit trackRecordingChanged(); }
     void setTrackIntervalS(int v) { if (put("trackIntervalS", v)) emit trackIntervalSChanged(); }
     void setTrackMinDistanceM(double v) { if (put("trackMinDistanceM", v)) emit trackMinDistanceMChanged(); }
-    void setSlotsJson(const QJsonValue& v) { if (put("slots", v)) emit slotsJsonChanged(); }
-    void setBigNumbers(const QStringList& v);
 
     // Validates and writes the three depth keys in one transaction. False (nothing changed) if not
     // kMinDepthM <= shallow < safety < deep <= kMaxDepthM.
@@ -99,14 +95,13 @@ signals:
     void orientationChanged();
     void paletteModeChanged();
     void lastPaletteChanged();
-    void chartModeChanged();
-    void touchLockTimeoutSChanged();
+    void lastViewIdChanged();
+    void tabBarHideSChanged();
+    void showChartNoticeChanged();
     void panelDiagonalInChanged();
     void trackRecordingChanged();
     void trackIntervalSChanged();
     void trackMinDistanceMChanged();
-    void slotsJsonChanged();
-    void bigNumbersChanged();
 
 private:
     QString str(const char* key) const { return m_v.value(key).toString(); }

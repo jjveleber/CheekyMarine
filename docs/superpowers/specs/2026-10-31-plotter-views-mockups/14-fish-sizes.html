@@ -1,0 +1,68 @@
+<style>
+@font-face{font-family:"NotoB";src:url(../../../../plotter/fonts/NotoSans-Bold.ttf)}
+@font-face{font-family:"NotoR";src:url(../../../../plotter/fonts/NotoSans-Regular.ttf)}
+.panel{width:1024px;height:600px;position:relative;overflow:hidden;border:3px solid #333;background:#e9e4d2 url(../../../plotter/renders/final/chart-day-1280x800.png) center/cover;font-family:"NotoR",sans-serif;color:#111;flex:none;margin:6px 0 2px}
+.panel .bar{position:absolute;right:0;top:0;bottom:0;width:79px;background:#f3f3f3;border-left:1px solid #999}
+.panel .bar div{width:69px;height:69px;margin:5px;border:1px solid #888;border-radius:4px;background:#fff;font-size:13px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px}
+.panel .bar div.fav{background:#fff6d6;border-color:#c9a227}
+.panel .bar div.on{background:#cfe3f7;border:2px solid #4a7fb5}
+.panel .bar div.sm{height:55px}
+.s{position:absolute;background:rgba(255,255,255,.92);border-radius:6px;padding:7px 9px;line-height:1}
+.s .lab{font-size:16px;color:#333;display:block;margin-bottom:2px}
+.s .d{font-family:"NotoB",sans-serif;font-weight:700;letter-spacing:-0.01em}
+.s .u{font-size:18px;color:#333;margin-left:6px}
+.s.bad{outline:4px solid #c62828}
+.ruler{position:absolute;left:6px;bottom:6px;height:14px;background:repeating-linear-gradient(90deg,#000 0 1px,transparent 1px 46.3px);width:463px;border-bottom:2px solid #000;font-size:11px}
+.ruler span{position:absolute;bottom:-16px;left:0;white-space:nowrap}
+.zoom{position:absolute;right:88px;top:230px;width:60px}
+.zoom div{width:60px;height:60px;border:1px solid #888;border-radius:4px;background:#fff;font-size:30px;display:flex;align-items:center;justify-content:center;margin-bottom:4px}
+h3{margin:18px 0 0}
+.note{font-size:13px;color:#444;max-width:1024px}
+</style>
+
+<h2>Fishing view digits, at the panel's own pixels</h2>
+<p class="subtitle">Each frame is 1024x600 real pixels with the app's bundled Noto Sans Bold, over the real day chart render. On the 10.1 in panel this frame is 221 mm wide; on your monitor it is whatever 1024 px is, so judge proportions, not absolute size. The 10 cm ruler bottom-left is panel centimetres. Tab bar drawn with five favourites. Scroll down through four frames, then click one at the bottom.</p>
+
+<h3>1. Today's Navigation defaults: Depth 25 mm, SOG 25 mm (matches the checkpoint render)</h3>
+<div class="panel">
+  <div class="s" style="left:8px;top:8px"><span class="lab">Depth</span><span class="d" style="font-size:162px">137</span><span class="u">ft</span></div>
+  <div class="s" style="right:87px;top:8px"><span class="lab">SOG</span><span class="d" style="font-size:162px">12.3</span><span class="u">kn</span></div>
+  <div class="zoom"><div>+</div><div>&minus;</div></div>
+  <div class="ruler"><span>0 &nbsp; 1 &nbsp; 2 &nbsp; 3 &nbsp; 4 &nbsp; 5 &nbsp; 6 &nbsp; 7 &nbsp; 8 &nbsp; 9 &nbsp; 10 cm</span></div>
+  <div class="bar"><div class="fav">&#9875;<br>Nav</div><div class="fav on">&#127907;<br>Fish</div><div class="fav">#<br>Big #</div><div>&#8962;</div><div class="sm" style="margin-top:40px">Lock</div><div class="sm">Day</div></div>
+</div>
+
+<h3>2. As asked: Depth 40 mm top-left, SOG 40 mm top-right, side by side</h3>
+<p class="note">Fits while SOG reads "6.0". With a three-digit speed like "12.3" the boxes collide (red outline), and depth "1234" would push it further. The clamp would never let this happen; this frame shows why.</p>
+<div class="panel">
+  <div class="s" style="left:8px;top:8px"><span class="lab">Depth</span><span class="d" style="font-size:259px">137</span><span class="u">ft</span></div>
+  <div class="s bad" style="right:87px;top:8px"><span class="lab">SOG</span><span class="d" style="font-size:259px">12.3</span><span class="u">kn</span></div>
+  <div class="zoom" style="top:330px"><div>+</div><div>&minus;</div></div>
+  <div class="ruler"><span>0 &nbsp; 1 &nbsp; 2 &nbsp; 3 &nbsp; 4 &nbsp; 5 &nbsp; 6 &nbsp; 7 &nbsp; 8 &nbsp; 9 &nbsp; 10 cm</span></div>
+  <div class="bar"><div class="fav">&#9875;<br>Nav</div><div class="fav on">&#127907;<br>Fish</div><div class="fav">#<br>Big #</div><div>&#8962;</div><div class="sm" style="margin-top:40px">Lock</div><div class="sm">Day</div></div>
+</div>
+
+<h3>3. Clamped: the pair shares the row, about 33 mm each</h3>
+<div class="panel">
+  <div class="s" style="left:8px;top:8px"><span class="lab">Depth</span><span class="d" style="font-size:214px">137</span><span class="u">ft</span></div>
+  <div class="s" style="right:87px;top:8px"><span class="lab">SOG</span><span class="d" style="font-size:214px">12.3</span><span class="u">kn</span></div>
+  <div class="zoom" style="top:300px"><div>+</div><div>&minus;</div></div>
+  <div class="ruler"><span>0 &nbsp; 1 &nbsp; 2 &nbsp; 3 &nbsp; 4 &nbsp; 5 &nbsp; 6 &nbsp; 7 &nbsp; 8 &nbsp; 9 &nbsp; 10 cm</span></div>
+  <div class="bar"><div class="fav">&#9875;<br>Nav</div><div class="fav on">&#127907;<br>Fish</div><div class="fav">#<br>Big #</div><div>&#8962;</div><div class="sm" style="margin-top:40px">Lock</div><div class="sm">Day</div></div>
+</div>
+
+<h3>4. Stacked: Depth 40 mm top-left, SOG 40 mm bottom-left</h3>
+<p class="note">Each row holds one corner, so 40 mm fits whatever the values. The chart's left side is mostly covered; the boat sits in the lower third in head-up, to the right of the SOG box.</p>
+<div class="panel">
+  <div class="s" style="left:8px;top:8px"><span class="lab">Depth</span><span class="d" style="font-size:259px">137</span><span class="u">ft</span></div>
+  <div class="s" style="left:8px;bottom:30px"><span class="lab">SOG</span><span class="d" style="font-size:259px">12.3</span><span class="u">kn</span></div>
+  <div class="zoom"><div>+</div><div>&minus;</div></div>
+  <div class="ruler" style="left:560px"><span>0 &nbsp; 1 &nbsp; 2 &nbsp; 3 &nbsp; 4 &nbsp; 5 &nbsp; 6 &nbsp; 7 &nbsp; 8 &nbsp; 9 &nbsp; 10 cm</span></div>
+  <div class="bar"><div class="fav">&#9875;<br>Nav</div><div class="fav on">&#127907;<br>Fish</div><div class="fav">#<br>Big #</div><div>&#8962;</div><div class="sm" style="margin-top:40px">Lock</div><div class="sm">Day</div></div>
+</div>
+
+<div class="options">
+  <div class="option" data-choice="clamp33" onclick="toggleSelect(this)"><div class="letter">A</div><div class="content"><h3>Side by side, clamped to about 33 mm (frame 3)</h3></div></div>
+  <div class="option" data-choice="stack40" onclick="toggleSelect(this)"><div class="letter">B</div><div class="content"><h3>Stacked on the left at 40 mm (frame 4)</h3></div></div>
+  <div class="option" data-choice="other" onclick="toggleSelect(this)"><div class="letter">C</div><div class="content"><h3>Something else: say the sizes and corners in the terminal</h3></div></div>
+</div>

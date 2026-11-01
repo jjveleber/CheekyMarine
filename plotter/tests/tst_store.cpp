@@ -1,6 +1,8 @@
 #include "core/Store.h"
+#include "core/Views.h"
 #include <QCoreApplication>
 #include <QFile>
+#include <QJsonDocument>
 #include <QProcess>
 #include <QRandomGenerator>
 #include <QSqlError>
@@ -101,6 +103,28 @@ int killChildAfter(QProcess& child, const QString& mode, const QString& dir, int
     return acked;
 }
 
+// A plotter.db as plan 3 (schema 1.0.0) left it: the 1.0.0 tables and the settings rows that
+// schema 1.1.0 moves into views or drops.
+void makePlan3Db(const QString& dir) {
+    rawExec(dir, {
+        "CREATE TABLE schema_version(major INTEGER NOT NULL, minor INTEGER NOT NULL, patch INTEGER NOT NULL)",
+        "CREATE TABLE settings(key TEXT PRIMARY KEY, value TEXT NOT NULL)",
+        "CREATE TABLE tracks(id INTEGER PRIMARY KEY, name TEXT, started REAL, ended REAL, visible INTEGER)",
+        "CREATE TABLE track_points(track_id INTEGER, t REAL, lat REAL, lon REAL, sog REAL, cog REAL, depth REAL)",
+        "CREATE INDEX track_points_by_track ON track_points(track_id, t)",
+        "INSERT INTO schema_version VALUES(1,0,0)",
+        R"(INSERT INTO settings VALUES('slots','[{"id":"BL","on":true,"field":"rpm","size":"small"}]'))",
+        R"(INSERT INTO settings VALUES('bigNumbers','["depth","sog","wtemp"]'))",
+        R"(INSERT INTO settings VALUES('chartMode','"fish"'))",
+        R"(INSERT INTO settings VALUES('touchLockTimeoutS','0'))",
+        R"(INSERT INTO settings VALUES('orientation','"north"'))",
+    });
+}
+
+QJsonObject viewRow(const QSqlDatabase& db, int ord) {
+    return QJsonDocument::fromJson(scalar(db, QStringLiteral("SELECT json FROM views WHERE ord=%1").arg(ord)).toUtf8()).object();
+}
+
 } // namespace
 
 class TstStore : public QObject {
@@ -110,13 +134,53 @@ private slots:
         QTemporaryDir t;
         auto s = Store::open(t.path());
         QVERIFY(s.has_value());
-        QCOMPARE((*s)->schemaVersion(), QVersionNumber(1, 0, 0));
+        QCOMPARE((*s)->schemaVersion(), QVersionNumber(1, 1, 0));
         QCOMPARE(scalar((*s)->db(), "PRAGMA journal_mode"), QStringLiteral("wal"));
         QCOMPARE(scalar((*s)->db(), "PRAGMA synchronous"), QStringLiteral("2"));
-        for (const char* tbl : {"schema_version", "settings", "tracks", "track_points"})
+        for (const char* tbl : {"schema_version", "settings", "tracks", "track_points", "views"})
             QCOMPARE(scalar((*s)->db(), QStringLiteral("SELECT count(*) FROM sqlite_master WHERE name='%1'").arg(tbl)),
                      QStringLiteral("1"));
-        QCOMPARE(scalar((*s)->db(), "SELECT major||'.'||minor||'.'||patch FROM schema_version"), QStringLiteral("1.0.0"));
+        QCOMPARE(scalar((*s)->db(), "SELECT major||'.'||minor||'.'||patch FROM schema_version"), QStringLiteral("1.1.0"));
+        QCOMPARE(scalar((*s)->db(), "SELECT count(*) FROM views"), QStringLiteral("3"));
+    }
+    // A fresh file is seeded with the shipped views, in order.
+    void freshDatabaseGetsShippedViews() {
+        QTemporaryDir t;
+        auto s = Store::open(t.path());
+        QVERIFY(s.has_value());
+        const QSqlDatabase db = (*s)->db();
+        QCOMPARE(scalar(db, "SELECT group_concat(id) FROM (SELECT id FROM views ORDER BY ord)"),
+                 QStringLiteral("shipped-nav,shipped-fish,shipped-big"));
+        const QList<View> shipped = shippedViews(0);
+        for (int i = 0; i < 3; ++i) {
+            View v = viewFromJson(viewRow(db, i));
+            QVERIFY(v.created > 0);
+            QCOMPARE(v.modified, v.created);
+            v.created = v.modified = 0;
+            QCOMPARE(v, shipped[i]);
+        }
+    }
+    // A plan 3 file (1.0.0) migrates: its slots and big numbers become views, the four retired
+    // settings rows go, and every other row stays.
+    void plan3DatabaseIsMigrated() {
+        QTemporaryDir t;
+        makePlan3Db(t.path());
+        auto s = Store::open(t.path());
+        QVERIFY(s.has_value());
+        const QSqlDatabase db = (*s)->db();
+        QCOMPARE((*s)->schemaVersion(), QVersionNumber(1, 1, 0));
+        QCOMPARE(scalar(db, "SELECT major||'.'||minor||'.'||patch FROM schema_version"), QStringLiteral("1.1.0"));
+        QCOMPARE(scalar(db, "SELECT count(*) FROM views"), QStringLiteral("3"));
+        const View nav = viewFromJson(viewRow(db, 0));
+        QCOMPARE(nav.id, QStringLiteral("shipped-nav"));
+        QCOMPARE(nav.slotList[int(SlotId::BL)], (ViewSlot{SlotId::BL, true, Field::Rpm, 8}));
+        const QJsonObject big = viewRow(db, 2);
+        QCOMPARE(big.value("id").toString(), QStringLiteral("shipped-big"));
+        QCOMPARE(big.value("cells").toObject().value("layout").toString(), QStringLiteral("3x2:0,0,1,2;1,0,1,2;2,0,1,2"));
+        QCOMPARE(big.value("cells").toObject().value("fields").toArray(), (QJsonArray{"depth", "sog", "wtemp"}));
+        QCOMPARE(scalar(db, "SELECT count(*) FROM settings WHERE key IN ('slots','bigNumbers','chartMode','touchLockTimeoutS')"),
+                 QStringLiteral("0"));
+        QCOMPARE(scalar(db, "SELECT value FROM settings WHERE key='orientation'"), QStringLiteral("\"north\""));
     }
     void reopenKeepsData() {
         QTemporaryDir t;
@@ -130,6 +194,25 @@ private slots:
         QVERIFY(s.has_value());
         QCOMPARE(scalar((*s)->db(), "SELECT value FROM settings WHERE key='a'"), QStringLiteral("1"));
     }
+    // Plan 3 rows that do not parse as their JSON arrays are logged and seed the defaults.
+    void plan3UnparseableRowsWarnAndSeedDefaults() {
+        QTemporaryDir t;
+        makePlan3Db(t.path());
+        rawExec(t.path(), {"UPDATE settings SET value='{not json' WHERE key='slots'",
+                           R"(UPDATE settings SET value='"oops"' WHERE key='bigNumbers')"});
+        QTest::ignoreMessage(QtWarningMsg, QRegularExpression("unusable value for \"slots\""));
+        QTest::ignoreMessage(QtWarningMsg, QRegularExpression("unusable value for \"bigNumbers\""));
+        auto s = Store::open(t.path());
+        QVERIFY(s.has_value());
+        const QSqlDatabase db = (*s)->db();
+        const QList<View> shipped = shippedViews(0);
+        for (int i = 0; i < 3; ++i) {
+            View v = viewFromJson(viewRow(db, i));
+            v.created = v.modified = 0;
+            QCOMPARE(v, shipped[i]);
+        }
+        QCOMPARE(scalar(db, "SELECT count(*) FROM settings WHERE key IN ('slots','bigNumbers')"), QStringLiteral("0"));
+    }
     void newerMajorRefused() {
         QTemporaryDir t;
         { QVERIFY(Store::open(t.path()).has_value()); }
@@ -141,15 +224,15 @@ private slots:
     void newerMinorOpensAndIsNotLowered() {
         QTemporaryDir t;
         { QVERIFY(Store::open(t.path()).has_value()); }
-        rawExec(t.path(), {"UPDATE schema_version SET minor=3"});
+        rawExec(t.path(), {"UPDATE schema_version SET minor=2"});
         {
             auto s = Store::open(t.path());
             QVERIFY(s.has_value());
-            QCOMPARE((*s)->schemaVersion(), QVersionNumber(1, 3, 0));
+            QCOMPARE((*s)->schemaVersion(), QVersionNumber(1, 2, 0));
         }
         auto s = Store::open(t.path());
         QVERIFY(s.has_value());
-        QCOMPARE(scalar((*s)->db(), "SELECT major||'.'||minor||'.'||patch FROM schema_version"), QStringLiteral("1.3.0"));
+        QCOMPARE(scalar((*s)->db(), "SELECT major||'.'||minor||'.'||patch FROM schema_version"), QStringLiteral("1.2.0"));
     }
     void randomBytesIsCorrupt() {
         QTemporaryDir t;
@@ -243,7 +326,7 @@ private slots:
         QVERIFY(!QFile::exists(t.filePath("plotter.db-shm")));
         auto s = Store::open(t.path());
         QVERIFY(s.has_value());
-        QCOMPARE((*s)->schemaVersion(), QVersionNumber(1, 0, 0));
+        QCOMPARE((*s)->schemaVersion(), Store::kSchemaVersion);
     }
     void moveAsideNothingToMoveIsEmpty() {
         QTemporaryDir t;

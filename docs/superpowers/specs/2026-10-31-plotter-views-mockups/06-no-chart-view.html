@@ -1,0 +1,61 @@
+<style>
+.scr{display:flex;width:400px;height:250px;border:2px solid #555;border-radius:4px;background:#fff;position:relative;overflow:hidden;font-family:sans-serif;color:#111;flex:none}
+.scr .map{flex:1;position:relative;background:#fff}
+.scr .tabs{width:52px;background:#f3f3f3;border-left:1px solid #999;display:flex;flex-direction:column;align-items:center;padding-top:4px;gap:4px}
+.tab{width:44px;height:30px;border:1px solid #888;border-radius:3px;background:#fff;font-size:8px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;line-height:1;gap:2px}
+.tab .ic{font-size:12px;line-height:1}
+.tab.fav{background:#fff6d6;border-color:#c9a227}
+.tab.on{background:#cfe3f7;border:2px solid #4a7fb5}
+.tab.sm{height:22px}
+.tab.push{margin-top:auto}
+.cells{flex:1;display:grid;gap:4px;padding:4px}
+.cell{border:1px solid #888;border-radius:3px;position:relative;display:flex;align-items:center;justify-content:center;font-weight:700}
+.cell small{position:absolute;left:5px;top:3px;font-weight:400;font-size:8px}
+.cell em{position:absolute;right:5px;bottom:3px;font-weight:400;font-style:normal;font-size:8px}
+.slot{position:absolute;background:#f6f6f6;border:1px solid #bbb;border-radius:3px;padding:2px 5px;font-weight:700;line-height:1}
+.slot small{display:block;font-weight:400;font-size:7px}
+.cap{font-size:11px;color:#666;margin:4px 0 0}
+</style>
+
+<h2>A view with no chart</h2>
+<p class="subtitle">Today's Numbers page is 2 to 4 cells that fill the screen. With views, "Chart: None" replaces it. Two ways that view can lay out. Click one, or describe another.</p>
+
+<div class="options">
+
+<div class="option" data-choice="cells" onclick="toggleSelect(this)">
+  <div class="letter">A</div>
+  <div class="content">
+    <h3>Cells fill the screen (today's Numbers page, kept)</h3>
+    <p>Chart: None switches the editor to cell mode: 1 to 4 cells, each with a field, digits sized automatically to fill. No per-slot sizing, nothing to drag. Two layout models in the app (slots over a chart, cells without), two editors.</p>
+    <div class="scr">
+      <div class="cells" style="grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr">
+        <div class="cell" style="font-size:44px"><small>Depth</small>137<em>ft</em></div>
+        <div class="cell" style="font-size:44px"><small>SOG</small>6.0<em>kn</em></div>
+        <div class="cell" style="font-size:44px"><small>Water</small>54.2<em>F</em></div>
+        <div class="cell" style="font-size:44px"><small>Heading</small>247<em>M</em></div>
+      </div>
+      <div class="tabs"><div class="tab fav"><span class="ic">&#9875;</span>Nav</div><div class="tab fav"><span class="ic">&#127907;</span>Fish</div><div class="tab fav on"><span class="ic">#</span>Big #</div><div class="tab"><span class="ic">&#8962;</span></div><div class="tab sm push">Lock</div><div class="tab sm">Day</div></div>
+    </div>
+  </div>
+</div>
+
+<div class="option" data-choice="slots" onclick="toggleSelect(this)">
+  <div class="letter">B</div>
+  <div class="content">
+    <h3>Same eight slots over a blank background</h3>
+    <p>One model, one editor. Chart: None only drops the map. You size each slot yourself (drag or +/-), and a slot can be dragged up to the whole free area, so "four huge corners" fills the screen like A. Blank centre is just space. Slight fiddling to get four corners even; the editor could offer "Fill" on a slot (size to the most that fits).</p>
+    <div class="scr">
+      <div class="map">
+        <div class="slot" style="left:6px;top:6px;font-size:40px">137<small>Depth ft</small></div>
+        <div class="slot" style="right:6px;top:6px;font-size:40px">6.0<small>SOG kn</small></div>
+        <div class="slot" style="left:6px;bottom:6px;font-size:26px">54.2<small>Water F</small></div>
+        <div class="slot" style="right:6px;bottom:6px;font-size:26px">247<small>Heading M</small></div>
+        <div class="slot" style="left:50%;top:50%;transform:translate(-50%,-50%);font-size:14px;color:#666">12:41<small>Time</small></div>
+      </div>
+      <div class="tabs"><div class="tab fav"><span class="ic">&#9875;</span>Nav</div><div class="tab fav"><span class="ic">&#127907;</span>Fish</div><div class="tab fav on"><span class="ic">#</span>Big #</div><div class="tab"><span class="ic">&#8962;</span></div><div class="tab sm push">Lock</div><div class="tab sm">Day</div></div>
+    </div>
+    <p class="cap">Top, Bottom, Left and Right slots still work here as bands. The centre slot shown is a guess: a ninth "Centre" slot only exists in None views. Say if you want it or not.</p>
+  </div>
+</div>
+
+</div>

@@ -22,7 +22,7 @@ ctest --test-dir build --output-on-failure
 
 ## Plotter
 
-`plotter/` is the Qt 6 Quick chart plotter (`cheekyplotter`): charts, own ship, AIS, tracks, numbers, touch lock. It is an optional build (`-DCM_BUILD_PLOTTER=ON`), separate from the n2kd build above. Build, run, command line, settings and data location: see [plotter/README.md](plotter/README.md).
+`plotter/` is the Qt 6 Quick chart plotter (`cheekyplotter`): saved views (chart or big-number layouts, with a Home page and an editor), own ship, AIS, tracks, touch lock. It is an optional build (`-DCM_BUILD_PLOTTER=ON`), separate from the n2kd build above. Build, run, command line, settings and data location: see [plotter/README.md](plotter/README.md).
 
 ## Running n2kd
 

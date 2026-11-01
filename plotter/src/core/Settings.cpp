@@ -42,21 +42,15 @@ const std::map<QString, Def>& defs() {
         {"orientation", {"head", oneOf({"north", "head", "course"})}},
         {"paletteMode", {"auto", oneOf({"auto", "day", "dusk", "night"})}},
         {"lastPalette", {"day", oneOf({"day", "dusk", "night"})}},
-        {"chartMode", {"nav", oneOf({"nav", "fish"})}},
-        {"touchLockTimeoutS", {120, isInt(0)}},
+        {"lastViewId", {"", [](const QJsonValue& v) { return v.isString(); }}},
+        {"tabBarHideS", {8, [](const QJsonValue& v) {
+                             return v.isDouble() && QList<double>{0, 5, 8, 15, 30}.contains(v.toDouble());
+                         }}},
+        {"showChartNotice", {true, isBool()}},
         {"panelDiagonalIn", {10.1, isNum(1, 100)}},
         {"trackRecording", {false, isBool()}},
         {"trackIntervalS", {5, isInt(1)}},
         {"trackMinDistanceM", {10, isNum(0)}},
-        {"slots", {QJsonArray(), [](const QJsonValue&) { return true; }}}, // owned by the slot editor (Task 12)
-        {"bigNumbers", {QJsonArray{"depth", "sog"}, [](const QJsonValue& v) {
-                            if (!v.isArray())
-                                return false;
-                            for (const auto& e : v.toArray())
-                                if (!e.isString())
-                                    return false;
-                            return true;
-                        }}},
     };
     return d;
 }
@@ -105,18 +99,6 @@ Settings::Settings(Store& store, QObject* parent) : QObject(parent), m_store(sto
         for (const char* k : {"shallowM", "safetyM", "deepM"})
             m_v.insert(k, defs().at(k).def);
     }
-}
-
-QStringList Settings::bigNumbers() const {
-    QStringList l;
-    for (const auto& e : m_v.value("bigNumbers").toArray())
-        l << e.toString();
-    return l;
-}
-
-void Settings::setBigNumbers(const QStringList& v) {
-    if (put("bigNumbers", QJsonArray::fromStringList(v)))
-        emit bigNumbersChanged();
 }
 
 bool Settings::write(const QString& key, const QJsonValue& v) {

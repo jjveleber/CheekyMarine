@@ -131,8 +131,6 @@ ChartController::ChartController(ChartMap& map, Settings& settings, VesselModel&
         m_bathy.reset(); // the last refused charts pack's
         qWarning() << "ChartController: no usable charts pack";
     }
-    if (m_settings.chartMode() == QLatin1String("fish") && fishAvailable()) m_mode = QStringLiteral("fish");
-
     // Connect before the first load: the real map emits styleLoaded inside setStyleJson.
     connect(&m_map, &ChartMap::styleLoaded, this, &ChartController::onStyleLoaded);
     connect(&m_map, &ChartMap::userGesture, this, [this] { setFollow(false); });
@@ -163,7 +161,6 @@ void ChartController::setMode(const QString& mode) {
         return;
     }
     m_mode = mode;
-    m_settings.setChartMode(mode);
     emit modeChanged();
     loadStyle();
 }

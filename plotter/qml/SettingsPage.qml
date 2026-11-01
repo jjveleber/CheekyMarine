@@ -6,7 +6,7 @@ import QtQuick.Controls.Basic
 Item {
     id: page
     required property QtObject settings // Settings
-    signal editOverlays()
+    property real rightInset: 0         // the tab bar strip over the page's right edge
     signal showAbout()
 
     objectName: "settingsPage"
@@ -26,7 +26,7 @@ Item {
     readonly property var tempUnits: [{ value: "F", label: "Fahrenheit" }, { value: "C", label: "Celsius" }]
     readonly property var orientations: [{ value: "north", label: "North up" }, { value: "head", label: "Head up" }, { value: "course", label: "Course up" }]
     readonly property var paletteModes: [{ value: "auto", label: "Auto" }, { value: "day", label: "Day" }, { value: "dusk", label: "Dusk" }, { value: "night", label: "Night" }]
-    readonly property var lockTimeouts: [{ value: 0, label: "Off" }, { value: 30, label: "30 s" }, { value: 60, label: "1 min" }, { value: 120, label: "2 min" }, { value: 300, label: "5 min" }]
+    readonly property var tabBarHides: [{ value: 0, label: "Off" }, { value: 5, label: "5 s" }, { value: 8, label: "8 s" }, { value: 15, label: "15 s" }, { value: 30, label: "30 s" }]
     readonly property var trackIntervals: [{ value: 1, label: "1 s" }, { value: 5, label: "5 s" }, { value: 10, label: "10 s" }, { value: 30, label: "30 s" }]
     readonly property var trackDistances: [{ value: 5, label: "5 m" }, { value: 10, label: "10 m" }, { value: 25, label: "25 m" }]
 
@@ -128,6 +128,7 @@ Item {
         objectName: "settingsScroller"
         anchors.fill: parent
         anchors.margins: Units.mm(3)
+        anchors.rightMargin: Units.mm(3) + page.rightInset
         contentWidth: width
         contentHeight: column.implicitHeight
         clip: true
@@ -207,9 +208,14 @@ Item {
                 onClicked: page.openList("Palette", page.paletteModes, page.settings.paletteMode, v => page.settings.paletteMode = v)
             }
             ChoiceRow {
-                objectName: "row-touchLock"
-                text: "Touch lock timeout: " + page.choiceLabel(page.lockTimeouts, page.settings.touchLockTimeoutS)
-                onClicked: page.openList("Touch lock timeout", page.lockTimeouts, page.settings.touchLockTimeoutS, v => page.settings.touchLockTimeoutS = v)
+                objectName: "row-tabBarHide"
+                text: "Hide tab bar after: " + page.choiceLabel(page.tabBarHides, page.settings.tabBarHideS)
+                onClicked: page.openList("Hide tab bar after", page.tabBarHides, page.settings.tabBarHideS, v => page.settings.tabBarHideS = v)
+            }
+            ChoiceRow {
+                objectName: "row-chartNotice"
+                text: "Chart notice: " + (page.settings.showChartNotice ? "On" : "Off")
+                onClicked: page.settings.showChartNotice = !page.settings.showChartNotice
             }
             Stepper {
                 title: "Panel diagonal"
@@ -229,11 +235,6 @@ Item {
                 onClicked: page.openList("Track minimum distance", page.trackDistances, page.settings.trackMinDistanceM, v => page.settings.trackMinDistanceM = v)
             }
             ChoiceRow {
-                objectName: "editOverlaysButton"
-                text: "Edit overlays"
-                onClicked: page.editOverlays()
-            }
-            ChoiceRow {
                 objectName: "aboutButton"
                 text: "About"
                 onClicked: page.showAbout()
@@ -249,7 +250,7 @@ Item {
         property var choices: []
         property var current: null
         property var apply: null
-        anchors.fill: parent
+        anchors { fill: parent; rightMargin: page.rightInset }
         visible: false
         color: Theme.background
 

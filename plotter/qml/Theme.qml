@@ -24,7 +24,9 @@ QtObject {
         slotBackground: "#d8ffffff",
         slotText: "#000000",
         slotLabel: "#404040",
-        editOutline: "#0060c0"
+        editOutline: "#0060c0",
+        thumbNav: "#b8d4ea",
+        thumbFish: "#bfe0cf"
     })
     readonly property var dusk: ({
         background: "#303036",
@@ -43,7 +45,9 @@ QtObject {
         slotBackground: "#d8202024",
         slotText: "#ffffff",
         slotLabel: "#b0b0b8",
-        editOutline: "#60a0ff"
+        editOutline: "#60a0ff",
+        thumbNav: "#2a3a4c",
+        thumbFish: "#2a4238"
     })
     readonly property var night: ({
         background: "#000000",
@@ -62,7 +66,9 @@ QtObject {
         slotBackground: "#d8000000",
         slotText: "#ff2020",
         slotLabel: "#a00000",
-        editOutline: "#ff0000"
+        editOutline: "#ff0000",
+        thumbNav: "#3a0000",
+        thumbFish: "#5a0000"
     })
 
     readonly property var current: palette === "night" ? night : palette === "dusk" ? dusk : day
@@ -84,4 +90,7 @@ QtObject {
     readonly property color slotText: current.slotText
     readonly property color slotLabel: current.slotLabel
     readonly property color editOutline: current.editOutline
+    // Home tile thumbnails: the chart colour behind a view's slots.
+    readonly property color thumbNav: current.thumbNav
+    readonly property color thumbFish: current.thumbFish
 }
