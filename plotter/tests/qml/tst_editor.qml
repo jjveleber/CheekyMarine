@@ -380,6 +380,7 @@ TestCase {
         verify(main.setupRequestedOnOpen, "a new view asks for Setup")
         const id = fixture.views.currentId
         compare(fixture.views.viewJson(id).name, "View 4")
+        mouseClick(m(main, "setupDone")) // a new view opens on its Setup sheet
         mouseClick(m(main, "editorCancel"))
         compare(fixture.views.count, 3)
         compare(fixture.views.indexOf(id), -1)
@@ -627,6 +628,290 @@ TestCase {
         for (const k of keys) verify(inside(H.box(k, kb), room), k.objectName + " inside width - rightInset")
         for (const n of ["key-1", "key-0", "key-Q", "key-P", "key-A", "key-L", "key-Z", "key-M", "key-shift", "key-backspace", "key-space", "key-cancel", "key-done"])
             find(kb, n)
+    }
+
+    // Scrolls every Flickable above `it` so it is on screen, then clicks it.
+    function reveal(it) {
+        verify(it, "nothing to reveal")
+        for (let a = it.parent; a; a = a.parent) {
+            if (a.contentItem !== undefined && a.contentY !== undefined) {
+                const p = it.mapToItem(a, 0, 0)
+                if (p.y < 0 || p.y + it.height > a.height)
+                    a.contentY = Math.max(0, Math.min(a.contentHeight - a.height, a.contentY + p.y - Units.mm(2)))
+            }
+        }
+        return it
+    }
+    function tapShown(it) {
+        waitForRendering(it) // a row just shown is laid out on the next frame
+        reveal(it)
+        waitForRendering(it)
+        mouseClick(it)
+    }
+    // The editor over `id` with its Setup sheet open.
+    function openSetup(main, id) {
+        main.editView(id)
+        mouseClick(m(main, "editorSetup"))
+        const sheet = m(main, "setupSheet")
+        verify(sheet.visible, "the Setup sheet")
+        waitForRendering(sheet)
+        return sheet
+    }
+    // Clears the keyboard's text, then types `text` (capitals with shift).
+    function typeInto(kb, text) {
+        while (kb.text.length > 0) tap(kb, "key-backspace")
+        for (const ch of text) {
+            if (ch === " ") { tap(kb, "key-space"); continue }
+            const upper = ch.toUpperCase()
+            if ((ch === upper) !== kb.shift && upper !== ch.toLowerCase()) tap(kb, "key-shift")
+            tap(kb, "key-" + upper)
+        }
+        compare(kb.text, text)
+    }
+
+    function test_setupSheetRowsAndScroll_data() { return H.sizes() }
+    function test_setupSheetRowsAndScroll(data) {
+        const main = makeMain(data.w, data.h)
+        const sheet = openSetup(main, "shipped-big")
+        const panel = find(sheet, "setupPanel")
+        const room = { x: 0, y: 0, w: main.width - m(main, "tabBar").width, h: m(main, "viewEditor").height }
+        const pb = H.box(panel, m(main, "viewEditor"))
+        verify(inside(pb, room), "the sheet inside width - rightInset")
+        fuzzyCompare(pb.h, room.h, 1, "full height")
+        verify(pb.w < room.w - Units.mm(40), "the view shows beside it")
+        const names = ["row-name", "row-short", "chart-nav", "chart-fish", "chart-none", "row-layout",
+                       "row-favourite", "row-delete", "setupDone"].concat(Icons.names().map(n => "icon-" + n))
+        for (const n of names) {
+            const b = find(panel, n)
+            verify(b.visible, n + " visible")
+            verify(b.isBigButton === true, n + " is a BigButton")
+            const bb = H.box(b, panel)
+            verify(bb.x >= -0.5 && bb.x + bb.w <= panel.width + 0.5, n + " inside the sheet's width")
+        }
+        H.checkBigButtons(testCase, Units, panel)
+        compare(find(panel, "row-name").text, "Name: Big numbers")
+        compare(find(panel, "row-short").text, "Short name: Big #")
+        compare(find(panel, "row-favourite").text, "Favourite: On")
+        compare(find(panel, "row-delete").text, "Delete view")
+        verify(find(panel, "icon-hash").highlighted, "the draft's icon")
+        verify(!find(panel, "icon-fish").highlighted)
+        verify(find(panel, "chart-none").highlighted)
+        // Four icons across.
+        const row = Icons.names().slice(0, 5).map(n => H.box(find(panel, "icon-" + n), panel))
+        for (let i = 1; i < 4; ++i) fuzzyCompare(row[i].y, row[0].y, 0.5)
+        verify(row[4].y > row[0].y + 1, "the fifth on the next row")
+
+        const scroller = find(panel, "setupScroller")
+        verify(scroller.contentHeight > scroller.height, "it scrolls: " + scroller.contentHeight + " > " + scroller.height)
+        const del = find(panel, "row-delete")
+        verify(H.box(del, scroller).y + del.height > scroller.height, "Delete starts below the fold")
+        reveal(del)
+        verify(scroller.contentY > 0, "scrolled")
+        const d = H.box(del, scroller)
+        verify(d.y >= -0.5 && d.y + d.h <= scroller.height + 0.5, "Delete scrolled into view")
+
+        fixture.draft.chart = "nav"
+        verify(!find(panel, "row-layout").visible, "Layout only without a chart")
+        mouseClick(find(panel, "setupDone"))
+        verify(!sheet.visible, "Done closes the sheet")
+        verify(main.editing, "the editor stays open")
+    }
+
+    function test_setupRenamesThroughKeyboard() {
+        const main = makeMain(1024, 600)
+        const sheet = openSetup(main, "shipped-nav")
+        const kb = find(sheet, "keyboard")
+        mouseClick(find(sheet, "row-name"))
+        verify(kb.visible, "the keyboard")
+        compare(kb.text, "Navigation")
+        compare(kb.maxChars, 24)
+        waitForRendering(kb)
+        typeInto(kb, "Trolling")
+        tap(kb, "key-done")
+        verify(!kb.visible)
+        compare(fixture.draft.name, "Trolling")
+        compare(find(sheet, "row-name").text, "Name: Trolling")
+        compare(find(sheet, "row-short").text, "Short name: Nav", "the short name is its own field")
+        mouseClick(find(sheet, "row-short"))
+        verify(kb.visible)
+        compare(kb.text, "Nav")
+        compare(kb.maxChars, 6)
+        typeInto(kb, "Troll")
+        tap(kb, "key-done")
+        compare(fixture.draft.shortName, "Troll")
+        compare(fixture.draft.name, "Trolling")
+        verify(sheet.visible, "back on the sheet")
+        mouseClick(find(sheet, "setupDone"))
+        mouseClick(m(main, "editorDone"))
+        const stored = fixture.views.viewJson("shipped-nav")
+        compare(stored.name, "Trolling")
+        compare(stored.short, "Troll")
+    }
+
+    function test_setupChartSwitchAppliesLive() {
+        const main = makeMain(1024, 600)
+        const sheet = openSetup(main, "shipped-nav")
+        mouseClick(find(sheet, "chart-none"))
+        compare(fixture.draft.chart, "none")
+        const cells = m(main, "cellPage")
+        verify(cells.visible, "the cell page behind the sheet")
+        verify(!m(main, "chartPage").visible)
+        verify(sheet.visible, "the sheet stays open")
+        const shown = H.findAll(cells, it => it.objectName.startsWith("cell-") && it.visible)
+        compare(shown.length, fixture.draft.toJson().cells.fields.length, "the draft's cells")
+        verify(find(sheet, "chart-none").highlighted)
+        mouseClick(find(sheet, "chart-fish"))
+        verify(m(main, "chartPage").visible, "the chart back")
+        verify(!cells.visible)
+        compare(chartStub.mode, "fish")
+        mouseClick(find(sheet, "setupDone"))
+        mouseClick(m(main, "editorCancel"))
+        compare(fixture.draft.chart, "nav")
+        compare(fixture.views.viewJson("shipped-nav").chart, "nav")
+        compare(chartStub.mode, "nav")
+        verify(m(main, "chartPage").visible)
+    }
+
+    function test_layoutGalleryHas72AndApplies() {
+        const main = makeMain(1024, 600)
+        const sheet = openSetup(main, "shipped-big")
+        const before = fixture.draft.layout
+        tapShown(find(sheet, "row-layout"))
+        const gallery = find(sheet, "layoutGallery")
+        verify(gallery.visible, "the gallery")
+        waitForRendering(gallery)
+        const keys = Layouts.gallery().map(g => g.key)
+        compare(keys.length, 72)
+        const thumbs = H.findAll(gallery, it => it.isBigButton === true && it.objectName.startsWith("layout-"))
+        compare(thumbs.length, 72)
+        // In gallery order, row by row.
+        const byPlace = thumbs.map(t => ({ name: t.objectName, b: H.box(t, gallery) }))
+            .sort((a, b) => Math.abs(a.b.y - b.b.y) > 0.5 ? a.b.y - b.b.y : a.b.x - b.b.x)
+        compare(byPlace.map(t => t.name), keys.map(k => "layout-" + k))
+        for (const t of thumbs) {
+            const pic = find(t, "layoutThumb")
+            verify(pic.height >= Units.mm(12) - 0.5, t.objectName + " " + pic.height + " tall")
+            fuzzyCompare(pic.width / pic.height, 1.6, 0.01)
+            compare(t.highlighted, t.objectName === "layout-" + before, t.objectName)
+            compare(pic.highlighted, t.highlighted)
+        }
+        H.checkBigButtons(testCase, Units, gallery)
+        const room = { x: 0, y: 0, w: main.width - m(main, "tabBar").width, h: gallery.height }
+        verify(inside(H.box(find(gallery, "galleryClose"), gallery), room), "Close inside width - rightInset")
+        for (const t of thumbs) {
+            const b = H.box(t, gallery)
+            verify(b.x >= -0.5 && b.x + b.w <= room.w + 0.5, t.objectName + " inside width - rightInset")
+        }
+        verify(find(gallery, "galleryScroller").contentHeight > find(gallery, "galleryScroller").height, "it scrolls")
+
+        const quad = "2x2:0,0,1,1;1,0,1,1;0,1,1,1;1,1,1,1"
+        tapShown(find(gallery, "layout-" + quad))
+        verify(!gallery.visible, "a tap closes it")
+        compare(fixture.draft.layout, quad)
+        verify(sheet.visible, "back on the sheet")
+        const cells = H.findAll(m(main, "cellPage"), it => it.objectName.startsWith("cell-") && it.visible)
+        compare(cells.length, 4, "four cells on the page")
+
+        tapShown(find(sheet, "row-layout"))
+        verify(find(gallery, "layout-" + quad).highlighted)
+        mouseClick(find(gallery, "galleryClose"))
+        verify(!gallery.visible)
+        compare(fixture.draft.layout, quad)
+    }
+
+    function test_favouriteRowNotesFullBar() {
+        const main = makeMain(1024, 600)
+        compare(fixture.views.favouriteCapacity, 5)
+        for (let i = 0; i < 2; ++i) fixture.views.setFavourite(fixture.views.add(), true)
+        const sixth = fixture.views.add()
+        fixture.views.setFavourite(sixth, true)
+        verify(!fixture.views.onTabBar(sixth))
+        let sheet = openSetup(main, sixth)
+        const row = find(sheet, "row-favourite")
+        compare(row.text, "Favourite: On")
+        const note = find(sheet, "favouriteNote")
+        verify(note.visible, "the note")
+        compare(note.text, "Not on tab bar (full)")
+        tapShown(row)
+        compare(fixture.draft.favourite, false)
+        compare(row.text, "Favourite: Off")
+        verify(!note.visible, "no note when off")
+        mouseClick(find(sheet, "setupDone"))
+        mouseClick(m(main, "editorCancel"))
+
+        // A favourite on the bar has no note.
+        sheet = openSetup(main, "shipped-fish")
+        verify(!find(sheet, "favouriteNote").visible)
+    }
+
+    function test_deleteFromSetupGoesHome() {
+        const main = makeMain(1024, 600)
+        const sheet = openSetup(main, "shipped-fish")
+        const del = find(sheet, "row-delete")
+        tapShown(del)
+        const question = find(sheet, "setupDeleteQuestion")
+        verify(question.visible)
+        compare(question.text, "Delete Fishing?")
+        tapShown(find(sheet, "setupKeep"))
+        verify(!question.visible)
+        compare(fixture.views.count, 3)
+        tapShown(del)
+        tapShown(find(sheet, "setupDeleteYes"))
+        compare(fixture.views.count, 2)
+        compare(fixture.views.indexOf("shipped-fish"), -1)
+        compare(main.editing, false)
+        compare(main.page, "home")
+        verify(!sheet.visible)
+        verify(fixture.views.currentId !== "shipped-fish")
+        compare(fixture.draft.id, fixture.views.currentId)
+    }
+
+    function test_lastViewSetupDeleteDisabled() {
+        verify(fixture.views.remove("shipped-fish"))
+        verify(fixture.views.remove("shipped-big"))
+        const main = makeMain(1024, 600)
+        const sheet = openSetup(main, "shipped-nav")
+        const del = find(sheet, "row-delete")
+        verify(!del.enabled)
+        compare(del.text, "Can't delete the last view")
+        tapShown(del)
+        verify(!find(sheet, "setupDeleteQuestion").visible)
+        compare(fixture.views.count, 1)
+        verify(main.editing)
+    }
+
+    function test_newViewOpensEditorWithSetup() {
+        const main = makeMain(1024, 600)
+        mouseClick(m(main, "tab-home"))
+        mouseClick(m(main, "tile-new"))
+        verify(main.editing)
+        const sheet = m(main, "setupSheet")
+        verify(sheet.visible, "Setup open on a new view")
+        compare(find(sheet, "row-name").text, "Name: View 4")
+        mouseClick(find(sheet, "setupDone"))
+        verify(!sheet.visible)
+        verify(main.editing)
+        mouseClick(m(main, "editorCancel"))
+        compare(fixture.views.count, 3)
+        // Edit from Home does not open Setup.
+        editFromHome(main, "shipped-nav")
+        verify(!sheet.visible)
+    }
+
+    function test_iconGridPicks() {
+        const main = makeMain(1024, 600)
+        const sheet = openSetup(main, "shipped-nav")
+        tapShown(find(sheet, "icon-fish"))
+        compare(fixture.draft.icon, "fish")
+        verify(find(sheet, "icon-fish").highlighted)
+        verify(!find(sheet, "icon-compass").highlighted)
+        mouseClick(find(sheet, "setupDone"))
+        mouseClick(m(main, "editorDone"))
+        compare(fixture.views.viewJson("shipped-nav").icon, "fish")
+        const tab = m(main, "tab-view-shipped-nav")
+        const icons = H.findAll(tab, it => it.sourceSize !== undefined && it.name !== undefined)
+        compare(icons.length, 1)
+        compare(icons[0].name, "fish")
     }
 
     function test_keyboardCancelKeepsOldText() {

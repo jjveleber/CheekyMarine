@@ -95,6 +95,7 @@ qt_add_qml_module(plotterqml
         qml/NoDataBanner.qml qml/RecoveryScreen.qml qml/SettingsPage.qml qml/LockOverlay.qml qml/TracksPage.qml qml/LegendSheet.qml qml/AisSheet.qml
         qml/HomePage.qml qml/ViewTile.qml qml/ViewThumb.qml qml/TileMenu.qml
         qml/ViewEditor.qml qml/SlotSheet.qml qml/CellSheet.qml qml/Keyboard.qml
+        qml/SetupSheet.qml qml/LayoutGallery.qml qml/LayoutThumb.qml
     SOURCES src/qml/PanelMath.h src/qml/IconsQml.h src/qml/LayoutsQml.h
     RESOURCES fonts/NotoSans-Regular.ttf fonts/NotoSans-Bold.ttf assets/CheekyMarine-logo.jpg
         icons/tabler/anchor.svg icons/tabler/fish.svg icons/tabler/hash.svg icons/tabler/sailboat.svg

@@ -6,23 +6,27 @@ import QtQuick.Controls.Basic
 // stacked: Setup, Done, Cancel. A tap on a slot opens the slot sheet and selects the slot (its
 // resize handle shows); a tap on a cell opens the cell sheet. Every slot change is clamped against
 // the other slots at their drawn sizes (chartPage.maxMmFor) and the sheet shows what was applied.
-// The sheets also open on their own, with editing off (the live view hold shortcut, spec 6.9).
+// Setup opens the Setup sheet (name, icon, chart, layout, favourite, delete), which hides the
+// floating buttons while it is open. The slot and cell sheets also open on their own, with editing
+// off (the live view hold shortcut, spec 6.9).
 // Shares its parent with the chart and cell pages, so their coordinates are its own.
 Item {
     id: editor
     required property var draft     // ViewDraft
+    required property var views     // ViewsModel
     property real rightInset: 0     // the tab bar strip over the page's right edge
     property bool editing: false
     property Item chartPage: null
     property Item cellPage: null
     property string selectedSlot: ""
     property int selectedCell: -1
-    property string sheet: ""       // the open sheet: slot, cell or none
+    property string sheet: ""       // the open sheet: slot, cell, setup or none
     readonly property bool sheetOpen: sheet !== ""
     signal setupRequested()
     signal doneRequested()
     signal cancelRequested()
-    signal sheetClosed()            // a sheet's Done
+    signal sheetClosed()            // a slot or cell sheet's Done
+    signal deleteRequested()        // the Setup sheet's Delete, confirmed
 
     objectName: "viewEditor"
     onEditingChanged: {
@@ -37,6 +41,12 @@ Item {
         : Qt.rect(0, 0, width - rightInset, height)
 
     function closeSheets() { sheet = "" }
+    function openSetup() {
+        selectedSlot = ""
+        selectedCell = -1
+        sheet = "setup"
+    }
+    onSetupRequested: openSetup()
     function slotJson(slotId) { return draft.toJson().slots.find(s => s.id === slotId) }
     // The half of the page away from the item.
     function atTopFor(it) { return it.mapToItem(editor, 0, it.height / 2).y > height / 2 }
@@ -85,7 +95,7 @@ Item {
     }
 
     Column {
-        visible: editor.editing
+        visible: editor.editing && editor.sheet !== "setup"
         x: editor.area.x + (editor.area.width - width) / 2
         y: editor.area.y + (editor.area.height - height) / 2
         spacing: Units.mm(1.5)
@@ -140,6 +150,14 @@ Item {
         fieldChoices: editor.draft.slots.fieldChoices
         onChanged: (on, field, sizeMm) => editor.applySlot(slotId, on, field, sizeMm)
         onClosed: { editor.closeSheets(); editor.sheetClosed() }
+    }
+    SetupSheet {
+        visible: editor.sheet === "setup"
+        draft: editor.draft
+        views: editor.views
+        rightInset: editor.rightInset
+        onClosed: editor.closeSheets()
+        onDeleteRequested: editor.deleteRequested()
     }
     CellSheet {
         id: cellSheet

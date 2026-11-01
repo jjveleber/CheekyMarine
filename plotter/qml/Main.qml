@@ -61,6 +61,7 @@ ApplicationWindow {
         root.setupRequestedOnOpen = openSetup === true
         root.showView(id)
         root.editing = true
+        if (root.setupRequestedOnOpen) editor.openSetup()
         root.showBar()
     }
     function newView() {
@@ -89,10 +90,23 @@ ApplicationWindow {
             root.page = root.editorFrom
         }
     }
+    // The Setup sheet's Delete: the view goes and Home shows.
+    function editorDelete() {
+        const id = root.draft.id
+        root.editing = false
+        root.editingNew = false
+        root.views.remove(id)
+        root.page = "home"
+    }
     Component.onCompleted: showCurrentView()
     Connections {
         target: root.views
         function onCurrentIdChanged() { root.showCurrentView() }
+    }
+    // A chart switch in the Setup sheet applies at once.
+    Connections {
+        target: root.draft
+        function onChartChanged() { root.chart.mode = root.draft.chart === "fish" ? "fish" : "nav" }
     }
 
     // The bar back for the full delay. Restarted only while it runs: the binding starts it.
@@ -177,12 +191,14 @@ ApplicationWindow {
                     id: editor
                     anchors.fill: parent
                     draft: root.draft
+                    views: root.views
                     rightInset: tabBar.width
                     editing: root.editing
                     chartPage: chartPage
                     cellPage: cellPage
                     onDoneRequested: root.editorDone()
                     onCancelRequested: root.editorCancel()
+                    onDeleteRequested: root.editorDelete()
                     // A hold's sheet on a live view saves on its Done.
                     onSheetClosed: if (!root.editing) root.views.saveJson(root.draft.toJson())
                 }
@@ -222,6 +238,7 @@ ApplicationWindow {
         paletteMode: root.settings.paletteMode
         recording: root.settings.trackRecording
         onViewSelected: (id) => root.showView(id)
+        onViewHeld: (id) => root.editView(id, false)
         onHomeSelected: root.page = "home"
         onTouched: root.showBar()
         onLockRequested: { root.showBar(); root.touchLock.lockNow() }

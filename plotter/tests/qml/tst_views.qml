@@ -271,12 +271,41 @@ TestCase {
         compare(held.count, 1)
         compare(held.signalArguments[0][0], "shipped-fish")
         compare(selected.count, 0)
-        compare(fixture.views.currentId, "shipped-nav")
+        mouseClick(item(main, "editorCancel")) // the hold opened the editor (test_holdFavouriteTabOpensEditor)
         mouseClick(item(main, "tab-home"))
         mouseClick(item(main, "paletteButton"))
         compare(touched.count, 3, "every bar button press")
     }
     Component { id: spyComp; SignalSpy {} }
+
+    // Hold a favourite tab 0.6 s: the editor on that view (spec 6.9); a plain tap still just shows it.
+    function test_holdFavouriteTabOpensEditor() {
+        const main = makeMain(1024, 600)
+        compare(fixture.views.currentId, "shipped-nav")
+        const tab = item(main, "tab-view-shipped-fish")
+        const t0 = Date.now()
+        mousePress(tab)
+        wait(300)
+        verify(!main.editing, "not before the hold time")
+        tryVerify(() => main.editing, 3000, "the 0.6 s hold opens the editor")
+        verify(Date.now() - t0 >= 590, "after the hold time: " + (Date.now() - t0))
+        mouseRelease(tab)
+        verify(main.editing, "the editor")
+        compare(fixture.views.currentId, "shipped-fish")
+        compare(fixture.draft.id, "shipped-fish")
+        compare(main.page, "view")
+        verify(!item(main, "setupSheet").visible, "a hold opens the editor, not Setup")
+        mouseClick(item(main, "editorCancel"))
+        compare(main.editing, false)
+
+        mouseClick(item(main, "tab-view-shipped-big"))
+        compare(fixture.views.currentId, "shipped-big")
+        compare(main.page, "view")
+        compare(main.editing, false, "a tap just shows it")
+        mouseClick(item(main, "tab-view-shipped-fish"))
+        compare(fixture.views.currentId, "shipped-fish")
+        compare(main.editing, false)
+    }
 
     function test_nonFavouriteViewHighlightsHouse() {
         const main = makeMain(1024, 600)
