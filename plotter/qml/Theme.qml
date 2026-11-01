@@ -25,6 +25,7 @@ QtObject {
         slotText: "#000000",
         slotLabel: "#404040",
         editOutline: "#0060c0",
+        editHandleArrow: "#8cc4ff",
         thumbNav: "#b8d4ea",
         thumbFish: "#bfe0cf"
     })
@@ -46,6 +47,7 @@ QtObject {
         slotText: "#ffffff",
         slotLabel: "#b0b0b8",
         editOutline: "#60a0ff",
+        editHandleArrow: "#a8ccff",
         thumbNav: "#2a3a4c",
         thumbFish: "#2a4238"
     })
@@ -67,6 +69,7 @@ QtObject {
         slotText: "#ff2020",
         slotLabel: "#a00000",
         editOutline: "#ff0000",
+        editHandleArrow: "#ff2020",
         thumbNav: "#3a0000",
         thumbFish: "#5a0000"
     })
@@ -90,6 +93,7 @@ QtObject {
     readonly property color slotText: current.slotText
     readonly property color slotLabel: current.slotLabel
     readonly property color editOutline: current.editOutline
+    readonly property color editHandleArrow: current.editHandleArrow
     // Home tile thumbnails: the chart colour behind a view's slots.
     readonly property color thumbNav: current.thumbNav
     readonly property color thumbFish: current.thumbFish

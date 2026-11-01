@@ -453,7 +453,8 @@ TestCase {
         verify(Math.abs(handle.width - Units.mm(12)) < 0.5 && Math.abs(handle.height - Units.mm(12)) < 0.5)
         const tl = m(main, "slot-TL")
         const hb = H.box(handle, tl)
-        verify(hb.x + hb.w > tl.width - 1 && hb.y + hb.h > tl.height - 1, "on TL's inner (bottom right) corner")
+        fuzzyCompare(hb.x + hb.w / 2, tl.width, 1, "centered on TL's inner corner, x")
+        fuzzyCompare(hb.y + hb.h / 2, tl.height, 1, "centered on TL's inner corner, y")
         waitForRendering(page)
         const start = draftSlot("TL").sizeMm
         const moves = createTemporaryObject(spyComp, testCase, { target: page, signalName: "handleDragged" })
@@ -497,6 +498,40 @@ TestCase {
         for (let i = 1; i <= 10; ++i) touchEvent(w).move(0, w, p.x - Units.mm(1) * i, p.y).commit()
         touchEvent(w).release(0, w, p.x - Units.mm(10), p.y).commit()
         verify(draftSlot("TL").sizeMm < grown, "a finger drag shrinks it too: " + draftSlot("TL").sizeMm)
+    }
+
+    // The handle is centered on the inner corner (corners) or the midpoint of the inner edge (bars),
+    // half over the slot and half over the chart, and carries an arrow along the resize axis.
+    function test_handleSitsOnTheInnerCornerOrEdgeWithAnArrow() {
+        const main = makeMain(1280, 800)
+        main.editView("shipped-nav")
+        const page = m(main, "chartPage")
+        const center = { TL: s => [s.width, s.height], TR: s => [0, s.height], BL: s => [s.width, 0], BR: s => [0, 0],
+                         Top: s => [s.width / 2, s.height], Bottom: s => [s.width / 2, 0],
+                         Left: s => [s.width, s.height / 2], Right: s => [0, s.height / 2] }
+        const angle = { TL: 45, BR: 45, TR: 135, BL: 135, Top: 90, Bottom: 90, Left: 0, Right: 0 }
+        for (const id of ["TL", "TR", "BL", "BR", "Top", "Bottom", "Left", "Right"]) {
+            fixture.draft.setSlot(id, true, "sog", 8)
+            waitForRendering(page)
+            const slot = m(main, "slot-" + id)
+            mouseClick(slot)
+            const handle = find(page, "handle-" + id)
+            verify(handle.visible, id + " handle")
+            const hb = H.box(handle, slot)
+            const [cx, cy] = center[id](slot)
+            fuzzyCompare(hb.x + hb.w / 2, cx, 1, id + " center x")
+            fuzzyCompare(hb.y + hb.h / 2, cy, 1, id + " center y")
+            verify(Math.abs(hb.w - Units.mm(12)) < 0.5, id + " 12 mm")
+            const arrow = find(handle, "handleArrow-" + id)
+            verify(arrow.visible, id + " arrow")
+            compare(arrow.rotation, angle[id], id + " arrow along the resize axis")
+            verify(Qt.colorEqual(arrow.stroke, Theme.editHandleArrow), id + " arrow color")
+            verify(!Qt.colorEqual(Theme.editHandleArrow, Theme.editOutline), "lighter than the disc")
+            // Done closes the sheet (it would cover the slots in the other half); the selection stays.
+            const sheet = find(m(main, "viewEditor"), "slotSheet")
+            mouseClick(find(sheet, "sheetDone"))
+            verify(!sheet.visible, id + " sheet closed")
+        }
     }
 
     function test_cellSheetChangesAField() {

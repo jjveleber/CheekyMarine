@@ -6,8 +6,9 @@ import QtQuick.Layouts
 // value and unit; Top and Bottom bars run in one line (a position on one line too); Left and Right
 // bars stack label, value and unit. It takes taps only in edit mode, so on the chart touches reach
 // the map; in edit mode every slot shows, outlined, and an off slot shows its position name, faint.
-// The selected slot shows a round 12 mm resize handle on its inner corner (a corner slot) or the
-// midpoint of its inner edge (a bar), the side towards the page centre.
+// The selected slot shows a round 12 mm resize handle centered on its inner corner (a corner slot) or
+// the midpoint of its inner edge (a bar), the side towards the page centre: half over the slot, half
+// over the chart, with a double-headed arrow along the resize axis.
 //
 // sizeMm is the stored digit height; drawnMm (set by the page from the size clamp) is the one drawn.
 // The box is about fixed + per * drawnMm in each axis: the clamp reads fixedWMm, wPerMm, fixedHMm and
@@ -113,13 +114,44 @@ BigButton {
         z: 2
         width: Units.mm(12)
         height: width
-        x: slot.horizontalBar ? (slot.width - width) / 2 : slot.leftSide ? slot.width - width : 0
-        y: slot.verticalBar ? (slot.height - height) / 2 : slot.topSide ? slot.height - height : 0
+        x: slot.horizontalBar ? (slot.width - width) / 2 : slot.leftSide ? slot.width - width / 2 : -width / 2
+        y: slot.verticalBar ? (slot.height - height) / 2 : slot.topSide ? slot.height - height / 2 : -height / 2
+        // Degrees clockwise from the x axis: the resize axis.
+        readonly property real arrowAngle: slot.horizontalBar ? 90 : slot.verticalBar ? 0
+                                         : (slot.slotId === "TL" || slot.slotId === "BR") ? 45 : 135
         Rectangle {
             anchors.fill: parent
             radius: width / 2
             color: Theme.editOutline
             opacity: 0.8
+        }
+        Canvas {
+            objectName: "handleArrow-" + slot.slotId
+            anchors.fill: parent
+            rotation: parent.arrowAngle
+            property color stroke: Theme.editHandleArrow
+            onStrokeChanged: requestPaint()
+            onWidthChanged: requestPaint()
+            onPaint: {
+                const ctx = getContext("2d")
+                ctx.reset()
+                const w = width, cy = height / 2
+                const head = 0.14 * w, dy = head * Math.tan(Math.PI / 6)
+                ctx.strokeStyle = stroke
+                ctx.lineWidth = Math.max(2, Units.mm(0.6))
+                ctx.lineCap = "round"
+                ctx.lineJoin = "round"
+                ctx.beginPath()
+                ctx.moveTo(0.22 * w, cy)
+                ctx.lineTo(0.78 * w, cy)
+                ctx.moveTo(0.22 * w + head, cy - dy)
+                ctx.lineTo(0.22 * w, cy)
+                ctx.lineTo(0.22 * w + head, cy + dy)
+                ctx.moveTo(0.78 * w - head, cy - dy)
+                ctx.lineTo(0.78 * w, cy)
+                ctx.lineTo(0.78 * w - head, cy + dy)
+                ctx.stroke()
+            }
         }
         DragHandler {
             target: null
@@ -135,6 +167,8 @@ BigButton {
 
     // Centred, so a bar keeps label, value and unit together along its length.
     contentItem: Item {
+        // A bar's text is clipped to the bar; the handle, a sibling, is not.
+        clip: slot.horizontalBar
         implicitWidth: grid.implicitWidth
         implicitHeight: grid.implicitHeight
         GridLayout {
