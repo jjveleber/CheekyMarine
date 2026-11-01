@@ -3,7 +3,25 @@ import QtTest
 import CheekyMarine
 
 TestCase {
+    id: testCase
     name: "Theme"
+    width: 400
+    height: 400
+    visible: true
+    when: windowShown
+
+    Component {
+        id: iconComp
+        Icon {}
+    }
+    Component {
+        id: iconBoxComp
+        Rectangle {
+            color: "black"
+            property alias icon: iconItem
+            Icon { id: iconItem; anchors.centerIn: parent }
+        }
+    }
 
     // A color property turns a colour string into channels.
     property color probe
@@ -54,5 +72,40 @@ TestCase {
         Theme.palette = "noon"
         probe = Theme.day.text
         compare(Theme.text, probe)
+    }
+
+    function test_everyIconLoads() {
+        const names = Icons.names()
+        compare(names.length, 16)
+        for (const n of names) {
+            const icon = createTemporaryObject(iconComp, testCase, { name: n, width: Units.mm(10), height: Units.mm(10) })
+            tryCompare(icon, "status", Image.Ready, 5000, n)
+        }
+    }
+
+    // At night an icon in the button text colour is red on black: no green or blue above 0x20.
+    function test_iconIsRedAtNight() {
+        Theme.palette = "night"
+        const box = createTemporaryObject(iconBoxComp, testCase, { width: Units.mm(20), height: Units.mm(20) })
+        box.icon.name = "anchor"
+        box.icon.width = Units.mm(12)
+        box.icon.height = Units.mm(12)
+        tryCompare(box.icon, "status", Image.Ready)
+        const img = grabImage(box)
+        let red = 0
+        for (let y = 0; y < img.height; ++y) {
+            for (let x = 0; x < img.width; ++x) {
+                const g = img.green(x, y), b = img.blue(x, y)
+                verify(g <= 0x20 && b <= 0x20, "pixel " + x + "," + y + " has green " + g + " blue " + b)
+                if (img.red(x, y) > 0x80) ++red
+            }
+        }
+        verify(red > 0, "the icon drew red pixels")
+    }
+
+    function test_unknownIconWarns() {
+        ignoreWarning(new RegExp("unknown icon"))
+        const icon = createTemporaryObject(iconComp, testCase, { name: "nope", width: 20, height: 20 })
+        compare(icon.source.toString(), "")
     }
 }
