@@ -463,7 +463,7 @@ docs/plotter/renders/views/         screenshots of this plan's checkpoints
 - [ ] **Step 1: Add the options** and a `tst_pages.qml`/`tst_views.qml` test `test_mainInitialEditorAndSheet` that constructing Main with `editorOpen: true, sheet: "setup"` shows the editor and the Setup sheet, and `sheet: "gallery"` the gallery.
 - [ ] **Step 2: Run** the full suite. Expected: PASS.
 - [ ] **Step 3: Renders** with `run-dev.sh` at both sizes, day and night: `home`, `nav`, `fish`, `big`, `nav-barhidden` (`--screenshot-after-ms` past the delay), `editor`, `setup`, `slot`, `cell`, `gallery`, `keyboard`, `lock`, `tracks`, `settings`, `about`: `docs/plotter/renders/views/<name>-<day|night>-<size>.png` (60 files). Check each night render by eye for a non-red pixel area (icons, thumbs).
-- [ ] **Step 4: Docs**, then `grep -rn "—"` over the changed files returns nothing.
+- [ ] **Step 4: Docs**, then a grep for the em-dash character (U+2014) over the changed files returns nothing.
 - [ ] **Step 5: Commit** `docs(plotter): saved views docs, dev options and renders`. Checkpoint 3: the PR description links the renders folder and lists the ledger rulings of this plan.
 
 ---
