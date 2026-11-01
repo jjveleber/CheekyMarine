@@ -731,6 +731,32 @@ TestCase {
         compare(fixture.views.currentId, "shipped-fish")
     }
 
+    // The overlay is invisible while unlocked: it must not hold the key focus or eat keys then.
+    function test_lockOverlayTakesNoKeysWhileUnlocked() {
+        const main = makeMain(1024, 600)
+        const overlay = item(main, "lockOverlay")
+        waitForRendering(main.contentItem)
+        keyClick(Qt.Key_B)
+        compare(overlay.swallowed, 0, "a key before any lock")
+        verify(!overlay.activeFocus, "no key focus before any lock")
+
+        fixture.touchLock.lockNow()
+        verify(overlay.activeFocus, "the overlay takes the key focus on lock")
+        keyClick(Qt.Key_B)
+        compare(overlay.swallowed, 1, "a key while locked")
+
+        const holdTarget = item(main, "lockHold")
+        mousePress(holdTarget)
+        fixture.advance(1500)
+        mouseRelease(holdTarget)
+        verify(!fixture.touchLock.locked)
+        const n = overlay.swallowed
+        keyClick(Qt.Key_B)
+        keyClick(Qt.Key_Tab)
+        compare(overlay.swallowed, n, "keys after unlock")
+        verify(!overlay.activeFocus, "no key focus after unlock")
+    }
+
     // Every input the lock stops pulses the padlock (owner: the screen is locked, not dead): a tap,
     // a wheel turn, a pinch and a key press. The unlock hold does not count. A key reaches nothing.
     function test_lockPulsesOnEverySwallowedInputAndTakesKeys() {

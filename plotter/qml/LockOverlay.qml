@@ -10,8 +10,8 @@ Item {
     required property Item anchorItem
     objectName: "lockOverlay"
     visible: lock.locked
+    enabled: lock.locked // a disabled item holds no key focus and takes no keys while unlocked
     z: 1000
-    focus: true
 
     property int swallowed: 0 // inputs stopped since the lock went on
     readonly property bool pulsing: pulse.running
