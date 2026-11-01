@@ -60,7 +60,7 @@ Owner rules this revision follows (2026-10-31):
                        free tee on the existing NMEA 2000 backbone
 ```
 
-The diagram shows the on/off switch [3] in the box. The plan is a spare rocker on the helm switch panel instead (part 3): then the sense wire runs panel breaker, rocker, 1 A fuse [4b], and into the box, and the box has no switch. Mount [17] holds the enclosure [16] on the dash shelf. Glands [18] seal the two cable entries. Wire [19] covers the feed cable and everything inside the box.
+The on/off switch [3] goes on the box, as drawn (part 3). Mount [17] holds the enclosure [16] on the dash shelf. Glands [18] seal the two cable entries. Wire [19] covers the feed cable and everything inside the box.
 
 Order of the power path matters: fuse at the source (protects the cable), then the relay (open when off, so nothing draws from the battery), then the LC filter with the TVS across its output, then the buck for the Pi and the display's own feed. The on/off switch only carries the sense signal.
 
@@ -72,7 +72,7 @@ What happens when the main battery switch (or the unit's own switch) goes off: t
 |---|---|---|---|
 | 1 | Fuse + holder | 7.5 A blade fuse, sealed holder for 16 AWG | $4.58 (5 A bench fuse) |
 | 2 | TVS diode + LC filter | TVS: unidirectional, 17 to 18 V standoff, clamp 30 V or less, across the filter output. Inductor: 10 µH, 6 A saturation | $0.373 at 10 (TVS); LC not priced |
-| 3 | Unit on/off switch | Spare helm panel rocker: latching, 1 A sense fuse after it | $0 (on the boat) |
+| 3 | Unit on/off switch | Round latching rocker on the case: IP67, reliable at tens of mA, 1 A DC | not priced |
 | 4 | Standby power + shutdown controller | Standby feed, sense input, controller, relay that opens fully when off | not priced |
 | 5 | Buck regulator | 5 A continuous at 5.0 to 5.3 V, survives 30 V in | $47.95 |
 | 6 | Display power | Display safe to 30 V, or its own regulator | $0 if built in |
@@ -235,7 +235,7 @@ Leave open: Manufacturer, Package / Case, Tolerance, Q Minimum, Self Resonant Fr
 
 **Job.** Lets the owner turn the unit off while the boat stays on. It sits in the thin sense wire (part 4), not in the power feed, so turning it off looks to the controller exactly like the boat's main switch going off: the Pi shuts down cleanly, then the controller opens the relay. It carries the sense wire's current: about 5 mA for the sense input, plus the controller and relay coil (under 0.1 A in all) while it is powering them.
 
-**Plan (owner, 2026-11-01): a spare rocker on the helm switch panel.** The owner has unused rockers there. That saves a hole in the box, and the front sealing, panel hole, depth and body rows below apply only if a switch ever goes on the box instead. Check on the boat: the rocker is latching (no momentary position), it is fed from the panel's main switched bus (live while cranking, 0 V with the main switch off, as part 4b requires), and a lit rocker's lamp doesn't feed the switch output when off. Note the make and model off the back so its contact rating can be checked.
+**Plan (owner, 2026-11-01): a round latching rocker on the case,** the simplest to wire. A spare rocker on the helm panel also works (the owner has unused ones), but its breaker is bigger than the sense wire wants, so it needs the 1 A fuse right after it (see Fits with).
 
 **Must have**
 
@@ -264,10 +264,10 @@ Leave open: Manufacturer, Package / Case, Tolerance, Q Minimum, Self Resonant Fr
 
 **Fits with**
 
-- Wired in series with the sense wire (part 4), between the boat's switched 12 V and the controller's sense input. With a panel rocker, the 1 A sense fuse (part 4b) goes right after the rocker's output: the panel breaker feeding the rocker (often 10 to 15 A) is too big to protect the sense wire's thin runs.
+- Wired in series with the sense wire (part 4), between the boat's switched 12 V and the controller's sense input. If a helm panel rocker is used instead of a case switch, the 1 A sense fuse (part 4b) goes right after the rocker's output: the panel breaker feeding the rocker (often 10 to 15 A) is too big to protect the sense wire's thin runs.
 - Its hole goes in the enclosure (part 16) away from where a hand rests on the display, or on the helm switch panel.
 
-**Reference, not a requirement.** A spare rocker already on the helm panel (owner's boat; make and model to note). The first pick for a box switch (EAO 82-5751.1000) was a momentary button and doesn't fit this job.
+**Reference, not a requirement.** None priced yet. The first pick (EAO 82-5751.1000) was a momentary button and doesn't fit this job. Alternative: a spare rocker on the helm panel.
 
 ### 4. Standby power and shutdown controller
 
@@ -1021,7 +1021,7 @@ Picks made, nothing ordered yet. The owner places every order; this list only tr
 - **CAN HAT isolation voltage.** Not published. Optional question to Waveshare.
 - **Enclosure drawing.** Octopart's inside dimensions for the 1554X2GY need confirming on Hammond's drawing.
 - **Free tee port.** Look at the backbone. If none, add a Micro-C T-connector.
-- **Spare helm switch or fuse circuit.** A spare helm rocker is the plan for the unit switch (part 3); check it on the boat (latching, fed from the main switched bus, 0 V with the main switch off, make and model). A spare fuse circuit can replace the inline fuse holder only if it is standby; see the next item.
+- **Spare helm switch or fuse circuit.** The unit switch goes on the case (part 3); a spare helm rocker stays the alternative. A spare fuse circuit can replace the inline fuse holder only if it is standby; see the next item.
 - **Fuse box under the helm (check on the boat).** The boat has one (owner, 2026-10-31). When the boat is back, meter the supply side of the slot you'd use (the box's bus, not an empty slot's output, which reads 0 V either way), with the main switch on and then off. One box can mix standby and switched slots, so check the slot itself.
   - Live with the switch off (standby): trace the box's supply to the house battery side of the main switch (not a start or kicker battery), check the reading holds under a small load (not back-fed by another device), and check the box's own supply fuse is within 7 in of the battery. Then a slot can carry the 7.5 A feed and replace the inline holder (parts 1, 4a), if the box's supply is sized for another 3.6 A and the slot's terminal takes the part 19 gauge.
   - About 12 V on, 0 V off (switched): it can't carry the feed, but a slot can hold the 1 A sense-wire fuse (part 4b) if that circuit stays live while cranking. The sense wire adds under 0.1 A.
