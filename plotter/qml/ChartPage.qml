@@ -8,8 +8,8 @@ import QtQuick.Controls.Basic
 // to the page's edge with it and back when it returns; slot sizes never change with it, and +, -
 // and Legend hide while it is hidden. Bars that are on (Top, Bottom, Left,
 // Right) shrink the chart viewport; the corners float over the chart. The notice is the bottom line,
-// under a bottom bar. Each slot is drawn at its clamped size (PanelMath.drawnSizesMm), so no slot
-// leaves the page or runs into another; the stored sizes are not changed. In edit mode every slot is
+// under a bottom bar (unless Settings turns it off: then it takes no room). Each slot is drawn at
+// its clamped size (PanelMath.drawnSizesMm), so no slot leaves the page or runs into another; the stored sizes are not changed. In edit mode every slot is
 // shown outlined (the layout stays the live one: an off slot is only a faint 12 mm outline, under the
 // on slots, and takes no room) and a tap on one emits slotTapped; the
 // selected slot shows its resize handle. On a live view a 0.6 s hold on a shown slot emits slotHeld.
@@ -21,6 +21,7 @@ Item {
     property real rightInset: 0        // the tab bar strip over the page's right edge
     property real barInset: rightInset // the part of the strip the bar covers now (0 while hidden)
     property bool barShown: true
+    property bool noticeShown: true    // the pack notice line (the showChartNotice setting)
     property bool editing: false
     property string selectedSlot: ""   // the slot whose resize handle shows (the editor's)
     signal slotTapped(string slotId)
@@ -207,7 +208,8 @@ Item {
         id: noticeBar
         objectName: "noticeBar"
         anchors { left: parent.left; right: parent.right; bottom: parent.bottom; rightMargin: page.barInset }
-        height: noticeText.implicitHeight + Units.mm(1)
+        visible: page.noticeShown
+        height: page.noticeShown ? noticeText.implicitHeight + Units.mm(1) : 0
         color: Theme.noticeBackground
         Label {
             id: noticeText

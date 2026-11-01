@@ -22,6 +22,7 @@ class Settings : public QObject {
     Q_PROPERTY(QString lastPalette READ lastPalette WRITE setLastPalette NOTIFY lastPaletteChanged)
     Q_PROPERTY(QString lastViewId READ lastViewId WRITE setLastViewId NOTIFY lastViewIdChanged)
     Q_PROPERTY(int tabBarHideS READ tabBarHideS WRITE setTabBarHideS NOTIFY tabBarHideSChanged)
+    Q_PROPERTY(bool showChartNotice READ showChartNotice WRITE setShowChartNotice NOTIFY showChartNoticeChanged)
     Q_PROPERTY(double panelDiagonalIn READ panelDiagonalIn WRITE setPanelDiagonalIn NOTIFY panelDiagonalInChanged)
     Q_PROPERTY(bool trackRecording READ trackRecording WRITE setTrackRecording NOTIFY trackRecordingChanged)
     Q_PROPERTY(int trackIntervalS READ trackIntervalS WRITE setTrackIntervalS NOTIFY trackIntervalSChanged)
@@ -47,6 +48,7 @@ public:
     QString lastPalette() const { return str("lastPalette"); }
     QString lastViewId() const { return str("lastViewId"); }
     int tabBarHideS() const { return m_v.value("tabBarHideS").toInt(); }
+    bool showChartNotice() const { return m_v.value("showChartNotice").toBool(); }
     double panelDiagonalIn() const { return m_v.value("panelDiagonalIn").toDouble(); }
     bool trackRecording() const { return m_v.value("trackRecording").toBool(); }
     int trackIntervalS() const { return m_v.value("trackIntervalS").toInt(); }
@@ -65,6 +67,7 @@ public:
     void setLastPalette(const QString& v) { if (put("lastPalette", v)) emit lastPaletteChanged(); }
     void setLastViewId(const QString& v) { if (put("lastViewId", v)) emit lastViewIdChanged(); }
     void setTabBarHideS(int v) { if (put("tabBarHideS", v)) emit tabBarHideSChanged(); }
+    void setShowChartNotice(bool v) { if (put("showChartNotice", v)) emit showChartNoticeChanged(); }
     void setPanelDiagonalIn(double v) { if (put("panelDiagonalIn", v)) emit panelDiagonalInChanged(); }
     void setTrackRecording(bool v) { if (put("trackRecording", v)) emit trackRecordingChanged(); }
     void setTrackIntervalS(int v) { if (put("trackIntervalS", v)) emit trackIntervalSChanged(); }
@@ -94,6 +97,7 @@ signals:
     void lastPaletteChanged();
     void lastViewIdChanged();
     void tabBarHideSChanged();
+    void showChartNoticeChanged();
     void panelDiagonalInChanged();
     void trackRecordingChanged();
     void trackIntervalSChanged();

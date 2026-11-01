@@ -198,6 +198,7 @@ ApplicationWindow {
                     rightInset: tabBar.width
                     barInset: root.width - tabBar.x
                     barShown: tabBar.shown
+                    noticeShown: root.settings.showChartNotice
                     editing: root.editing
                     selectedSlot: root.editing ? editor.selectedSlot : ""
                     onPlainTap: root.showBar()
@@ -299,5 +300,6 @@ ApplicationWindow {
     Splash {
         anchors.fill: parent
         appInfo: root.appInfo
+        noticeShown: root.settings.showChartNotice
     }
 }

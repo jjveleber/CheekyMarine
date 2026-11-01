@@ -851,6 +851,24 @@ TestCase {
         compare(fixture.settings.panelDiagonalIn, 15.0)
     }
 
+    function test_settingsChartNoticeToggle() {
+        const page = makeSettings()
+        const row = H.byName(page, "row-chartNotice")
+        verify(row, "row-chartNotice")
+        compare(row.text, "Chart notice: On")
+        tap(row)
+        verify(!fixture.settings.showChartNotice)
+        compare(row.text, "Chart notice: Off")
+        tap(row)
+        verify(fixture.settings.showChartNotice)
+        compare(row.text, "Chart notice: On")
+        const hide = H.byName(page, "row-tabBarHide")
+        const kids = hide.parent.children
+        let i = 0
+        while (kids[i] !== hide) ++i
+        compare(kids[i + 1], row, "right after the Hide tab bar row")
+    }
+
     function test_settingsShowsChartDepthNote() {
         const page = makeSettings()
         verify(H.findAll(page, it => it.text === "Chart depths are in feet").length === 1)

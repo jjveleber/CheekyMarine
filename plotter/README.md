@@ -122,6 +122,7 @@ Stored in `plotter.db`, changed in the Settings page. Defaults:
 | `lastPalette` | `day` | `day`, `dusk`, `night`: the palette last applied, where auto mode starts before the first fix |
 | `lastViewId` | empty | the id of the view last shown, shown again at start (empty or unknown: the first view) |
 | `tabBarHideS` | 8 | `0`, `5`, `8`, `15`, `30`: seconds before the tab bar slides off a view, 0 = never hides |
+| `showChartNotice` | on | the notice line on the chart and the boot splash |
 | `panelDiagonalIn` | 10.1 | inches, sizes the touch targets |
 | `trackRecording` | off | |
 | `trackIntervalS` | 5 | seconds between track points |

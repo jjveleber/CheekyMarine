@@ -104,6 +104,31 @@ private slots:
         QCOMPARE(spy.count(), 1);
         QCOMPARE(rawValue(**st, "tabBarHideS"), QStringLiteral("15"));
     }
+    void showChartNoticeDefaultsOnAndPersists() {
+        QTemporaryDir t;
+        {
+            auto st = Store::open(t.path());
+            Settings s(**st);
+            QVERIFY(s.showChartNotice());
+            QSignalSpy spy(&s, &Settings::showChartNoticeChanged);
+            s.setShowChartNotice(false);
+            s.setShowChartNotice(false); // unchanged: no second notify
+            QCOMPARE(spy.count(), 1);
+            QVERIFY(!s.showChartNotice());
+            QCOMPARE(rawValue(**st, "showChartNotice"), QStringLiteral("false"));
+        }
+        auto st = Store::open(t.path());
+        Settings s(**st);
+        QVERIFY(!s.showChartNotice());
+    }
+    void showChartNoticeRejectsANonBool() {
+        QTemporaryDir t;
+        auto st = Store::open(t.path());
+        rawSql(**st, R"(INSERT INTO settings VALUES('showChartNotice','"no"'))");
+        QTest::ignoreMessage(QtWarningMsg, QRegularExpression("showChartNotice"));
+        Settings s(**st);
+        QVERIFY(s.showChartNotice());
+    }
     // chartMode is no longer a setting: a stored row is an unknown key, left alone and unread.
     void storedChartModeIsIgnored() {
         QTemporaryDir t;

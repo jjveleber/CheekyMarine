@@ -212,6 +212,11 @@ Item {
                 text: "Hide tab bar after: " + page.choiceLabel(page.tabBarHides, page.settings.tabBarHideS)
                 onClicked: page.openList("Hide tab bar after", page.tabBarHides, page.settings.tabBarHideS, v => page.settings.tabBarHideS = v)
             }
+            ChoiceRow {
+                objectName: "row-chartNotice"
+                text: "Chart notice: " + (page.settings.showChartNotice ? "On" : "Off")
+                onClicked: page.settings.showChartNotice = !page.settings.showChartNotice
+            }
             Stepper {
                 title: "Panel diagonal"
                 valueName: "diagonal"

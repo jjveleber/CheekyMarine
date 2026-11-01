@@ -8,6 +8,7 @@ Rectangle {
     id: splash
     required property QtObject appInfo // AppInfo
     property int minimumMs: 5000
+    property bool noticeShown: true // the showChartNotice setting: off leaves the notice line out here too
     // White over the logo by day and dusk; at night the logo is dimmed and the lines take the night red.
     readonly property color infoColor: Theme.palette === "night" ? Theme.text : "#ffffff"
 
@@ -73,7 +74,7 @@ Rectangle {
         Label {
             objectName: "splashNotice"
             width: parent.width
-            visible: text !== ""
+            visible: splash.noticeShown && text !== ""
             text: splash.appInfo.chartsPack.notice !== undefined ? splash.appInfo.chartsPack.notice : ""
             color: splash.infoColor
             font.pixelSize: Units.mm(3.5)

@@ -1010,4 +1010,40 @@ TestCase {
             compare(logo.opacity, p === "night" ? 0.3 : 1)
         }
     }
+
+    // The chart notice setting: off, the notice line goes from the chart (the Bottom bar and the
+    // corner area take its room) and from the boot splash; on again, it is back.
+    function test_chartNoticeFollowsTheSetting() {
+        const main = makeMain(1024, 600)
+        mouseClick(item(main, "tab-view-shipped-nav"))
+        fixture.draft.setSlot("Bottom", true, "pos", 5)
+        const page = item(main, "chartPage")
+        const bar = item(main, "noticeBar")
+        const area = item(main, "cornerArea")
+        const splash = item(main, "splash")
+        waitForRendering(page)
+        verify(bar.visible && bar.height > 0)
+        verify(splash.noticeShown)
+        fixture.settings.showChartNotice = false
+        verify(!bar.visible, "the notice bar hides")
+        compare(bar.height, 0)
+        const bottom = H.byName(page, "slot-Bottom")
+        verify(bottom.visible)
+        fuzzyCompare(bottom.y + bottom.height, page.height, 0.5, "Bottom on the page's bottom edge")
+        fixture.draft.setSlot("Bottom", false, "pos", 5)
+        fuzzyCompare(area.y + area.height, page.height - Units.mm(1.5), 0.5, "the corner area down to the bottom margin")
+        verify(!splash.noticeShown, "the splash leaves the notice out too")
+        fixture.settings.showChartNotice = true
+        verify(bar.visible && bar.height > 0)
+        verify(splash.noticeShown)
+    }
+
+    function test_splashNoticeFollowsNoticeShown() {
+        const off = createTemporaryObject(splashComp, testCase, { width: 1024, height: 600, appInfo: fixture.appInfo, noticeShown: false })
+        const notice = H.byName(off, "splashNotice")
+        verify(notice.text !== "", "the pack has a notice")
+        verify(!notice.visible)
+        off.noticeShown = true
+        verify(notice.visible)
+    }
 }
