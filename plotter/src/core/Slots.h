@@ -45,6 +45,9 @@ QString slotSizeName(SlotSize size);
 std::optional<SlotSize> slotSizeFromName(QStringView name);
 // Short UI label of a field: "Depth", "SOG", "STW", "COG", "HDG", "Water temp", "Position", "Time", "RPM".
 QString fieldLabel(Field field);
+// The widest text formatValue can produce for the field, one string per line (Position has two
+// lines), for sizing a cell before any value is known.
+QString widestSample(Field field);
 // Every field in enum order as {name, label} maps, for the QML pickers.
 QVariantList fieldChoices();
 

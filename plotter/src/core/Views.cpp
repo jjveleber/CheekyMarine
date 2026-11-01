@@ -1,0 +1,162 @@
+#include "Views.h"
+#include "Tilings.h"
+#include <algorithm>
+#include <cmath>
+
+namespace {
+const QString kDefaultLayout = QStringLiteral("2x2:0,0,1,2;1,0,1,2");
+
+const QStringList kKnownKeys{"id", "name", "short", "icon", "chart", "favourite", "slots", "cells", "created", "modified"};
+
+QList<ViewSlot> toViewSlots(const QList<SlotConfig>& configs) {
+    QList<ViewSlot> out;
+    for (const SlotConfig& c : configs) out << ViewSlot{c.id, c.on, c.field, sizeMmFromSlotSize(c.size)};
+    return out;
+}
+
+View shippedView(const QString& id, const QString& name, const QString& shortName, const QString& icon,
+                 ViewChart chart, qint64 now) {
+    View v;
+    v.id = id;
+    v.name = name;
+    v.shortName = shortName;
+    v.icon = icon;
+    v.chart = chart;
+    v.favourite = true;
+    v.slotList = defaultViewSlots();
+    v.cells = {kDefaultLayout, {Field::Depth, Field::Sog}};
+    v.created = v.modified = now;
+    return v;
+}
+
+int cellCount(const QString& layoutKey) {
+    const auto l = layoutFromKey(layoutKey);
+    return l ? int(l->cells.size()) : 0;
+}
+}  // namespace
+
+QString viewChartName(ViewChart c) {
+    switch (c) {
+    case ViewChart::Nav: return QStringLiteral("nav");
+    case ViewChart::Fish: return QStringLiteral("fish");
+    case ViewChart::None: return QStringLiteral("none");
+    }
+    return {};
+}
+
+std::optional<ViewChart> viewChartFromName(QStringView n) {
+    for (ViewChart c : {ViewChart::Nav, ViewChart::Fish, ViewChart::None})
+        if (n == viewChartName(c)) return c;
+    return std::nullopt;
+}
+
+double sizeMmFromSlotSize(SlotSize s) {
+    switch (s) {
+    case SlotSize::Small: return 8;
+    case SlotSize::Medium: return 14;
+    case SlotSize::Large: return 25;
+    }
+    return 14;
+}
+
+QList<ViewSlot> defaultViewSlots() { return toViewSlots(defaultSlots()); }
+
+QStringList iconNames() {
+    return {"anchor", "fish", "hash", "sailboat", "ship", "lifebuoy", "map", "compass",
+            "gauge",  "sun",  "moon", "ripple",   "flag", "star",    "settings", "home"};
+}
+
+Field defaultCellField(int index) {
+    static const Field kOrder[] = {Field::Depth, Field::Sog, Field::Stw, Field::Cog, Field::Heading, Field::WaterTemp};
+    return index >= 0 && index < 6 ? kOrder[index] : Field::Depth;
+}
+
+QString shortFromName(const QString& name) {
+    QString s = name;
+    s.remove(QLatin1Char(' '));
+    s = s.left(kMaxShortChars);
+    return s.isEmpty() ? QStringLiteral("View") : s;
+}
+
+QString duplicateName(const QString& name) { return (name + QStringLiteral(" 2")).left(kMaxNameChars); }
+
+QJsonObject viewToJson(const View& v) {
+    QJsonObject o = v.extra;
+    o["id"] = v.id;
+    o["name"] = v.name;
+    o["short"] = v.shortName;
+    o["icon"] = v.icon;
+    o["chart"] = viewChartName(v.chart);
+    o["favourite"] = v.favourite;
+    QJsonArray slotArray;
+    for (const ViewSlot& s : v.slotList)
+        slotArray.append(QJsonObject{{"id", slotIdName(s.id)}, {"on", s.on}, {"field", fieldName(s.field)}, {"sizeMm", s.sizeMm}});
+    o["slots"] = slotArray;
+    QJsonArray fields;
+    for (Field f : v.cells.fields) fields.append(fieldName(f));
+    o["cells"] = QJsonObject{{"layout", v.cells.layout}, {"fields", fields}};
+    o["created"] = double(v.created);
+    o["modified"] = double(v.modified);
+    return o;
+}
+
+View viewFromJson(const QJsonObject& o) {
+    View v;
+    v.id = o.value("id").toString();
+    v.name = o.value("name").isString() ? o.value("name").toString() : QStringLiteral("View");
+    v.shortName = o.value("short").isString() ? o.value("short").toString() : shortFromName(v.name);
+    v.icon = o.value("icon").toString();
+    if (!iconNames().contains(v.icon)) v.icon = iconNames().first();
+    v.chart = viewChartFromName(o.value("chart").toString()).value_or(ViewChart::Nav);
+    v.favourite = o.value("favourite").toBool(false);
+
+    v.slotList = defaultViewSlots();
+    QList<bool> seen(v.slotList.size(), false);
+    for (const QJsonValue& sv : o.value("slots").toArray()) {
+        if (!sv.isObject()) continue;
+        const QJsonObject so = sv.toObject();
+        const auto id = slotIdFromName(so.value("id").toString());
+        if (!id || seen[int(*id)]) continue;
+        seen[int(*id)] = true;
+        ViewSlot& s = v.slotList[int(*id)];
+        if (so.value("on").isBool()) s.on = so.value("on").toBool();
+        if (const auto f = fieldFromName(so.value("field").toString())) s.field = *f;
+        if (so.value("sizeMm").isDouble()) s.sizeMm = std::max(kMinSizeMm, so.value("sizeMm").toDouble());
+        else if (const auto z = slotSizeFromName(so.value("size").toString())) s.sizeMm = sizeMmFromSlotSize(*z);
+    }
+
+    const QJsonObject co = o.value("cells").toObject();
+    const auto layout = layoutFromKey(co.value("layout").toString());
+    v.cells.layout = layout ? canonicalKey(*layout) : QString();
+    if (v.cells.layout.isEmpty()) v.cells.layout = kDefaultLayout;
+    const int n = cellCount(v.cells.layout);
+    const QJsonArray fa = co.value("fields").toArray();
+    for (int i = 0; i < n; ++i)
+        v.cells.fields << (i < fa.size() ? fieldFromName(fa.at(i).toString()) : std::nullopt).value_or(defaultCellField(i));
+
+    v.created = qint64(o.value("created").toDouble());
+    v.modified = qint64(o.value("modified").toDouble());
+    for (auto it = o.begin(); it != o.end(); ++it)
+        if (!kKnownKeys.contains(it.key())) v.extra.insert(it.key(), it.value());
+    return v;
+}
+
+QList<View> shippedViews(qint64 now) {
+    return {shippedView("shipped-nav", "Navigation", shortFromName("Navigation"), "compass", ViewChart::Nav, now),
+            shippedView("shipped-fish", "Fishing", shortFromName("Fishing"), "fish", ViewChart::Fish, now),
+            shippedView("shipped-big", "Big numbers", "Big #", "hash", ViewChart::None, now)};
+}
+
+QList<View> viewsFromPlan3(const QJsonArray& slotsJson, const QStringList& bigNumbers, qint64 now) {
+    QList<View> views = shippedViews(now);
+    views[0].slotList = toViewSlots(slotsFromJson(slotsJson));
+    QList<Field> fields;
+    for (int i = 0; i < 4 && (i < bigNumbers.size() || i < 2); ++i)
+        fields << (i < bigNumbers.size() ? fieldFromName(bigNumbers.at(i)) : std::nullopt).value_or(defaultCellField(i));
+    static const char* const kLayouts[] = {"2x2:0,0,1,2;1,0,1,2", "3x2:0,0,1,2;1,0,1,2;2,0,1,2",
+                                           "2x2:0,0,1,1;1,0,1,1;0,1,1,1;1,1,1,1"};
+    views[2].cells = {QString::fromLatin1(kLayouts[fields.size() - 2]), fields};
+    return views;
+}
+
+int favouriteCapacity(double barHeightMm) { return std::max(0, int(std::floor((barHeightMm - 46) / 16))); }

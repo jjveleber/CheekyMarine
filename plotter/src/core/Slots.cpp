@@ -111,6 +111,21 @@ QString fieldLabel(Field field) {
     return {};
 }
 
+QString widestSample(Field field) {
+    switch (field) {
+    case Field::Depth: return QStringLiteral("9999.9");
+    case Field::Sog:
+    case Field::Stw: return QStringLiteral("99.9");
+    case Field::Cog:
+    case Field::Heading: return QStringLiteral("359");
+    case Field::WaterTemp: return QStringLiteral("999.9");
+    case Field::Position: return QStringLiteral("89°59.999'N\n122°59.999'W");
+    case Field::Time: return QStringLiteral("88:88:88");
+    case Field::Rpm: return QStringLiteral("9999");
+    }
+    return {};
+}
+
 QVariantList fieldChoices() {
     QVariantList l;
     for (Field f : kFields)

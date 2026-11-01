@@ -32,6 +32,7 @@ add_library(plottercore STATIC
     src/core/PaletteController.cpp
     src/core/Units.cpp
     src/core/Slots.cpp
+    src/core/Views.cpp
     src/core/NumbersModel.cpp
     src/core/AppInfo.cpp
     src/core/Recovery.cpp
@@ -70,6 +71,7 @@ plotter_add_test(tst_overlays tests/tst_overlays.cpp)
 plotter_add_test(tst_chartcontroller tests/tst_chartcontroller.cpp)
 plotter_add_test(tst_sun tests/tst_sun.cpp)
 plotter_add_test(tst_slots tests/tst_slots.cpp)
+plotter_add_test(tst_views tests/tst_views.cpp)
 plotter_add_test(tst_appshell tests/tst_appshell.cpp)
 plotter_add_test(tst_touchlock tests/tst_touchlock.cpp)
 plotter_add_test(tst_tracks tests/tst_tracks.cpp)

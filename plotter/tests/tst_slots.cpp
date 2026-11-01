@@ -265,6 +265,31 @@ private slots:
         QCOMPARE(n.fields(), (QList<Field>{Field::Stw, Field::Sog}));
     }
 
+    void widestSamples() {
+        VesselState s;
+        s.t = 86399;
+        s.gnssTime = 86399;
+        s.depthM = 9999 * 0.3048;
+        s.sogMs = 99.9 * 1852.0 / 3600.0;
+        s.stwMs = s.sogMs;
+        s.cogRad = 359.0 * 3.14159265358979 / 180.0;
+        s.hdgRad = s.cogRad;
+        s.waterTempK = 373.15; // 212.0 F, boiling
+        s.lat = 47.98;
+        s.lon = -122.23;
+        s.rpm = 9999;
+        for (Field f : {Field::Depth, Field::Sog, Field::Stw, Field::Cog, Field::Heading, Field::WaterTemp,
+                        Field::Position, Field::Time, Field::Rpm}) {
+            const QString sample = widestSample(f);
+            QVERIFY2(!sample.isEmpty(), qPrintable(fieldName(f)));
+            const QStringList want = sample.split('\n');
+            const QStringList got = formatValue(f, s, UnitPrefs{}).split('\n');
+            QVERIFY2(got.size() <= want.size(), qPrintable(fieldName(f)));
+            for (int i = 0; i < got.size(); ++i)
+                QVERIFY2(got.at(i).size() <= want.at(i).size(), qPrintable(fieldName(f)));
+        }
+    }
+
     void numbersFormattedFollowsVessel() {
         Env e;
         NumbersModel n(*e.settings, e.vessel);
