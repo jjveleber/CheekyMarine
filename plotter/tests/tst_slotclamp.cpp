@@ -97,6 +97,27 @@ private slots:
         QCOMPARE(maxSizeMm(SlotId::Left, {left}, kSpace), 14.6);
         QCOMPARE(drawnSizesMm({left}, kSpace), (QList<double>{14.6}));
     }
+    // A side bar sits between the banners: its height fits what Top and Bottom leave of the page.
+    void sideBarFitsBetweenTheBanners()
+    {
+        SlotBox left = bar(SlotId::Left, true, 30);
+        left.hPerMm = 8;
+        // Top and Bottom at 20 are 6 + 1.3 * 20 = 32 mm tall: (123 - 64 - 6) / 8 = 6.625.
+        QCOMPARE(maxSizeMm(SlotId::Left, {bar(SlotId::Top, true, 20), bar(SlotId::Bottom, true, 20), left}, kSpace), 6.6);
+        // A banner that takes no room leaves the height to the side bar.
+        QCOMPARE(maxSizeMm(SlotId::Left, {bar(SlotId::Top, false, 20), bar(SlotId::Bottom, true, 20), left}, kSpace), 10.6);
+    }
+    // drawnSizesMm resolves the banners first: at their ceiling (41 - 6) / 1.3 = 26.9, boxes 40.97 mm.
+    void drawnSideBarFitsBetweenDrawnBanners()
+    {
+        SlotBox left = bar(SlotId::Left, true, 40);
+        left.hPerMm = 2;
+        const QList<double> d = drawnSizesMm({bar(SlotId::Top, true, 90), bar(SlotId::Bottom, true, 90), left}, kSpace);
+        QCOMPARE(d, (QList<double>{26.9, 26.9, 17.5})); // (123 - 81.94 - 6) / 2 = 17.53
+        left.hPerMm = 8; // (123 - 81.94 - 6) / 8 = 4.38: the 6 mm floor
+        const QList<double> e = drawnSizesMm({bar(SlotId::Top, true, 90), bar(SlotId::Bottom, true, 90), left}, kSpace);
+        QCOMPARE(e[2], 6.0);
+    }
     // Corners in a row (or column) scale by one shared factor instead of the first one starving.
     void drawnSizesShareTheRoom()
     {

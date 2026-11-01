@@ -28,11 +28,6 @@ struct SlotConfig {
 // BR wtemp medium off, Top time small off, Bottom pos small off, Left stw medium off,
 // Right hdg medium off.
 QList<SlotConfig> defaultSlots();
-// `configs` merged into `stored`: each config's slot gets its on, field and size written into the
-// first entry with its id, or appended as {"id":"TL","on":true,"field":"depth","size":"large"} in
-// `configs` order. Every other entry and key (a newer app's slot ids, per-slot keys, and the values of
-// slots not in `configs`) is kept as is.
-QJsonArray slotsToJson(const QList<SlotConfig>& configs, const QJsonArray& stored = {});
 // Always the eight slots in SlotId order. A slot with no entry takes its default; within an entry a
 // missing or unknown value (on, field, size) takes that slot's default. Unknown ids are ignored;
 // for a repeated id the first entry wins.
@@ -41,7 +36,6 @@ QList<SlotConfig> slotsFromJson(const QJsonArray& json);
 // Stable JSON names: TL TR BL BR Top Bottom Left Right; small medium large.
 QString slotIdName(SlotId id);
 std::optional<SlotId> slotIdFromName(QStringView name);
-QString slotSizeName(SlotSize size);
 std::optional<SlotSize> slotSizeFromName(QStringView name);
 // Short UI label of a field: "Depth", "SOG", "STW", "COG", "HDG", "Water temp", "Position", "Time", "RPM".
 QString fieldLabel(Field field);

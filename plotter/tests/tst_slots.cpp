@@ -41,18 +41,6 @@ private slots:
         QCOMPARE(defaultSlots(), want);
     }
 
-    void jsonRoundTrip() {
-        QList<SlotConfig> s = defaultSlots();
-        s[2] = {SlotId::BL, true, Field::Rpm, SlotSize::Large};
-        s[5] = {SlotId::Bottom, true, Field::Position, SlotSize::Medium};
-        s[0].on = false;
-        const QJsonArray j = slotsToJson(s);
-        QCOMPARE(j.size(), 8);
-        QCOMPARE(j.at(2).toObject(), parse(R"([{"id":"BL","on":true,"field":"rpm","size":"large"}])").at(0).toObject());
-        QCOMPARE(slotsFromJson(j), s);
-        QCOMPARE(slotsFromJson(slotsToJson(defaultSlots())), defaultSlots());
-    }
-
     void unknownFieldTakesTheSlotDefault() {
         const QList<SlotConfig> got = slotsFromJson(parse(R"([{"id":"TL","on":true,"field":"warp","size":"large"}])"));
         QCOMPARE(got.size(), 8);

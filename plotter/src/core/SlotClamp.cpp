@@ -61,9 +61,10 @@ double maxSizeMm(SlotId id, const QList<SlotBox>& boxes, const ClampSpace& space
         break;
     case SlotId::Left:
     case SlotId::Right:
-        // At most a third of the page width, and never taller than the page.
+        // At most a third of the page width, and no taller than the room between the banners.
         best = std::min(bound(space.pageWMm / 3, self->fixedWMm, self->wPerMm),
-                        bound(space.pageHMm, self->fixedHMm, self->hPerMm));
+                        bound(space.pageHMm - heightIfOn(boxes, SlotId::Top) - heightIfOn(boxes, SlotId::Bottom),
+                              self->fixedHMm, self->hPerMm));
         break;
     default: {
         const double areaW = space.pageWMm - 2 * space.marginMm - widthIfOn(boxes, SlotId::Left) - widthIfOn(boxes, SlotId::Right);
@@ -90,7 +91,8 @@ double maxSizeMm(SlotId id, const QList<SlotBox>& boxes, const ClampSpace& space
 QList<double> drawnSizesMm(const QList<SlotBox>& boxes, const ClampSpace& space)
 {
     QList<SlotBox> work = boxes;
-    // The bars first, each alone: their drawn sizes fix the corner area.
+    // The bars first: Top and Bottom alone, then Left and Right between them at their drawn heights.
+    // Their drawn sizes fix the corner area.
     for (SlotId id : {SlotId::Top, SlotId::Bottom, SlotId::Left, SlotId::Right})
         for (SlotBox& b : work)
             if (b.id == id)

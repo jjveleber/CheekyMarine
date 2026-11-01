@@ -425,6 +425,36 @@ TestCase {
         verify(map.x >= left.width - 0.5, "map right of the left bar")
     }
 
+    // A 7 in panel (many px per mm, so few mm of page) with every slot at 25 mm: the side bars stay
+    // between the banners and no slot overlaps another or leaves the page.
+    function test_sideBarsClearTheBannersOnASmallPanel_data() { return H.sizes() }
+    function test_sideBarsClearTheBannersOnASmallPanel(data) {
+        Units.windowWidth = data.w
+        Units.windowHeight = data.h
+        Units.diagonalIn = 7
+        const ids = ["TL", "TR", "BL", "BR", "Top", "Bottom", "Left", "Right"]
+        const fields = ["depth", "sog", "cog", "wtemp", "time", "pos", "stw", "hdg"]
+        for (let i = 0; i < ids.length; ++i)
+            fixture.draft.setSlot(ids[i], true, fields[i], 25)
+        const chart = makeChart({ width: data.w, height: data.h, rightInset: Units.mm(17) })
+        waitForRendering(chart)
+        const slots = H.findAll(chart, it => it.objectName.startsWith("slot-") && it.visible)
+        compare(slots.length, 8)
+        for (const side of ["slot-Left", "slot-Right"])
+            for (const banner of ["slot-Top", "slot-Bottom"]) {
+                const a = H.byName(chart, side), b = H.byName(chart, banner)
+                verify(!H.overlaps(a, b, chart), where(a, chart) + " overlaps " + where(b, chart))
+            }
+        const right = chart.width - chart.rightInset
+        for (let a = 0; a < slots.length; ++a) {
+            const b = H.box(slots[a], chart)
+            verify(b.x >= -0.5 && b.y >= -0.5 && b.x + b.w <= right + 0.5 && b.y + b.h <= chart.height + 0.5,
+                   where(slots[a], chart) + " is outside the page")
+            for (let c = a + 1; c < slots.length; ++c)
+                verify(!H.overlaps(slots[a], slots[c], chart), where(slots[a], chart) + " overlaps " + where(slots[c], chart))
+        }
+    }
+
     // Review Focus 2: a stored size too big for the page is drawn clamped, and the stored size stays.
     function drawnTopCorners(w, h) {
         Units.windowWidth = w

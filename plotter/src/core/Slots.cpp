@@ -36,22 +36,6 @@ QList<SlotConfig> defaultSlots() {
     };
 }
 
-QJsonArray slotsToJson(const QList<SlotConfig>& configs, const QJsonArray& stored) {
-    QJsonArray a = stored;
-    for (const SlotConfig& s : configs) {
-        const QString id = slotIdName(s.id);
-        int k = 0;
-        while (k < a.size() && a[k].toObject().value("id").toString() != id) ++k; // first entry wins
-        QJsonObject o = k < a.size() ? a[k].toObject() : QJsonObject{{"id", id}};
-        o["on"] = s.on;
-        o["field"] = fieldName(s.field);
-        o["size"] = slotSizeName(s.size);
-        if (k < a.size()) a[k] = o;
-        else a.append(o);
-    }
-    return a;
-}
-
 QList<SlotConfig> slotsFromJson(const QJsonArray& json) {
     QList<SlotConfig> out = defaultSlots();
     QList<bool> seen(out.size(), false);
@@ -81,12 +65,6 @@ std::optional<SlotId> slotIdFromName(QStringView name) {
     for (const auto& e : kIds)
         if (name == QStringView(e.name)) return e.id;
     return std::nullopt;
-}
-
-QString slotSizeName(SlotSize size) {
-    for (const auto& e : kSizes)
-        if (e.size == size) return QString::fromUtf16(e.name);
-    return {};
 }
 
 std::optional<SlotSize> slotSizeFromName(QStringView name) {

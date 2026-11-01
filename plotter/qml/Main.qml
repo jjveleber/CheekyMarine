@@ -68,7 +68,6 @@ ApplicationWindow {
                 // A view with a chart shows the chart page, one without the cell page.
                 Item {
                     ChartPage {
-                        id: chartPage
                         anchors.fill: parent
                         visible: root.draft.chart !== "none"
                         chart: root.chart
@@ -88,10 +87,6 @@ ApplicationWindow {
                 }
                 SettingsPage {
                     settings: root.settings
-                    onEditOverlays: {
-                        chartPage.editing = true
-                        root.page = "chart"
-                    }
                     onShowAbout: root.page = "about"
                 }
                 AboutPage {
