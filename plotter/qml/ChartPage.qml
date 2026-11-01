@@ -213,7 +213,9 @@ Item {
             unit: model.unit
             widestSample: model.widestSample
             drawnMm: page.drawn[slotId] !== undefined ? page.drawn[slotId] : sizeMm
-            readonly property bool takesRoom: on || page.editing
+            // In edit mode the bars take room as if on, so nothing overlaps; an off corner is only a
+            // 12 mm outline and takes none.
+            readonly property bool takesRoom: on || (page.editing && (horizontalBar || verticalBar))
 
             editing: page.editing
             selected: page.selectedSlot === slotId

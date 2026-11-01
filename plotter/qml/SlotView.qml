@@ -84,6 +84,12 @@ BigButton {
     readonly property real hPerMm: (heightAtMm(chordHiMm) - heightAtMm(chordLoMm)) / (chordHiMm - chordLoMm)
     readonly property real fixedHMm: heightAtMm(chordLoMm) - hPerMm * chordLoMm
 
+    // An off corner in edit mode is a faint outline at the 12 mm control floor with its position
+    // name, not a box at its digit height.
+    readonly property bool offCorner: editing && !on && !horizontalBar && !verticalBar
+    implicitWidth: offCorner ? minimumSize : Math.max(minimumSize, implicitContentWidth + leftPadding + rightPadding)
+    implicitHeight: offCorner ? minimumSize : Math.max(minimumSize, implicitContentHeight + topPadding + bottomPadding)
+
     objectName: "slot-" + slotId
     enabled: editing
     visible: on || editing

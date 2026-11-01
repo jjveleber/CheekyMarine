@@ -154,8 +154,78 @@ TestCase {
         verify(barShown(main))
     }
 
+    // An off corner in the editor is a 12 mm outline at its position that takes no room: on corners
+    // draw the same whatever its stored size, and it overlaps nothing.
+    function test_offCornersTakeNoRoomInTheEditor_data() { return H.sizes() }
+    function test_offCornersTakeNoRoomInTheEditor(data) {
+        const main = makeMain(data.w, data.h)
+        main.editView("shipped-nav")
+        const page = m(main, "chartPage")
+        waitForRendering(page)
+        const before = [page.drawn.TL, page.drawn.TR]
+        const area = H.box(m(main, "cornerArea"), main.contentItem)
+        const slots = H.findAll(page, it => it.objectName.startsWith("slot-") && it.visible)
+        compare(slots.length, 8)
+        for (const id of ["BL", "BR"]) {
+            const s = m(main, "slot-" + id)
+            verify(!s.on && !s.takesRoom, id + " off, no room")
+            fuzzyCompare(s.width, Units.mm(12), 0.5)
+            fuzzyCompare(s.height, Units.mm(12), 0.5)
+            verify(inside(H.box(s, main.contentItem), area), id + " inside the corner area")
+            for (const o of slots) if (o !== s) verify(!H.overlaps(s, o, main.contentItem), id + " clear of " + o.objectName)
+        }
+        fixture.draft.setSlot("BL", false, "cog", 40)
+        fixture.draft.setSlot("BR", false, "wtemp", 40)
+        compare([page.drawn.TL, page.drawn.TR], before, "off corners change nothing")
+        for (const id of ["BL", "BR"]) fuzzyCompare(m(main, "slot-" + id).height, Units.mm(12), 0.5)
+    }
+
+    // Turning a corner On from its sheet makes it take room at once, clamped against the others.
+    function test_cornerOnTakesRoomAtOnce() {
+        const main = makeMain(1024, 600)
+        main.editView("shipped-nav")
+        fixture.draft.setSlot("BL", false, "cog", 60)
+        const page = m(main, "chartPage")
+        mouseClick(m(main, "slot-BL"))
+        const sheet = find(m(main, "viewEditor"), "slotSheet")
+        verify(sheet.visible)
+        mouseClick(find(sheet, "choice-on"))
+        const bl = m(main, "slot-BL")
+        verify(bl.on && bl.takesRoom)
+        const applied = draftSlot("BL").sizeMm
+        verify(applied < 60, "clamped: " + applied)
+        verify(applied <= page.maxMmFor("BL") + 0.05, applied + " within " + page.maxMmFor("BL"))
+        compare(sheet.sizeMm, applied, "the sheet shows the applied size")
+        fuzzyCompare(sheet.maxMm, page.maxMmFor("BL"), 0.05)
+        waitForRendering(page)
+        verify(bl.height > Units.mm(12) + 0.5, "BL is a full box now")
+        verify(!H.overlaps(bl, m(main, "slot-TL"), page), "BL clear of TL")
+    }
+
+    // The dimmed bar swallows presses: a drag on it pans nothing.
+    function test_inertBarSwallowsPresses() {
+        const main = makeMain(1024, 600)
+        main.editView("shipped-nav")
+        const bar = m(main, "tabBar")
+        const touched = createTemporaryObject(spyComp, testCase, { target: bar, signalName: "touched" })
+        // The map runs under the strip only when no Right bar takes room, as in the editor it
+        // always does: so check the press is taken over the bar, not just that nothing panned.
+        const cover = m(main, "inertBarCover")
+        mousePress(bar, bar.width / 2, bar.height / 2)
+        verify(cover.pressed, "the press is taken over the bar")
+        mouseRelease(bar, bar.width / 2, bar.height / 2)
+        mouseDrag(bar, bar.width / 2, bar.height - Units.mm(0.5), -Units.mm(30), 0)
+        mouseDrag(bar, bar.width / 2, bar.height / 2, -Units.mm(30), 0)
+        compare(main.chartMap.moves, 0, "no pan")
+        compare(touched.count, 0)
+        verify(bar.shown)
+        verify(main.editing)
+        compare(main.page, "view")
+    }
+
     function test_slotSheetEditsTheDraftAndDoneSaves() {
-        // In the editor every slot takes room: TL at 6 mm leaves TR room to grow past 25 mm.
+        // In the editor the Left and Right bars take room: with TL at 25 mm the TL and TR row holds
+        // TR at about 14 mm. TL at 6 mm leaves TR room to grow past 25 mm.
         setStoredTL(6)
         const main = makeMain(1024, 600)
         editFromHome(main, "shipped-nav")

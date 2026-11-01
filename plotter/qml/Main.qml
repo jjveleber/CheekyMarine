@@ -228,6 +228,17 @@ ApplicationWindow {
         }
     }
 
+    // The editor's dimmed bar is disabled, so presses would fall through to the map under the
+    // strip: this takes them and does nothing.
+    MouseArea {
+        objectName: "inertBarCover"
+        x: tabBar.x
+        width: tabBar.width
+        height: root.height
+        enabled: root.editing
+        visible: root.editing
+    }
+
     LockOverlay {
         anchors.fill: parent
         lock: root.touchLock
