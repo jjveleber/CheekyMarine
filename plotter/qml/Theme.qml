@@ -67,8 +67,8 @@ QtObject {
         slotText: "#ff2020",
         slotLabel: "#a00000",
         editOutline: "#ff0000",
-        thumbNav: "#1c0000",
-        thumbFish: "#300000"
+        thumbNav: "#3a0000",
+        thumbFish: "#5a0000"
     })
 
     readonly property var current: palette === "night" ? night : palette === "dusk" ? dusk : day

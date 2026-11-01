@@ -107,11 +107,11 @@ TestCase {
         }
         mouseClick(it)
     }
-    // A 0.7 s mouse hold on `it` (the hold is 0.6 s).
-    function hold(it) {
+    // A mouse hold on `it` until `done()` holds (the hold is 0.6 s; up to 3 s allowed), then release.
+    function hold(it, done) {
         verify(it, "nothing to hold")
         mousePress(it)
-        wait(700)
+        tryVerify(done, 3000, "the hold took effect")
         mouseRelease(it)
     }
     // The tile menu open for the view `id`.
@@ -119,7 +119,7 @@ TestCase {
         const menu = item(main, "tileMenu")
         if (!(menu.visible && menu.viewId === id)) {
             if (menu.visible) mouseClick(H.byName(menu, "menu-close"))
-            hold(item(main, "tile-" + id))
+            hold(item(main, "tile-" + id), () => menu.visible)
         }
         verify(menu.visible, "menu open")
         compare(menu.viewId, id)
@@ -262,7 +262,7 @@ TestCase {
         const held = createTemporaryObject(spyComp, testCase, { target: bar, signalName: "viewHeld" })
         const selected = createTemporaryObject(spyComp, testCase, { target: bar, signalName: "viewSelected" })
         const touched = createTemporaryObject(spyComp, testCase, { target: bar, signalName: "touched" })
-        hold(item(main, "tab-view-shipped-fish"))
+        hold(item(main, "tab-view-shipped-fish"), () => held.count > 0)
         compare(held.count, 1)
         compare(held.signalArguments[0][0], "shipped-fish")
         compare(selected.count, 0)
@@ -299,8 +299,7 @@ TestCase {
             const a = boxes[i - 1], b = boxes[i]
             verify((Math.abs(a.y - b.y) < 0.5 && b.x > a.x) || b.y >= a.y + a.h - 0.5, order[i] + " comes after " + order[i - 1])
         }
-        const margin = Units.mm(3)
-        const cols = (home.width - home.rightInset - 2 * margin) / 3 >= Units.mm(40) ? 3 : 2
+        const cols = 3 // at both sizes on the 10.1 in panel
         compare(home.columns, cols)
         compare(boxes.filter(b => Math.abs(b.y - boxes[0].y) < 0.5).length, cols, "tiles in the first row")
         for (let i = 0; i < boxes.length; ++i) {
@@ -318,6 +317,44 @@ TestCase {
         compare(H.findAll(item(main, "tile-tracks"), it => it.name === "map").length, 1)
         compare(H.findAll(item(main, "tile-settings"), it => it.name === "settings").length, 1)
         compare(item(main, "tile-new").text, "+ New view")
+    }
+
+    // A page with less than 3 x 40 mm free beside the bar (no shipped window and diagonal gives one:
+    // even 7 in at 1024x600 leaves 43 mm a column) lays the tiles out in two columns.
+    Component { id: homeComp; HomePage {} }
+    function test_homeTwoColumnsWhenNarrow_data() { return H.sizes() }
+    function test_homeTwoColumnsWhenNarrow(data) {
+        Units.windowWidth = data.w
+        Units.windowHeight = data.h
+        const home = createTemporaryObject(homeComp, testCase, {
+            width: Units.mm(17 + 6 + 110), height: data.h, rightInset: Units.mm(17), views: fixture.views })
+        verify(home, "HomePage")
+        waitForRendering(home)
+        compare(home.columns, 2)
+        const order = ["tile-shipped-nav", "tile-shipped-fish", "tile-shipped-big", "tile-new"]
+        const boxes = order.map(n => H.box(H.byName(home, n), home))
+        verify(Math.abs(boxes[0].y - boxes[1].y) < 0.5 && boxes[1].x > boxes[0].x, "first row: two tiles")
+        verify(boxes[2].y >= boxes[0].y + boxes[0].h - 0.5 && Math.abs(boxes[2].x - boxes[0].x) < 0.5, "third tile starts row two")
+        for (let i = 0; i < boxes.length; ++i) {
+            verify(boxes[i].w >= Units.mm(40) - 0.5, order[i] + " is " + boxes[i].w)
+            verify(boxes[i].x + boxes[i].w <= home.width - home.rightInset + 0.5, order[i] + " clear of the bar")
+        }
+    }
+
+    // A view switch loads the draft once.
+    function test_viewSwitchLoadsDraftOnce() {
+        const main = makeMain(1024, 600)
+        const loads = createTemporaryObject(spyComp, testCase, { target: fixture.draft, signalName: "idChanged" })
+        mouseClick(item(main, "tab-view-shipped-fish"))
+        compare(fixture.draft.id, "shipped-fish")
+        compare(loads.count, 1, "tab")
+        goHome(main)
+        tap(item(main, "tile-shipped-big"))
+        compare(fixture.draft.id, "shipped-big")
+        compare(loads.count, 2, "tile")
+        goHome(main)
+        tap(item(main, "tile-new"))
+        compare(loads.count, 3, "new view")
     }
 
     // The thumbnail draws the view: a chart kind's on slots over its chart colour, a cell view's cells.

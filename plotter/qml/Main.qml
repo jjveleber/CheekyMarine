@@ -42,9 +42,9 @@ ApplicationWindow {
         root.draft.loadJson(root.views.viewJson(root.views.currentId))
         root.chart.mode = root.draft.chart === "fish" ? "fish" : "nav"
     }
+    // A new current id loads the draft (onCurrentIdChanged below); the shown view stays loaded.
     function showView(id) {
         root.views.currentId = id
-        root.showCurrentView()
         root.page = "view"
     }
     // The view editor arrives with Task 9.
