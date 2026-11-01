@@ -142,8 +142,8 @@ View viewFromJson(const QJsonObject& o) {
 }
 
 QList<View> shippedViews(qint64 now) {
-    return {shippedView("shipped-nav", "Navigation", shortFromName("Navigation"), "compass", ViewChart::Nav, now),
-            shippedView("shipped-fish", "Fishing", shortFromName("Fishing"), "fish", ViewChart::Fish, now),
+    return {shippedView("shipped-nav", "Navigation", "Nav", "compass", ViewChart::Nav, now),
+            shippedView("shipped-fish", "Fishing", "Fish", "fish", ViewChart::Fish, now),
             shippedView("shipped-big", "Big numbers", "Big #", "hash", ViewChart::None, now)};
 }
 

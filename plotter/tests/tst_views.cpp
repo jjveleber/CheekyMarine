@@ -36,6 +36,8 @@ private slots:
         }
         QCOMPARE(v[0].name, QStringLiteral("Navigation"));
         QCOMPARE(v[0].chart, ViewChart::Nav);
+        QCOMPARE(v[0].shortName, QStringLiteral("Nav"));
+        QCOMPARE(v[1].shortName, QStringLiteral("Fish"));
         QCOMPARE(v[0].icon, QStringLiteral("compass"));
         QCOMPARE(v[0].slotList[0], (ViewSlot{SlotId::TL, true, Field::Depth, 25}));
         QCOMPARE(v[0].slotList[1], (ViewSlot{SlotId::TR, true, Field::Sog, 25}));
