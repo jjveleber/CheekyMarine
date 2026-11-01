@@ -9,6 +9,16 @@ bool supportedGrid(int cols, int rows)
     return (cols == 2 && rows == 2) || (cols == 2 && rows == 3) || (cols == 3 && rows == 2);
 }
 
+// Plain ASCII digits only: toInt alone would also accept a sign or surrounding spaces.
+std::optional<int> plainInt(QStringView s)
+{
+    if (s.isEmpty() || !std::all_of(s.begin(), s.end(), [](QChar c) { return c >= u'0' && c <= u'9'; }))
+        return std::nullopt;
+    bool ok = false;
+    const int v = s.toInt(&ok);
+    return ok ? std::optional<int>(v) : std::nullopt;
+}
+
 bool readingOrderLess(const CellRect& a, const CellRect& b)
 {
     return a.row != b.row ? a.row < b.row : a.col < b.col;
@@ -96,10 +106,10 @@ std::optional<Layout> layoutFromKey(QStringView key)
     const QList<QStringView> dims = key.left(colon).split(u'x');
     if (dims.size() != 2)
         return std::nullopt;
-    bool okCols = false, okRows = false;
-    Layout l{dims[0].toInt(&okCols), dims[1].toInt(&okRows), {}};
-    if (!okCols || !okRows || !supportedGrid(l.cols, l.rows))
+    const auto cols = plainInt(dims[0]), rows = plainInt(dims[1]);
+    if (!cols || !rows || !supportedGrid(*cols, *rows))
         return std::nullopt;
+    Layout l{*cols, *rows, {}};
     QList<int> covered(l.cols * l.rows, 0);
     for (const QStringView part : key.mid(colon + 1).split(u';')) {
         const QList<QStringView> f = part.split(u',');
@@ -107,14 +117,14 @@ std::optional<Layout> layoutFromKey(QStringView key)
             return std::nullopt;
         int v[4];
         for (int i = 0; i < 4; ++i) {
-            bool ok = false;
-            v[i] = f[i].toInt(&ok);
-            if (!ok)
+            const auto n = plainInt(f[i]);
+            if (!n)
                 return std::nullopt;
+            v[i] = *n;
         }
         const CellRect c{v[0], v[1], v[2], v[3]};
-        if (c.col < 0 || c.row < 0 || c.colSpan < 1 || c.rowSpan < 1 || c.col + c.colSpan > l.cols
-            || c.row + c.rowSpan > l.rows)
+        if (c.col >= l.cols || c.row >= l.rows || c.colSpan < 1 || c.rowSpan < 1 || c.colSpan > l.cols - c.col
+            || c.rowSpan > l.rows - c.row)
             return std::nullopt;
         for (int r = c.row; r < c.row + c.rowSpan; ++r)
             for (int k = c.col; k < c.col + c.colSpan; ++k)

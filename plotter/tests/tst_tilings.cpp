@@ -64,9 +64,41 @@ private slots:
         QVERIFY(!layoutFromKey(u"4x1:0,0,4,1"));
         QVERIFY(!layoutFromKey(u"2x2:0,0,3,2"));
         QVERIFY(!layoutFromKey(u""));
+        QVERIFY(!layoutFromKey(u"2x2: 0,0,2,2"));
+        QVERIFY(!layoutFromKey(u"2x2:+0,0,2,2"));
         const auto sorted = layoutFromKey(u"2x3:0,1,1,2;0,0,2,1;1,1,1,2");
         QVERIFY(sorted.has_value());
         QCOMPARE(layoutKey(*sorted), QStringLiteral("2x3:0,0,2,1;0,1,1,2;1,1,1,2"));
+    }
+    void hostileKeyRefused()
+    {
+        QVERIFY(!layoutFromKey(u"2x2:2147483647,0,1,1"));
+        QVERIFY(!layoutFromKey(u"2x2:0,0,2147483647,1"));
+        QVERIFY(!layoutFromKey(u"2x2:-1,0,1,1"));
+    }
+    void galleryOrderIsStrict()
+    {
+        const auto rank = [](const Layout& l) { return l.cols == 2 && l.rows == 2 ? 0 : (l.cols == 2 ? 1 : 2); };
+        const auto& all = allLayouts();
+        for (qsizetype i = 1; i < all.size(); ++i) {
+            const Layout &a = all[i - 1], &b = all[i];
+            if (a.cells.size() != b.cells.size())
+                QVERIFY(a.cells.size() < b.cells.size());
+            else if (rank(a) != rank(b))
+                QVERIFY(rank(a) < rank(b));
+            else
+                QVERIFY(layoutKey(a) < layoutKey(b));
+        }
+    }
+    void perGridKeysUnique()
+    {
+        for (const auto& [cols, rows] : {std::pair{2, 2}, std::pair{2, 3}, std::pair{3, 2}}) {
+            QSet<QString> keys;
+            const auto list = tilings(cols, rows);
+            for (const Layout& l : list)
+                keys.insert(layoutKey(l));
+            QCOMPARE(keys.size(), list.size());
+        }
     }
     void namedShapesExist()
     {
