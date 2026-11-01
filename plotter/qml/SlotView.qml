@@ -7,7 +7,7 @@ import QtQuick.Layouts
 // bars stack label, value and unit. It takes taps only in edit mode, so on the chart touches reach
 // the map; in edit mode every slot shows, outlined, and an off slot shows its position name, faint.
 // The selected slot shows a round 12 mm resize handle centered on its inner corner (a corner slot) or
-// the midpoint of its inner edge (a bar), the side towards the page centre: half over the slot, half
+// the midpoint of its inner edge (a bar), the side towards the page center: half over the slot, half
 // over the chart, with a double-headed arrow along the resize axis.
 //
 // sizeMm is the stored digit height; drawnMm (set by the page from the size clamp) is the one drawn.
