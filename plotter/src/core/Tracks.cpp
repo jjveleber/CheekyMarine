@@ -200,7 +200,15 @@ void TrackRecorder::startTrack(double t) {
     m_active = m_store.create(t);
     m_last.reset();
     m_activePoints.clear();
+    m_activeStartT = t;
+    m_activeDistanceM = 0;
     m_lastWriteS = m_nowS();
+}
+
+TrackRecorder::ActiveTotals TrackRecorder::activeTotals() const {
+    if (m_active == 0 || !m_last)
+        return {};
+    return {int(m_activePoints.size()), m_last->t - m_activeStartT, m_activeDistanceM};
 }
 
 void TrackRecorder::onVessel(const VesselState& s) {
@@ -221,9 +229,10 @@ void TrackRecorder::onVessel(const VesselState& s) {
     p.sog = s.sogMs;
     p.cog = s.cogRad;
     p.depth = s.depthM;
-    const bool keep = !m_last || (p.t - m_last->t >= m_settings.trackIntervalS() &&
-                                  distanceM({m_last->lat, m_last->lon}, {p.lat, p.lon}) >= m_settings.trackMinDistanceM());
+    const double stepM = m_last ? distanceM({m_last->lat, m_last->lon}, {p.lat, p.lon}) : 0;
+    const bool keep = !m_last || (p.t - m_last->t >= m_settings.trackIntervalS() && stepM >= m_settings.trackMinDistanceM());
     if (keep) {
+        m_activeDistanceM += stepM;
         if (m_buffer.isEmpty())
             m_bufferId = m_active;
         m_buffer.append(p);
@@ -270,6 +279,8 @@ void TrackRecorder::recordingChanged() {
     m_last.reset();
     m_lastPosT.reset();
     m_activePoints.clear();
+    m_activeStartT = 0;
+    m_activeDistanceM = 0;
     emit activeTrackChanged({});
 }
 
@@ -282,6 +293,7 @@ TracksController::TracksController(TrackStore& store, TrackRecorder& recorder, Q
 void TracksController::refresh() {
     const qint64 active = m_recorder.activeId();
     m_shownActive = active;
+    bool activeVisible = true;
     QVariantList rows;
     QList<qint64> finishedIds;
     QSet<qint64> finishedAll; // shown or hidden
@@ -298,6 +310,13 @@ void TracksController::refresh() {
         row[QStringLiteral("durationS")] = t.ended - t.started;
         row[QStringLiteral("distanceM")] = t.distanceM;
         row[QStringLiteral("points")] = t.points;
+        if (t.id == active) {
+            const TrackRecorder::ActiveTotals totals = m_recorder.activeTotals();
+            row[QStringLiteral("durationS")] = totals.durationS;
+            row[QStringLiteral("distanceM")] = totals.distanceM;
+            row[QStringLiteral("points")] = totals.points;
+            activeVisible = t.visible;
+        }
         row[QStringLiteral("visible")] = t.visible;
         row[QStringLiteral("active")] = t.id == active;
         rows.append(row);
@@ -308,6 +327,8 @@ void TracksController::refresh() {
         m_rows = rows;
         emit tracksChanged();
     }
+    const bool activeFlipped = activeVisible != m_activeVisible;
+    m_activeVisible = activeVisible;
     // Finished tracks never change: each one's line is read once and kept while it is a finished
     // track (deleted ones go, so a reused id is read again), and sent only when the set changes.
     // A failed read is not kept: it shows empty and is read again on the next refresh.
@@ -336,6 +357,8 @@ void TracksController::refresh() {
             emit finishedChanged();
         }
     }
+    if (activeFlipped)
+        emit activeChanged();
 }
 
 void TracksController::setVisible(qint64 id, bool visible) {

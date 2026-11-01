@@ -951,5 +951,17 @@ TestCase {
         compare(fixture.tracksController.tracks.length, 0)
         verify(H.byName(page, "noTracks").visible)
     }
+
+    function test_tracksDeleteConfirmClosesWhenThePageHides() {
+        const page = makeTracks(1200, 800)
+        fixture.addTrack(1.7e9)
+        const confirm = H.byName(page, "confirmDelete")
+        mouseClick(H.byName(page, "trackDelete"))
+        verify(confirm.visible)
+        page.visible = false // a tab switch
+        page.visible = true
+        verify(!confirm.visible, "the confirm does not survive a page switch")
+        compare(fixture.tracksController.tracks.length, 1)
+    }
 }
 

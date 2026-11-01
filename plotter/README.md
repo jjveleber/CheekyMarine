@@ -128,6 +128,8 @@ Stored in `plotter.db`, changed in the Settings page. Defaults:
 | `trackIntervalS` | 5 | seconds between track points |
 | `trackMinDistanceM` | 10 | metres moved before a new point |
 
+Track points are written every 30 s or every 20 points. If the database refuses writes, the recorder holds at most one batch and retries; those points stay on the chart and in the Tracks row, and are lost if the app exits while writes still fail.
+
 The plan 3 keys `chartMode`, `touchLockTimeoutS`, `slots` and `bigNumbers` are gone: the chart and
 the slots and cells live in each view, and the idle auto-lock was removed.
 
