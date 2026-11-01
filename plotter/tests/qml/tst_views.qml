@@ -849,7 +849,8 @@ TestCase {
         const margin = Units.mm(1.5)
 
         main.hideDelayMs = 200
-        tryVerify(() => barHidden(main), 1500, "the bar slid off")
+        // barHidden() is true a fraction of a pixel before the slide ends; the widths below are exact.
+        tryVerify(() => item(main, "tabBar").x >= main.width - 0.01, 1500, "the bar slid all the way off")
         const right = boxOf(slot("Right"))
         fuzzyCompare(right.x + right.w, main.width, 1)
         for (const id of ["TR", "BR"]) {
