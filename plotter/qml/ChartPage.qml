@@ -6,13 +6,15 @@ import QtQuick.Controls.Basic
 // the right (rightInset); everything else stops at its edge. When the bar slides off (barInset, 0
 // while hidden), the right corners, the Right bar and the ends of Top, Bottom and the notice slide
 // to the page's edge with it and back when it returns; slot sizes never change with it, and +, -
-// and Legend hide while it is hidden. Bars that are on (Top, Bottom, Left,
-// Right) shrink the chart viewport; the corners float over the chart. The notice is the bottom line,
-// under a bottom bar (unless Settings turns it off: then it takes no room). Each slot is drawn at
-// its clamped size (PanelMath.drawnSizesMm), so no slot leaves the page or runs into another; the stored sizes are not changed. In edit mode every slot is
-// shown outlined (the layout stays the live one: an off slot is only a faint 12 mm outline, under the
-// on slots, and takes no room) and a tap on one emits slotTapped; the
-// selected slot shows its resize handle. On a live view a 0.6 s hold on a shown slot emits slotHeld.
+// and Legend hide while it is hidden. Bars that are on (Top, Bottom, Left, Right) shrink the chart
+// viewport, which never changes with the tab bar: a Right bar takes its own width from the page's
+// edge, so the map runs under it while the bar is shown. The corners float over the chart. The
+// notice is the bottom line, under a bottom bar (unless Settings turns it off: then it takes no
+// room). Each slot is drawn at its clamped size (PanelMath.drawnSizesMm), so no slot leaves the
+// page or runs into another; the stored sizes are not changed. In edit mode every slot is shown
+// outlined (the layout stays the live one: an off slot is only a faint 12 mm outline, under the on
+// slots, and takes no room) and a tap on one emits slotTapped; the selected slot shows its resize
+// handle. On a live view a 0.6 s hold on a shown slot emits slotHeld.
 Item {
     id: page
     required property QtObject chart   // ChartController
@@ -107,13 +109,14 @@ Item {
     Item {
         id: mapArea
         objectName: "mapArea"
-        // Under the strip too, unless a Right bar stands between.
+        // Under the strip too, and under a Right bar while the tab bar is shown: the width never
+        // changes with the tab bar, so the chart does not shift when it slides.
         anchors {
             fill: parent
             topMargin: page.topInset
             bottomMargin: page.bottomInset > 0 ? page.bottomInset + noticeBar.height : 0
             leftMargin: page.leftInset
-            rightMargin: page.rightBarInset > 0 ? page.barInset + page.rightBarInset : 0
+            rightMargin: page.rightBarInset
         }
         function zoomBy(factor, point) {
             if (page.chart.follow) page.chart.zoomBy(Math.log2(factor))
@@ -376,7 +379,7 @@ Item {
 
     LegendSheet {
         id: legendSheet
-        anchors { fill: parent; rightMargin: page.rightInset }
+        anchors { fill: parent; rightMargin: page.barInset }
         entries: page.chart.legend
         visible: false
         onClosed: visible = false

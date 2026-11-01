@@ -198,10 +198,9 @@ means the default fixture).
 The saved views renders (every page and editor sheet, day and night, at 1024x600 and 1280x800) are
 in `docs/plotter/renders/views/`, named `<name>-<day|night>-<WxH>.png`. They come from
 `CM_PACKS_DIR=DIR plotter/tools/run-dev.sh "" --palette P --window WxH --screenshot FILE
---screenshot-after-ms 5000 --exit-after-ms 6000` plus `--view`, `--page`, `--editor`, `--sheet`,
-`--lock` or `--record` as needed (`splash` is taken at 800 ms, `nav-barhidden` at 10000 ms, after
-the 8 s hide). The splash now stays up 5 s, so a new render waits longer: `settings` was retaken
-at 7000 ms with `--exit-after-ms 8000`. The earlier walkthrough renders in `docs/plotter/renders/final/` predate views; they
+--screenshot-after-ms 7000 --exit-after-ms 8000` (the splash stays up 5 s) plus `--view`, `--page`,
+`--editor`, `--sheet`, `--lock` or `--record` as needed (`splash` is taken at 800 ms,
+`nav-barhidden` at 10000 ms, after the 8 s hide). The earlier walkthrough renders in `docs/plotter/renders/final/` predate views; they
 keep the no-data banner (the app run without n2kd, `nodata-*.png`) and the recovery screen
 (`--data` pointing at a directory whose `plotter.db` is junk, `recovery-*.png`).
 

@@ -827,7 +827,7 @@ TestCase {
         chartStub.fishAvailable = false
         chartStub.follow = false
         const main = makeMain(1024, 600)
-        main.hideDelayMs = 2000
+        main.hideDelayMs = 0 // never, until the boxes are recorded
         mouseClick(item(main, "tab-view-shipped-fish"))
         compare(main.page, "view")
         for (const [id, field, mm] of [["BL", "cog", 8], ["BR", "stw", 8], ["Top", "time", 6], ["Bottom", "pos", 5], ["Right", "hdg", 8]])
@@ -845,6 +845,7 @@ TestCase {
         const watched = slots.concat(fixed, hidden)
         const before = watched.map(boxOf)
         const drawn = slots.map(s => s.drawnMm)
+        const mapWidth = map.width
         const margin = Units.mm(1.5)
 
         main.hideDelayMs = 200
@@ -859,6 +860,7 @@ TestCase {
         for (const it of [slot("TL"), slot("BL")].concat(fixed))
             compare(boxOf(it), before[watched.indexOf(it)], it.objectName || it.slotId)
         for (const it of hidden) verify(!it.visible, it.objectName + " hidden with the bar")
+        compare(map.width, mapWidth, "the map keeps its width")
         fuzzyCompare(boxOf(map).x + map.width, right.x, 1, "the map runs up to the Right bar, at the edge")
         compare(slots.map(s => s.drawnMm), drawn, "drawn sizes unchanged")
 
@@ -869,6 +871,7 @@ TestCase {
                   "every box back: " + JSON.stringify(watched.map(boxOf)))
         for (const it of hidden) verify(it.visible, it.objectName + " back with the bar")
         compare(slots.map(s => s.drawnMm), drawn)
+        compare(map.width, mapWidth, "the map keeps its width with the bar back")
 
         // With no Right bar the map runs under the strip, shown or hidden.
         fixture.draft.setSlot("Right", false, "hdg", 8)
@@ -876,6 +879,22 @@ TestCase {
         main.hideDelayMs = 200
         tryVerify(() => barHidden(main), 1500, "the bar slid off again")
         compare(map.width, main.width)
+    }
+
+    // The legend sheet follows the bar: once it slides off, the sheet covers the strip too, so
+    // none of the slots that moved into it shows beside the sheet.
+    function test_legendSheetCoversTheStripWhenTheBarHides() {
+        const main = makeMain(1024, 600)
+        main.hideDelayMs = 0
+        mouseClick(item(main, "tab-view-shipped-nav"))
+        const page = item(main, "chartPage")
+        const sheet = item(main, "legendSheet")
+        mouseClick(item(main, "legendButton"))
+        verify(sheet.visible)
+        main.hideDelayMs = 200
+        tryVerify(() => barHidden(main), 1500, "the bar slid off")
+        tryVerify(() => Math.abs(H.box(sheet, page).x + sheet.width - page.width) < 1, 1500,
+                  "the sheet runs to the page's edge: " + JSON.stringify(H.box(sheet, page)))
     }
 
     function test_barNeverHidesOnHomeTracksSettingsAbout() {
