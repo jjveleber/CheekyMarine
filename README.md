@@ -16,6 +16,8 @@ cmake --build build -j
 ctest --test-dir build --output-on-failure
 ```
 
+Before writing or reviewing a change, see `docs/superpowers/review-checklist.md` (US English word list, standing review rules).
+
 ## Chart packs
 
 `chartpack` (Python) builds the chart packs the plotter draws: a charts pack (NOAA ENC cells with USGS bottom composition, for navigation) and a bathy pack (depth contours and terrain, for fishing), as MBTiles with MapLibre styles. Packs are released by `charts-<region>-vX.Y.Z` and `bathy-<region>-vX.Y.Z` tags, separately from the `v*` n2kd releases. It is built and tested separately: see [chartpack/README.md](chartpack/README.md).

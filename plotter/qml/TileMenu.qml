@@ -83,9 +83,9 @@ Item {
                     onClicked: { menu.close(); menu.editChosen(menu.viewId) }
                 }
                 BigButton {
-                    objectName: "menu-favourite"
+                    objectName: "menu-favorite"
                     width: grid.cell
-                    text: menu.favourite ? "Favourite off" : "Favourite on"
+                    text: menu.favourite ? "Favorite off" : "Favorite on"
                     onClicked: { menu.close(); menu.favouriteChosen(menu.viewId, !menu.favourite) }
                 }
                 BigButton {

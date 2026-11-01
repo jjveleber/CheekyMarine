@@ -757,7 +757,7 @@ TestCase {
         fuzzyCompare(pb.h, room.h, 1, "full height")
         verify(pb.w < room.w - Units.mm(40), "the view shows beside it")
         const names = ["row-name", "row-short", "chart-nav", "chart-fish", "chart-none", "row-layout",
-                       "row-favourite", "row-delete", "setupDone"].concat(Icons.names().map(n => "icon-" + n))
+                       "row-favorite", "row-delete", "setupDone"].concat(Icons.names().map(n => "icon-" + n))
         for (const n of names) {
             const b = find(panel, n)
             verify(b.visible, n + " visible")
@@ -768,7 +768,7 @@ TestCase {
         H.checkBigButtons(testCase, Units, panel)
         compare(find(panel, "row-name").text, "Name: Big numbers")
         compare(find(panel, "row-short").text, "Short name: Big #")
-        compare(find(panel, "row-favourite").text, "Favourite: On")
+        compare(find(panel, "row-favorite").text, "Favorite: On")
         compare(find(panel, "row-delete").text, "Delete view")
         verify(find(panel, "icon-hash").highlighted, "the draft's icon")
         verify(!find(panel, "icon-fish").highlighted)
@@ -868,7 +868,7 @@ TestCase {
         const quad = "2x2:0,0,1,1;1,0,1,1;0,1,1,1;1,1,1,1"
         verify(before.cells.layout !== quad, "the quad is a change")
         tapShown(find(sheet, "layout-" + quad))
-        tapShown(find(sheet, "row-favourite"))
+        tapShown(find(sheet, "row-favorite"))
         const changed = fixture.draft.toJson()
         compare([changed.name, changed.short, changed.icon, changed.chart, changed.cells.layout, changed.favourite],
                 ["Trolling", "Troll", "fish", "none", quad, false], "every change made")
@@ -941,21 +941,21 @@ TestCase {
         fixture.views.setFavourite(sixth, true)
         verify(!fixture.views.onTabBar(sixth))
         let sheet = openSetup(main, sixth)
-        const row = find(sheet, "row-favourite")
-        compare(row.text, "Favourite: On")
-        const note = find(sheet, "favouriteNote")
+        const row = find(sheet, "row-favorite")
+        compare(row.text, "Favorite: On")
+        const note = find(sheet, "favoriteNote")
         verify(note.visible, "the note")
         compare(note.text, "Not on tab bar (full)")
         tapShown(row)
         compare(fixture.draft.favourite, false)
-        compare(row.text, "Favourite: Off")
+        compare(row.text, "Favorite: Off")
         verify(!note.visible, "no note when off")
         mouseClick(find(sheet, "setupDone"))
         mouseClick(m(main, "editorCancel"))
 
         // A favourite on the bar has no note.
         sheet = openSetup(main, "shipped-fish")
-        verify(!find(sheet, "favouriteNote").visible)
+        verify(!find(sheet, "favoriteNote").visible)
     }
 
     function test_deleteFromSetupGoesHome() {
@@ -1005,10 +1005,10 @@ TestCase {
         const plain = fixture.views.add()
         verify(!fixture.views.viewJson(plain).favourite)
         const sheet = openSetup(main, plain)
-        const note = find(sheet, "favouriteNote")
-        compare(find(sheet, "row-favourite").text, "Favourite: Off")
+        const note = find(sheet, "favoriteNote")
+        compare(find(sheet, "row-favorite").text, "Favorite: Off")
         verify(!note.visible)
-        tapShown(find(sheet, "row-favourite"))
+        tapShown(find(sheet, "row-favorite"))
         compare(fixture.draft.favourite, true)
         verify(!fixture.views.viewJson(plain).favourite, "not stored before Done")
         verify(note.visible, "the note before Done")

@@ -470,14 +470,14 @@ TestCase {
         compare(viewOrder(), ["shipped-nav", "shipped-big", "shipped-fish"])
 
         menu = menuFor(main, "shipped-fish")
-        const fav = H.byName(menu, "menu-favourite")
-        compare(fav.text, "Favourite off")
+        const fav = H.byName(menu, "menu-favorite")
+        compare(fav.text, "Favorite off")
         mouseClick(fav)
         verify(!fixture.views.viewJson("shipped-fish").favourite)
         verify(!H.byName(item(main, "tile-shipped-fish"), "tileStar").visible, "star gone")
         compare(H.byName(main.contentItem, "tab-view-shipped-fish"), null)
         menu = menuFor(main, "shipped-fish")
-        compare(H.byName(menu, "menu-favourite").text, "Favourite on")
+        compare(H.byName(menu, "menu-favorite").text, "Favorite on")
 
         mouseClick(H.byName(menu, "menu-duplicate"))
         compare(fixture.views.count, 4)

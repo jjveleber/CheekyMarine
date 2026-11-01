@@ -21,7 +21,7 @@ Item {
         for (const c of choices) if (c.value === value) return c.label
         return String(value)
     }
-    readonly property var depthUnits: [{ value: "ft", label: "Feet" }, { value: "m", label: "Metres" }, { value: "fm", label: "Fathoms" }]
+    readonly property var depthUnits: [{ value: "ft", label: "Feet" }, { value: "m", label: "Meters" }, { value: "fm", label: "Fathoms" }]
     readonly property var speedUnits: [{ value: "kn", label: "Knots" }, { value: "mph", label: "mph" }, { value: "kmh", label: "km/h" }]
     readonly property var tempUnits: [{ value: "F", label: "Fahrenheit" }, { value: "C", label: "Celsius" }]
     readonly property var orientations: [{ value: "north", label: "North up" }, { value: "head", label: "Head up" }, { value: "course", label: "Course up" }]
