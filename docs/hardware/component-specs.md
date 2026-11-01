@@ -72,7 +72,7 @@ What happens when the main battery switch (or the unit's own switch) goes off: t
 |---|---|---|---|
 | 1 | Fuse + holder | 7.5 A blade fuse, sealed holder for 16 AWG | $4.58 (5 A bench fuse) |
 | 2 | TVS diode + LC filter | TVS: unidirectional, 17 to 18 V standoff, clamp 30 V or less, across the filter output. Inductor: 10 µH, 6 A saturation | $0.373 at 10 (TVS); LC not priced |
-| 3 | Unit on/off switch | Round latching rocker on the case: IP67, reliable at tens of mA, 1 A DC | not priced |
+| 3 | Unit on/off switch | Round latching rocker on the case: round 12 to 22 mm hole, IP67, reliable at tens of mA, 1 A DC | not priced |
 | 4 | Standby power + shutdown controller | Standby feed, sense input, controller, relay that opens fully when off | not priced |
 | 5 | Buck regulator | 5 A continuous at 5.0 to 5.3 V, survives 30 V in | $47.95 |
 | 6 | Display power | Display safe to 30 V, or its own regulator | $0 if built in |
@@ -245,9 +245,25 @@ Leave open: Manufacturer, Package / Case, Tolerance, Q Minimum, Self Resonant Fr
 | Rating | DC rated, 12 V or more, 1 A or more | Datasheet "DC rating" |
 | Low-current contacts | Reliable at the sense wire's current: about 5 mA for the sense input plus the controller and relay coil (tens of mA) while it powers them. Gold-plated contacts, or a minimum load at or below that. A panel rocker with silver contacts is acceptable if it passes a bench check of the sense input through that switch | Datasheet "contact material", "minimum load"; bench check |
 | Front sealing | IP67 (IP65 minimum) when panel-mounted, with a boot or O-ring | Datasheet "front IP rating" |
-| Panel hole | 12 to 22 mm round, or a standard rocker cutout | Datasheet "mounting hole" |
+| Panel hole | Round, 12 to 22 mm, so it is one drill or step-bit hole (owner, 2026-11-01); no rectangular rocker cutout | Datasheet "panel cutout" or "mounting hole" |
 | Behind-panel depth | 40 mm or less | Datasheet drawing |
 | Body | Stainless steel, anodized aluminum, or UV-stable plastic | Datasheet "material" |
+
+**Switch: Mouser filters** (Electromechanical > Switches > Rocker Switches, mouser.com/c/electromechanical/switches/rocker-switches/, read 2026-11-01)
+
+| Mouser filter | Set to | Must-have it covers |
+|---|---|---|
+| Contact Form | SPST (SPDT also works, using two of its terminals) | |
+| Switch Function | OFF - ON, or ON - OFF. Skip any value with parentheses, such as (ON) - OFF: parentheses mean a momentary position | Action (latching) |
+| Current Rating | 1 A and every larger value | Rating |
+| Voltage Rating DC | 12 VDC and the ranges that include 12 to 14.8 V (12 VDC to 24 VDC, 12 VDC to 28 VDC, 14 VDC, and so on) | Rating |
+| Contact Plating | Gold, Gold over Nickel, Gold over Silver, Gold-plated Silver (silver types only if the bench check passes) | Low-current contacts |
+| IP Rating | IP67 and every higher rating (IP68, IP68S, IP69K, IP66 IP68) | Front sealing |
+| Mounting Style | Panel Mount, Panel Mount Snap-In, Snap-In | |
+| Termination Style | Quick Connect, Solder Lug, Solder Terminal, Wire Lead (easy to hand wire) | |
+| Packaging | Bulk, Bag, Box, Tray | |
+
+Not filterable, so check the datasheet: round panel cutout of 12 to 22 mm, depth behind the panel 40 mm or less, body material, and minimum load. Round rockers are a minority on this page; the Type and Actuator filters may list round or circular styles (the saved page only shows the first 20 values of each). If lit (Illuminated filter), the LED must be on the switched side. Leave open: Manufacturer, Product (but skip Circuit Breakers), Illumination Color, Lamp Type, Color, Terminal Seal, Voltage Rating AC.
 
 **Nice to have**
 
