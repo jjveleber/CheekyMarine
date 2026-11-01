@@ -1,0 +1,113 @@
+<style>
+.scr{display:flex;width:400px;height:250px;border:2px solid #555;border-radius:4px;background:#e9e4d2;position:relative;overflow:hidden;font-family:sans-serif;color:#111;flex:none}
+.scr .map{flex:1;position:relative;background:linear-gradient(135deg,#7fb3d5,#2b5f8c)}
+.scr .tabs{width:52px;background:#f3f3f3;border-left:1px solid #999;display:flex;flex-direction:column;align-items:center;padding-top:4px;gap:4px;opacity:.4}
+.tab{width:44px;height:30px;border:1px solid #888;border-radius:3px;background:#fff;font-size:8px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;line-height:1;gap:2px}
+.tab .ic{font-size:12px;line-height:1}
+.tab.fav{background:#fff6d6;border-color:#c9a227}
+.tab.sm{height:22px}
+.tab.push{margin-top:auto}
+.slot{position:absolute;background:rgba(255,255,255,.85);border-radius:3px;padding:2px 4px;font-weight:700;line-height:1}
+.slot small{display:block;font-weight:400;font-size:7px}
+.slot.edit{outline:2px dashed #d08a00;outline-offset:2px}
+.slot.sel{outline:3px solid #d08a00}
+.slot.off{background:rgba(255,255,255,.35);color:#666;font-weight:400;font-size:8px}
+.handle{position:absolute;width:14px;height:14px;border-radius:7px;background:#d08a00;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.4)}
+.fab{position:absolute;border:1px solid #888;border-radius:3px;background:#fff;padding:4px 8px;font-size:9px;font-weight:700}
+.fab.pri{background:#cfe3f7;border:2px solid #4a7fb5}
+.sheet{position:absolute;left:0;top:0;right:0;bottom:0;background:#f3f3f3;display:flex;flex-direction:column;padding:6px;font-size:9px;gap:4px}
+.sheet .cols{display:flex;gap:8px;flex:1}
+.sheet .list{flex:1;display:flex;flex-direction:column;gap:3px}
+.sheet .list div{border:1px solid #888;border-radius:3px;background:#fff;padding:3px 5px;text-align:center}
+.sheet .list div.on{background:#cfe3f7;border:2px solid #4a7fb5}
+.sheet .list .ttl{border:none;background:none;color:#555;text-align:left;padding:0}
+.btn{border:1px solid #888;border-radius:3px;background:#fff;padding:3px 8px;font-size:9px;display:inline-flex;align-items:center}
+.btn.pri{background:#cfe3f7;border:2px solid #4a7fb5;font-weight:700}
+.stepper{display:flex;flex-direction:column;align-items:center;gap:4px}
+.stepper .big{width:40px;height:40px;border:1px solid #888;border-radius:3px;background:#fff;font-size:18px;display:flex;align-items:center;justify-content:center}
+.stepper .val{font-size:13px;font-weight:700}
+.sliderv{width:30px;height:120px;border:1px solid #888;border-radius:3px;background:#fff;position:relative;margin:auto}
+.sliderv .fill{position:absolute;left:0;right:0;bottom:0;height:62%;background:#cfe3f7}
+.sliderv .knob{position:absolute;left:-6px;right:-6px;height:16px;top:34%;background:#4a7fb5;border-radius:4px}
+.preview{flex:1.4;display:flex;align-items:center;justify-content:center;border:1px dashed #aaa;border-radius:3px;background:linear-gradient(135deg,#7fb3d5,#2b5f8c)}
+.cap{font-size:11px;color:#666;margin:4px 0 0}
+</style>
+
+<h2>Sizing a slot on its own</h2>
+<p class="subtitle">You asked for each overlay sized individually and dynamically, not Small/Medium/Large. The size is one number per slot: digit height in mm (the label and unit scale with it; a banner's height or a bar's width follow from it). Clamped so the slot fits the space left (R51), floor 6 mm, ceiling what fits. Three ways to set it. Click one or describe another.</p>
+
+<div class="options">
+
+<div class="option" data-choice="handle" onclick="toggleSelect(this)">
+  <div class="letter">A</div>
+  <div class="content">
+    <h3>Drag a corner handle on the outlined slot</h3>
+    <p>In edit mode, tap a slot to select it: a big round handle appears on its inner corner. Drag it, the digits grow and shrink live on the chart. Tap the slot again for the field sheet. Direct, like resizing a Garmin split. Needs a steady finger: editing is a dockside job, so pinch and drag are acceptable here even though the chart page bans them.</p>
+    <div class="scr">
+      <div class="map">
+        <div class="slot edit sel" style="left:6px;top:6px;font-size:34px;padding-right:20px">137<small>Depth ft</small></div>
+        <div class="handle" style="left:112px;top:50px"></div>
+        <div class="slot edit off" style="right:6px;top:6px">TR off</div>
+        <div class="slot edit" style="left:6px;bottom:6px;font-size:18px">54.2<small>Water F</small></div>
+        <div class="slot edit off" style="right:6px;bottom:6px">BR off</div>
+        <div class="slot edit off" style="left:50%;top:6px;transform:translateX(-50%)">Top off</div>
+        <div class="slot edit off" style="left:50%;bottom:6px;transform:translateX(-50%)">Bottom off</div>
+        <div class="fab" style="left:50%;top:45%;transform:translate(-50%,-50%)">&#9881; Setup</div>
+        <div class="fab pri" style="left:50%;top:62%;transform:translate(-50%,-50%)">Done</div>
+      </div>
+      <div class="tabs"><div class="tab fav"><span class="ic">&#9875;</span>Nav</div><div class="tab fav"><span class="ic">#</span>Big #</div><div class="tab"><span class="ic">&#8962;</span></div><div class="tab sm push">Lock</div><div class="tab sm">Day</div></div>
+    </div>
+    <p class="cap">Corner slots grow toward the centre; banners grow down or up; bars grow inward. A bar or banner that grows pushes the chart, as today.</p>
+  </div>
+</div>
+
+<div class="option" data-choice="stepper" onclick="toggleSelect(this)">
+  <div class="letter">B</div>
+  <div class="content">
+    <h3>Big + and - on the slot sheet, live preview behind</h3>
+    <p>The slot sheet keeps the on/off and field lists and swaps the size list for a + and - pair (12 mm floor, repeat while held) with the mm value between. The sheet shrinks to the lower half so the slot itself stays visible and changes as you tap. No drag anywhere, wet-finger safe.</p>
+    <div class="scr">
+      <div class="map">
+        <div class="slot edit sel" style="left:6px;top:6px;font-size:34px">137<small>Depth ft</small></div>
+        <div class="slot edit off" style="right:6px;top:6px">TR off</div>
+        <div class="sheet" style="top:46%">
+          <div style="display:flex;justify-content:space-between"><b>Overlay TL</b><span class="btn pri">Done</span></div>
+          <div class="cols">
+            <div class="list"><div class="ttl">Show</div><div class="on">On</div><div>Off</div></div>
+            <div class="list"><div class="ttl">Field</div><div class="on">Depth</div><div>SOG</div><div>STW</div><div>more...</div></div>
+            <div class="stepper"><div class="ttl" style="color:#555">Size</div><div class="big">+</div><div class="val">28 mm</div><div class="big">&minus;</div></div>
+          </div>
+        </div>
+      </div>
+      <div class="tabs"><div class="tab fav"><span class="ic">&#9875;</span>Nav</div><div class="tab fav"><span class="ic">#</span>Big #</div><div class="tab"><span class="ic">&#8962;</span></div><div class="tab sm push">Lock</div><div class="tab sm">Day</div></div>
+    </div>
+    <p class="cap">Sheet position flips to the top half when editing a bottom slot, so the slot stays in view.</p>
+  </div>
+</div>
+
+<div class="option" data-choice="slider" onclick="toggleSelect(this)">
+  <div class="letter">C</div>
+  <div class="content">
+    <h3>Slider on the slot sheet</h3>
+    <p>Same half-height sheet as B, but a tall slider instead of + and -. Faster for big jumps, fussier for a 1 mm nudge, and a slider track is a drag gesture.</p>
+    <div class="scr">
+      <div class="map">
+        <div class="slot edit sel" style="left:6px;top:6px;font-size:34px">137<small>Depth ft</small></div>
+        <div class="slot edit off" style="right:6px;top:6px">TR off</div>
+        <div class="sheet" style="top:46%">
+          <div style="display:flex;justify-content:space-between"><b>Overlay TL</b><span class="btn pri">Done</span></div>
+          <div class="cols">
+            <div class="list"><div class="ttl">Show</div><div class="on">On</div><div>Off</div></div>
+            <div class="list"><div class="ttl">Field</div><div class="on">Depth</div><div>SOG</div><div>STW</div><div>more...</div></div>
+            <div style="display:flex;flex-direction:column;align-items:center;gap:3px"><div class="ttl" style="color:#555">Size 28 mm</div><div class="sliderv" style="height:90px"><div class="fill"></div><div class="knob"></div></div></div>
+          </div>
+        </div>
+      </div>
+      <div class="tabs"><div class="tab fav"><span class="ic">&#9875;</span>Nav</div><div class="tab fav"><span class="ic">#</span>Big #</div><div class="tab"><span class="ic">&#8962;</span></div><div class="tab sm push">Lock</div><div class="tab sm">Day</div></div>
+    </div>
+  </div>
+</div>
+
+</div>
+
+<p class="subtitle">Button rename: the floating button that reopens the name/icon/chart/favourite sheet is now a gear labelled <b>Setup</b> (sheet title "View setup"). Other candidates: "Name &amp; chart", "Properties". Say if another word fits better.</p>

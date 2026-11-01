@@ -3,7 +3,7 @@
 Date: 2026-10-31
 Status: approved by the owner 2026-10-31 ("let's go with this, approved")
 Parent: `docs/superpowers/specs/2026-10-29-plotter-design.md` (plan 3, merged in PR #24). This addendum supersedes parent sections 6.6 (mode toggle), 6.7 (editing, sizes), 6.8 (big numbers page), 6.9 (tabs, idle lock) and goal 7 (idle timeout) where they differ. Everything else in the parent stands.
-Ledger: `.superpowers/sdd/2026-10-29-plotter/progress.md` (owner quotes dated 2026-10-31). Mockups the owner reacted to: `.superpowers/brainstorm/509885-1793487431/content/01..10`.
+Ledger: `.superpowers/sdd/2026-10-29-plotter/progress.md` (owner quotes dated 2026-10-31). Mockups the owner reacted to: `docs/superpowers/specs/2026-10-31-plotter-views-mockups/` (README there maps each screen to its answer).
 
 Owner decisions are quoted or marked "owner". Everything else is my call, marked "my call".
 
