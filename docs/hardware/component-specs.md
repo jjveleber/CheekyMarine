@@ -1017,7 +1017,7 @@ Picks made, nothing ordered yet. The owner places every order; this list only tr
 |---|---|---|---|---|---|
 | 2. TVS diode | Diotec 1.5KE20A | 10 (spares and the bench) | Mouser, https://www.mouser.com/en/ProductDetail/Diotec-Semiconductor/1.5KE20A?qs=OlC7AqGiEDn%252BxJs4ZS20Vw%3D%3D | $0.373 each, $3.73 for 10, before tax and shipping; Mouser warns a 50% tariff may apply (about $5.60) | 2026-10-31 |
 | 2. LC filter inductor | Würth Elektronik 744750420100 (WE-FAMI, 10 µH, 6.2 A, 15.5 milliohm, radial) | 2 (boat and a spare) | Mouser, https://www.mouser.com/en/ProductDetail/Wurth-Elektronik/744750420100?qs=HXx4m3XcTe2VvTYHAQWFdA%3D%3D | $2.12 each, $4.24 for 2, before tax and shipping; Mouser warns a 20% tariff may apply (about $5.09) | 2026-10-31 |
-| 2. LC filter ceramic | Murata RDEC71H475K2K1H03B (4.7 µF, 50 V, X7S, radial, 5 mm lead spacing), two in parallel | 10 (two or three used, rest spares) | Mouser | $0.384 each, $3.84 for 10, before tax and shipping; Mouser warns an 11% tariff may apply (about $4.26). Before fitting: confirm on Murata's DC-bias curve (SimSurfing) or on the bench that two leave about 5 µF or more at 15 V; if not, fit a third | 2026-11-01 |
+| 2. LC filter ceramic | Murata RDEC71H475K2K1H03B (4.7 µF, 50 V, X7S, radial, 5 mm lead spacing), two in parallel | 10 (two or three used, rest spares) | Mouser, https://www.mouser.com/en/ProductDetail/Murata-Electronics/RDEC71H475K2K1H03B?qs=hNud%2FORuBR04A3Xz06PENQ%3D%3D | $0.384 each, $3.84 for 10, before tax and shipping; Mouser warns an 11% tariff may apply (about $4.26). Before fitting: confirm on Murata's DC-bias curve (SimSurfing) or on the bench that two leave about 5 µF or more at 15 V; if not, fit a third | 2026-11-01 |
 
 **On hand (owner's stock, not to order).**
 
