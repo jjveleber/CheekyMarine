@@ -282,18 +282,28 @@ TestCase {
         mouseClick(plus)
         compare(value.text, "25.5 mm")
         compare(draftSlot("TR").sizeMm, 25.5)
+        // The hold under test: 400 ms, then 2 mm per second of real time from where it was; every
+        // value it shows on the way is on the 0.5 mm grid and never falls. The rate is checked
+        // against the measured time (the event loop can stall, and the repeat follows the clock).
+        const pressedAt = Date.now()
         mousePress(plus)
-        // The hold under test: 400 ms, then 2 mm per second; every value it shows on the way is on
-        // the 0.5 mm grid.
         const seen = []
-        for (const t0 = Date.now(); Date.now() - t0 < 1400;) {
+        while (Date.now() - pressedAt < 1400) {
             wait(40)
             seen.push(sheet.sizeMm)
         }
+        const releasedAt = Date.now()
         mouseRelease(plus)
         for (const v of seen) compare(v * 2, Math.round(v * 2), "on the 0.5 mm grid while held: " + v)
+        for (let i = 1; i < seen.length; ++i) verify(seen[i] >= seen[i - 1], "never falls: " + seen)
+        compare(plus.base, 25.5, "the repeat starts from the size shown")
+        verify(plus.since - pressedAt >= 400 - 5, "the repeat waits 400 ms: " + (plus.since - pressedAt))
+        const heldS = (releasedAt - plus.since) / 1000
         const grown = draftSlot("TR").sizeMm
-        verify(Math.abs(grown - 27.5) <= 0.5, "about 2 mm more: " + grown)
+        const want = plus.base + 2 * heldS
+        verify(Math.abs(grown - want) <= 0.5 + 0.5,
+               "2 mm per second: " + grown + " after " + heldS.toFixed(3) + " s, want about " + want.toFixed(2))
+        verify(grown > plus.base, "it grew")
         compare(grown * 2, Math.round(grown * 2), "on the 0.5 mm grid: " + grown)
         compare(value.text, grown.toFixed(1) + " mm")
         compare(sheet.sizeMm, grown)
