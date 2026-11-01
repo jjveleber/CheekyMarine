@@ -976,8 +976,9 @@ TestCase {
             { tag: "1280x800", w: 1280, h: 800 }
         ]
     }
-    // The logo fills the splash (cropped, never stretched); the info lines sit along the bottom over
-    // it, white by day and dusk, the night red at night.
+    // The logo fills the splash (cropped, never stretched); the info lines sit along the bottom in
+    // the space left and right of the emblem (version and packs left, the notice right), white by day
+    // and dusk, the night red at night.
     function test_splashShowsTheLogo(data) {
         const splash = createTemporaryObject(splashComp, testCase, { width: data.w, height: data.h, appInfo: fixture.appInfo })
         verify(splash, "splash")
@@ -992,15 +993,28 @@ TestCase {
         compare(logo.sourceSize.height, 768)
         const version = H.findAll(splash, it => it.text !== undefined && it.text.startsWith("Plotter "))
         compare(version.length, 1)
-        const lines = [version[0]].concat(["splashCharts", "splashBathy", "splashNotice"].map(n => H.byName(splash, n)))
+        // The emblem spans the middle half of the image; the crop takes the same off each side.
+        const drawnW = 1408 * Math.max(splash.width / 1408, splash.height / 768)
+        fuzzyCompare(splash.emblemLeft, 0.25 * drawnW - (drawnW - splash.width) / 2, 0.5)
+        fuzzyCompare(splash.emblemRight, splash.width - splash.emblemLeft, 0.5)
+        verify(splash.emblemLeft > Units.mm(30), "a band left of the emblem: " + splash.emblemLeft)
+        const left = [version[0]].concat(["splashCharts", "splashBathy"].map(n => H.byName(splash, n)))
+        const notice = H.byName(splash, "splashNotice")
+        const lines = left.concat([notice])
         let prevTop = -1
         for (const l of lines) {
             verify(l && l.visible, l ? l.text : "line")
             const b = H.box(l, splash)
-            verify(b.x >= 0 && b.y >= 0 && b.x + b.w <= splash.width && b.y + b.h <= splash.height, l.text + " inside the splash")
+            verify(b.y >= 0 && b.y + b.h <= splash.height, l.text + " inside the splash")
+            if (l === notice) verify(b.x >= splash.emblemRight && b.x + b.w <= splash.width, "notice right of the emblem: " + JSON.stringify(b))
+            else verify(b.x >= 0 && b.x + b.w <= splash.emblemLeft, l.text + " left of the emblem: " + JSON.stringify(b))
+            verify(l.paintedWidth <= l.width + 0.5, l.text + " wraps inside its band")
+            compare(l.style, Text.Outline, l.text + " outlined, so it reads over the logo")
             verify(b.y >= splash.height * 0.6, l.text + " along the bottom: top " + b.y)
-            verify(b.y > prevTop, l.text + " below the line before it")
-            prevTop = b.y
+            if (l !== notice) {
+                verify(b.y > prevTop, l.text + " below the line before it")
+                prevTop = b.y
+            }
         }
         for (const p of ["day", "dusk", "night"]) {
             Theme.palette = p
