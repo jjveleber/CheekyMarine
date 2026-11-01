@@ -24,6 +24,7 @@ add_library(plottercore STATIC
     src/core/StyleLoader.cpp
     src/core/DepthFilters.cpp
     src/core/Geo.cpp
+    src/core/Tilings.cpp
     src/core/Overlays.cpp
     src/core/ChartMap.h
     src/core/ChartController.cpp
@@ -64,6 +65,7 @@ plotter_add_test(tst_packcatalog tests/tst_packcatalog.cpp)
 plotter_add_test(tst_styleloader tests/tst_styleloader.cpp)
 plotter_add_test(tst_depthfilters tests/tst_depthfilters.cpp)
 plotter_add_test(tst_geo tests/tst_geo.cpp)
+plotter_add_test(tst_tilings tests/tst_tilings.cpp)
 plotter_add_test(tst_overlays tests/tst_overlays.cpp)
 plotter_add_test(tst_chartcontroller tests/tst_chartcontroller.cpp)
 plotter_add_test(tst_sun tests/tst_sun.cpp)
