@@ -48,8 +48,10 @@ ApplicationWindow {
     function showCurrentView() {
         editor.closeSheets()
         root.draft.loadJson(root.views.viewJson(root.views.currentId))
-        root.chart.mode = root.draft.chart === "fish" ? "fish" : "nav"
+        root.applyChartMode()
     }
+    // The draft's chart picks the chart mode: fish for a fishing chart, else nav.
+    function applyChartMode() { root.chart.mode = root.draft.chart === "fish" ? "fish" : "nav" }
     // A new current id loads the draft (onCurrentIdChanged below); the shown view stays loaded.
     function showView(id) {
         root.views.currentId = id
@@ -90,12 +92,15 @@ ApplicationWindow {
             root.page = root.editorFrom
         }
     }
-    // The Setup sheet's Delete: the view goes and Home shows.
+    // The Setup sheet's Delete: the view goes and Home shows. For a view just added, the view current
+    // before New is current again, as on Cancel.
     function editorDelete() {
         const id = root.draft.id
+        const wasNew = root.editingNew
         root.editing = false
         root.editingNew = false
         root.views.remove(id)
+        if (wasNew && root.views.indexOf(root.idBeforeNew) >= 0) root.views.currentId = root.idBeforeNew
         root.page = "home"
     }
     Component.onCompleted: showCurrentView()
@@ -106,7 +111,7 @@ ApplicationWindow {
     // A chart switch in the Setup sheet applies at once.
     Connections {
         target: root.draft
-        function onChartChanged() { root.chart.mode = root.draft.chart === "fish" ? "fish" : "nav" }
+        function onChartChanged() { root.applyChartMode() }
     }
 
     // The bar back for the full delay. Restarted only while it runs: the binding starts it.

@@ -772,6 +772,43 @@ TestCase {
         verify(m(main, "chartPage").visible)
     }
 
+    // Cancel drops every Setup change: name, short name, icon, chart, layout and favourite.
+    function test_setupCancelDiscardsEverything() {
+        const main = makeMain(1024, 600)
+        const before = fixture.views.viewJson("shipped-nav")
+        const sheet = openSetup(main, "shipped-nav")
+        const kb = find(sheet, "keyboard")
+        mouseClick(find(sheet, "row-name"))
+        waitForRendering(kb)
+        typeInto(kb, "Trolling")
+        tap(kb, "key-done")
+        mouseClick(find(sheet, "row-short"))
+        typeInto(kb, "Troll")
+        tap(kb, "key-done")
+        tapShown(find(sheet, "icon-fish"))
+        tapShown(find(sheet, "chart-none"))
+        tapShown(find(sheet, "row-layout"))
+        const quad = "2x2:0,0,1,1;1,0,1,1;0,1,1,1;1,1,1,1"
+        verify(before.cells.layout !== quad, "the quad is a change")
+        tapShown(find(sheet, "layout-" + quad))
+        tapShown(find(sheet, "row-favourite"))
+        const changed = fixture.draft.toJson()
+        compare([changed.name, changed.short, changed.icon, changed.chart, changed.cells.layout, changed.favourite],
+                ["Trolling", "Troll", "fish", "none", quad, false], "every change made")
+        mouseClick(find(sheet, "setupDone"))
+        mouseClick(m(main, "editorCancel"))
+        const stored = fixture.views.viewJson("shipped-nav")
+        compare(stored, before, "nothing stored")
+        for (const k of ["name", "short", "icon", "chart", "favourite"]) {
+            compare(fixture.draft.toJson()[k], before[k], "draft " + k)
+            compare(stored[k], before[k], "stored " + k)
+        }
+        compare(fixture.draft.layout, before.cells.layout, "draft layout")
+        compare(stored.cells.layout, before.cells.layout, "stored layout")
+        compare(fixture.draft.toJson(), before)
+        compare(chartStub.mode, "nav")
+    }
+
     function test_layoutGalleryHas72AndApplies() {
         const main = makeMain(1024, 600)
         const sheet = openSetup(main, "shipped-big")
@@ -862,8 +899,75 @@ TestCase {
         compare(main.editing, false)
         compare(main.page, "home")
         verify(!sheet.visible)
-        verify(fixture.views.currentId !== "shipped-fish")
+        compare(fixture.views.currentId, "shipped-big", "the neighbour")
         compare(fixture.draft.id, fixture.views.currentId)
+
+        // A new view deleted from its own Setup: the view current before New is current again.
+        fixture.views.currentId = "shipped-nav"
+        waitForRendering(m(main, "homePage")) // the tiles move up after the delete
+        mouseClick(m(main, "tile-new"))
+        verify(main.editingNew)
+        verify(sheet.visible)
+        compare(fixture.views.count, 3)
+        tapShown(del)
+        tapShown(find(sheet, "setupDeleteYes"))
+        compare(fixture.views.count, 2)
+        compare(fixture.views.currentId, "shipped-nav", "the view current before New")
+        compare(fixture.draft.id, "shipped-nav")
+        compare(main.page, "home")
+        compare(main.editing, false)
+        verify(!main.editingNew)
+    }
+
+    // The note before Done: the draft is a favourite, the stored view not yet, and the bar is full.
+    function test_favouriteNoteEstimatedBeforeDone() {
+        const main = makeMain(1024, 600)
+        compare(fixture.views.favouriteCapacity, 5)
+        for (let i = 0; i < 2; ++i) fixture.views.setFavourite(fixture.views.add(), true)
+        compare(fixture.views.tabViews.length, 5)
+        const plain = fixture.views.add()
+        verify(!fixture.views.viewJson(plain).favourite)
+        const sheet = openSetup(main, plain)
+        const note = find(sheet, "favouriteNote")
+        compare(find(sheet, "row-favourite").text, "Favourite: Off")
+        verify(!note.visible)
+        tapShown(find(sheet, "row-favourite"))
+        compare(fixture.draft.favourite, true)
+        verify(!fixture.views.viewJson(plain).favourite, "not stored before Done")
+        verify(note.visible, "the note before Done")
+        compare(note.text, "Not on tab bar (full)")
+    }
+
+    // A slot or cell sheet open: the floating buttons hide, and the sheet's Done is clear of them.
+    function test_sheetsHideTheFloatingButtons_data() { return H.sizes() }
+    function test_sheetsHideTheFloatingButtons(data) {
+        const main = makeMain(data.w, data.h)
+        const editor = m(main, "viewEditor")
+        const floating = ["editorSetup", "editorDone", "editorCancel"].map(n => m(main, n))
+        const check = (sheet, what) => {
+            verify(sheet.visible, what)
+            waitForRendering(sheet)
+            const done = find(sheet, "sheetDone")
+            verify(done.visible, what + " Done visible")
+            for (const b of floating) {
+                verify(!b.visible, b.objectName + " hidden under the " + what)
+                verify(!(b.visible && H.overlaps(b, done, editor)), b.objectName + " clear of the " + what + " Done")
+            }
+            mouseClick(done)
+            verify(!sheet.visible)
+            for (const b of floating) verify(b.visible, b.objectName + " back")
+        }
+        main.editView("shipped-nav")
+        mouseClick(m(main, "slot-TR"))
+        check(find(editor, "slotSheet"), "slot sheet")
+        mouseClick(m(main, "editorCancel"))
+
+        main.editView("shipped-big")
+        fixture.draft.layout = "2x2:0,0,1,1;1,0,1,1;0,1,1,1;1,1,1,1"
+        waitForRendering(m(main, "cellPage"))
+        mouseClick(m(main, "cell-3"))
+        check(find(editor, "cellSheet"), "cell sheet")
+        mouseClick(m(main, "editorCancel"))
     }
 
     function test_lastViewSetupDeleteDisabled() {
