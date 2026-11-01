@@ -60,6 +60,17 @@ private slots:
         QVERIFY(!a->first().shipType);
         QCOMPARE(*a->first().navStatus, 2);
     }
+    void aisTargetWithOnlyRequiredKeysParses() {
+        const auto r = parseAis(obj(R"({"targets":[{"mmsi":7,"class":"B","age":1.5}]})"));
+        QVERIFY(r.has_value());
+        QCOMPARE(r->size(), 1);
+        QVERIFY(!r->first().lat && !r->first().sogMs && !r->first().shipType && r->first().name.isEmpty());
+    }
+    void vesselMissingAKeyIsRefused() {
+        QJsonObject o = obj(kVessel); // the file's full vessel line
+        o.remove("stw");
+        QVERIFY(!parseVessel(o).has_value());
+    }
     void vesselExample() {
         auto v = parseVessel(obj(kVessel));
         QVERIFY(v.has_value());

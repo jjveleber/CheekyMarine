@@ -52,6 +52,7 @@ private slots:
     }
     void cleanup() {
         m_server.close();
+        delete m_peer; // nextPendingConnection() parents it to the server, so it lived until the end
         m_peer = nullptr;
     }
 
