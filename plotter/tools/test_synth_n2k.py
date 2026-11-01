@@ -30,6 +30,19 @@ class EncoderRangeTest(unittest.TestCase):
     def pack(self, pgn, **values):
         return self.enc.payload(pgn, values)
 
+    def raw(self, pgn, payload, field_id):
+        f = next(f for f in self.enc.pgns[pgn]["Fields"] if f["Id"] == field_id)
+        return (int.from_bytes(payload, "little") >> f["BitOffset"]) & ((1 << f["BitLength"]) - 1)
+
+    def test_unset_signed_field_is_the_signed_not_available_pattern(self):
+        p = self.pack(127250, sid=0, heading=1.0, variation=0.2731, reference=1)  # no deviation
+        self.assertEqual(self.raw(127250, p, "deviation"), 0x7FFF)
+        self.assertEqual(self.raw(127250, p, "variation"), round(0.2731 / 0.0001))
+
+    def test_unset_unsigned_field_is_all_ones(self):
+        p = self.pack(128267, sid=0, depth=10.0, offset=-0.3)  # no range
+        self.assertEqual(self.raw(128267, p, "range"), 0xFF)
+
     def test_in_range_accepted(self):
         self.pack(128267, depth=100.0)  # unsigned 32 bit, 0.01 m
         self.pack(128267, offset=-0.3)  # signed 16 bit, 0.001 m
@@ -120,8 +133,38 @@ class SynthN2kTest(unittest.TestCase):
         self.assertTrue(after)
         self.assertTrue(all(v["pos"] is not None for v in after))
 
+    def test_cog_and_variation(self):
+        v = self.near(60, "cog")
+        expected = synth_n2k.Track(synth_n2k.WAYPOINTS, synth_n2k.SPEED).at(60)[2]
+        self.assertLess(abs(v["cog"] - expected), 1e-3)
+        self.assertLess(abs(self.near(60, "variation")["variation"] - 0.2731), 1e-4)
+
     def test_depth_dropout(self):
-        self.assertTrue(any(v["depth"] is None and T0 + 360 <= v["t"] < T0 + 377 for v in self.vessel))
+        # Mirrors test_position_dropout: n2kd holds the last depth 5 s (kDepthMaxAge), so the nulls
+        # sit inside the generator's [360, 372) gap and none appear once the frames resume at 372.
+        # n2kd publishes its tick before the frames stamped at the same time, so the line at exactly
+        # T0 + 372 still reads null (the held depth expired at 365); the first line with a value is
+        # the next tick, hence the edge below is inclusive and "after" starts past 372.
+        gap = [v for v in self.vessel if v["depth"] is None and v["t"] >= T0 + 60]
+        self.assertTrue(gap)
+        self.assertGreaterEqual(min(v["t"] for v in gap), T0 + 365 - 1e-6)
+        self.assertLessEqual(max(v["t"] for v in gap), T0 + 372 + 1e-6)
+        before = [v for v in self.vessel if T0 + 350 <= v["t"] <= T0 + 360]
+        self.assertTrue(before)
+        self.assertTrue(all(v["depth"] is not None for v in before))
+        after = [v for v in self.vessel if v["t"] > T0 + 372 + 1e-6]
+        self.assertTrue(after)
+        self.assertTrue(all(v["depth"] is not None for v in after))
+
+    def test_near_reads_the_frames_stamped_one_second_earlier(self):
+        # near()'s contract, pinned on a value that changes: at s = 150 and 200 the depth moves
+        # 0.52 and 0.26 m per second, so the line at or after T0 + s + 1 matches depth_m(s) and
+        # neither neighbor. A change in n2kd's tick order fails here, not silently in test_sog.
+        for s in (150, 200):
+            d = self.near(s, "depth")["depth"]
+            self.assertLess(abs(d - synth_n2k.depth_m(s)), 0.006)
+            self.assertGreater(abs(d - synth_n2k.depth_m(s - 1)), 0.1)
+            self.assertGreater(abs(d - synth_n2k.depth_m(s + 1)), 0.1)
 
     def test_ais_targets(self):
         full = [a for a in self.ais if len(a["targets"]) == 3]
