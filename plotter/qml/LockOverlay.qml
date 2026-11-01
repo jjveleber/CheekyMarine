@@ -1,6 +1,7 @@
 import QtQuick
 
-// Covers the window while the touch lock is on: every touch, mouse press and wheel turn stops here.
+// Covers the window while the touch lock is on: every touch, mouse press, wheel turn, pinch (touch or
+// touchpad) and key press stops here and pulses the padlock.
 // The one exception is the lock icon, drawn over `anchorItem` (the tab bar's Lock button): holding it
 // for 1.5 s unlocks, and a ring shows the progress.
 Item {
@@ -10,6 +11,15 @@ Item {
     objectName: "lockOverlay"
     visible: lock.locked
     z: 1000
+    focus: true
+
+    property int swallowed: 0 // inputs stopped since the lock went on
+    readonly property bool pulsing: pulse.running
+    function swallow() {
+        swallowed++
+        pulse.restart()
+    }
+    Keys.onPressed: (event) => { event.accepted = true; swallow() }
 
     // The tab bar lays out around us and nothing signals when its Lock button moves on screen, so the
     // icon is placed when shown and then every 100 ms while locked.
@@ -21,7 +31,7 @@ Item {
         holdTarget.width = anchorItem.width
         holdTarget.height = anchorItem.height
     }
-    onVisibleChanged: if (visible) place()
+    onVisibleChanged: if (visible) { place(); swallowed = 0; forceActiveFocus() }
     Component.onCompleted: place()
     Timer {
         interval: 100
@@ -37,12 +47,24 @@ Item {
         maximumTouchPoints: 10
         // Past the drag threshold the touch points would be free for the chart's pan and pinch to take.
         onGestureStarted: (gesture) => gesture.grab()
+        onPressed: overlay.swallow()
     }
-    WheelHandler { }
+    WheelHandler { onWheel: overlay.swallow() }
+    // A touchpad pinch arrives as a native gesture, which only a handler sees.
+    PinchHandler {
+        target: null
+        onActiveChanged: if (active) overlay.swallow()
+    }
 
     Item {
         id: holdTarget
         objectName: "lockHold"
+
+        SequentialAnimation {
+            id: pulse
+            NumberAnimation { target: holdTarget; property: "scale"; to: 1.25; duration: 120 }
+            NumberAnimation { target: holdTarget; property: "scale"; to: 1; duration: 180 }
+        }
 
         Rectangle {
             anchors.fill: parent

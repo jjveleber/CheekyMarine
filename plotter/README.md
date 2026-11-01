@@ -214,6 +214,10 @@ On the real panel, once the app runs there (the tests cover these offscreen only
   target. The tap point is in map area coordinates (`tst_pages` proves it reaches `selectAt` that
   way); this checks that on the panel's touch driver it matches where the map draws the target
   (`pixelForCoordinate`), including with the Top and Left bars on.
+- Lock against a touchpad pinch (dev desktop only; the panel is touch): with the lock on, a two-finger
+  touchpad pinch over the chart must not zoom and must pulse the padlock. QtTest cannot send a native
+  gesture (`QNativeGestureEvent`), so `tst_views` covers touch, mouse, wheel and keys, and this one is
+  checked by hand.
 
 ## Licences
 

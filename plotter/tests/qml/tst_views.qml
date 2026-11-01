@@ -731,6 +731,48 @@ TestCase {
         compare(fixture.views.currentId, "shipped-fish")
     }
 
+    // Every input the lock stops pulses the padlock (owner: the screen is locked, not dead): a tap,
+    // a wheel turn, a pinch and a key press. The unlock hold does not count. A key reaches nothing.
+    function test_lockPulsesOnEverySwallowedInputAndTakesKeys() {
+        const main = makeMain(1024, 600)
+        const map = item(main, "mapArea")
+        const overlay = item(main, "lockOverlay")
+        waitForRendering(main.contentItem)
+        fixture.touchLock.lockNow()
+        compare(overlay.swallowed, 0)
+        verify(overlay.activeFocus, "the overlay holds the key focus while locked")
+        verify(!overlay.pulsing)
+
+        touchTap(map)
+        compare(overlay.swallowed, 1, "a tap")
+        verify(overlay.pulsing, "the tap pulses the padlock")
+        mouseWheel(map, map.width / 2, map.height / 2, 0, 120)
+        compare(overlay.swallowed, 2, "a wheel turn")
+        const n = overlay.swallowed
+        pinchOut(map)
+        verify(overlay.swallowed > n, "a pinch")
+        const k = overlay.swallowed
+        keyClick(Qt.Key_Plus)
+        keyClick(Qt.Key_Escape)
+        compare(overlay.swallowed, k + 2, "key presses")
+        compare(chartStub.zooms.length, 0, "nothing reached the chart")
+        compare(main.chartMap.gestures, 0)
+        compare(main.chartMap.scales.length, 0)
+        compare(main.page, "view")
+        verify(overlay.activeFocus, "still focused after the inputs")
+
+        const holdTarget = item(main, "lockHold")
+        const before = overlay.swallowed
+        mousePress(holdTarget)
+        fixture.advance(1500)
+        mouseRelease(holdTarget)
+        verify(!fixture.touchLock.locked, "the hold still unlocks")
+        compare(overlay.swallowed, before, "the hold is not a swallowed input")
+        tryVerify(() => !overlay.pulsing, 1000, "the pulse ends")
+        mouseWheel(map, map.width / 2, map.height / 2, 0, 120)
+        compare(chartStub.zooms.length, 1, "the wheel zooms once unlocked")
+    }
+
     function test_lockHoldTargetIsOverTheLockButton() {
         const main = makeMain(1024, 600)
         fixture.touchLock.lockNow()

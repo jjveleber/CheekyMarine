@@ -125,7 +125,7 @@ The parent's "Edit overlays" settings entry and the Numbers page cell picker are
 
 ### 6.8 Lock and palette (owner)
 
-Idle auto-lock is removed ("I definitely wouldn't want it to lock because I haven't touched it in a while"). The Lock button and the 1.5 s hold to unlock stay. The `touchLockTimeoutS` setting and its Settings row go; `TouchLock` keeps its state machine with the timeout path deleted (my call: delete, not hide).
+Idle auto-lock is removed ("I definitely wouldn't want it to lock because I haven't touched it in a while"). The Lock button and the 1.5 s hold to unlock stay. While locked, every input (touch, mouse, wheel, native pinch, keys) stops at the overlay and pulses the padlock; the unlock hold is the only interaction (owner, 2026-11-01, issue #45: 'Lock means the only option for interaction is to unlock'). The `touchLockTimeoutS` setting and its Settings row go; `TouchLock` keeps its state machine with the timeout path deleted (my call: delete, not hide).
 
 Palette button unchanged.
 
