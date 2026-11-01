@@ -252,6 +252,8 @@ Item {
             color: Theme.alertBackground
             width: fishText.implicitWidth + Units.mm(6)
             height: fishText.implicitHeight + Units.mm(2)
+            // Takes its own tap, so a tap on it is not a plain tap on the map.
+            TapHandler { gesturePolicy: TapHandler.WithinBounds }
             Label {
                 id: fishText
                 anchors.centerIn: parent

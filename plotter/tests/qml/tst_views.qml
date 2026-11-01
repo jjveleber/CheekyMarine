@@ -746,6 +746,17 @@ TestCase {
         const map = item(main, "mapArea")
         mouseClick(map, map.width / 2, map.height / 2)
         stillHidden("an AIS target")
+
+        chartStub.target = undefined
+        chartStub.fishAvailable = false
+        fixture.views.currentId = "shipped-fish" // the tab is off screen with the bar
+        stillHidden("the view switch")
+        const chip = item(main, "noFishChip")
+        verify(chip.visible)
+        const plain = createTemporaryObject(spyComp, testCase, { target: item(main, "chartPage"), signalName: "plainTap" })
+        mouseClick(chip)
+        compare(plain.count, 0, "the chip takes its own tap")
+        stillHidden("the No fishing chart chip")
     }
 
     // The hide moves nothing: the slots, the zoom buttons, Legend and the chip keep their boxes and
