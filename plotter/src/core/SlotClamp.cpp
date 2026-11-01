@@ -55,11 +55,15 @@ double maxSizeMm(SlotId id, const QList<SlotBox>& boxes, const ClampSpace& space
     switch (id) {
     case SlotId::Top:
     case SlotId::Bottom:
-        best = bound(space.pageHMm / 3, self->fixedHMm, self->hPerMm);
+        // At most a third of the page height, and never longer than the page is wide.
+        best = std::min(bound(space.pageHMm / 3, self->fixedHMm, self->hPerMm),
+                        bound(space.pageWMm, self->fixedWMm, self->wPerMm));
         break;
     case SlotId::Left:
     case SlotId::Right:
-        best = bound(space.pageWMm / 3, self->fixedWMm, self->wPerMm);
+        // At most a third of the page width, and never taller than the page.
+        best = std::min(bound(space.pageWMm / 3, self->fixedWMm, self->wPerMm),
+                        bound(space.pageHMm, self->fixedHMm, self->hPerMm));
         break;
     default: {
         const double areaW = space.pageWMm - 2 * space.marginMm - widthIfOn(boxes, SlotId::Left) - widthIfOn(boxes, SlotId::Right);
@@ -85,15 +89,44 @@ double maxSizeMm(SlotId id, const QList<SlotBox>& boxes, const ClampSpace& space
 
 QList<double> drawnSizesMm(const QList<SlotBox>& boxes, const ClampSpace& space)
 {
-    static const SlotId order[] = {SlotId::Top, SlotId::Bottom, SlotId::Left, SlotId::Right,
-                                   SlotId::TL,  SlotId::TR,     SlotId::BL,   SlotId::BR};
     QList<SlotBox> work = boxes;
-    for (SlotId id : order)
+    // The bars first, each alone: their drawn sizes fix the corner area.
+    for (SlotId id : {SlotId::Top, SlotId::Bottom, SlotId::Left, SlotId::Right})
         for (SlotBox& b : work)
             if (b.id == id)
                 b.sizeMm = clampSizeMm(b.sizeMm, maxSizeMm(id, work, space));
+    const double areaW = space.pageWMm - 2 * space.marginMm - widthIfOn(work, SlotId::Left) - widthIfOn(work, SlotId::Right);
+    const double areaH = space.pageHMm - 2 * space.marginMm - heightIfOn(work, SlotId::Top) - heightIfOn(work, SlotId::Bottom);
+    const auto isCorner = [](SlotId id) {
+        return id == SlotId::TL || id == SlotId::TR || id == SlotId::BL || id == SlotId::BR;
+    };
+    // Each corner scales its stored size by the smallest fit factor (at most 1) over the constraints
+    // it belongs to: alone in the corner area, and with its row and column partners when both take
+    // room. A pair shares one factor, so neither starves; scaling down never breaks another
+    // constraint, so one pass is enough.
+    const auto fit = [](double limit, double fixed, double perSize) {
+        return perSize > 0 ? (limit - fixed) / perSize : std::numeric_limits<double>::infinity();
+    };
+    const auto pairFit = [&](const SlotBox& a, SlotId partner, bool row) {
+        const SlotBox* b = find(work, partner);
+        if (!a.takesRoom || !b || !b->takesRoom)
+            return std::numeric_limits<double>::infinity();
+        return row ? fit(areaW - space.gutterMm, a.fixedWMm + b->fixedWMm, a.wPerMm * a.sizeMm + b->wPerMm * b->sizeMm)
+                   : fit(areaH - space.gutterMm, a.fixedHMm + b->fixedHMm, a.hPerMm * a.sizeMm + b->hPerMm * b->sizeMm);
+    };
     QList<double> out;
-    for (const SlotBox& b : work)
-        out.append(b.sizeMm);
+    for (const SlotBox& b : work) {
+        if (!isCorner(b.id)) {
+            out.append(b.sizeMm);
+            continue;
+        }
+        const SlotId rowPartner = b.id == SlotId::TL ? SlotId::TR : b.id == SlotId::TR ? SlotId::TL
+                                : b.id == SlotId::BL ? SlotId::BR : SlotId::BL;
+        const SlotId colPartner = b.id == SlotId::TL ? SlotId::BL : b.id == SlotId::BL ? SlotId::TL
+                                : b.id == SlotId::TR ? SlotId::BR : SlotId::TR;
+        const double k = std::min({1.0, fit(areaW, b.fixedWMm, b.wPerMm * b.sizeMm), fit(areaH, b.fixedHMm, b.hPerMm * b.sizeMm),
+                                   pairFit(b, rowPartner, true), pairFit(b, colPartner, false)});
+        out.append(clampSizeMm(floorTenth(k * b.sizeMm), b.sizeMm));
+    }
     return out;
 }

@@ -442,14 +442,8 @@ TestCase {
             verify(s.drawnMm >= 6 && s.drawnMm < 90, s.objectName + " drawn at " + s.drawnMm)
             compare(H.byName(s, "slotValue").font.pixelSize, Units.digitPixelSize(s.drawnMm))
         }
-        // TR (clamped after TL) is as large as fits beside TL at its drawn size: the ceiling, not
-        // just something smaller.
-        const boxes = H.findAll(chart, it => it.objectName.startsWith("slot-")).map(s => ({
-            id: s.slotId, takesRoom: s.takesRoom, sizeMm: s.slotId === "TR" ? s.sizeMm : s.drawnMm,
-            fixedWMm: s.fixedWMm, wPerMm: s.wPerMm, fixedHMm: s.fixedHMm, hPerMm: s.hPerMm }))
-        const space = { pageWMm: (chart.width - chart.rightInset) / Units.pxPerMm,
-                        pageHMm: (chart.height - H.byName(chart, "noticeBar").height) / Units.pxPerMm }
-        fuzzyCompare(tr.drawnMm, PanelMath.maxSlotSizeMm("TR", boxes, space), 1e-9)
+        // Both stored at 90: the row is shared by one factor, so they draw at the same size (R64).
+        verify(Math.abs(tl.drawnMm - tr.drawnMm) <= 0.1 + 1e-9, "TL " + tl.drawnMm + " vs TR " + tr.drawnMm)
         return { mm: [tl.drawnMm, tr.drawnMm], px: [Units.mm(tl.drawnMm), Units.mm(tr.drawnMm)] }
     }
     function test_storedSizeAboveTheCeilingIsClampedNotRewritten() {

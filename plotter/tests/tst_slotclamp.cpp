@@ -81,20 +81,36 @@ private slots:
         QCOMPARE(clampSizeMm(3, 40), 6.0);
         QCOMPARE(clampSizeMm(10, 4), 6.0);
     }
-    void drawnSizesAreSequential()
+    // A Top or Bottom bar's length fits the page width (width binds before the third-of-height rule).
+    void bannerWidthFitsThePage()
     {
+        SlotBox top = bar(SlotId::Top, true, 30);
+        top.wPerMm = 8;
+        QCOMPARE(maxSizeMm(SlotId::Top, {top}, kSpace), 24.1);
+        QCOMPARE(drawnSizesMm({top}, kSpace), (QList<double>{24.1}));
+    }
+    // A Left or Right bar's height fits the page height.
+    void barHeightFitsThePage()
+    {
+        SlotBox left = bar(SlotId::Left, true, 30);
+        left.hPerMm = 8;
+        QCOMPARE(maxSizeMm(SlotId::Left, {left}, kSpace), 14.6);
+        QCOMPARE(drawnSizesMm({left}, kSpace), (QList<double>{14.6}));
+    }
+    // Corners in a row (or column) scale by one shared factor instead of the first one starving.
+    void drawnSizesShareTheRoom()
+    {
+        // k = (200 - 2 - 6 - 6) / (2.8 * 40 + 2.8 * 40) = 0.8304.
         const QList<SlotBox> b{corner(SlotId::TL, true, 40), corner(SlotId::TR, true, 40)};
-        const QList<double> d = drawnSizesMm(b, kSpace);
-        QCOMPARE(d.size(), 2);
-        QCOMPARE(d[0], 26.4);
-        QCOMPARE(d[1], 40.0);
+        QCOMPARE(drawnSizesMm(b, kSpace), (QList<double>{33.2, 33.2}));
         QCOMPARE(b[0].sizeMm, 40.0);
         QCOMPARE(b[1].sizeMm, 40.0);
-        const QList<SlotBox> c{corner(SlotId::TL, true, 40), corner(SlotId::TR, true, 45)};
-        // TR stored 45 squeezes TL to 21.4 first, which leaves TR room for its 45.
-        const QList<double> e = drawnSizesMm(c, kSpace);
-        QCOMPARE(e[0], 21.4);
-        QCOMPARE(e[1], 45.0);
+        // k = 186 / (2.8 * 60) = 1.107, capped at 1: they fit as stored.
+        QCOMPARE(drawnSizesMm({corner(SlotId::TL, true, 40), corner(SlotId::TR, true, 20)}, kSpace), (QList<double>{40.0, 20.0}));
+        // k = 186 / (2.8 * 180) = 0.369.
+        QCOMPARE(drawnSizesMm({corner(SlotId::TL, true, 90), corner(SlotId::TR, true, 90)}, kSpace), (QList<double>{33.2, 33.2}));
+        // A partner that takes no room is ignored: TL alone fits at 40.
+        QCOMPARE(drawnSizesMm({corner(SlotId::TL, true, 40), corner(SlotId::TR, false, 40)}, kSpace).at(0), 40.0);
     }
 };
 
