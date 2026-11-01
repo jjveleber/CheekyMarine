@@ -61,14 +61,14 @@ TestCase {
         Units.diagonalIn = 10.1
     }
 
-    function makeMain(w, h) {
-        const main = createTemporaryObject(mainComp, testCase, {
+    function makeMain(w, h, extra) {
+        const main = createTemporaryObject(mainComp, testCase, Object.assign({
             width: w, height: h,
             chart: chartStub, chartMap: createTemporaryObject(mapStub, testCase), paletteController: paletteStub,
             settings: fixture.settings, vessel: fixture.vessel, appInfo: fixture.appInfo,
             views: fixture.views, draft: fixture.draft,
             touchLock: fixture.touchLock, tracksController: fixture.tracksController
-        })
+        }, extra || {}))
         verify(main, "Main")
         tryCompare(main, "width", w)
         H.byName(main.contentItem, "splash").visible = false
@@ -536,6 +536,37 @@ TestCase {
         fuzzyCompare(H.box(sheet, editor).y, 0, 1)
         mouseClick(find(sheet, "sheetDone"))
         mouseClick(m(main, "editorCancel"))
+    }
+
+    // The dev options --editor and --sheet: Main opens the editor on the shown view, then the sheet
+    // its initial properties name.
+    function test_mainInitialEditorAndSheet_data() {
+        return [
+            { tag: "editor", view: "shipped-nav", sheet: "", shown: "editorSetup" },
+            { tag: "setup", view: "shipped-nav", sheet: "setup", shown: "setupSheet" },
+            { tag: "gallery", view: "shipped-big", sheet: "gallery", shown: "layoutGallery" },
+            { tag: "keyboard", view: "shipped-nav", sheet: "keyboard", shown: "keyboard" },
+            { tag: "slot", view: "shipped-nav", sheet: "slot", shown: "slotSheet" },
+            { tag: "cell", view: "shipped-big", sheet: "cell", shown: "cellSheet" },
+        ]
+    }
+    function test_mainInitialEditorAndSheet(data) {
+        fixture.views.currentId = data.view
+        const main = makeMain(1024, 600, { editorOpen: true, sheet: data.sheet })
+        const editor = m(main, "viewEditor")
+        tryVerify(() => main.editing, 3000, "the editor opens")
+        compare(main.page, "view")
+        compare(fixture.views.currentId, data.view)
+        const shown = find(editor, data.shown)
+        tryVerify(() => shown.visible, 3000, data.shown + " shows")
+        if (["setup", "gallery", "keyboard"].includes(data.sheet)) {
+            compare(editor.sheet, "setup")
+            verify(find(editor, "setupSheet").visible)
+        }
+        if (data.sheet === "keyboard") compare(shown.title, "Name")
+        if (data.sheet === "slot") compare(shown.slotId, "TL")
+        if (data.sheet === "cell") compare(editor.selectedCell, 0)
+        if (data.sheet === "") compare(editor.sheet, "")
     }
 
     function test_liveHoldOpensSheetAndSaves() {

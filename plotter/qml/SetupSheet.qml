@@ -43,6 +43,8 @@ Item {
         else keyboard.open("Short name", draft.shortName, 6)
     }
 
+    function openGallery() { gallery.visible = true }
+
     // Taps beside the sheet do nothing.
     MouseArea { anchors.fill: parent }
 
@@ -162,7 +164,7 @@ Item {
                     objectName: "row-layout"
                     visible: sheet.draft.chart === "none"
                     text: "Layout"
-                    onClicked: gallery.visible = true
+                    onClicked: sheet.openGallery()
                 }
 
                 Heading { text: "Tab bar" }

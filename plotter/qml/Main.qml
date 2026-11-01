@@ -20,6 +20,10 @@ ApplicationWindow {
     // home, view (the shown view), tracks, settings or about
     property string page: "view"
     property bool legendOpen: false // dev option --sheet legend
+    property bool editorOpen: false // dev option --editor: the editor opens on the shown view
+    // Dev option --sheet with the editor: setup, slot (TL), cell (the first), gallery or keyboard
+    // (the Setup Name field); other values open nothing here.
+    property string sheet: ""
     property bool editing: false    // the view editor is open
     property string editorFrom: "view" // the page the editor returns to on Cancel
     property bool editingNew: false // the edited view was just added
@@ -104,6 +108,23 @@ ApplicationWindow {
         root.page = "home"
     }
     Component.onCompleted: showCurrentView()
+    // The editor and its sheet open once the page has laid out, so a sheet takes the right half
+    // (the splash covers it for its first 2 s).
+    function openInitialEditor() {
+        root.editView(root.views.currentId, false)
+        if (root.sheet === "slot") editor.openSlotSheet("TL")
+        else if (root.sheet === "cell") editor.openCellSheet(0)
+        else if (["setup", "gallery", "keyboard"].includes(root.sheet)) {
+            editor.openSetup()
+            if (root.sheet === "gallery") editor.setupSheet.openGallery()
+            else if (root.sheet === "keyboard") editor.setupSheet.editText("name")
+        }
+    }
+    Timer {
+        interval: 300
+        running: root.editorOpen
+        onTriggered: root.openInitialEditor()
+    }
     Connections {
         target: root.views
         function onCurrentIdChanged() { root.showCurrentView() }

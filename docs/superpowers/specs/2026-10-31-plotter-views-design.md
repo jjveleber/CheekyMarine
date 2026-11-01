@@ -117,6 +117,8 @@ Cell sheet: Field list, Done.
 
 Layout gallery: 60 landscape thumbnails, at least 12 mm tall, scrolling, the current one highlighted; tap to apply and close.
 
+Note (builder): the count is 72, not 60 (see 6.4).
+
 Keyboard: our own QML keyboard (Qt Virtual Keyboard is GPL): letters, digits, space, backspace, Done; 12 mm keys; uppercase first letter by default, a shift key. Short name capped at 6, name at 24.
 
 The parent's "Edit overlays" settings entry and the Numbers page cell picker are removed (both live in views now).
@@ -153,6 +155,8 @@ A bundled subset of Tabler Icons (MIT) as SVG (Qt Svg becomes a dependency, LGPL
 ### 6.12 Storage (my call)
 
 New table `views` (id, order, json) in the settings database, plus `lastViewId` in settings. JSON per view as in 6.1; unknown keys kept on save (R34 rule). Pure C++ `Views` model with unit tests: CRUD, order moves, favourite count given a bar height, migration from the plan 3 keys, clamp math for slot sizes, the tiling generator (exactly 60 distinct shapes, every one a complete tiling, stable keys).
+
+Note (builder): the count is 72, not 60 (see 6.4).
 
 ### 6.13 What the chart page keeps (unchanged)
 

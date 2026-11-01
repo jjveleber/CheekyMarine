@@ -2,6 +2,10 @@
 # Runs the plotter against n2kd replaying an N2K log. Builds nothing: build n2kd (build/) and the
 # plotter (build-plotter/) first. Usage, from anywhere:
 #   plotter/tools/run-dev.sh [FIXTURE] [extra cheekyplotter args...]
+# for example (an empty FIXTURE is the default log):
+#   plotter/tools/run-dev.sh "" --palette night --view Fish
+#   plotter/tools/run-dev.sh "" --view "Big #" --sheet cell --window 1280x800 \
+#       --screenshot /tmp/cell.png --screenshot-after-ms 5000 --exit-after-ms 6000
 # PACKS: $CM_PACKS_DIR when set, else a temp dir of symlinks to the puget-north packs in
 # chartpack/work (worktrees have no chartpack/work: set CM_PACKS_DIR there).
 set -euo pipefail

@@ -90,17 +90,21 @@ int main(int argc, char* argv[]) {
     // Dev and checkpoint aids: save a window grab N ms after start. Repeatable; paired in order.
     QCommandLineOption shotOpt("screenshot", "Save a window grab to PATH.", "path");
     QCommandLineOption shotAfterOpt("screenshot-after-ms", "Delay for the matching --screenshot.", "ms");
-    // Dev and checkpoint aids: write Settings::paletteMode at start (it persists); choose the page
-    // shown first (not stored).
+    // Dev and checkpoint aids: write Settings::paletteMode at start (it persists); choose the view
+    // (it persists, as a tab tap does) and the page shown first (not stored); quit after a delay.
     QCommandLineOption paletteOpt("palette", "Set the palette mode: auto, day, dusk or night.", "mode");
+    QCommandLineOption viewOpt("view", "View shown first, by its short name.", "short");
     QCommandLineOption pageOpt("page", "Page shown first: home, view, tracks, settings or about.", "page");
-    QCommandLineOption sheetOpt("sheet", "Open a sheet on the chart page: legend or ais.", "sheet");
+    QCommandLineOption editorOpt("editor", "Open the view editor on the shown view.");
+    QCommandLineOption sheetOpt("sheet", "Open a sheet: legend, ais, setup, slot, cell, gallery or keyboard.", "sheet");
     QCommandLineOption lockOpt("lock", "Start with the touch lock on.");
     QCommandLineOption recordOpt("record", "Turn track recording on at start (it persists).");
-    for (QCommandLineOption* o : {&shotOpt, &shotAfterOpt, &paletteOpt, &pageOpt, &sheetOpt, &lockOpt, &recordOpt})
+    QCommandLineOption exitAfterOpt("exit-after-ms", "Quit N ms after start.", "ms");
+    for (QCommandLineOption* o : {&shotOpt, &shotAfterOpt, &paletteOpt, &viewOpt, &pageOpt, &editorOpt, &sheetOpt,
+                                  &lockOpt, &recordOpt, &exitAfterOpt})
         o->setFlags(QCommandLineOption::HiddenFromHelp);
-    cli.addOptions(
-        {socketOpt, packsOpt, dataOpt, windowOpt, shotOpt, shotAfterOpt, paletteOpt, pageOpt, sheetOpt, lockOpt, recordOpt});
+    cli.addOptions({socketOpt, packsOpt, dataOpt, windowOpt, shotOpt, shotAfterOpt, paletteOpt, viewOpt, pageOpt,
+                    editorOpt, sheetOpt, lockOpt, recordOpt, exitAfterOpt});
     cli.process(app);
 
     QSize windowSize;
@@ -128,8 +132,18 @@ int main(int argc, char* argv[]) {
         return 2;
     }
 
-    if (cli.isSet(sheetOpt) && cli.value(sheetOpt) != "legend" && cli.value(sheetOpt) != "ais") {
-        qCritical() << "--sheet wants legend or ais, got" << cli.value(sheetOpt);
+    // setup, slot (TL), cell (the first cell, on a view with no chart), gallery and keyboard (the
+    // Setup Name field) are editor sheets: they open the editor too.
+    const QStringList sheets{"legend", "ais", "setup", "slot", "cell", "gallery", "keyboard"};
+    if (cli.isSet(sheetOpt) && !sheets.contains(cli.value(sheetOpt))) {
+        qCritical() << "--sheet wants one of" << sheets << "got" << cli.value(sheetOpt);
+        return 2;
+    }
+    const bool editorOpen = cli.isSet(editorOpt) || sheets.indexOf(cli.value(sheetOpt)) >= 2;
+    bool exitAfterOk = true;
+    const int exitAfterMs = cli.value(exitAfterOpt).toInt(&exitAfterOk);
+    if (cli.isSet(exitAfterOpt) && (!exitAfterOk || exitAfterMs < 0)) {
+        qCritical() << "--exit-after-ms wants a whole number of ms, got" << cli.value(exitAfterOpt);
         return 2;
     }
 
@@ -171,6 +185,16 @@ int main(int argc, char* argv[]) {
     // The saved views and the draft of the shown one (Main.qml loads the current view into it).
     ViewsModel views(*store, settings, [] { return QDateTime::currentSecsSinceEpoch(); });
     ViewDraft draft(vessel, settings);
+    if (cli.isSet(viewOpt)) {
+        const QString id = views.idOfShort(cli.value(viewOpt));
+        if (id.isEmpty()) {
+            QStringList shorts;
+            for (const View& v : views.views()) shorts << v.shortName;
+            qCritical() << "--view wants the short name of a view, one of" << shorts << "got" << cli.value(viewOpt);
+            return 2;
+        }
+        views.setCurrentId(id);
+    }
 
     const QString packsDir = cli.isSet(packsOpt) ? cli.value(packsOpt) : cli.value(dataOpt) + "/packs";
     const QList<PackInfo> packs = PackCatalog::scan(packsDir);
@@ -245,7 +269,9 @@ int main(int argc, char* argv[]) {
                                  {"touchLock", QVariant::fromValue(&touchLock)},
                                  {"tracksController", QVariant::fromValue(&tracksController)},
                                  {"page", cli.isSet(pageOpt) ? cli.value(pageOpt) : QStringLiteral("view")},
-                                 {"legendOpen", cli.value(sheetOpt) == "legend"}});
+                                 {"legendOpen", cli.value(sheetOpt) == "legend"},
+                                 {"editorOpen", editorOpen},
+                                 {"sheet", cli.value(sheetOpt)}});
     engine.loadFromModule("CheekyMarine", "Main");
     if (engine.rootObjects().isEmpty()) {
         qCritical() << "the main QML failed to load";
@@ -269,6 +295,8 @@ int main(int argc, char* argv[]) {
             qInfo() << "screenshot" << path << (ok ? "saved" : "FAILED");
         });
     }
+
+    if (cli.isSet(exitAfterOpt)) QTimer::singleShot(exitAfterMs, &app, &QCoreApplication::quit);
 
     client.start();
     return app.exec();

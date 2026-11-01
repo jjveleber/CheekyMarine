@@ -22,6 +22,7 @@ Item {
     property int selectedCell: -1
     property string sheet: ""       // the open sheet: slot, cell, setup or none
     readonly property bool sheetOpen: sheet !== ""
+    readonly property Item setupSheet: setupSheet
     signal setupRequested()
     signal doneRequested()
     signal cancelRequested()
@@ -152,6 +153,7 @@ Item {
         onClosed: { editor.closeSheets(); editor.sheetClosed() }
     }
     SetupSheet {
+        id: setupSheet
         visible: editor.sheet === "setup"
         draft: editor.draft
         views: editor.views
