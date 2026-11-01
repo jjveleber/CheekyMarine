@@ -882,6 +882,46 @@ TestCase {
         compare(map.width, main.width)
     }
 
+    // A None view's cells widen into the strip when the bar slides off and come back exactly when it
+    // shows; heights never change, digits never get smaller (they may refit larger, issue #35).
+    function test_cellsFollowTheBar_data() { return H.sizes() }
+    function test_cellsFollowTheBar(data) {
+        const main = makeMain(data.w, data.h)
+        main.hideDelayMs = 0
+        mouseClick(item(main, "tab-view-shipped-big"))
+        compare(main.page, "view")
+        const page = item(main, "cellPage")
+        waitForRendering(page)
+        const cells = H.findAll(page, it => it.objectName.startsWith("cell-") && it.visible)
+                          .sort((a, b) => a.objectName.localeCompare(b.objectName))
+        compare(cells.length, 2)
+        const boxOf = it => H.box(it, main.contentItem)
+        const before = cells.map(boxOf)
+        const digits = () => cells.map(c => H.byName(c, "cellValue").fontInfo.pixelSize)
+        const digitsBefore = digits()
+        const gap = page.gap
+
+        main.hideDelayMs = 200
+        tryVerify(() => item(main, "tabBar").x >= main.width - 0.01, 1500, "the bar slid all the way off")
+        const after = cells.map(boxOf)
+        for (let i = 0; i < cells.length; ++i) {
+            compare(after[i].y, before[i].y, "cell-" + i + " y")
+            compare(after[i].h, before[i].h, "cell-" + i + " height")
+            fuzzyCompare(after[i].w, (main.width - 3 * gap) / 2, 1, "cell-" + i + " half of the full width")
+        }
+        compare(after[0].x, before[0].x, "cell-0 stays at the left edge")
+        fuzzyCompare(after[1].x + after[1].w, main.width - gap, 1, "cell-1 reaches the right edge")
+        const digitsAfter = digits()
+        for (let i = 0; i < cells.length; ++i) verify(digitsAfter[i] >= digitsBefore[i] - 0.01, "digits never smaller: " + digitsBefore + " to " + digitsAfter)
+
+        main.hideDelayMs = 2000
+        mouseClick(cells[0], cells[0].width / 2, cells[0].height / 2) // a plain tap brings the bar back
+        verify(item(main, "tabBar").shown)
+        tryVerify(() => barShown(main) && JSON.stringify(cells.map(boxOf)) === JSON.stringify(before), 1500,
+                  "every cell back: " + JSON.stringify(cells.map(boxOf)))
+        compare(digits(), digitsBefore, "digits back to their size")
+    }
+
     // The legend sheet follows the bar: once it slides off, the sheet covers the strip too, so
     // none of the slots that moved into it shows beside the sheet.
     function test_legendSheetCoversTheStripWhenTheBarHides() {
