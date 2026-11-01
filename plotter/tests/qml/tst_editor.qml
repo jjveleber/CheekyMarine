@@ -526,7 +526,8 @@ TestCase {
             verify(arrow.visible, id + " arrow")
             compare(arrow.rotation, angle[id], id + " arrow along the resize axis")
             verify(Qt.colorEqual(arrow.stroke, Theme.editHandleArrow), id + " arrow color")
-            verify(!Qt.colorEqual(Theme.editHandleArrow, Theme.editOutline), "lighter than the disc")
+            for (const p of [Theme.day, Theme.dusk, Theme.night])
+                verify(Qt.color(p.editHandleArrow).hslLightness > Qt.color(p.editHandleDisc).hslLightness, "the arrow is lighter than the disc")
             // Done closes the sheet (it would cover the slots in the other half); the selection stays.
             const sheet = find(m(main, "viewEditor"), "slotSheet")
             mouseClick(find(sheet, "sheetDone"))

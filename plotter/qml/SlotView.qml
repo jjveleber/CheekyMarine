@@ -122,7 +122,7 @@ BigButton {
         Rectangle {
             anchors.fill: parent
             radius: width / 2
-            color: Theme.editOutline
+            color: Theme.editHandleDisc
             opacity: 0.8
         }
         Canvas {
