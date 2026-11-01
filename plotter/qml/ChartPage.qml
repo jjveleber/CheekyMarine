@@ -7,7 +7,8 @@ import QtQuick.Controls.Basic
 // Right) shrink the chart viewport; the corners float over the chart. The notice is the bottom line,
 // under a bottom bar. Each slot is drawn at its clamped size (PanelMath.drawnSizesMm), so no slot
 // leaves the page or runs into another; the stored sizes are not changed. In edit mode every slot is
-// shown outlined (the bars as if on, so nothing overlaps) and a tap on one emits slotTapped.
+// shown outlined (the bars as if on, so nothing overlaps) and a tap on one emits slotTapped; the
+// selected slot shows its resize handle. On a live view a 0.6 s hold on a shown slot emits slotHeld.
 Item {
     id: page
     required property QtObject chart   // ChartController
@@ -15,7 +16,12 @@ Item {
     required property var draft        // ViewDraft
     property real rightInset: 0        // the tab bar strip over the page's right edge
     property bool editing: false
+    property string selectedSlot: ""   // the slot whose resize handle shows (the editor's)
     signal slotTapped(string slotId)
+    signal slotHeld(string slotId)     // a 0.6 s hold on a shown slot while not editing
+    // The selected slot's handle dragged: where its inner corner (or edge midpoint) would be, in
+    // page coordinates.
+    signal handleDragged(string slotId, real innerX, real innerY)
     signal plainTap()                  // a tap on the chart that is not on an AIS target
 
     // Sizes of the bars that take room from the chart (set by the bar slots themselves).
@@ -35,22 +41,61 @@ Item {
     // depend on the slots' text metrics and stored sizes only, never on drawnMm, so this does not
     // loop; it is recomputed when a box, the page size or the inset changes.
     readonly property var drawn: drawnSizes()
-    function drawnSizes() {
+    // Every slot's box, each at sizeOf(slot).
+    function slotBoxes(sizeOf) {
         const boxes = []
         for (let i = 0; i < slotRepeater.count; ++i) {
             const s = slotRepeater.itemAt(i)
             if (!s) continue
-            boxes.push({ id: s.slotId, takesRoom: s.takesRoom, sizeMm: s.sizeMm,
+            boxes.push({ id: s.slotId, takesRoom: s.takesRoom, sizeMm: sizeOf(s),
                          fixedWMm: s.fixedWMm, wPerMm: s.wPerMm, fixedHMm: s.fixedHMm, hPerMm: s.hPerMm })
         }
-        const sizes = PanelMath.drawnSizesMm(boxes, { pageWMm: (page.width - page.rightInset) / Units.pxPerMm,
-                                                      pageHMm: (page.height - noticeBar.height) / Units.pxPerMm })
+        return boxes
+    }
+    function clampSpace() {
+        return { pageWMm: (page.width - page.rightInset) / Units.pxPerMm, pageHMm: (page.height - noticeBar.height) / Units.pxPerMm }
+    }
+    function drawnSizes() {
+        const boxes = slotBoxes(s => s.sizeMm)
+        const sizes = PanelMath.drawnSizesMm(boxes, clampSpace())
         const out = {}
         for (let i = 0; i < boxes.length; ++i) out[boxes[i].id] = sizes[i]
         return out
     }
+    // The largest size the slot can take against the other slots at their drawn sizes (the editor's
+    // clamp).
+    function maxMmFor(slotId) {
+        return PanelMath.maxSlotSizeMm(slotId, slotBoxes(s => s.slotId === slotId ? s.sizeMm : s.drawnMm), clampSpace())
+    }
+    function slotItem(slotId) {
+        for (let i = 0; i < slotRepeater.count; ++i) {
+            const s = slotRepeater.itemAt(i)
+            if (s && s.slotId === slotId) return s
+        }
+        return null
+    }
 
     objectName: "chartPage"
+    readonly property Item cornerAreaItem: cornerArea
+
+    function slotAt(p) {
+        for (let i = 0; i < slotRepeater.count; ++i) {
+            const s = slotRepeater.itemAt(i)
+            if (s && s.visible && p.x >= s.x && p.x < s.x + s.width && p.y >= s.y && p.y < s.y + s.height) return s
+        }
+        return null
+    }
+    // The hold shortcut (spec 6.9). On the page, under everything: a live slot takes no touches, and
+    // the grab is passive, so a drag that starts on a slot still pans the map.
+    TapHandler {
+        enabled: !page.editing
+        longPressThreshold: 0.6
+        gesturePolicy: TapHandler.DragThreshold
+        onLongPressed: {
+            const s = page.slotAt(point.position)
+            if (s) page.slotHeld(s.slotId)
+        }
+    }
 
     Item {
         id: mapArea
@@ -91,8 +136,9 @@ Item {
             }
         }
         // A tap (not a pan) picks the nearest AIS target within 8 mm; a miss changes nothing and is
-        // a plain tap.
+        // a plain tap. A hold as long as the slot hold is no tap.
         TapHandler {
+            longPressThreshold: 0.6
             onTapped: (eventPoint) => {
                 const target = page.chart.targetAt(eventPoint.position, Units.mm(8))
                 if (target === undefined || target === null) page.plainTap()
@@ -170,7 +216,9 @@ Item {
             readonly property bool takesRoom: on || page.editing
 
             editing: page.editing
+            selected: page.selectedSlot === slotId
             onClicked: page.slotTapped(slotId)
+            onHandleDragged: (id, innerX, innerY) => page.handleDragged(id, innerX, innerY)
 
             // The bars span their edge up to the strip (clipped there); Left and Right sit between
             // the Top and Bottom bars.

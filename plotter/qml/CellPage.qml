@@ -3,13 +3,15 @@ import QtQuick.Controls.Basic
 
 // A view with no chart: its cells tile the page (left of the tab bar strip) by the view's layout,
 // 1 mm apart. Large digits fill each cell; label and unit are small. In edit mode the cells are
-// outlined and a tap on one emits cellTapped; otherwise any tap is a plain tap.
+// outlined and a tap on one emits cellTapped; otherwise any tap is a plain tap, and a 0.6 s hold on a
+// cell emits cellHeld (and no tap).
 Item {
     id: page
     required property var draft     // ViewDraft
     property real rightInset: 0     // the tab bar strip over the page's right edge
     property bool editing: false
     signal cellTapped(int index)
+    signal cellHeld(int index)
     signal plainTap()
 
     readonly property real gap: Units.mm(1)
@@ -23,7 +25,10 @@ Item {
         onClicked: page.plainTap()
     }
 
+    function cellItem(index) { return cellRepeater.itemAt(index) }
+
     Repeater {
+        id: cellRepeater
         model: page.draft.cells
         BigButton {
             id: cell
@@ -43,7 +48,21 @@ Item {
             width: Math.max(minimumSize, rect ? rect.w * (page.areaW - page.gap) - page.gap : 0)
             height: Math.max(minimumSize, rect ? rect.h * (page.height - page.gap) - page.gap : 0)
             padding: Units.mm(2)
-            onClicked: page.editing ? page.cellTapped(index) : page.plainTap()
+            property bool wasHeld: false
+            onPressed: wasHeld = false
+            onClicked: {
+                if (page.editing) page.cellTapped(index)
+                else if (!wasHeld) page.plainTap()
+            }
+            TapHandler {
+                enabled: !page.editing
+                longPressThreshold: 0.6
+                gesturePolicy: TapHandler.DragThreshold
+                onLongPressed: {
+                    cell.wasHeld = true
+                    page.cellHeld(cell.index)
+                }
+            }
 
             contentItem: Item {
                 Label {

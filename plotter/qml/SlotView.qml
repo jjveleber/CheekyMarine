@@ -6,6 +6,8 @@ import QtQuick.Layouts
 // value and unit; Top and Bottom bars run in one line (a position on one line too); Left and Right
 // bars stack label, value and unit. It takes taps only in edit mode, so on the chart touches reach
 // the map; in edit mode every slot shows, outlined, and an off slot shows its position name, faint.
+// The selected slot shows a round 12 mm resize handle on its inner corner (a corner slot) or the
+// midpoint of its inner edge (a bar), the side towards the page centre.
 //
 // sizeMm is the stored digit height; drawnMm (set by the page from the size clamp) is the one drawn.
 // The box is about fixed + per * drawnMm in each axis: the clamp reads fixedWMm, wPerMm, fixedHMm and
@@ -24,10 +26,17 @@ BigButton {
     property string widestSample: ""
     property bool editing: false
     property bool selected: false
-    signal held()
+    // The handle dragged: where the clamp's modelled box (below) would put the inner corner, or the
+    // inner edge's midpoint, in the parent's (the page's) coordinates.
+    signal handleDragged(string slotId, real innerX, real innerY)
 
     readonly property bool horizontalBar: slotId === "Top" || slotId === "Bottom"
     readonly property bool verticalBar: slotId === "Left" || slotId === "Right"
+    // The outer sides, on the page edges: the inner ones face the page centre.
+    readonly property bool leftSide: slotId === "TL" || slotId === "BL" || slotId === "Left"
+    readonly property bool topSide: slotId === "TL" || slotId === "TR" || slotId === "Top"
+    readonly property real outerX: leftSide ? x : x + width
+    readonly property real outerY: topSide ? y : y + height
     readonly property string shown: horizontalBar ? formatted.replace("\n", "   ") : formatted
 
     // The value per mm of digit height: the widest sample's width (one line in a horizontal bar) and
@@ -83,10 +92,39 @@ BigButton {
     topPadding: Units.mm(1)
     bottomPadding: Units.mm(1.5)
 
-    // Wired by the slot editor (a later task).
-    TapHandler {
-        longPressThreshold: 0.6
-        onLongPressed: slot.held()
+    // The inner corner (a corner slot) or inner edge midpoint (a bar) of the box at the drawn size as
+    // the clamp models it, so a drag from it maps back to the drawn size before it moves.
+    function modelInner() {
+        const w = (fixedWMm + wPerMm * drawnMm) * Units.pxPerMm
+        const h = (fixedHMm + hPerMm * drawnMm) * Units.pxPerMm
+        return Qt.point(horizontalBar ? x + width / 2 : outerX + (leftSide ? w : -w),
+                        verticalBar ? y + height / 2 : outerY + (topSide ? h : -h))
+    }
+
+    Item {
+        objectName: "handle-" + slot.slotId
+        visible: slot.selected
+        z: 2
+        width: Units.mm(12)
+        height: width
+        x: slot.horizontalBar ? (slot.width - width) / 2 : slot.leftSide ? slot.width - width : 0
+        y: slot.verticalBar ? (slot.height - height) / 2 : slot.topSide ? slot.height - height : 0
+        Rectangle {
+            anchors.fill: parent
+            radius: width / 2
+            color: Theme.editOutline
+            opacity: 0.8
+        }
+        DragHandler {
+            target: null
+            property point start
+            // Once dragging, it keeps the point: the slot under it would take it back on each move.
+            grabPermissions: PointerHandler.CanTakeOverFromAnything
+            onActiveChanged: if (active) start = slot.modelInner()
+            onActiveTranslationChanged: {
+                if (active) slot.handleDragged(slot.slotId, start.x + activeTranslation.x, start.y + activeTranslation.y)
+            }
+        }
     }
 
     // Centred, so a bar keeps label, value and unit together along its length.
@@ -164,14 +202,5 @@ BigButton {
         color: Theme.slotBackground
         border.color: Theme.editOutline
         border.width: slot.editing ? Math.max(2, Units.mm(0.6)) : 0
-        // The drag handle of the selected slot (the slot editor, a later task).
-        Rectangle {
-            objectName: "slotHandle"
-            visible: slot.selected
-            anchors { right: parent.right; bottom: parent.bottom }
-            width: Units.mm(4)
-            height: width
-            color: Theme.editOutline
-        }
     }
 }

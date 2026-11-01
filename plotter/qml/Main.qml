@@ -20,7 +20,10 @@ ApplicationWindow {
     // home, view (the shown view), tracks, settings or about
     property string page: "view"
     property bool legendOpen: false // dev option --sheet legend
-    property bool editing: false    // the view editor is open (Task 9)
+    property bool editing: false    // the view editor is open
+    property string editorFrom: "view" // the page the editor returns to on Cancel
+    property bool editingNew: false // the edited view was just added
+    property bool setupRequestedOnOpen: false // the editor was asked to open its Setup sheet first
     // On a view the bar slides off after this delay (0: never); tests set it shorter.
     property int hideDelayMs: root.settings.tabBarHideS * 1000
 
@@ -42,6 +45,7 @@ ApplicationWindow {
 
     // The current view into the draft; its chart picks the chart mode.
     function showCurrentView() {
+        editor.closeSheets()
         root.draft.loadJson(root.views.viewJson(root.views.currentId))
         root.chart.mode = root.draft.chart === "fish" ? "fish" : "nav"
     }
@@ -50,10 +54,37 @@ ApplicationWindow {
         root.views.currentId = id
         root.page = "view"
     }
-    // The view editor arrives with Task 9.
-    function editView(id) {}
+    // The editor over the view `id`; the bar stays shown, dimmed and inert, until Done or Cancel.
+    function editView(id, openSetup) {
+        root.editorFrom = root.page
+        root.setupRequestedOnOpen = openSetup === true
+        root.showView(id)
+        root.editing = true
+        root.showBar()
+    }
     function newView() {
-        root.showView(root.views.add())
+        const id = root.views.add()
+        root.editingNew = true
+        root.editView(id, true)
+    }
+    function editorDone() {
+        root.views.saveJson(root.draft.toJson())
+        root.editing = false
+        root.editingNew = false
+        root.page = "view"
+    }
+    // Every change since the editor opened is dropped; a view added for it goes again.
+    function editorCancel() {
+        const id = root.draft.id
+        root.editing = false
+        if (root.editingNew) {
+            root.editingNew = false
+            root.views.remove(id)
+            root.page = "home"
+        } else {
+            root.showCurrentView()
+            root.page = root.editorFrom
+        }
     }
     Component.onCompleted: showCurrentView()
     Connections {
@@ -66,7 +97,11 @@ ApplicationWindow {
         tabBar.shown = true
         if (hideTimer.running) hideTimer.restart()
     }
-    onPageChanged: showBar()
+    onPageChanged: {
+        showBar()
+        // A sheet opened by a hold on a live view, left without its Done, keeps nothing.
+        if (editor.sheetOpen && !root.editing) root.showCurrentView()
+    }
     // Not while locked: the unlock hold is over the bar's Lock button.
     Timer {
         id: hideTimer
@@ -109,21 +144,44 @@ ApplicationWindow {
             // A view with a chart shows the chart page, one without the cell page.
             Item {
                 ChartPage {
+                    id: chartPage
                     anchors.fill: parent
                     visible: root.draft.chart !== "none"
                     chart: root.chart
                     chartMap: root.chartMap
                     draft: root.draft
                     rightInset: tabBar.width
+                    editing: root.editing
+                    selectedSlot: root.editing ? editor.selectedSlot : ""
                     onPlainTap: root.showBar()
+                    onSlotTapped: (id) => editor.openSlotSheet(id)
+                    onSlotHeld: (id) => editor.openSlotSheet(id)
+                    onHandleDragged: (id, innerX, innerY) => editor.dragSlot(id, innerX, innerY)
                     Component.onCompleted: if (root.legendOpen) openLegend()
                 }
                 CellPage {
+                    id: cellPage
                     anchors.fill: parent
                     visible: root.draft.chart === "none"
                     draft: root.draft
                     rightInset: tabBar.width
+                    editing: root.editing
                     onPlainTap: root.showBar()
+                    onCellTapped: (index) => editor.openCellSheet(index)
+                    onCellHeld: (index) => editor.openCellSheet(index)
+                }
+                ViewEditor {
+                    id: editor
+                    anchors.fill: parent
+                    draft: root.draft
+                    rightInset: tabBar.width
+                    editing: root.editing
+                    chartPage: chartPage
+                    cellPage: cellPage
+                    onDoneRequested: root.editorDone()
+                    onCancelRequested: root.editorCancel()
+                    // A hold's sheet on a live view saves on its Done.
+                    onSheetClosed: if (!root.editing) root.views.saveJson(root.draft.toJson())
                 }
             }
             TracksPage {
@@ -150,7 +208,8 @@ ApplicationWindow {
         anchors { top: parent.top; bottom: parent.bottom }
         width: implicitWidth
         x: tabBar.shown ? root.width - tabBar.width : root.width
-        opacity: root.touchLock.locked ? 0.45 : 1
+        enabled: !root.editing
+        opacity: root.touchLock.locked || root.editing ? 0.45 : 1
         tabViews: root.views.tabViews
         currentId: root.page === "view" ? root.views.currentId : ""
         homeHighlighted: {
