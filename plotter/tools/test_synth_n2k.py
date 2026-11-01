@@ -90,8 +90,9 @@ class SynthN2kTest(unittest.TestCase):
         cls.ais = [l for l in lines if l["type"] == "ais"]
 
     def near(self, s, key=None):
-        """The first vessel line at or after s+1 seconds. n2kd publishes a tick before the frames
-        stamped at the same time, so that line carries the values of the frames stamped s."""
+        """The first vessel line at or after s+1 seconds. n2kd processes a frame and then ticks if one is
+        due, so the tick at second s+1 carries the first frame stamped s+1 (the position) and the other
+        values from the earlier seconds, those stamped s."""
         c = [v for v in self.vessel if v["t"] >= T0 + s + 1 - 1e-6 and (key is None or v[key] is not None)]
         return c[0]
 
@@ -142,9 +143,11 @@ class SynthN2kTest(unittest.TestCase):
     def test_depth_dropout(self):
         # Mirrors test_position_dropout: n2kd holds the last depth 5 s (kDepthMaxAge), so the nulls
         # sit inside the generator's [360, 372) gap and none appear once the frames resume at 372.
-        # n2kd publishes its tick before the frames stamped at the same time, so the line at exactly
-        # T0 + 372 still reads null (the held depth expired at 365); the first line with a value is
-        # the next tick, hence the edge below is inclusive and "after" starts past 372.
+        # n2kd processes a frame and then ticks if one is due (Daemon.cpp), so the tick at second s
+        # carries the first frame stamped s and the other values from earlier seconds. At T0 + 372 that
+        # first frame is the position, so depth still reads null there (the held depth expired at 365);
+        # the first line with a depth is the next tick, hence the edge below is inclusive and "after"
+        # starts past 372.
         gap = [v for v in self.vessel if v["depth"] is None and v["t"] >= T0 + 60]
         self.assertTrue(gap)
         self.assertGreaterEqual(min(v["t"] for v in gap), T0 + 365 - 1e-6)

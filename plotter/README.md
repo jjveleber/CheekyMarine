@@ -31,8 +31,9 @@ on the right edge:
   10.1 in panel at both sizes; the rest say "Not on tab bar (full)"), the house tab (Home), Lock and
   the palette button. On a view it slides off the right edge after the delay set in Settings (8 s
   by default, or never); a plain tap on the map or the cells brings it back. The view's own buttons
-  (Legend, zoom, Recenter, an AIS target) leave it hidden, and nothing on the view moves when it
-  hides or shows. It never hides on Home, Tracks, Settings, About or in the editor.
+  (Legend, zoom, Recenter, an AIS target) leave it hidden. When it hides or shows, the chart's slots
+  slide with it and a None view's cells widen into the strip; the view's buttons stay put. It never
+  hides on Home, Tracks, Settings, About or in the editor.
 - Editor: from a tile's Edit, "+ New view" (with Setup open) or a hold on a favorite tab. The view
   stays live underneath with the tab bar dimmed; Setup, Done and Cancel float over it. Tap a slot
   for its sheet (show, field, size with + and -, or drag its round handle) or a cell for its field.
@@ -228,7 +229,8 @@ See `THIRD_PARTY_NOTICES` at the repository root: Qt 6 (LGPL-3.0, dynamic), mapl
 
 The `plotter` job in `.github/workflows/plotter-ci.yml` runs the steps above on ubuntu-24.04. It
 caches `~/Qt` and the installed maplibre prefix (keyed on the hash of `scripts/build-maplibre-qt.sh`,
-which holds the pinned commit, and on the Qt version); the about 1.1 GB source checkout is never cached. A cache miss prints
-`df -h` and frees disk space first. Observed on the first (cache miss) run: 84 GB free before and
-101 GB free after removing dotnet, android and ghc, so the about 1.1 GB checkout (shallow since 8db3647) fits either way. A cache
-miss takes about 17 minutes in total (the maplibre build step alone about 15).
+which holds the pinned commit, and on the Qt version); the source checkout (about 1.1 GB, shallow
+since 8db3647) is never cached. A cache miss prints `df -h` and frees disk space first. Observed on
+the first (cache miss) run: 84 GB free before and 101 GB free after removing dotnet, android and
+ghc, so the checkout fits either way. A cache miss takes about 17 minutes in total (the maplibre
+build step alone about 15).
