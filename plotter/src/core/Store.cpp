@@ -1,4 +1,5 @@
 #include "Store.h"
+#include "Views.h"
 #include <QDateTime>
 #include <QDebug>
 #include <QDir>
@@ -27,7 +28,7 @@ QSqlError execAll(QSqlDatabase& db, std::initializer_list<const char*> sqls) {
     return {};
 }
 
-const std::array<Migration, 1> kMigrations{{
+const std::array<Migration, 2> kMigrations{{
     {QVersionNumber(1, 0, 0),
      [](QSqlDatabase& db) {
          return execAll(db, {
@@ -36,6 +37,13 @@ const std::array<Migration, 1> kMigrations{{
              "CREATE TABLE tracks(id INTEGER PRIMARY KEY, name TEXT, started REAL, ended REAL, visible INTEGER)",
              "CREATE TABLE track_points(track_id INTEGER, t REAL, lat REAL, lon REAL, sog REAL, cog REAL, depth REAL)",
              "CREATE INDEX track_points_by_track ON track_points(track_id, t)"});
+     }},
+    {QVersionNumber(1, 1, 0),
+     [](QSqlDatabase& db) {
+         if (QSqlError e = execAll(db, {"CREATE TABLE views(id TEXT PRIMARY KEY, ord INTEGER NOT NULL, json TEXT NOT NULL)"});
+             e.isValid())
+             return e;
+         return seedViews(db, QDateTime::currentSecsSinceEpoch());
      }},
 }};
 

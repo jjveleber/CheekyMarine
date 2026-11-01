@@ -36,7 +36,8 @@ private slots:
         QCOMPARE(s.orientation(), QStringLiteral("head"));
         QCOMPARE(s.paletteMode(), QStringLiteral("auto"));
         QCOMPARE(s.lastPalette(), QStringLiteral("day"));
-        QCOMPARE(s.chartMode(), QStringLiteral("nav"));
+        QCOMPARE(s.lastViewId(), QString());
+        QCOMPARE(s.tabBarHideS(), 8);
         QCOMPARE(s.touchLockTimeoutS(), 120);
         QCOMPARE(s.panelDiagonalIn(), 10.1);
         QVERIFY(!s.trackRecording());
@@ -69,11 +70,9 @@ private slots:
             QTest::ignoreMessage(QtWarningMsg, QRegularExpression("paletteMode"));
             s.setPaletteMode("bogus"); // rejected
             QCOMPARE(s.paletteMode(), QStringLiteral("auto"));
-            QTest::ignoreMessage(QtWarningMsg, QRegularExpression("chartMode"));
-            s.setChartMode("bogus"); // rejected: only nav and fish are stored
-            QCOMPARE(s.chartMode(), QStringLiteral("nav"));
-            s.setChartMode("fish");
-            QCOMPARE(s.chartMode(), QStringLiteral("fish"));
+            QSignalSpy viewSpy(&s, &Settings::lastViewIdChanged);
+            s.setLastViewId("shipped-big");
+            QCOMPARE(viewSpy.count(), 1);
             QSignalSpy lastSpy(&s, &Settings::lastPaletteChanged);
             s.setLastPalette("night");
             QCOMPARE(lastSpy.count(), 1);
@@ -87,12 +86,37 @@ private slots:
         QCOMPARE(s.bigNumbers(), (QStringList{"depth", "stw", "cog"}));
         QCOMPARE(s.touchLockTimeoutS(), 0);
         QCOMPARE(s.lastPalette(), QStringLiteral("night"));
+        QCOMPARE(s.lastViewId(), QStringLiteral("shipped-big"));
         QVERIFY(s.trackRecording());
         const UnitPrefs p = s.unitPrefs();
         QCOMPARE(p.depth, DepthUnit::Metres);
         QCOMPARE(p.speed, SpeedUnit::Kmh);
         QCOMPARE(p.temp, TempUnit::C);
         QVERIFY(!p.applyDepthOffset);
+    }
+    void tabBarHideSRejectsOtherValues() {
+        QTemporaryDir t;
+        auto st = Store::open(t.path());
+        Settings s(**st);
+        QTest::ignoreMessage(QtWarningMsg, QRegularExpression("tabBarHideS"));
+        s.setTabBarHideS(6);
+        QCOMPARE(s.tabBarHideS(), 8);
+        QCOMPARE(rawValue(**st, "tabBarHideS"), QString());
+        QSignalSpy spy(&s, &Settings::tabBarHideSChanged);
+        s.setTabBarHideS(15);
+        QCOMPARE(s.tabBarHideS(), 15);
+        QCOMPARE(spy.count(), 1);
+        QCOMPARE(rawValue(**st, "tabBarHideS"), QStringLiteral("15"));
+    }
+    // chartMode is no longer a setting: a stored row is an unknown key, left alone and unread.
+    void storedChartModeIsIgnored() {
+        QTemporaryDir t;
+        auto st = Store::open(t.path());
+        rawSql(**st, R"(INSERT INTO settings VALUES('chartMode','"fish"'))");
+        Settings s(**st);
+        QVERIFY(s.property("chartMode").isNull());
+        s.setOrientation("north");
+        QCOMPARE(rawValue(**st, "chartMode"), QStringLiteral("\"fish\""));
     }
     void unitStringMapping() {
         QTemporaryDir t;

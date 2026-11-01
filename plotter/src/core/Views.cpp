@@ -1,5 +1,7 @@
 #include "Views.h"
 #include "Tilings.h"
+#include <QJsonDocument>
+#include <QSqlQuery>
 #include <algorithm>
 #include <cmath>
 
@@ -159,6 +161,33 @@ QList<View> viewsFromPlan3(const QJsonArray& slotsJson, const QStringList& bigNu
                                            "2x2:0,0,1,1;1,0,1,1;0,1,1,1;1,1,1,1"};
     views[2].cells = {QString::fromLatin1(kLayouts[fields.size() - 2]), fields};
     return views;
+}
+
+QSqlError seedViews(QSqlDatabase& db, qint64 now) {
+    QSqlQuery q(db);
+    if (!q.exec(QStringLiteral("SELECT key, value FROM settings WHERE key IN ('slots', 'bigNumbers')"))) return q.lastError();
+    bool plan3 = false;
+    QJsonArray slotsJson;
+    QStringList bigNumbers;
+    while (q.next()) {
+        plan3 = true;
+        // Settings stores a bare JSON value; wrapped in [] it parses as a document (Settings::fromText).
+        const QJsonArray value = QJsonDocument::fromJson(("[" + q.value(1).toString() + "]").toUtf8()).array().at(0).toArray();
+        if (q.value(0).toString() == QLatin1String("slots")) slotsJson = value;
+        else
+            for (const QJsonValue& v : value) bigNumbers << v.toString();
+    }
+    const QList<View> views = plan3 ? viewsFromPlan3(slotsJson, bigNumbers, now) : shippedViews(now);
+    for (int i = 0; i < views.size(); ++i) {
+        q.prepare(QStringLiteral("INSERT INTO views(id, ord, json) VALUES(?, ?, ?)"));
+        q.addBindValue(views[i].id);
+        q.addBindValue(i);
+        q.addBindValue(QString::fromUtf8(QJsonDocument(viewToJson(views[i])).toJson(QJsonDocument::Compact)));
+        if (!q.exec()) return q.lastError();
+    }
+    if (!q.exec(QStringLiteral("DELETE FROM settings WHERE key IN ('slots', 'bigNumbers', 'chartMode', 'touchLockTimeoutS')")))
+        return q.lastError();
+    return {};
 }
 
 int favouriteCapacity(double barHeightMm) { return std::max(0, int(std::floor((barHeightMm - 46) / 16))); }

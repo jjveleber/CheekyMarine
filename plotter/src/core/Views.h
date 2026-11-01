@@ -3,6 +3,8 @@
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QList>
+#include <QSqlDatabase>
+#include <QSqlError>
 #include <QString>
 #include <QStringList>
 #include <QStringView>
@@ -62,6 +64,11 @@ QList<View> shippedViews(qint64 now);
 // The shipped three, with Navigation's slots from the plan 3 slots JSON and Big numbers' cells from
 // the plan 3 bigNumbers list (padded with defaults to 2, cut to 4).
 QList<View> viewsFromPlan3(const QJsonArray& slotsJson, const QStringList& bigNumbers, qint64 now);
+
+// Schema 1.1.0 migration step, run inside its transaction on a db that has the views table: inserts
+// viewsFromPlan3 of the settings rows slots and bigNumbers when either exists, else shippedViews,
+// with ord 0 to 2, then deletes the settings rows slots, bigNumbers, chartMode and touchLockTimeoutS.
+QSqlError seedViews(QSqlDatabase& db, qint64 now);
 
 // How many favourites fit a bar of this height.
 int favouriteCapacity(double barHeightMm);

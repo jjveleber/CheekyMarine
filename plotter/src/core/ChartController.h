@@ -37,12 +37,12 @@ class ChartController : public QObject {
     Q_PROPERTY(QVariantMap aisSelection READ aisSelection NOTIFY aisSelectionChanged)
 
 public:
-    // All references must outlive the controller. Loads the style for Settings::chartMode at once.
+    // All references must outlive the controller. Starts in nav and loads its style at once.
     ChartController(ChartMap& map, Settings& settings, VesselModel& vessel, AisModel& ais, QList<PackInfo> packs,
                     QObject* parent = nullptr);
 
     QString mode() const { return m_mode; }
-    void setMode(const QString& mode); // "nav" or "fish"; "fish" is refused without a bathy pack
+    void setMode(const QString& mode); // "nav" or "fish"; "fish" is refused without a bathy pack. Not stored.
     QString orientation() const;
     void setOrientation(const QString& orientation); // writes Settings::orientation
     QString palette() const { return m_palette; }

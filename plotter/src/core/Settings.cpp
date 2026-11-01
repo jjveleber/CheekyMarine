@@ -42,7 +42,10 @@ const std::map<QString, Def>& defs() {
         {"orientation", {"head", oneOf({"north", "head", "course"})}},
         {"paletteMode", {"auto", oneOf({"auto", "day", "dusk", "night"})}},
         {"lastPalette", {"day", oneOf({"day", "dusk", "night"})}},
-        {"chartMode", {"nav", oneOf({"nav", "fish"})}},
+        {"lastViewId", {"", [](const QJsonValue& v) { return v.isString(); }}},
+        {"tabBarHideS", {8, [](const QJsonValue& v) {
+                             return v.isDouble() && QList<double>{0, 5, 8, 15, 30}.contains(v.toDouble());
+                         }}},
         {"touchLockTimeoutS", {120, isInt(0)}},
         {"panelDiagonalIn", {10.1, isNum(1, 100)}},
         {"trackRecording", {false, isBool()}},

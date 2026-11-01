@@ -33,6 +33,8 @@ add_library(plottercore STATIC
     src/core/Units.cpp
     src/core/Slots.cpp
     src/core/Views.cpp
+    src/core/ViewsModel.cpp
+    src/core/ViewDraft.cpp
     src/core/SlotClamp.cpp
     src/core/NumbersModel.cpp
     src/core/AppInfo.cpp
@@ -73,6 +75,7 @@ plotter_add_test(tst_chartcontroller tests/tst_chartcontroller.cpp)
 plotter_add_test(tst_sun tests/tst_sun.cpp)
 plotter_add_test(tst_slots tests/tst_slots.cpp)
 plotter_add_test(tst_views tests/tst_views.cpp)
+plotter_add_test(tst_viewsmodel tests/tst_viewsmodel.cpp)
 plotter_add_test(tst_slotclamp tests/tst_slotclamp.cpp)
 plotter_add_test(tst_appshell tests/tst_appshell.cpp)
 plotter_add_test(tst_touchlock tests/tst_touchlock.cpp)

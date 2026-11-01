@@ -90,7 +90,8 @@ int main(int argc, char* argv[]) {
     // Dev and checkpoint aids: save a window grab N ms after start. Repeatable; paired in order.
     QCommandLineOption shotOpt("screenshot", "Save a window grab to PATH.", "path");
     QCommandLineOption shotAfterOpt("screenshot-after-ms", "Delay for the matching --screenshot.", "ms");
-    // Dev and checkpoint aids: write Settings::paletteMode / chartMode at start (they persist).
+    // Dev and checkpoint aids: write Settings::paletteMode at start (it persists); set the chart mode
+    // at start (not stored).
     QCommandLineOption paletteOpt("palette", "Set the palette mode: auto, day, dusk or night.", "mode");
     QCommandLineOption modeOpt("mode", "Set the chart mode: nav or fish.", "mode");
     // Dev and checkpoint aids: write the overlay slots at start (the defaults, or the defaults all
@@ -157,7 +158,6 @@ int main(int argc, char* argv[]) {
     }
     Settings settings(*store);
     if (cli.isSet(paletteOpt)) settings.setPaletteMode(cli.value(paletteOpt));
-    if (cli.isSet(modeOpt)) settings.setChartMode(cli.value(modeOpt));
     if (cli.isSet(recordOpt)) settings.setTrackRecording(true);
 
     VesselModel vessel;
@@ -197,6 +197,7 @@ int main(int argc, char* argv[]) {
     auto mapItem = std::make_unique<MapLibreChartMap>();
     QQmlEngine::setObjectOwnership(mapItem.get(), QQmlEngine::CppOwnership);
     ChartController chart(mapItem->port(), settings, vessel, ais, packs);
+    if (cli.isSet(modeOpt)) chart.setMode(cli.value(modeOpt));
     mapItem->setZoomRange(chart.minZoom(), chart.maxZoom());
     // The controller adds its own refusals (a style it cannot use) to the scan's.
     for (const PackInfo& p : chart.packs())
