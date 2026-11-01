@@ -947,41 +947,42 @@ TestCase {
 
     function test_splashShowsTheLogo_data() {
         return [
-            { tag: "1024x600", w: 1024, h: 600, mm60: true },
-            { tag: "1280x800", w: 1280, h: 800, mm60: false }
+            { tag: "1024x600", w: 1024, h: 600 },
+            { tag: "1280x800", w: 1280, h: 800 }
         ]
     }
+    // The logo fills the splash (cropped, never stretched); the info lines sit along the bottom over
+    // it, white by day and dusk, the night red at night.
     function test_splashShowsTheLogo(data) {
         const splash = createTemporaryObject(splashComp, testCase, { width: data.w, height: data.h, appInfo: fixture.appInfo })
         verify(splash, "splash")
+        compare(splash.minimumMs, 5000)
         const logo = H.byName(splash, "splashLogo")
         verify(logo, "splashLogo")
         tryCompare(logo, "status", Image.Ready)
         waitForRendering(splash)
-        const p = logo.mapToItem(splash, 0, 0)
-        verify(p.x >= 0 && p.y >= 0 && p.x + logo.width <= splash.width && p.y + logo.height <= splash.height, "logo inside the splash")
-        if (data.mm60) verify(logo.paintedWidth >= Units.mm(60), "logo at least 60 mm wide: " + logo.paintedWidth)
+        compare(H.box(logo, splash), { x: 0, y: 0, w: splash.width, h: splash.height })
+        compare(logo.fillMode, Image.PreserveAspectCrop)
         compare(logo.sourceSize.width, 1408)
         compare(logo.sourceSize.height, 768)
-        verify(Math.abs(logo.paintedWidth / logo.paintedHeight - logo.sourceSize.width / logo.sourceSize.height) < 0.01, "painted aspect is the file's")
-        verify(Math.abs(logo.height - Math.min(logo.width * 768 / 1408, splash.height * 0.45)) <= 1, "height rule: aspect box capped at 45% of the page")
-        verify(Math.abs((p.x + logo.width / 2) - splash.width / 2) <= 1, "centred")
-        let prevBottom = p.y + logo.height - 1
-        for (const n of ["splashCharts", "splashBathy", "splashNotice"]) {
-            const l = H.byName(splash, n)
-            verify(l && l.visible, n)
-            const q = l.mapToItem(splash, 0, 0)
-            verify(q.y >= prevBottom, n + " below the previous line")
-            verify(q.y + l.height <= splash.height, n + " inside the page")
-            prevBottom = q.y + l.height - 1
-        }
         const version = H.findAll(splash, it => it.text !== undefined && it.text.startsWith("Plotter "))
         compare(version.length, 1)
-        verify(version[0].mapToItem(splash, 0, 0).y >= p.y + logo.height - 1, "version below the logo")
-        compare(logo.opacity, 1)
-        Theme.palette = "night"
-        compare(logo.opacity, 0.3)
-        Theme.palette = "dusk"
-        compare(logo.opacity, 1)
+        const lines = [version[0]].concat(["splashCharts", "splashBathy", "splashNotice"].map(n => H.byName(splash, n)))
+        let prevTop = -1
+        for (const l of lines) {
+            verify(l && l.visible, l ? l.text : "line")
+            const b = H.box(l, splash)
+            verify(b.x >= 0 && b.y >= 0 && b.x + b.w <= splash.width && b.y + b.h <= splash.height, l.text + " inside the splash")
+            verify(b.y >= splash.height * 0.6, l.text + " along the bottom: top " + b.y)
+            verify(b.y > prevTop, l.text + " below the line before it")
+            prevTop = b.y
+        }
+        for (const p of ["day", "dusk", "night"]) {
+            Theme.palette = p
+            const want = p === "night" ? Theme.text : "#ffffff"
+            verify(Qt.colorEqual(splash.infoColor, want), p + ": " + splash.infoColor)
+            for (const l of lines) verify(Qt.colorEqual(l.color, want), p + ": " + l.text)
+            compare(logo.opacity, p === "night" ? 0.3 : 1)
+        }
     }
 }

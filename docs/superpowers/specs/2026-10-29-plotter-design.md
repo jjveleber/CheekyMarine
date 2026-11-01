@@ -138,7 +138,7 @@ Two to four cells filling the screen, default depth and SOG, each cell's field p
 - Page switch: a persistent tab bar on the right edge (no swipe: swipe fights chart panning). Tabs: Chart, Numbers, Tracks, Settings. Each tab at least 15 mm square.
 - Global control bar (part of the tab bar, always reachable): touch lock and palette (day, dusk, night, auto cycling). Reserved spaces: brightness (plan 5) and MOB (phase 2).
 - Touch lock: on from the lock button or after the idle timeout (setting, default 2 min, can be off). While locked every touch is swallowed except a 1.5 s long press on the lock icon, which shows a progress ring while held. Locked state shows a small padlock on the tab bar and dims the tab bar. The lock is a C++ state machine with an injectable clock, unit tested.
-- Boot splash: app, charts pack and bathy pack versions and the pack notice, shown for at least 2 s.
+- Boot splash: app, charts pack and bathy pack versions and the pack notice, shown for at least 5 s (owner, 2026-11-01): the logo fills the screen and the info lines run along the bottom over it, white by day and dusk, red by night.
 
 ### 6.10 Panel sizing (my call)
 
