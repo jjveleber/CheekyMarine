@@ -67,7 +67,7 @@ aqt install-qt linux desktop 6.8.3 linux_gcc_64 -O ~/Qt
 maplibre-native-qt at the pinned commit, installed into `~/.local/maplibre-qt` (the script is
 `scripts/build-maplibre-qt.sh`; see `docs/plotter/spike-findings.md` for why this commit and these
 options). The first run clones the source into `~/.cache/cheekymarine/maplibre-native-qt`, which
-needs about 8.5 GB of free disk plus the build tree (the clone takes longer than the build):
+needs about 1.1 GB of free disk for the shallow clone plus the build tree (the clone takes longer than the build):
 
 ```bash
 CMAKE_PREFIX_PATH=$HOME/Qt/6.8.3/gcc_64 scripts/build-maplibre-qt.sh ~/.local/maplibre-qt
