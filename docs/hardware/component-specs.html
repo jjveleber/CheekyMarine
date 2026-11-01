@@ -610,9 +610,12 @@ saturation is harmless</td>
 </tr>
 <tr class="even">
 <td>Ceramic capacitor</td>
-<td>10 µF nominal, 50 V, radial leaded (a bare SMD part cracks when a
-hand-wired board flexes). Dielectric X7R, X7S, X8L or X5R; not Y5V, Z5U
-or Y5U, which lose most of their capacitance warm and under DC bias.
+<td>10 µF nominal in total, 50 V. Can be split across parallel parts
+(two 4.7 µF, or two 10 µF if the DC-bias curve shows under about 5 µF
+left at 15 V). Radial leaded, or SMD 1210 or larger soldered to a PCB or
+a carrier board that is fixed down (a loose SMD part on a hand-wired
+board cracks when it flexes). Dielectric X7R, X7S, X8L or X5R; not Y5V,
+Z5U or Y5U, which lose most of their capacitance warm and under DC bias.
 Among candidates, take the one that keeps the most capacitance at about
 15 V DC: a bigger body and a higher voltage rating lose less</td>
 <td>Datasheet dielectric, voltage, package; the maker’s DC-bias
