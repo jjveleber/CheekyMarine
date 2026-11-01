@@ -34,6 +34,7 @@ class TstN2kClient : public QObject {
         // QSignalSpy::wait runs the event loop (waitForNewConnection would block the client's timers).
         QSignalSpy spy(&m_server, &QLocalServer::newConnection);
         if (!m_server.hasPendingConnections() && !spy.wait(10000)) return false;
+        delete m_peer; // the previous peer of this test, if any; the server would keep it until the end
         m_peer = m_server.nextPendingConnection();
         return m_peer != nullptr;
     }
