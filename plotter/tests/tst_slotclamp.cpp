@@ -36,6 +36,35 @@ private slots:
         const QList<SlotBox> b{bar(SlotId::Left, true, 20), corner(SlotId::TL, true, 10)};
         QCOMPARE(maxSizeMm(SlotId::TL, b, kSpace), 45.7);
     }
+    void partnersMirrorForEveryCorner()
+    {
+        const struct { SlotId id, row, col; } cases[] = {{SlotId::TR, SlotId::TL, SlotId::BR},
+                                                        {SlotId::BL, SlotId::BR, SlotId::TL},
+                                                        {SlotId::BR, SlotId::BL, SlotId::TR}};
+        for (const auto& c : cases) {
+            QCOMPARE(maxSizeMm(c.id, {corner(c.id, true, 40), corner(c.row, true, 40)}, kSpace), 26.4);
+            SlotBox a = corner(c.id, true, 40), b = corner(c.col, true, 40);
+            a.wPerMm = b.wPerMm = 0.5;
+            QCOMPARE(maxSizeMm(c.id, {a, b}, kSpace), 38.4);
+        }
+    }
+    void partnerNotTakingRoomIsIgnored()
+    {
+        const QList<SlotBox> b{corner(SlotId::TL, true, 40), corner(SlotId::TR, false, 40)};
+        QCOMPARE(maxSizeMm(SlotId::TL, b, kSpace), 69.2);
+    }
+    void unknownIdIsFloor()
+    {
+        // An id with no box in the list (an out-of-range SlotId cast hits the same path).
+        QCOMPARE(maxSizeMm(SlotId::TR, {corner(SlotId::TL, true, 40)}, kSpace), 6.0);
+        QCOMPARE(maxSizeMm(static_cast<SlotId>(99), {corner(SlotId::TL, true, 40)}, kSpace), 6.0);
+    }
+    void bannerShrinksCornerHeight()
+    {
+        SlotBox tl = corner(SlotId::TL, true, 40);
+        tl.wPerMm = 0.5;
+        QCOMPARE(maxSizeMm(SlotId::TL, {bar(SlotId::Top, true, 20), tl}, kSpace), 61.5);
+    }
     void neverBelowTheFloor()
     {
         const ClampSpace tiny{20, 20};

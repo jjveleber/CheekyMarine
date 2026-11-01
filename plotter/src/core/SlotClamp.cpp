@@ -77,6 +77,7 @@ double maxSizeMm(SlotId id, const QList<SlotBox>& boxes, const ClampSpace& space
         break;
     }
     }
+    // Both axes independent of size (zero per-mm coefficients): not a real field, so the floor is fine.
     if (!std::isfinite(best))
         return kMinSizeMm;
     return std::max(floorTenth(best), kMinSizeMm);
