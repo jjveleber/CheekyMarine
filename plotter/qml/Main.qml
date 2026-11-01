@@ -20,6 +20,9 @@ ApplicationWindow {
     // home, view (the shown view), tracks, settings or about
     property string page: "view"
     property bool legendOpen: false // dev option --sheet legend
+    property bool editing: false    // the view editor is open (Task 9)
+    // On a view the bar slides off after this delay (0: never); tests set it shorter.
+    property int hideDelayMs: root.settings.tabBarHideS * 1000
 
     width: 1024
     height: 600
@@ -58,6 +61,24 @@ ApplicationWindow {
         function onCurrentIdChanged() { root.showCurrentView() }
     }
 
+    // The bar back for the full delay. Restarted only while it runs: the binding starts it.
+    function showBar() {
+        tabBar.shown = true
+        if (hideTimer.running) hideTimer.restart()
+    }
+    onPageChanged: showBar()
+    // Not while locked: the unlock hold is over the bar's Lock button.
+    Timer {
+        id: hideTimer
+        interval: root.hideDelayMs
+        running: root.page === "view" && !root.editing && root.hideDelayMs > 0 && tabBar.shown && !root.touchLock.locked
+        onTriggered: tabBar.shown = false
+    }
+    Connections {
+        target: root.touchLock
+        function onLockedChanged() { if (root.touchLock.locked) root.showBar() }
+    }
+
     // The pages fill the window; the tab bar lies over their right edge (rightInset).
     ColumnLayout {
         anchors.fill: parent
@@ -94,6 +115,7 @@ ApplicationWindow {
                     chartMap: root.chartMap
                     draft: root.draft
                     rightInset: tabBar.width
+                    onPlainTap: root.showBar()
                     Component.onCompleted: if (root.legendOpen) openLegend()
                 }
                 CellPage {
@@ -101,6 +123,7 @@ ApplicationWindow {
                     visible: root.draft.chart === "none"
                     draft: root.draft
                     rightInset: tabBar.width
+                    onPlainTap: root.showBar()
                 }
             }
             TracksPage {
@@ -127,7 +150,6 @@ ApplicationWindow {
         anchors { top: parent.top; bottom: parent.bottom }
         width: implicitWidth
         x: tabBar.shown ? root.width - tabBar.width : root.width
-        Behavior on x { NumberAnimation { duration: 150 } }
         opacity: root.touchLock.locked ? 0.45 : 1
         tabViews: root.views.tabViews
         currentId: root.page === "view" ? root.views.currentId : ""
@@ -139,7 +161,8 @@ ApplicationWindow {
         recording: root.settings.trackRecording
         onViewSelected: (id) => root.showView(id)
         onHomeSelected: root.page = "home"
-        onLockRequested: root.touchLock.lockNow()
+        onTouched: root.showBar()
+        onLockRequested: { root.showBar(); root.touchLock.lockNow() }
         onPaletteCycled: {
             const modes = ["auto", "day", "dusk", "night"]
             root.settings.paletteMode = modes[(modes.indexOf(root.settings.paletteMode) + 1) % modes.length]

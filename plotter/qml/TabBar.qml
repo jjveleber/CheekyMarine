@@ -4,7 +4,9 @@ import QtQuick.Controls.Basic
 // The right edge, top to bottom: one tab per favourite view that fits (tabViews), the house tab
 // (Home), a 2 mm gap, then the global controls: touch lock and palette cycle (auto, day, dusk,
 // night). Main sizes tabViews to what fits, so the column never scrolls. A tap on a view tab
-// selects it, a 0.6 s hold emits viewHeld; every button press emits touched.
+// selects it, a 0.6 s hold emits viewHeld; every button press emits touched. Main binds x to shown:
+// the bar slides in or out in 150 ms, and a press on it during the slide (or between its buttons)
+// only emits touched.
 Rectangle {
     id: bar
     property var tabViews: []          // [{id, shortName, icon}]
@@ -25,6 +27,14 @@ Rectangle {
     objectName: "tabBar"
     implicitWidth: tab + 2 * Units.mm(1)
     color: Theme.background
+    Behavior on x { NumberAnimation { id: slide; duration: 150 } }
+
+    // Under the buttons, it takes the presses between them; over them while the bar slides.
+    MouseArea {
+        anchors.fill: parent
+        z: slide.running ? 1 : -1
+        onPressed: bar.touched()
+    }
 
     Column {
         id: column

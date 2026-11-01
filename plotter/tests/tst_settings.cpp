@@ -38,7 +38,7 @@ private slots:
         QCOMPARE(s.lastPalette(), QStringLiteral("day"));
         QCOMPARE(s.lastViewId(), QString());
         QCOMPARE(s.tabBarHideS(), 8);
-        QCOMPARE(s.touchLockTimeoutS(), 120);
+        QVERIFY(!s.property("touchLockTimeoutS").isValid()); // no idle lock any more
         QCOMPARE(s.panelDiagonalIn(), 10.1);
         QVERIFY(!s.trackRecording());
         QCOMPARE(s.trackIntervalS(), 5);
@@ -62,7 +62,7 @@ private slots:
             s.setSpeedUnit("kmh");
             s.setTempUnit("C");
             s.setApplyDepthOffset(false);
-            s.setTouchLockTimeoutS(0);
+            s.setTabBarHideS(15);
             s.setTrackRecording(true);
             QTest::ignoreMessage(QtWarningMsg, QRegularExpression("paletteMode"));
             s.setPaletteMode("bogus"); // rejected
@@ -80,7 +80,7 @@ private slots:
         auto st = Store::open(t.path());
         Settings s(**st);
         QCOMPARE(s.orientation(), QStringLiteral("north"));
-        QCOMPARE(s.touchLockTimeoutS(), 0);
+        QCOMPARE(s.tabBarHideS(), 15);
         QCOMPARE(s.lastPalette(), QStringLiteral("night"));
         QCOMPARE(s.lastViewId(), QStringLiteral("shipped-big"));
         QVERIFY(s.trackRecording());

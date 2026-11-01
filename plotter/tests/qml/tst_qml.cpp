@@ -56,7 +56,6 @@ public:
         m_settings->setTrackRecording(false);
         for (const TrackInfo& t : m_trackStore->list()) m_trackStore->remove(t.id);
         m_tracksController->refresh();
-        m_lock.setTimeoutS(0);
         m_lock.holdEnd();
         if (m_lock.locked()) { // unlock the way the user does
             m_lock.holdStart();

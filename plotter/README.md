@@ -23,9 +23,8 @@ A touch UI for a 10 inch panel (the diagonal is a setting) with a tab bar on the
 - Numbers: big readouts (depth and speed by default).
 - Tracks: records the boat's track (off by default), lists saved tracks, shows or hides them on the chart.
 - Settings: units, depth thresholds, palette (auto follows the sun, or day, dusk, night), chart
-  mode, touch lock timeout, panel size, overlay editing. About shows versions and installed packs.
-- Touch lock: the padlock in the tab bar locks the screen (it also locks after the timeout); hold
-  the padlock for 1.5 s to unlock.
+  mode, tab bar hide delay, panel size, overlay editing. About shows versions and installed packs.
+- Touch lock: the padlock in the tab bar locks the screen; hold the padlock for 1.5 s to unlock.
 - A no-data banner when n2kd is not running or sends nothing, and a recovery screen when
   `plotter.db` cannot be opened.
 
@@ -103,7 +102,8 @@ Stored in `plotter.db`, changed in the Settings page. Defaults:
 | `paletteMode` | `auto` | `auto`, `day`, `dusk`, `night` |
 | `lastPalette` | `day` | `day`, `dusk`, `night`: the palette last applied, where auto mode starts before the first fix |
 | `chartMode` | `nav` | `nav`, `fish` (anything else is rejected and not stored) |
-| `touchLockTimeoutS` | 120 | seconds, 0 for never |
+| `lastViewId` | empty | the id of the view last shown, shown again at start |
+| `tabBarHideS` | 8 | `0`, `5`, `8`, `15`, `30`: seconds before the tab bar slides off a view, 0 = never hides |
 | `panelDiagonalIn` | 10.1 | inches, sizes the touch targets |
 | `trackRecording` | off | |
 | `trackIntervalS` | 5 | seconds between track points |

@@ -219,13 +219,9 @@ int main(int argc, char* argv[]) {
     applyPalette();
     QObject::connect(&palette, &PaletteController::paletteChanged, &chart, applyPalette);
 
-    // The lock follows the timeout setting live. poll() runs every 100 ms while a timeout is set or
-    // the lock is on; the window filter below reports touches as activity. The clock is monotonic:
-    // the wall clock steps when GPS or NTP corrects it.
+    // The lock locks only from its button (or --lock). poll() runs every 100 ms while it is on, for
+    // the unlock hold. The clock is monotonic: the wall clock steps when GPS or NTP corrects it.
     TouchLock touchLock(monotonicMsClock());
-    touchLock.setTimeoutS(settings.touchLockTimeoutS());
-    QObject::connect(&settings, &Settings::touchLockTimeoutSChanged, &touchLock,
-                     [&] { touchLock.setTimeoutS(settings.touchLockTimeoutS()); });
     QTimer lockTimer;
     pollWhileNeeded(touchLock, lockTimer);
     if (cli.isSet(lockOpt)) touchLock.lockNow();
@@ -260,7 +256,6 @@ int main(int argc, char* argv[]) {
         qCritical() << "the main QML is not a window";
         return 1;
     }
-    window->installEventFilter(new TouchActivityFilter(&touchLock, window));
     if (windowSize.isValid()) window->resize(windowSize);
     const auto resizeIcons = [&] { chart.setImages(chartIcons(iconPxPerMm(), palette.palette())); };
     resizeIcons();

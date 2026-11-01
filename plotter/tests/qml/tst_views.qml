@@ -24,7 +24,8 @@ TestCase {
         property var legend: [{ abbr: "Blds", meaning: "boulders", kind: "type" }]
         property var aisSelection: ({})
         property var zooms: [] // zoomBy calls: log2 deltas
-        function targetAt(p, r) { return undefined }
+        property var target: undefined // what targetAt resolves
+        function targetAt(p, r) { return target }
         function selectAt(p, r) {}
         function clearTarget() { aisSelection = ({}) }
         function zoomIn() {}
@@ -57,6 +58,8 @@ TestCase {
         chartStub.follow = true
         chartStub.mode = "nav"
         chartStub.zooms = []
+        chartStub.target = undefined
+        chartStub.fishAvailable = true
         Units.windowWidth = 1280
         Units.windowHeight = 800
         Units.diagonalIn = 10.1
@@ -671,6 +674,173 @@ TestCase {
             return Math.abs(a.x - b.x) < 1 && Math.abs(a.y - b.y) < 1
         }, 1000, "hold over the button")
         verify(holdTarget.width >= Units.mm(12) - 0.5 && holdTarget.height >= Units.mm(12) - 0.5)
+    }
+
+    // The bar on the view's right edge, or slid off it.
+    function barShown(main) {
+        const bar = item(main, "tabBar")
+        return Math.abs(bar.x - (main.width - bar.width)) < 0.5
+    }
+    function barHidden(main) { return item(main, "tabBar").x >= main.width - 1 }
+    // Shows the view `id` from its tab, then waits for the bar to slide off (hideDelayMs is short).
+    function hideBarOn(main, id) {
+        mouseClick(item(main, "tab-view-" + id))
+        compare(main.page, "view")
+        tryVerify(() => barHidden(main), 1000, "the bar slid off")
+        verify(!item(main, "tabBar").shown)
+    }
+
+    function test_barHidesAfterDelayAndPlainTapShowsIt() {
+        const main = makeMain(1024, 600)
+        const bar = item(main, "tabBar")
+        main.hideDelayMs = 200
+        mouseClick(item(main, "tab-view-shipped-nav"))
+        verify(barShown(main))
+        wait(400)
+        verify(barHidden(main), "hidden 400 ms after the view showed: x " + bar.x)
+        main.hideDelayMs = 2000 // long enough to see it back
+        const map = item(main, "mapArea")
+        mouseClick(map, map.width / 2, map.height / 2)
+        verify(bar.shown)
+        tryVerify(() => barShown(main), 400, "back within the 150 ms slide")
+
+        main.hideDelayMs = 200
+        hideBarOn(main, "shipped-big")
+        main.hideDelayMs = 2000
+        const cells = item(main, "cellPage")
+        verify(cells.visible)
+        mouseClick(item(main, "cell-0"))
+        verify(bar.shown, "a cell tap shows the bar")
+        tryVerify(() => barShown(main), 400)
+        main.hideDelayMs = 200
+        hideBarOn(main, "shipped-big")
+        mouseClick(cells, 1, 1) // the gap round the cells
+        verify(bar.shown, "a background tap shows the bar")
+        tryVerify(() => barShown(main), 400)
+    }
+
+    // The view's own buttons do their job and leave the bar hidden.
+    function test_establishedButtonsLeaveTheBarHidden() {
+        const main = makeMain(1024, 600)
+        const bar = item(main, "tabBar")
+        main.hideDelayMs = 200
+        hideBarOn(main, "shipped-nav")
+        const stillHidden = what => {
+            verify(!bar.shown, what + " leaves the bar hidden")
+            verify(barHidden(main), what)
+        }
+        mouseClick(item(main, "zoomInButton"))
+        stillHidden("+")
+        mouseClick(item(main, "legendButton"))
+        verify(item(main, "legendSheet").visible)
+        stillHidden("Legend")
+        mouseClick(item(main, "legendCloseButton"))
+        stillHidden("the legend's close")
+        chartStub.follow = false
+        const recenter = item(main, "recenterButton")
+        waitForRendering(recenter)
+        mouseClick(recenter)
+        verify(chartStub.follow, "recentered")
+        stillHidden("Recenter")
+        chartStub.target = { mmsi: 1 }
+        const map = item(main, "mapArea")
+        mouseClick(map, map.width / 2, map.height / 2)
+        stillHidden("an AIS target")
+    }
+
+    // The hide moves nothing: the slots, the zoom buttons, Legend and the chip keep their boxes and
+    // only the map runs under the strip.
+    function test_nothingMovesWhenTheBarHides() {
+        chartStub.fishAvailable = false
+        const main = makeMain(1024, 600)
+        main.hideDelayMs = 200
+        mouseClick(item(main, "tab-view-shipped-fish"))
+        const page = item(main, "chartPage")
+        const map = item(main, "mapArea")
+        waitForRendering(page)
+        const watched = () => H.findAll(page, it => it.slotId !== undefined && it.drawnMm !== undefined && it.visible)
+            .concat(["zoomInButton", "zoomOutButton", "legendButton", "noFishChip"].map(n => item(main, n)))
+        const boxes = () => watched().map(it => {
+            const b = H.box(it, main.contentItem)
+            return [it.objectName || it.slotId, b.x, b.y, b.w, b.h]
+        })
+        verify(item(main, "noFishChip").visible)
+        verify(watched().length >= 6, "slots and controls: " + watched().length)
+        const before = boxes()
+        compare(map.width, main.width)
+        tryVerify(() => {
+            compare(map.width, main.width)
+            return barHidden(main)
+        }, 1000, "the bar slid off")
+        compare(boxes(), before)
+        compare(map.width, main.width)
+    }
+
+    function test_barNeverHidesOnHomeTracksSettingsAbout() {
+        const main = makeMain(1024, 600)
+        main.hideDelayMs = 100
+        for (const p of ["home", "tracks", "settings", "about"]) {
+            main.page = p
+            wait(300)
+            verify(item(main, "tabBar").shown, p)
+            verify(barShown(main), p)
+        }
+    }
+
+    function test_offNeverHides() {
+        fixture.settings.tabBarHideS = 0
+        const main = makeMain(1024, 600)
+        compare(main.hideDelayMs, 0)
+        mouseClick(item(main, "tab-view-shipped-nav"))
+        wait(300)
+        verify(item(main, "tabBar").shown)
+        verify(barShown(main))
+    }
+
+    // A bar button press starts the delay again; so does a tap on the bar between its buttons.
+    function test_barTapRestartsTheDelay() {
+        const main = makeMain(1024, 600)
+        const bar = item(main, "tabBar")
+        main.hideDelayMs = 400
+        mouseClick(item(main, "tab-view-shipped-nav"))
+        wait(250)
+        mouseClick(item(main, "paletteButton"))
+        wait(250)
+        verify(bar.shown, "500 ms after the tab tap, 250 ms after the palette")
+        mouseClick(bar, bar.width / 2, bar.height - Units.mm(0.5)) // the bottom margin, under the buttons
+        wait(250)
+        verify(bar.shown, "250 ms after a tap between the buttons")
+        tryVerify(() => barHidden(main), 1000, "then it hides")
+    }
+
+    // A tap on the strip while the bar slides shows it, and presses nothing under the finger.
+    function test_tapDuringTheSlideShows() {
+        const main = makeMain(1024, 600)
+        const bar = item(main, "tabBar")
+        const home = item(main, "tab-home")
+        const p = home.mapToItem(main.contentItem, home.width / 2, home.height / 2)
+        bar.shown = false // the slide starts
+        mouseClick(main.contentItem, p.x, p.y)
+        verify(bar.shown)
+        compare(main.page, "view", "the house tab under the finger was not pressed")
+        tryVerify(() => barShown(main), 400)
+    }
+
+    function test_lockShowsTheBarFirst() {
+        const main = makeMain(1024, 600)
+        const bar = item(main, "tabBar")
+        main.hideDelayMs = 200
+        hideBarOn(main, "shipped-nav")
+        fixture.touchLock.lockNow()
+        verify(bar.shown, "locking shows the bar")
+        const holdTarget = item(main, "lockHold")
+        const button = item(main, "lockButton")
+        tryVerify(() => {
+            const a = holdTarget.mapToItem(main.contentItem, 0, 0), b = button.mapToItem(main.contentItem, 0, 0)
+            return barShown(main) && Math.abs(a.x - b.x) < 1 && Math.abs(a.y - b.y) < 1
+        }, 1000, "hold over the shown Lock button")
+        wait(400)
+        verify(barShown(main), "the bar stays while locked")
     }
 
     function test_tabBarRecordIndicatorFollowsTheSetting() {

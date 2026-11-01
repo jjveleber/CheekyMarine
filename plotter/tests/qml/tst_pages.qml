@@ -710,8 +710,9 @@ TestCase {
         const page = createTemporaryObject(settingsComp, testCase, { width: data.w - Units.mm(17), height: data.h, settings: fixture.settings })
         verify(page, "SettingsPage")
         H.checkBigButtons(testCase, Units, page)
-        verify(H.byName(page, "editOverlaysButton"))
         verify(H.byName(page, "aboutButton"))
+        compare(H.byName(page, "editOverlaysButton"), null)
+        compare(H.byName(page, "row-touchLock"), null)
     }
 
     function test_settingsInvalidDepthShowsReasonAndIsNotSaved() {
@@ -810,18 +811,25 @@ TestCase {
             { row: "row-orientation", choice: "north", key: "orientation", want: "north" },
             { row: "row-orientation", choice: "course", key: "orientation", want: "course" },
             { row: "row-paletteMode", choice: "night", key: "paletteMode", want: "night" },
-            { row: "row-touchLock", choice: "0", key: "touchLockTimeoutS", want: 0 },
-            { row: "row-touchLock", choice: "30", key: "touchLockTimeoutS", want: 30 },
-            { row: "row-touchLock", choice: "300", key: "touchLockTimeoutS", want: 300 },
+            { row: "row-tabBarHide", choice: "15", key: "tabBarHideS", want: 15,
+              labels: ["Off", "5 s", "8 s", "15 s", "30 s"], rowText: "Hide tab bar after: 15 s" },
+            { row: "row-tabBarHide", choice: "0", key: "tabBarHideS", want: 0 },
             { row: "row-trackInterval", choice: "30", key: "trackIntervalS", want: 30 },
             { row: "row-trackDistance", choice: "25", key: "trackMinDistanceM", want: 25 }
         ]
     }
     function test_settingsChoiceRows(data) {
         const page = makeSettings()
+        if (data.labels) {
+            tap(H.byName(page, data.row))
+            const list = H.byName(page, "settingsList")
+            compare(list.choices.map(c => c.label), data.labels)
+            mouseClick(H.byName(page, "listDone"))
+        }
         pick(page, data.row, data.choice)
         compare(fixture.settings[data.key], data.want)
         verify(!H.byName(page, "settingsList").visible)
+        if (data.rowText) compare(H.byName(page, data.row).text, data.rowText)
     }
 
     function test_settingsOffsetToggleAndDiagonal() {
