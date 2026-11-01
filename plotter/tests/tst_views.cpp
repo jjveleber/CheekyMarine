@@ -64,7 +64,7 @@ private slots:
     void badFieldsTakeDefaults() {
         const QJsonObject o = parse(R"({"id":"a","name":"X","chart":"3d","icon":"dragon",
             "cells":{"layout":"2x3:0,0,2,1","fields":["warp","sog","x"]},
-            "slots":[{"id":"BL","sizeMm":2},{"id":"BR","size":"large"}]})");
+            "slots":[{"id":"BL","sizeMm":2},{"id":"BR","size":"large"},{"id":"Top","sizeMm":33.27}]})");
         const View v = viewFromJson(o);
         QCOMPARE(v.chart, ViewChart::Nav);
         QCOMPARE(v.icon, QStringLiteral("anchor"));
@@ -72,6 +72,29 @@ private slots:
         QCOMPARE(v.cells.fields, (QList<Field>{Field::Depth, Field::Sog}));
         QCOMPARE(v.slotList[int(SlotId::BL)].sizeMm, 6.0);
         QCOMPARE(v.slotList[int(SlotId::BR)].sizeMm, 25.0);
+        QCOMPARE(v.slotList[int(SlotId::Top)].sizeMm, 33.3);
+    }
+
+    void loadClampsNameAndShort() {
+        const QString long30 = QStringLiteral("abcdefghijklmnopqrstuvwxyz0123");
+        QCOMPARE(viewFromJson(QJsonObject{{"name", long30}}).name, long30.left(24));
+        QCOMPARE(viewFromJson(QJsonObject{{"name", "X"}, {"short", "ABCDEFGH"}}).shortName, QStringLiteral("ABCDEF"));
+        QCOMPARE(viewFromJson(QJsonObject{{"name", "Trolling"}, {"short", ""}}).shortName, QStringLiteral("Trolli"));
+        QCOMPARE(viewFromJson(QJsonObject{{"name", ""}}).name, QStringLiteral("View"));
+    }
+
+    void layoutAndFieldPadding() {
+        const View a = viewFromJson(parse(R"({"cells":{"layout":"2x3:0,0,1,3;1,0,1,3","fields":["depth","sog"]}})"));
+        QCOMPARE(a.cells.layout, kTwoCols);
+        const View b = viewFromJson(parse(R"({"cells":{"layout":"2x2:0,0,1,1;1,0,1,1;0,1,1,1;1,1,1,1","fields":["depth"]}})"));
+        QCOMPARE(b.cells.fields, (QList<Field>{Field::Depth, Field::Sog, Field::Stw, Field::Cog}));
+    }
+
+    void emptyObjectDefaults() {
+        const View v = viewFromJson(QJsonObject{});
+        QCOMPARE(v.name, QStringLiteral("View"));
+        QCOMPARE(v.shortName, QStringLiteral("View"));
+        QCOMPARE(v.icon, QStringLiteral("anchor"));
     }
 
     void shortAndDuplicateNames() {
@@ -96,10 +119,15 @@ private slots:
         v = viewsFromPlan3(slotsJson, {"depth", "cog", "rpm"}, 5);
         QCOMPARE(v[2].cells.layout, QStringLiteral("3x2:0,0,1,2;1,0,1,2;2,0,1,2"));
         QCOMPARE(v[2].cells.fields, (QList<Field>{Field::Depth, Field::Cog, Field::Rpm}));
+        for (const View& x : v) QCOMPARE(viewFromJson(viewToJson(x)), x);
 
         v = viewsFromPlan3(slotsJson, {"depth"}, 5);
         QCOMPARE(v[2].cells.layout, kTwoCols);
         QCOMPARE(v[2].cells.fields, (QList<Field>{Field::Depth, Field::Sog}));
+
+        v = viewsFromPlan3(slotsJson, {"warp", "sog"}, 5);
+        QCOMPARE(v[2].cells.fields, (QList<Field>{Field::Depth, Field::Sog}));
+        for (const View& x : v) QCOMPARE(viewFromJson(viewToJson(x)), x);
 
         v = viewsFromPlan3(slotsJson, {"depth", "sog", "stw", "cog", "hdg"}, 5);
         QCOMPARE(v[2].cells.fields.size(), 4);

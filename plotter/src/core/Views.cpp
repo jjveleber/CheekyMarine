@@ -103,8 +103,10 @@ QJsonObject viewToJson(const View& v) {
 View viewFromJson(const QJsonObject& o) {
     View v;
     v.id = o.value("id").toString();
-    v.name = o.value("name").isString() ? o.value("name").toString() : QStringLiteral("View");
-    v.shortName = o.value("short").isString() ? o.value("short").toString() : shortFromName(v.name);
+    v.name = o.value("name").toString().left(kMaxNameChars);
+    if (v.name.isEmpty()) v.name = QStringLiteral("View");
+    v.shortName = o.value("short").toString().left(kMaxShortChars);
+    if (v.shortName.isEmpty()) v.shortName = shortFromName(v.name);
     v.icon = o.value("icon").toString();
     if (!iconNames().contains(v.icon)) v.icon = iconNames().first();
     v.chart = viewChartFromName(o.value("chart").toString()).value_or(ViewChart::Nav);
@@ -121,7 +123,7 @@ View viewFromJson(const QJsonObject& o) {
         ViewSlot& s = v.slotList[int(*id)];
         if (so.value("on").isBool()) s.on = so.value("on").toBool();
         if (const auto f = fieldFromName(so.value("field").toString())) s.field = *f;
-        if (so.value("sizeMm").isDouble()) s.sizeMm = std::max(kMinSizeMm, so.value("sizeMm").toDouble());
+        if (so.value("sizeMm").isDouble()) s.sizeMm = std::max(kMinSizeMm, std::round(so.value("sizeMm").toDouble() * 10.0) / 10.0);
         else if (const auto z = slotSizeFromName(so.value("size").toString())) s.sizeMm = sizeMmFromSlotSize(*z);
     }
 
