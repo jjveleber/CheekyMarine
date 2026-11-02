@@ -1,7 +1,8 @@
 build/
 .superpowers/
 .cache/
-.claude/
+.claude/*
+!.claude/skills/
 build-*/
 chartpack/.venv/
 chartpack/work/
