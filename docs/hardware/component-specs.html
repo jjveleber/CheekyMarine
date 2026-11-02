@@ -1388,6 +1388,69 @@ box</td>
 </tr>
 </tbody>
 </table>
+<p><strong>Relay: Mouser filters</strong> (Electromechanical &gt;
+Relays, Contactors &amp; Solenoids &gt; General Purpose Relays,
+mouser.com/c/electromechanical/relays-contactors-solenoids/general-purpose-relays/,
+read 2026-11-02). Not Automotive Relays: most of those draw 1.5 to 2
+W.</p>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Mouser filter</th>
+<th>Set to</th>
+<th>Must-have it covers</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Relay Contact Form</td>
+<td>1 Form A (SPST) and 1 Form A (SPST-NO)</td>
+<td>Type (normally open)</td>
+</tr>
+<tr class="even">
+<td>Coil Voltage</td>
+<td>12 VDC (and 12 V)</td>
+<td>Type (12 V coil)</td>
+</tr>
+<tr class="odd">
+<td>Coil Type</td>
+<td>Non-Latching</td>
+<td>Type; latching is a disqualifier</td>
+</tr>
+<tr class="even">
+<td>Coil Current</td>
+<td>50 mA and every smaller value (0.6 W at 12 V; or Coil Resistance 240
+ohm and up)</td>
+<td>Coil power</td>
+</tr>
+<tr class="odd">
+<td>Contact Current Rating</td>
+<td>10 A and every larger value; 16 A preferred</td>
+<td>Contacts; confirm a DC rating on the datasheet</td>
+</tr>
+<tr class="even">
+<td>Mounting Style</td>
+<td>PCB Mount, Through Hole</td>
+<td>Mounting</td>
+</tr>
+<tr class="odd">
+<td>Packaging</td>
+<td>Bulk, Tray, Tube (not Reel)</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<p>Leave open: Manufacturer, Product, Type (though it can show “Flux
+Protected” or “Epoxy Sealed”), Switching Voltage, Contact Termination,
+Coil Termination, Contact Material, Series, the size filters. Not
+filterable, so check the datasheet: must-operate voltage (70% or lower),
+maximum coil voltage, sealing (flux proof or wash tight), and
+temperature.</p>
 <p><strong>Nice to have</strong></p>
 <ul>
 <li>The controller reads the battery voltage, so the app can show
@@ -1439,8 +1502,24 @@ sense, and negative (part 19).</li>
 matters: it covers a disconnected or dead battery, and a hung
 shutdown.</li>
 </ul>
-<p><strong>Reference, not a requirement.</strong> None chosen yet, for
-the relay or the controller.</p>
+<p><strong>Reference, not a requirement.</strong> Relay candidates, both
+read from the maker’s datasheet 2026-11-02, not priced yet:</p>
+<ul>
+<li><strong>Omron G5RL-1A-E-HR DC12</strong>: SPST-NO, 16 A at 24 VDC
+resistive, high-inrush version. Coil 360 ohm, 33.3 mA, about 400 mW;
+must operate 70% max, release 10% min, maximum coil voltage 130% (15.6
+V), all at 23 °C. -40 to +85 °C. Flux protection (fine inside the sealed
+box). Check the maximum coil voltage still holds at 70 °C (the datasheet
+doesn’t say).</li>
+<li><strong>TE (Schrack) RTD34012</strong>: RT1 family, 16 A, 5 mm
+pinning, wash tight (RT III), SPST-NO, AgNi contacts. Coil 360 ohm, 400
+mW; operate 8.4 V (70%), release 1.2 V, at 23 °C. -40 to +85 °C (DC
+coil). The text layer doesn’t give a maximum coil voltage or a DC
+contact rating: read them off the datasheet’s coil operating range and
+load limit graphs. RT314012 is the flux-proof version of the same relay.
+Not the RT1 bistable: it latches.</li>
+</ul>
+<p>Controller: none chosen yet.</p>
 <p>Alternatives considered (2026-10-31):</p>
 <ul>
 <li><strong>Supercapacitor hold-up in the box</strong> (DIY, about $40

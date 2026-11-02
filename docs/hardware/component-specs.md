@@ -362,6 +362,20 @@ It has four pieces:
 | Temperature | Rated to +70 °C or higher | Datasheet |
 | Mounting | PCB pins or 6.3 mm tabs in a socket | Datasheet |
 
+**Relay: Mouser filters** (Electromechanical > Relays, Contactors & Solenoids > General Purpose Relays, mouser.com/c/electromechanical/relays-contactors-solenoids/general-purpose-relays/, read 2026-11-02). Not Automotive Relays: most of those draw 1.5 to 2 W.
+
+| Mouser filter | Set to | Must-have it covers |
+|---|---|---|
+| Relay Contact Form | 1 Form A (SPST) and 1 Form A (SPST-NO) | Type (normally open) |
+| Coil Voltage | 12 VDC (and 12 V) | Type (12 V coil) |
+| Coil Type | Non-Latching | Type; latching is a disqualifier |
+| Coil Current | 50 mA and every smaller value (0.6 W at 12 V; or Coil Resistance 240 ohm and up) | Coil power |
+| Contact Current Rating | 10 A and every larger value; 16 A preferred | Contacts; confirm a DC rating on the datasheet |
+| Mounting Style | PCB Mount, Through Hole | Mounting |
+| Packaging | Bulk, Tray, Tube (not Reel) | |
+
+Leave open: Manufacturer, Product, Type (though it can show "Flux Protected" or "Epoxy Sealed"), Switching Voltage, Contact Termination, Coil Termination, Contact Material, Series, the size filters. Not filterable, so check the datasheet: must-operate voltage (70% or lower), maximum coil voltage, sealing (flux proof or wash tight), and temperature.
+
 **Nice to have**
 
 - The controller reads the battery voltage, so the app can show it.
@@ -385,7 +399,12 @@ It has four pieces:
 - The 12 V cable into the box becomes three conductors: standby +, sense, and negative (part 19).
 - The filesystem design (read-only root, A/B slots, plan 4) still matters: it covers a disconnected or dead battery, and a hung shutdown.
 
-**Reference, not a requirement.** None chosen yet, for the relay or the controller.
+**Reference, not a requirement.** Relay candidates, both read from the maker's datasheet 2026-11-02, not priced yet:
+
+- **Omron G5RL-1A-E-HR DC12**: SPST-NO, 16 A at 24 VDC resistive, high-inrush version. Coil 360 ohm, 33.3 mA, about 400 mW; must operate 70% max, release 10% min, maximum coil voltage 130% (15.6 V), all at 23 °C. -40 to +85 °C. Flux protection (fine inside the sealed box). Check the maximum coil voltage still holds at 70 °C (the datasheet doesn't say).
+- **TE (Schrack) RTD34012**: RT1 family, 16 A, 5 mm pinning, wash tight (RT III), SPST-NO, AgNi contacts. Coil 360 ohm, 400 mW; operate 8.4 V (70%), release 1.2 V, at 23 °C. -40 to +85 °C (DC coil). The text layer doesn't give a maximum coil voltage or a DC contact rating: read them off the datasheet's coil operating range and load limit graphs. RT314012 is the flux-proof version of the same relay. Not the RT1 bistable: it latches.
+
+Controller: none chosen yet.
 
 Alternatives considered (2026-10-31):
 
