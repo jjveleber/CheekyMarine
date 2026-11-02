@@ -453,7 +453,8 @@ TestCase {
         verify(Math.abs(handle.width - Units.mm(12)) < 0.5 && Math.abs(handle.height - Units.mm(12)) < 0.5)
         const tl = m(main, "slot-TL")
         const hb = H.box(handle, tl)
-        verify(hb.x + hb.w > tl.width - 1 && hb.y + hb.h > tl.height - 1, "on TL's inner (bottom right) corner")
+        fuzzyCompare(hb.x + hb.w / 2, tl.width, 1, "centered on TL's inner corner, x")
+        fuzzyCompare(hb.y + hb.h / 2, tl.height, 1, "centered on TL's inner corner, y")
         waitForRendering(page)
         const start = draftSlot("TL").sizeMm
         const moves = createTemporaryObject(spyComp, testCase, { target: page, signalName: "handleDragged" })
@@ -497,6 +498,41 @@ TestCase {
         for (let i = 1; i <= 10; ++i) touchEvent(w).move(0, w, p.x - Units.mm(1) * i, p.y).commit()
         touchEvent(w).release(0, w, p.x - Units.mm(10), p.y).commit()
         verify(draftSlot("TL").sizeMm < grown, "a finger drag shrinks it too: " + draftSlot("TL").sizeMm)
+    }
+
+    // The handle is centered on the inner corner (corners) or the midpoint of the inner edge (bars),
+    // half over the slot and half over the chart, and carries an arrow along the resize axis.
+    function test_handleSitsOnTheInnerCornerOrEdgeWithAnArrow() {
+        const main = makeMain(1280, 800)
+        main.editView("shipped-nav")
+        const page = m(main, "chartPage")
+        const center = { TL: s => [s.width, s.height], TR: s => [0, s.height], BL: s => [s.width, 0], BR: s => [0, 0],
+                         Top: s => [s.width / 2, s.height], Bottom: s => [s.width / 2, 0],
+                         Left: s => [s.width, s.height / 2], Right: s => [0, s.height / 2] }
+        const angle = { TL: 45, BR: 45, TR: 135, BL: 135, Top: 90, Bottom: 90, Left: 0, Right: 0 }
+        for (const id of ["TL", "TR", "BL", "BR", "Top", "Bottom", "Left", "Right"]) {
+            fixture.draft.setSlot(id, true, "sog", 8)
+            waitForRendering(page)
+            const slot = m(main, "slot-" + id)
+            mouseClick(slot)
+            const handle = find(page, "handle-" + id)
+            verify(handle.visible, id + " handle")
+            const hb = H.box(handle, slot)
+            const [cx, cy] = center[id](slot)
+            fuzzyCompare(hb.x + hb.w / 2, cx, 1, id + " center x")
+            fuzzyCompare(hb.y + hb.h / 2, cy, 1, id + " center y")
+            verify(Math.abs(hb.w - Units.mm(12)) < 0.5, id + " 12 mm")
+            const arrow = find(handle, "handleArrow-" + id)
+            verify(arrow.visible, id + " arrow")
+            compare(arrow.rotation, angle[id], id + " arrow along the resize axis")
+            verify(Qt.colorEqual(arrow.stroke, Theme.editHandleArrow), id + " arrow color")
+            for (const p of [Theme.day, Theme.dusk, Theme.night])
+                verify(Qt.color(p.editHandleArrow).hslLightness > Qt.color(p.editHandleDisc).hslLightness, "the arrow is lighter than the disc")
+            // Done closes the sheet (it would cover the slots in the other half); the selection stays.
+            const sheet = find(m(main, "viewEditor"), "slotSheet")
+            mouseClick(find(sheet, "sheetDone"))
+            verify(!sheet.visible, id + " sheet closed")
+        }
     }
 
     function test_cellSheetChangesAField() {
@@ -722,7 +758,7 @@ TestCase {
         fuzzyCompare(pb.h, room.h, 1, "full height")
         verify(pb.w < room.w - Units.mm(40), "the view shows beside it")
         const names = ["row-name", "row-short", "chart-nav", "chart-fish", "chart-none", "row-layout",
-                       "row-favourite", "row-delete", "setupDone"].concat(Icons.names().map(n => "icon-" + n))
+                       "row-favorite", "row-delete", "setupDone"].concat(Icons.names().map(n => "icon-" + n))
         for (const n of names) {
             const b = find(panel, n)
             verify(b.visible, n + " visible")
@@ -733,7 +769,7 @@ TestCase {
         H.checkBigButtons(testCase, Units, panel)
         compare(find(panel, "row-name").text, "Name: Big numbers")
         compare(find(panel, "row-short").text, "Short name: Big #")
-        compare(find(panel, "row-favourite").text, "Favourite: On")
+        compare(find(panel, "row-favorite").text, "Favorite: On")
         compare(find(panel, "row-delete").text, "Delete view")
         verify(find(panel, "icon-hash").highlighted, "the draft's icon")
         verify(!find(panel, "icon-fish").highlighted)
@@ -833,7 +869,7 @@ TestCase {
         const quad = "2x2:0,0,1,1;1,0,1,1;0,1,1,1;1,1,1,1"
         verify(before.cells.layout !== quad, "the quad is a change")
         tapShown(find(sheet, "layout-" + quad))
-        tapShown(find(sheet, "row-favourite"))
+        tapShown(find(sheet, "row-favorite"))
         const changed = fixture.draft.toJson()
         compare([changed.name, changed.short, changed.icon, changed.chart, changed.cells.layout, changed.favourite],
                 ["Trolling", "Troll", "fish", "none", quad, false], "every change made")
@@ -906,21 +942,21 @@ TestCase {
         fixture.views.setFavourite(sixth, true)
         verify(!fixture.views.onTabBar(sixth))
         let sheet = openSetup(main, sixth)
-        const row = find(sheet, "row-favourite")
-        compare(row.text, "Favourite: On")
-        const note = find(sheet, "favouriteNote")
+        const row = find(sheet, "row-favorite")
+        compare(row.text, "Favorite: On")
+        const note = find(sheet, "favoriteNote")
         verify(note.visible, "the note")
         compare(note.text, "Not on tab bar (full)")
         tapShown(row)
         compare(fixture.draft.favourite, false)
-        compare(row.text, "Favourite: Off")
+        compare(row.text, "Favorite: Off")
         verify(!note.visible, "no note when off")
         mouseClick(find(sheet, "setupDone"))
         mouseClick(m(main, "editorCancel"))
 
         // A favourite on the bar has no note.
         sheet = openSetup(main, "shipped-fish")
-        verify(!find(sheet, "favouriteNote").visible)
+        verify(!find(sheet, "favoriteNote").visible)
     }
 
     function test_deleteFromSetupGoesHome() {
@@ -970,10 +1006,10 @@ TestCase {
         const plain = fixture.views.add()
         verify(!fixture.views.viewJson(plain).favourite)
         const sheet = openSetup(main, plain)
-        const note = find(sheet, "favouriteNote")
-        compare(find(sheet, "row-favourite").text, "Favourite: Off")
+        const note = find(sheet, "favoriteNote")
+        compare(find(sheet, "row-favorite").text, "Favorite: Off")
         verify(!note.visible)
-        tapShown(find(sheet, "row-favourite"))
+        tapShown(find(sheet, "row-favorite"))
         compare(fixture.draft.favourite, true)
         verify(!fixture.views.viewJson(plain).favourite, "not stored before Done")
         verify(note.visible, "the note before Done")

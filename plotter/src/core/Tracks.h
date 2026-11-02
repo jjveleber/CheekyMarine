@@ -80,6 +80,11 @@ public:
     // 0 when no track is active (not recording, or no position yet).
     qint64 activeId() const { return m_active; }
 
+    struct ActiveTotals { int points = 0; double durationS = 0; double distanceM = 0; };
+    // The active track, written and buffered points (and points dropped after a failed batch, which the
+    // drawn line keeps too); zero when no track is active.
+    ActiveTotals activeTotals() const;
+
 signals:
     // The whole active track, written and buffered points.
     void activeTrackChanged(const QList<LatLon>& points);
@@ -102,6 +107,8 @@ private:
     std::optional<TrackPoint> m_last; // last stored point of the active track
     std::optional<double> m_lastPosT; // last vessel update that carried a position, stored or not
     double m_lastWriteS = 0;
+    double m_activeStartT = 0;
+    double m_activeDistanceM = 0;
 };
 
 // What the tracks page and the chart see: rows with show/hide and delete, and the lines to draw
@@ -117,9 +124,10 @@ public:
     // The visible tracks other than the active one.
     QList<QList<LatLon>> finished() const { return m_finished; }
     // The active track, written and buffered points; empty when not recording.
-    QList<LatLon> active() const { return m_activePoints; }
+    // Empty while the active track is hidden.
+    QList<LatLon> active() const { return m_activeVisible ? m_activePoints : QList<LatLon>{}; }
 
-    // Reloads the rows (the active track's counts include only written points).
+    // Reloads the rows (the active track's counts include the buffered points).
     Q_INVOKABLE void refresh();
     Q_INVOKABLE void setVisible(qint64 id, bool visible);
     // The active track cannot be deleted.
@@ -141,4 +149,5 @@ private:
     QHash<qint64, QList<LatLon>> m_lines; // finished tracks' points, read once (they never change)
     QList<LatLon> m_activePoints;
     qint64 m_shownActive = 0;
+    bool m_activeVisible = true;
 };

@@ -213,6 +213,7 @@ ApplicationWindow {
                     visible: root.draft.chart === "none"
                     draft: root.draft
                     rightInset: tabBar.width
+                    barInset: root.width - tabBar.x
                     editing: root.editing
                     onPlainTap: root.showBar()
                     onCellTapped: (index) => editor.openCellSheet(index)

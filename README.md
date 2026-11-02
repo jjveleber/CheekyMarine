@@ -16,6 +16,8 @@ cmake --build build -j
 ctest --test-dir build --output-on-failure
 ```
 
+Before writing or reviewing a change, see `docs/superpowers/review-checklist.md` (US English word list, standing review rules).
+
 ## Chart packs
 
 `chartpack` (Python) builds the chart packs the plotter draws: a charts pack (NOAA ENC cells with USGS bottom composition, for navigation) and a bathy pack (depth contours and terrain, for fishing), as MBTiles with MapLibre styles. Packs are released by `charts-<region>-vX.Y.Z` and `bathy-<region>-vX.Y.Z` tags, separately from the `v*` n2kd releases. It is built and tested separately: see [chartpack/README.md](chartpack/README.md).
@@ -89,7 +91,7 @@ Units are the NMEA 2000 SI units canboat reports: `t` and `gnssTime` epoch secon
 
 Contract:
 
-- Every key shown above is always present. A stale or unknown vessel value is `null`; `pos` is `null` as a whole object, never an object with null members. `hdgRef` can be `null`, and so can `navStatus` (class B reports carry none).
+- Every key shown above is always present. n2kd always writes them all. The plotter requires every vessel key and, per AIS target, only `mmsi`, `class` and `age`; any other target key may be absent and reads as null (`plotter/src/core/N2kParse.h`). A stale or unknown vessel value is `null`; `pos` is `null` as a whole object, never an object with null members. `hdgRef` can be `null`, and so can `navStatus` (class B reports carry none).
 - Staleness windows: `pos`, `sats`, `sog`, `cog`, `hdg`, `hdgRef`, `variation`, `gnssTime`, `depth`, `depthOffset`, `stw` and `rpm` are `null` 5 s after their last update, `waterTemp` after 30 s. An AIS target is dropped 600 s after its last message.
 - AIS ages are as of `t`; the daemon re-sends the AIS snapshot at least every 10 s while targets exist, so a client never sees an age frozen for longer than that.
 - At most `--max-ais` targets (default 500) are published, the most recently seen ones, still sorted by `mmsi`. When more are known the message adds `"truncated":true` and `"total":N` (the number of targets known); otherwise both keys are absent.

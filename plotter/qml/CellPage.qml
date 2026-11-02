@@ -1,14 +1,15 @@
 import QtQuick
 import QtQuick.Controls.Basic
 
-// A view with no chart: its cells tile the page (left of the tab bar strip) by the view's layout,
-// 1 mm apart. Large digits fill each cell; label and unit are small. In edit mode the cells are
+// A view with no chart: its cells tile the page left of the tab bar, and widen into the strip while
+// the bar is hidden, by the view's layout, 1 mm apart. Large digits fill each cell; label and unit are small. In edit mode the cells are
 // outlined and a tap on one emits cellTapped; otherwise any tap is a plain tap, and a 0.6 s hold on a
 // cell emits cellHeld (and no tap).
 Item {
     id: page
     required property var draft     // ViewDraft
     property real rightInset: 0     // the tab bar strip over the page's right edge
+    property real barInset: rightInset  // the part of the strip the bar covers now, 0 while it is hidden
     property bool editing: false
     signal cellTapped(int index)
     signal cellHeld(int index)
@@ -16,7 +17,7 @@ Item {
 
     readonly property real gap: Units.mm(1)
     readonly property var rects: Layouts.rects(draft.layout)
-    readonly property real areaW: width - rightInset
+    readonly property real areaW: width - barInset
 
     objectName: "cellPage"
 
@@ -80,6 +81,7 @@ Item {
                     font.pixelSize: Units.mm(5)
                 }
                 Label {
+                    objectName: "cellValue"
                     // Side margins keep neighbouring cells' digits from reading as one number.
                     anchors {
                         left: parent.left; right: parent.right; top: label.bottom; bottom: unitLabel.top

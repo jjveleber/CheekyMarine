@@ -24,20 +24,21 @@ on the right edge:
   bars), each on or off with its own field and digit height in mm, AIS targets (tap one for its
   sheet) and a seabed legend sheet from the "Legend" button. Three views ship: Navigation, Fishing
   and Big numbers. The last view shown comes back at start.
-- Home: a tile per view (a drawing of its layout, its name, a star on favourites) in the owner's
+- Home: a tile per view (a drawing of its layout, its name, a star on favorites) in the owner's
   order, then "+ New view", Tracks, Settings and About. Tap a tile to show the view; hold it for
-  its menu: Edit, Favourite, Move left, Move right, Duplicate, Delete (the last view cannot go).
-- Tab bar: the favourite views (icon over short name, as many as fit the bar's height: 5 on the
+  its menu: Edit, Favorite, Move left, Move right, Duplicate, Delete (the last view cannot go).
+- Tab bar: the favorite views (icon over short name, as many as fit the bar's height: 5 on the
   10.1 in panel at both sizes; the rest say "Not on tab bar (full)"), the house tab (Home), Lock and
   the palette button. On a view it slides off the right edge after the delay set in Settings (8 s
   by default, or never); a plain tap on the map or the cells brings it back. The view's own buttons
-  (Legend, zoom, Recenter, an AIS target) leave it hidden, and nothing on the view moves when it
-  hides or shows. It never hides on Home, Tracks, Settings, About or in the editor.
-- Editor: from a tile's Edit, "+ New view" (with Setup open) or a hold on a favourite tab. The view
+  (Legend, zoom, Recenter, an AIS target) leave it hidden. When it hides or shows, the chart's slots
+  slide with it and a None view's cells widen into the strip; the view's buttons stay put. It never
+  hides on Home, Tracks, Settings, About or in the editor.
+- Editor: from a tile's Edit, "+ New view" (with Setup open) or a hold on a favorite tab. The view
   stays live underneath with the tab bar dimmed; Setup, Done and Cancel float over it. Tap a slot
   for its sheet (show, field, size with + and -, or drag its round handle) or a cell for its field.
   Setup: Name and Short name (on our own keyboard), icon, chart (Nav, Fish or None), layout (None
-  only: a gallery of every layout), favourite, delete. Done saves; Cancel drops every change. A hold
+  only: a gallery of every layout), favorite, delete. Done saves; Cancel drops every change. A hold
   on a slot or cell of a live view opens just its sheet, and its Done saves.
 - Tracks: records the boat's track (off by default), lists saved tracks, shows or hides them on the chart.
 - Settings: units, depth thresholds, orientation, palette (auto follows the sun, or day, dusk,
@@ -67,7 +68,7 @@ aqt install-qt linux desktop 6.8.3 linux_gcc_64 -O ~/Qt
 maplibre-native-qt at the pinned commit, installed into `~/.local/maplibre-qt` (the script is
 `scripts/build-maplibre-qt.sh`; see `docs/plotter/spike-findings.md` for why this commit and these
 options). The first run clones the source into `~/.cache/cheekymarine/maplibre-native-qt`, which
-needs about 8.5 GB of free disk plus the build tree (the clone takes longer than the build):
+needs about 1.1 GB of free disk for the shallow clone plus the build tree (the clone takes longer than the build):
 
 ```bash
 CMAKE_PREFIX_PATH=$HOME/Qt/6.8.3/gcc_64 scripts/build-maplibre-qt.sh ~/.local/maplibre-qt
@@ -126,7 +127,9 @@ Stored in `plotter.db`, changed in the Settings page. Defaults:
 | `panelDiagonalIn` | 10.1 | inches, sizes the touch targets |
 | `trackRecording` | off | |
 | `trackIntervalS` | 5 | seconds between track points |
-| `trackMinDistanceM` | 10 | metres moved before a new point |
+| `trackMinDistanceM` | 10 | meters moved before a new point |
+
+Track points are written every 30 s or every 20 points. If the database refuses writes, the recorder holds at most one batch and retries; those points stay on the chart and in the Tracks row, and are lost if the app exits while writes still fail.
 
 The plan 3 keys `chartMode`, `touchLockTimeoutS`, `slots` and `bigNumbers` are gone: the chart and
 the slots and cells live in each view, and the idle auto-lock was removed.
@@ -134,7 +137,7 @@ the slots and cells live in each view, and the idle auto-lock was removed.
 ### Views
 
 The views are the `views` table of `plotter.db`: `id` (text, the primary key), `ord` (integer, the
-Home order; favourite tabs follow it) and `json`, one JSON object per view:
+Home order; favorite tabs follow it) and `json`, one JSON object per view:
 
 ```json
 {"id": "shipped-nav", "name": "Navigation", "short": "Nav", "icon": "compass", "chart": "nav",
@@ -150,11 +153,11 @@ Home order; favourite tabs follow it) and `json`, one JSON object per view:
   `cog`, `hdg`, `wtemp`, `pos`, `time`, `rpm`. `created` and `modified` are Unix seconds. Every view
   stores both `slots` and `cells`, so a switch to None and back keeps both. Unknown keys are kept on
   save, at the top level and inside a slot entry.
-- Shipped on a fresh file, all favourites, in this order: Navigation (`Nav`, nav chart), Fishing
+- Shipped on a fresh file, all favorites, in this order: Navigation (`Nav`, nav chart), Fishing
   (`Fish`, fish chart), both with TL Depth and TR SOG on at 25 mm and the other six slots off, and
   Big numbers (`Big #`, no chart) with two cells side by side, Depth and SOG.
 - The slot size clamp: a slot's digit height is held between 6 mm and the largest size whose box
-  (sized for the field's widest value) still fits beside its neighbours, so slots never overlap or
+  (sized for the field's widest value) still fits beside its neighbors, so slots never overlap or
   leave the page; the editor clamps on every change and shows what was applied, and a stored size
   too big for a smaller panel is clamped when drawn, not rewritten.
 - Cell layouts: every rectangular tiling of a 2x2, 2x3 and 3x2 grid, 72 distinct shapes of 1 to 6
@@ -200,7 +203,7 @@ in `docs/plotter/renders/views/`, named `<name>-<day|night>-<WxH>.png`. They com
 `CM_PACKS_DIR=DIR plotter/tools/run-dev.sh "" --palette P --window WxH --screenshot FILE
 --screenshot-after-ms 7000 --exit-after-ms 8000` (the splash stays up 5 s) plus `--view`, `--page`,
 `--editor`, `--sheet`, `--lock` or `--record` as needed (`splash` is taken at 800 ms,
-`nav-barhidden` at 10000 ms, after the 8 s hide). The earlier walkthrough renders in `docs/plotter/renders/final/` predate views; they
+`nav-barhidden` and `big-barhidden` at 10000 ms, after the 8 s hide). The earlier walkthrough renders in `docs/plotter/renders/final/` predate views; they
 keep the no-data banner (the app run without n2kd, `nodata-*.png`) and the recovery screen
 (`--data` pointing at a directory whose `plotter.db` is junk, `recovery-*.png`).
 
@@ -212,8 +215,12 @@ On the real panel, once the app runs there (the tests cover these offscreen only
   target. The tap point is in map area coordinates (`tst_pages` proves it reaches `selectAt` that
   way); this checks that on the panel's touch driver it matches where the map draws the target
   (`pixelForCoordinate`), including with the Top and Left bars on.
+- Lock against a touchpad pinch (dev desktop only; the panel is touch): with the lock on, a two-finger
+  touchpad pinch over the chart must not zoom and must pulse the padlock. QtTest cannot send a native
+  gesture (`QNativeGestureEvent`), so `tst_views` covers touch, mouse, wheel and keys, and this one is
+  checked by hand.
 
-## Licences
+## Licenses
 
 See `THIRD_PARTY_NOTICES` at the repository root: Qt 6 (LGPL-3.0, dynamic), maplibre-native-qt core
 (BSD-2-Clause), Noto Sans (OFL-1.1) and what `libQMapLibre.so` compiles in.
@@ -222,7 +229,8 @@ See `THIRD_PARTY_NOTICES` at the repository root: Qt 6 (LGPL-3.0, dynamic), mapl
 
 The `plotter` job in `.github/workflows/plotter-ci.yml` runs the steps above on ubuntu-24.04. It
 caches `~/Qt` and the installed maplibre prefix (keyed on the hash of `scripts/build-maplibre-qt.sh`,
-which holds the pinned commit); the 8.5 GB source checkout is never cached. A cache miss prints
-`df -h` and frees disk space first. Observed on the first (cache miss) run: 84 GB free before and
-101 GB free after removing dotnet, android and ghc, so the 8.5 GB checkout fits either way. A cache
-miss takes about 17 minutes in total (the maplibre build step alone about 15).
+which holds the pinned commit, and on the Qt version); the source checkout (about 1.1 GB, shallow
+since 8db3647) is never cached. A cache miss prints `df -h` and frees disk space first. Observed on
+the first (cache miss) run: 84 GB free before and 101 GB free after removing dotnet, android and
+ghc, so the checkout fits either way. A cache miss takes about 17 minutes in total (the maplibre
+build step alone about 15).

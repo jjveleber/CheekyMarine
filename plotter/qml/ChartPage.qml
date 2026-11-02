@@ -250,9 +250,8 @@ Item {
             onClicked: page.slotTapped(slotId)
             onHandleDragged: (id, innerX, innerY) => page.handleDragged(id, innerX, innerY)
 
-            // The bars span their edge up to the strip (clipped there); Left and Right sit between
-            // the Top and Bottom bars.
-            clip: horizontalBar
+            // The bars span their edge up to the strip (their text clipped there, in SlotView); Left
+            // and Right sit between the Top and Bottom bars.
             width: horizontalBar ? Math.max(minimumSize, page.width - page.barInset) : implicitWidth
             height: verticalBar ? Math.max(implicitHeight, page.height - page.topInset - page.bottomInset - noticeBar.height)
                                 : implicitHeight

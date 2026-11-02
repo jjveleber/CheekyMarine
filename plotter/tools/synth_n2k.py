@@ -2,7 +2,8 @@
 
 The encoder is generic: it packs field values using the field layout (BitOffset, BitLength,
 Resolution, Signed) of the PGN in canboat.json, so the log exercises n2kd's real decode path.
-Unset fields, including reserved ones, are all ones (not available).
+Unset fields, including reserved ones, are all ones (not available); unset signed fields are the
+largest positive value instead, which is how a signed field reads not available.
 
 Usage: synth_n2k.py --canboat PATH --out FILE [--scenario everett-pt-townsend]
 Python stdlib only; deterministic (same bytes every run).
@@ -31,6 +32,11 @@ class Encoder:
         word = (1 << (8 * length)) - 1  # all ones
         for f in d["Fields"]:
             bits = f.get("BitLength", 0)
+            if bits > 0 and f.get("Signed") and f["Id"] not in values:
+                # A signed field's not-available pattern is the largest positive value, not all ones.
+                mask = ((1 << bits) - 1) << f["BitOffset"]
+                word = (word & ~mask) | (((1 << (bits - 1)) - 1) << f["BitOffset"])
+                continue
             if f["Id"] not in values or bits <= 0:
                 continue
             v = values[f["Id"]]
@@ -101,10 +107,14 @@ def depth_m(s):
     return 30 + 25 * math.sin(2 * math.pi * s / 300)
 
 
+WAYPOINTS = [(47.9800, -122.2300), (47.9900, -122.3000), (48.0500, -122.4500), (48.1100, -122.7500)]
+SPEED = 3.0866  # m/s, about 6 kn
+
+
 def everett_pt_townsend(enc):
     """List of (time, order, frame) for the scenario."""
-    wp = [(47.9800, -122.2300), (47.9900, -122.3000), (48.0500, -122.4500), (48.1100, -122.7500)]
-    own = Track(wp, 3.0866)
+    wp = WAYPOINTS
+    own = Track(wp, SPEED)
     ev = []
 
     def emit(s_ms, pgn, src, prio, values):

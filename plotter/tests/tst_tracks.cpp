@@ -443,7 +443,7 @@ private slots:
         QCOMPARE(r.stored(r.rec->activeId()), 1);
     }
 
-    void controllerShowsActiveAlwaysAndOthersWhenVisible() {
+    void controllerShowsActiveAndOthersWhenVisible() {
         Rig r(true, 1, 0);
         TracksController c(*r.tracks, *r.rec);
         QSignalSpy finished(&c, &TracksController::finishedChanged);
@@ -464,9 +464,9 @@ private slots:
         QCOMPARE(c.finished().size(), 1);
         QCOMPARE(c.finished()[0].size(), 2);
         QCOMPARE(finished.size(), before + 2);
-        // Hiding the active track does not hide it.
+        // Hiding the active track hides its line too (issue #43); the finished one stays.
         c.setVisible(r.rec->activeId(), false);
-        QCOMPARE(c.active().size(), 2);
+        QCOMPARE(c.active().size(), 0);
         QCOMPARE(c.finished().size(), 1);
     }
     // The cost of a kept point must not grow with history: only the active track changes.
@@ -606,6 +606,45 @@ private slots:
         QCOMPARE(r.tracks->pointReads() - before, 0);
         QCOMPARE(c.finished().size(), 2);
         QCOMPARE(finishedSpy.count(), 0);
+    }
+    void activeRowCountsBufferedPoints() {
+        Rig r(true, 1, 0);
+        TracksController c(*r.tracks, *r.rec);
+        r.feed(0, 47.0); r.feed(10, 47.001); r.feed(20, 47.002); // 3 points, under one batch and 30 s
+        QCOMPARE(r.stored(r.rec->activeId()), 0);
+        c.refresh();
+        QVariantMap row = c.tracks().at(0).toMap();
+        QCOMPARE(row["points"].toInt(), 3);
+        QCOMPARE(row["durationS"].toDouble(), 20.0);
+        QVERIFY(row["distanceM"].toDouble() > 200 && row["distanceM"].toDouble() < 240); // 2 x 111 m
+        r.rec->flush();
+        c.refresh();
+        row = c.tracks().at(0).toMap();
+        QCOMPARE(row["points"].toInt(), 3); // the same once written
+        QCOMPARE(row["durationS"].toDouble(), 20.0);
+    }
+    void hiddenActiveTrackIsNotDrawn() {
+        Rig r(true, 1, 0);
+        TracksController c(*r.tracks, *r.rec);
+        r.feed(0, 47.0); r.feed(1, 47.001);
+        r.rec->flush();
+        c.refresh();
+        QSignalSpy active(&c, &TracksController::activeChanged);
+        const qint64 id = r.rec->activeId();
+        c.setVisible(id, false);
+        QCOMPARE(c.active().size(), 0);
+        QCOMPARE(active.count(), 1);
+        QCOMPARE(c.tracks().at(0).toMap()["visible"].toBool(), false);
+        r.feed(2, 47.002); // a kept point while hidden stays hidden
+        QCOMPARE(c.active().size(), 0);
+        c.setVisible(id, true);
+        QCOMPARE(c.active().size(), 3);
+        QCOMPARE(active.count(), 3); // hide, the kept point, show
+        // Review Focus 2: the flag belongs to the old track; a new track starts visible.
+        c.setVisible(id, false);
+        r.feed(2000, 48.0); // 10 minute gap: a new track
+        QCOMPARE(c.active().size(), 1);
+        QCOMPARE(c.finished().size(), 0); // the old one is hidden
     }
     void controllerRowsCarryTheDisplayFields() {
         Rig r(true, 1, 0);

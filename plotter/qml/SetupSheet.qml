@@ -169,12 +169,12 @@ Item {
 
                 Heading { text: "Tab bar" }
                 RowButton {
-                    objectName: "row-favourite"
-                    text: "Favourite: " + (sheet.draft.favourite ? "On" : "Off")
+                    objectName: "row-favorite"
+                    text: "Favorite: " + (sheet.draft.favourite ? "On" : "Off")
                     onClicked: sheet.draft.favourite = !sheet.draft.favourite
                 }
                 Label {
-                    objectName: "favouriteNote"
+                    objectName: "favoriteNote"
                     visible: sheet.offTabBar
                     text: "Not on tab bar (full)"
                     color: Theme.text

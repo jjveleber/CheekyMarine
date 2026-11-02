@@ -47,13 +47,14 @@ jobs:
           pipx install aqtinstall
           aqt install-qt linux desktop "$QT_VERSION" linux_gcc_64 -O ~/Qt
 
-      # Only the install prefix is cached. The 8.5 GB source checkout is not.
+      # Only the install prefix is cached. The source checkout (about 1.1 GB, shallow) is not. The key
+      # carries the Qt version: a Qt bump must not reuse a libQMapLibre built against the old Qt.
       - name: Cache maplibre-native-qt
         id: maplibre-cache
         uses: actions/cache@v4
         with:
           path: ~/.local/maplibre-qt
-          key: maplibre-qt-${{ hashFiles('scripts/build-maplibre-qt.sh') }}-ubuntu-24.04
+          key: maplibre-qt-${{ hashFiles('scripts/build-maplibre-qt.sh') }}-qt${{ env.QT_VERSION }}-ubuntu-24.04
 
       - name: Build maplibre-native-qt
         if: steps.maplibre-cache.outputs.cache-hit != 'true'

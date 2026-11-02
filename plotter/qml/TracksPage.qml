@@ -23,7 +23,7 @@ Item {
     function nmText(m) { return (m / 1852).toFixed(1) + " nm" }
 
     Component.onCompleted: tracks.refresh()
-    onVisibleChanged: if (visible) tracks.refresh()
+    onVisibleChanged: { if (visible) tracks.refresh(); else confirm.visible = false }
     // The recording track grows while the page is open.
     Timer {
         interval: 5000

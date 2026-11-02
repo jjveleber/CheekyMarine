@@ -470,14 +470,14 @@ TestCase {
         compare(viewOrder(), ["shipped-nav", "shipped-big", "shipped-fish"])
 
         menu = menuFor(main, "shipped-fish")
-        const fav = H.byName(menu, "menu-favourite")
-        compare(fav.text, "Favourite off")
+        const fav = H.byName(menu, "menu-favorite")
+        compare(fav.text, "Favorite off")
         mouseClick(fav)
         verify(!fixture.views.viewJson("shipped-fish").favourite)
         verify(!H.byName(item(main, "tile-shipped-fish"), "tileStar").visible, "star gone")
         compare(H.byName(main.contentItem, "tab-view-shipped-fish"), null)
         menu = menuFor(main, "shipped-fish")
-        compare(H.byName(menu, "menu-favourite").text, "Favourite on")
+        compare(H.byName(menu, "menu-favorite").text, "Favorite on")
 
         mouseClick(H.byName(menu, "menu-duplicate"))
         compare(fixture.views.count, 4)
@@ -731,6 +731,74 @@ TestCase {
         compare(fixture.views.currentId, "shipped-fish")
     }
 
+    // The overlay is invisible while unlocked: it must not hold the key focus or eat keys then.
+    function test_lockOverlayTakesNoKeysWhileUnlocked() {
+        const main = makeMain(1024, 600)
+        const overlay = item(main, "lockOverlay")
+        waitForRendering(main.contentItem)
+        keyClick(Qt.Key_B)
+        compare(overlay.swallowed, 0, "a key before any lock")
+        verify(!overlay.activeFocus, "no key focus before any lock")
+
+        fixture.touchLock.lockNow()
+        verify(overlay.activeFocus, "the overlay takes the key focus on lock")
+        keyClick(Qt.Key_B)
+        compare(overlay.swallowed, 1, "a key while locked")
+
+        const holdTarget = item(main, "lockHold")
+        mousePress(holdTarget)
+        fixture.advance(1500)
+        mouseRelease(holdTarget)
+        verify(!fixture.touchLock.locked)
+        const n = overlay.swallowed
+        keyClick(Qt.Key_B)
+        keyClick(Qt.Key_Tab)
+        compare(overlay.swallowed, n, "keys after unlock")
+        verify(!overlay.activeFocus, "no key focus after unlock")
+    }
+
+    // Every input the lock stops pulses the padlock (owner: the screen is locked, not dead): a tap,
+    // a wheel turn, a pinch and a key press. The unlock hold does not count. A key reaches nothing.
+    function test_lockPulsesOnEverySwallowedInputAndTakesKeys() {
+        const main = makeMain(1024, 600)
+        const map = item(main, "mapArea")
+        const overlay = item(main, "lockOverlay")
+        waitForRendering(main.contentItem)
+        fixture.touchLock.lockNow()
+        compare(overlay.swallowed, 0)
+        verify(overlay.activeFocus, "the overlay holds the key focus while locked")
+        verify(!overlay.pulsing)
+
+        touchTap(map)
+        compare(overlay.swallowed, 1, "a tap")
+        verify(overlay.pulsing, "the tap pulses the padlock")
+        mouseWheel(map, map.width / 2, map.height / 2, 0, 120)
+        compare(overlay.swallowed, 2, "a wheel turn")
+        const n = overlay.swallowed
+        pinchOut(map)
+        verify(overlay.swallowed > n, "a pinch")
+        const k = overlay.swallowed
+        keyClick(Qt.Key_Plus)
+        keyClick(Qt.Key_Escape)
+        compare(overlay.swallowed, k + 2, "key presses")
+        compare(chartStub.zooms.length, 0, "nothing reached the chart")
+        compare(main.chartMap.gestures, 0)
+        compare(main.chartMap.scales.length, 0)
+        compare(main.page, "view")
+        verify(overlay.activeFocus, "still focused after the inputs")
+
+        const holdTarget = item(main, "lockHold")
+        const before = overlay.swallowed
+        mousePress(holdTarget)
+        fixture.advance(1500)
+        mouseRelease(holdTarget)
+        verify(!fixture.touchLock.locked, "the hold still unlocks")
+        compare(overlay.swallowed, before, "the hold is not a swallowed input")
+        tryVerify(() => !overlay.pulsing, 1000, "the pulse ends")
+        mouseWheel(map, map.width / 2, map.height / 2, 0, 120)
+        compare(chartStub.zooms.length, 1, "the wheel zooms once unlocked")
+    }
+
     function test_lockHoldTargetIsOverTheLockButton() {
         const main = makeMain(1024, 600)
         fixture.touchLock.lockNow()
@@ -880,6 +948,46 @@ TestCase {
         main.hideDelayMs = 200
         tryVerify(() => barHidden(main), 1500, "the bar slid off again")
         compare(map.width, main.width)
+    }
+
+    // A None view's cells widen into the strip when the bar slides off and come back exactly when it
+    // shows; heights never change, digits never get smaller (they may refit larger, issue #35).
+    function test_cellsFollowTheBar_data() { return H.sizes() }
+    function test_cellsFollowTheBar(data) {
+        const main = makeMain(data.w, data.h)
+        main.hideDelayMs = 0
+        mouseClick(item(main, "tab-view-shipped-big"))
+        compare(main.page, "view")
+        const page = item(main, "cellPage")
+        waitForRendering(page)
+        const cells = H.findAll(page, it => it.objectName.startsWith("cell-") && it.visible)
+                          .sort((a, b) => a.objectName.localeCompare(b.objectName))
+        compare(cells.length, 2)
+        const boxOf = it => H.box(it, main.contentItem)
+        const before = cells.map(boxOf)
+        const digits = () => cells.map(c => H.byName(c, "cellValue").fontInfo.pixelSize)
+        const digitsBefore = digits()
+        const gap = page.gap
+
+        main.hideDelayMs = 200
+        tryVerify(() => item(main, "tabBar").x >= main.width - 0.01, 1500, "the bar slid all the way off")
+        const after = cells.map(boxOf)
+        for (let i = 0; i < cells.length; ++i) {
+            compare(after[i].y, before[i].y, "cell-" + i + " y")
+            compare(after[i].h, before[i].h, "cell-" + i + " height")
+            fuzzyCompare(after[i].w, (main.width - 3 * gap) / 2, 1, "cell-" + i + " half of the full width")
+        }
+        compare(after[0].x, before[0].x, "cell-0 stays at the left edge")
+        fuzzyCompare(after[1].x + after[1].w, main.width - gap, 1, "cell-1 reaches the right edge")
+        const digitsAfter = digits()
+        for (let i = 0; i < cells.length; ++i) verify(digitsAfter[i] >= digitsBefore[i] - 0.01, "digits never smaller: " + digitsBefore + " to " + digitsAfter)
+
+        main.hideDelayMs = 2000
+        mouseClick(cells[0], cells[0].width / 2, cells[0].height / 2) // a plain tap brings the bar back
+        verify(item(main, "tabBar").shown)
+        tryVerify(() => barShown(main) && JSON.stringify(cells.map(boxOf)) === JSON.stringify(before), 1500,
+                  "every cell back: " + JSON.stringify(cells.map(boxOf)))
+        compare(digits(), digitsBefore, "digits back to their size")
     }
 
     // The legend sheet follows the bar: once it slides off, the sheet covers the strip too, so
