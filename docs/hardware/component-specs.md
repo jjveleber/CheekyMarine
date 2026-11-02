@@ -73,7 +73,7 @@ What happens when the main battery switch (or the unit's own switch) goes off: t
 | 1 | Fuse + holder | 7.5 A blade fuse, sealed holder for 16 AWG | $4.58 (5 A bench fuse) |
 | 2 | TVS diode + LC filter | TVS: unidirectional, 17 to 18 V standoff, clamp 30 V or less, across the filter output. Inductor: 10 µH, 6 A saturation | $0.373 at 10 (TVS); $9.30 for the LC parts on the To order list |
 | 3 | Unit on/off switch | Round latching rocker on the case: round 12 to 22 mm hole, IP67, reliable at tens of mA, 1 A DC | not priced |
-| 4 | Standby power + shutdown controller | Standby feed, sense input, controller, relay that opens fully when off | not priced |
+| 4 | Standby power + shutdown controller | Standby feed, sense input, controller, relay that opens fully when off | $3.04 (relay); controller not priced |
 | 5 | Buck regulator | 5 A continuous at 5.0 to 5.3 V, survives 30 V in | $47.95 |
 | 6 | Display power | Display safe to 30 V, or its own regulator | $0 if built in |
 | 7 | USB-C power lead | 20 AWG or heavier, 1 ft or shorter | $7.99 (2-pack) |
@@ -399,9 +399,11 @@ Leave open: Manufacturer, Product, Type (though it can show "Flux Protected" or 
 - The 12 V cable into the box becomes three conductors: standby +, sense, and negative (part 19).
 - The filesystem design (read-only root, A/B slots, plan 4) still matters: it covers a disconnected or dead battery, and a hung shutdown.
 
-**Reference, not a requirement.** Relay candidates, both read from the maker's datasheet 2026-11-02, not priced yet:
+**Reference, not a requirement.** Relay pick (owner, 2026-11-02, on the To order list): **Panasonic ALZ52F12W** (LZ series; 5 = 1 Form A, 2 = sealed, F = class F insulation, 12 = 12 V coil, W = carton packing, not marked on the relay). Per Panasonic's LZ datasheet: SPST-NO, 16 A at 30 VDC (UL, N.O.), AgSnO2 contacts. Coil 360 ohm, 33.3 mA, 400 mW; pick-up 70% max, drop-out 10% min, maximum applied voltage 130% (15.6 V), all at 20 °C. -40 to +105 °C (class F). 28.8 x 12.5 x 15.7 mm. $3.04 each, Mouser (769-ALZ52F12W), 2026-11-02. Sealed type: snip the vent nib after soldering, as Panasonic advises for full electrical life (the enclosure is sealed anyway).
 
-- **Omron G5RL-1A-E-HR DC12**: SPST-NO, 16 A at 24 VDC resistive, high-inrush version. Coil 360 ohm, 33.3 mA, about 400 mW; must operate 70% max, release 10% min, maximum coil voltage 130% (15.6 V), all at 23 °C. -40 to +85 °C. Flux protection (fine inside the sealed box). Check the maximum coil voltage still holds at 70 °C (the datasheet doesn't say).
+Alternates, also read from the maker's datasheet 2026-11-02:
+
+- **Omron G5RL-1A-E-HR DC12** (Mouser lists it under the brand Aratas, $4.14 each, 2026-11-02): SPST-NO, 16 A at 24 VDC resistive, high-inrush version. Coil 360 ohm, 33.3 mA, about 400 mW; must operate 70% max, release 10% min, maximum coil voltage 130% (15.6 V), all at 23 °C. -40 to +85 °C. Flux protection (fine inside the sealed box). Check the maximum coil voltage still holds at 70 °C (the datasheet doesn't say).
 - **TE (Schrack) RTD34012**: RT1 family, 16 A, 5 mm pinning, wash tight (RT III), SPST-NO, AgNi contacts. Coil 360 ohm, 400 mW; operate 8.4 V (70%), release 1.2 V, at 23 °C. -40 to +85 °C (DC coil). The text layer doesn't give a maximum coil voltage or a DC contact rating: read them off the datasheet's coil operating range and load limit graphs. RT314012 is the flux-proof version of the same relay. Not the RT1 bistable: it latches.
 
 Controller: none chosen yet.
@@ -1038,6 +1040,7 @@ Picks made, nothing ordered yet. The owner places every order; this list only tr
 | 2. LC filter inductor | Würth Elektronik 744750420100 (WE-FAMI, 10 µH, 6.2 A, 15.5 milliohm, radial) | 2 (boat and a spare) | Mouser, https://www.mouser.com/en/ProductDetail/Wurth-Elektronik/744750420100?qs=HXx4m3XcTe2VvTYHAQWFdA%3D%3D | $2.12 each, $4.24 for 2, before tax and shipping; Mouser warns a 20% tariff may apply (about $5.09) | 2026-10-31 |
 | 2. LC filter ceramic | Murata RDEC71H475K2K1H03B (4.7 µF, 50 V, X7S, radial, 5 mm lead spacing), two in parallel | 10 (two or three used, rest spares) | Mouser, https://www.mouser.com/en/ProductDetail/Murata-Electronics/RDEC71H475K2K1H03B?qs=hNud%2FORuBR04A3Xz06PENQ%3D%3D | $0.384 each, $3.84 for 10, before tax and shipping; Mouser warns an 11% tariff may apply (about $4.26). Before fitting: confirm on Murata's DC-bias curve (SimSurfing) or on the bench that two leave about 5 µF or more at 15 V; if not, fit a third | 2026-11-01 |
 | 2. LC filter damping resistor | YAGEO KNP1WSJR-52-0R33 (0.33 ohm, ±5%, 1 W wirewound, axial, KNP-S) | 10 (one used, rest spares) | Mouser, https://www.mouser.com/en/ProductDetail/YAGEO/KNP1WSJR-52-0R33?qs=sGAEpiMZZMtlubZbdhIBIC31u6TPet1pO4nFM6NHqOg%3D | $0.122 each, $1.22 for 10, before tax and shipping; Mouser warns a 30% tariff may apply (about $1.59) | 2026-11-02 |
+| 4d. Relay | Panasonic ALZ52F12W (LZ, SPST-NO, 16 A, 12 V coil 400 mW, sealed, class F) | 2 (boat and a spare or the bench) | Mouser, https://www.mouser.com/en/ProductDetail/Panasonic-Industry/ALZ52F12W?qs=RtJ0qN3PzodaBpyN79bw0w%3D%3D | $3.04 each, $6.08 for 2, before tax and shipping; no tariff warning on the saved page; 23 in stock 2026-11-02 | 2026-11-02 |
 
 **On hand (owner's stock, not to order).**
 
@@ -1049,7 +1052,7 @@ Picks made, nothing ordered yet. The owner places every order; this list only tr
 - **House battery standby point.** Standby power comes from the house battery (owner, 2026-10-31); find its battery-side connection on the diagram.
 - **Sense source.** Which switched circuit at the helm the sense wire taps: one that stays live while cranking, not ignition or accessory (it needs a 1 A fuse).
 - **Does cranking reach the house battery?** The boat has a main engine and a kicker. If the house battery is kept apart from starting, a 70% coil should hold; if not, the crank test decides, and a more sensitive coil may be needed (part 4d).
-- **Relay and controller.** Pick a relay that meets part 4d (coil 0.6 W or less) and a controller board.
+- **Controller.** Pick a controller board for part 4c. Relay picked: Panasonic ALZ52F12W (part 4d).
 - **Display 12 V maximum.** 4D gives "12.0 V typ" with no maximum. Without a stated 30 V maximum, add a display regulator (part 6).
 - **Display power-on.** Does the 4D panel come on by itself when powered? Its power button is on a board that isn't included.
 - **Display USB power backfeed.** 4D's datasheet says the touch port also takes power, so the USB power blocker (part 15) is on the buy list.

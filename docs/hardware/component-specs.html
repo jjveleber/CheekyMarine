@@ -166,7 +166,7 @@ reliable at tens of mA, 1 A DC</td>
 <td>Standby power + shutdown controller</td>
 <td>Standby feed, sense input, controller, relay that opens fully when
 off</td>
-<td>not priced</td>
+<td>$3.04 (relay); controller not priced</td>
 </tr>
 <tr class="odd">
 <td>5</td>
@@ -1503,10 +1503,20 @@ sense, and negative (part 19).</li>
 matters: it covers a disconnected or dead battery, and a hung
 shutdown.</li>
 </ul>
-<p><strong>Reference, not a requirement.</strong> Relay candidates, both
-read from the maker’s datasheet 2026-11-02, not priced yet:</p>
+<p><strong>Reference, not a requirement.</strong> Relay pick (owner,
+2026-11-02, on the To order list): <strong>Panasonic ALZ52F12W</strong>
+(LZ series; 5 = 1 Form A, 2 = sealed, F = class F insulation, 12 = 12 V
+coil, W = carton packing, not marked on the relay). Per Panasonic’s LZ
+datasheet: SPST-NO, 16 A at 30 VDC (UL, N.O.), AgSnO2 contacts. Coil 360
+ohm, 33.3 mA, 400 mW; pick-up 70% max, drop-out 10% min, maximum applied
+voltage 130% (15.6 V), all at 20 °C. -40 to +105 °C (class F). 28.8 x
+12.5 x 15.7 mm. $3.04 each, Mouser (769-ALZ52F12W), 2026-11-02. Sealed
+type: snip the vent nib after soldering, as Panasonic advises for full
+electrical life (the enclosure is sealed anyway).</p>
+<p>Alternates, also read from the maker’s datasheet 2026-11-02:</p>
 <ul>
-<li><strong>Omron G5RL-1A-E-HR DC12</strong>: SPST-NO, 16 A at 24 VDC
+<li><strong>Omron G5RL-1A-E-HR DC12</strong> (Mouser lists it under the
+brand Aratas, $4.14 each, 2026-11-02): SPST-NO, 16 A at 24 VDC
 resistive, high-inrush version. Coil 360 ohm, 33.3 mA, about 400 mW;
 must operate 70% max, release 10% min, maximum coil voltage 130% (15.6
 V), all at 23 °C. -40 to +85 °C. Flux protection (fine inside the sealed
@@ -3118,6 +3128,17 @@ https://www.mouser.com/en/ProductDetail/YAGEO/KNP1WSJR-52-0R33?qs=sGAEpiMZZMtlub
 30% tariff may apply (about $1.59)</td>
 <td>2026-11-02</td>
 </tr>
+<tr class="odd">
+<td>4d. Relay</td>
+<td>Panasonic ALZ52F12W (LZ, SPST-NO, 16 A, 12 V coil 400 mW, sealed,
+class F)</td>
+<td>2 (boat and a spare or the bench)</td>
+<td>Mouser,
+https://www.mouser.com/en/ProductDetail/Panasonic-Industry/ALZ52F12W?qs=RtJ0qN3PzodaBpyN79bw0w%3D%3D</td>
+<td>$3.04 each, $6.08 for 2, before tax and shipping; no tariff warning
+on the saved page; 23 in stock 2026-11-02</td>
+<td>2026-11-02</td>
+</tr>
 </tbody>
 </table>
 <p><strong>On hand (owner’s stock, not to order).</strong></p>
@@ -3149,8 +3170,8 @@ accessory (it needs a 1 A fuse).</li>
 a main engine and a kicker. If the house battery is kept apart from
 starting, a 70% coil should hold; if not, the crank test decides, and a
 more sensitive coil may be needed (part 4d).</li>
-<li><strong>Relay and controller.</strong> Pick a relay that meets part
-4d (coil 0.6 W or less) and a controller board.</li>
+<li><strong>Controller.</strong> Pick a controller board for part 4c.
+Relay picked: Panasonic ALZ52F12W (part 4d).</li>
 <li><strong>Display 12 V maximum.</strong> 4D gives “12.0 V typ” with no
 maximum. Without a stated 30 V maximum, add a display regulator (part
 6).</li>
