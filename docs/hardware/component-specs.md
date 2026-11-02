@@ -978,6 +978,20 @@ With any option: dim the backlight whenever full brightness isn't needed (the ap
 | Base | Flat, 5 mm or thicker, drillable for stainless screws and a gasket | Drawing |
 | Inside coupling | Inner fins, or a flat face plus a 40 to 60 mm 5 V fan (1 W or less) across it | Drawing; fan datasheet |
 
+**Heat sink: Mouser filters** (Thermal Management > Heat Sinks, mouser.com/c/thermal-management/heat-sinks/, read 2026-11-02). Most of this category is small board-level parts and kits for one module, so expect few hits.
+
+| Mouser filter | Set to | Must-have it covers |
+|---|---|---|
+| Product | Extrusions (and Heat Sinks, Heatsink) | |
+| Heatsink Material | Aluminum, Aluminum Alloy | Material |
+| Fin Style | Extruded Fin, Longitudinal Fin | Fins |
+| Thermal Resistance | 1.5 C/W and every smaller value | Thermal resistance; Mouser mixes natural-convection, forced-air and per-length figures, so confirm the natural-convection figure at the length bought on the datasheet |
+| Mounting Style | Bolt On, Chassis, Screw, Screw Mount | Base drillable for screws |
+
+Leave open: Manufacturer, Designed for, Length, Width, Height (Mouser's size filters list values a few mm across first; check the drawing against the size row instead), Type. Not filterable: anodizing, base thickness, fin direction.
+
+**Where else to buy.** Large extrusions are often sold by length rather than as catalog parts: Wakefield-Vette and Ohmite list cut-to-length extrusions through distributors, and heat sink extrusion shops (for example Heatsink USA) cut a profile to length and anodize it clear or black, with a natural-convection °C/W chart per profile. Pick a profile from the chart that reaches 1.5 °C/W at a length that fits the box back.
+
 **Nice to have**
 
 - Clear or natural anodizing: black absorbs more sun.
