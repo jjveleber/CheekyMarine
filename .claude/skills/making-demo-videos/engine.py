@@ -320,7 +320,7 @@ def main():
     demo = importlib.util.module_from_spec(spec); spec.loader.exec_module(demo)
     steps = demo.STEPS + list(getattr(demo, "AFTER_RESTART", []))
     clips = [clip(work, say, n) for n, (say, _) in enumerate(steps)]
-    if "—" in "".join(s for s, _ in steps):
+    if "\u2014" in "".join(s for s, _ in steps):
         raise SystemExit("narration has an em dash; the owner never wants one")
     out = Path(a.out)
     if a.mode == "open":
