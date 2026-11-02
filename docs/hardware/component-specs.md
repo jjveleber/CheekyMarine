@@ -90,7 +90,7 @@ What happens when the main battery switch (or the unit's own switch) goes off: t
 | 17 | Mount | Holds about 2 kg on a dash shelf, no suction | $64.49 |
 | 18 | Glands | IP68, clamp range fits each cable | $1.92 (2) |
 | 19 | Wire | Tinned marine 3-conductor feed, 16, 14 or 12 AWG by length | $21.93 |
-| 20 | Heat sink | 1.5 °C/W or better, natural convection, anodized | not priced |
+| 20 | Heat sink | 1.5 °C/W or better, natural convection, anodized | $35.14 |
 
 ## Power budget
 
@@ -985,7 +985,7 @@ With any option: dim the backlight whenever full brightness isn't needed (the ap
 | Product | Extrusions (and Heat Sinks, Heatsink) | |
 | Heatsink Material | Aluminum, Aluminum Alloy | Material |
 | Fin Style | Extruded Fin, Longitudinal Fin | Fins |
-| Thermal Resistance | 1.5 C/W and every smaller value | Thermal resistance; Mouser mixes natural-convection, forced-air and per-length figures, so confirm the natural-convection figure at the length bought on the datasheet |
+| Thermal Resistance | 1.5 C/W and every smaller value | Thermal resistance; Mouser mixes natural-convection, forced-air and per-length figures (for Wakefield's 4xx and 6xx parts it lists the 250 LFM forced-air figure), so confirm the natural-convection figure at the length bought on the datasheet |
 | Mounting Style | Bolt On, Chassis, Screw, Screw Mount | Base drillable for screws |
 
 Leave open: Manufacturer, Designed for, Length, Width, Height (Mouser's size filters list values a few mm across first; check the drawing against the size row instead), Type. Not filterable: anodizing, base thickness, fin direction.
@@ -1012,7 +1012,7 @@ Leave open: Manufacturer, Designed for, Length, Width, Height (Mouser's size fil
 - Tested on the bench: soak with full brightness and a sun lamp or heater, thermometer inside, before the boat. Also read the SSD's own temperature (`nvme smart-log`): its 70 °C limit is the drive's temperature, not the air's, and it runs above the air.
 - With passive inner fins instead of a fan, option A comes out nearer 0.65 to 0.7 °C/W: still under the 0.8 target, with a thin margin.
 
-**Reference, not a requirement.** None priced yet.
+**Reference, not a requirement.** Pick (owner, 2026-11-02, on the To order list): **Wakefield 394-2AB** (extrusion profile 7332), flat one-sided base 127 x 139.7 mm, fins 38.1 mm tall along the 139.7 mm length (mount that length vertical), 1.51 °C/W natural convection at typical load per Wakefield's datasheet (about 1.5 to 1.8 °C/W at this unit's 15 to 18 W, read roughly off its graph), aluminum alloy, black anodized ("AB"), 1.71 lb/ft, $35.14, Mouser (567-394-2AB), 2026-11-02. Check on arrival: base thickness (5 mm or more; the drawing doesn't state it) and fit on the chosen enclosure's back. Upgrade if the bench soak runs hot: Wakefield 511-6U (flat base 132 x 152.4 mm, fins 61 mm, 0.65 °C/W natural convection at a 50 °C rise), shipped unfinished, so it needs anodizing or powder coat first; not priced. Ruled out from Wakefield's catalog: 395, 401/403, 413/421/423 and 431/433 (fins on both faces, no flat back), 621/623 and 641 (about 3.5 and 2.4 °C/W natural convection).
 
 ## Fit checks across parts
 
@@ -1055,6 +1055,7 @@ Picks made, nothing ordered yet. The owner places every order; this list only tr
 | 2. LC filter ceramic | Murata RDEC71H475K2K1H03B (4.7 µF, 50 V, X7S, radial, 5 mm lead spacing), two in parallel | 10 (two or three used, rest spares) | Mouser, https://www.mouser.com/en/ProductDetail/Murata-Electronics/RDEC71H475K2K1H03B?qs=hNud%2FORuBR04A3Xz06PENQ%3D%3D | $0.384 each, $3.84 for 10, before tax and shipping; Mouser warns an 11% tariff may apply (about $4.26). Before fitting: confirm on Murata's DC-bias curve (SimSurfing) or on the bench that two leave about 5 µF or more at 15 V; if not, fit a third | 2026-11-01 |
 | 2. LC filter damping resistor | YAGEO KNP1WSJR-52-0R33 (0.33 ohm, ±5%, 1 W wirewound, axial, KNP-S) | 10 (one used, rest spares) | Mouser, https://www.mouser.com/en/ProductDetail/YAGEO/KNP1WSJR-52-0R33?qs=sGAEpiMZZMtlubZbdhIBIC31u6TPet1pO4nFM6NHqOg%3D | $0.122 each, $1.22 for 10, before tax and shipping; Mouser warns a 30% tariff may apply (about $1.59) | 2026-11-02 |
 | 4d. Relay | Panasonic ALZ52F12W (LZ, SPST-NO, 16 A, 12 V coil 400 mW, sealed, class F) | 2 (boat and a spare or the bench) | Mouser, https://www.mouser.com/en/ProductDetail/Panasonic-Industry/ALZ52F12W?qs=RtJ0qN3PzodaBpyN79bw0w%3D%3D | $3.04 each, $6.08 for 2, before tax and shipping; no tariff warning on the saved page; 23 in stock 2026-11-02 | 2026-11-02 |
+| 20. Heat sink | Wakefield 394-2AB (127 x 139.7 mm flat base, 38 mm fins, 1.51 °C/W natural convection, black anodized) | 1 | Mouser, https://www.mouser.com/en/ProductDetail/Wakefield-Thermal/394-2AB?qs=8GtUBYxqNFCFyFSKp5x8vg%3D%3D | $35.14, before tax and shipping; 76 in stock 2026-11-02 | 2026-11-02 |
 
 **On hand (owner's stock, not to order).**
 
