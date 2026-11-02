@@ -369,7 +369,7 @@ It has four pieces:
 | Relay Contact Form | 1 Form A (SPST) and 1 Form A (SPST-NO) | Type (normally open) |
 | Coil Voltage | 12 VDC (and 12 V) | Type (12 V coil) |
 | Coil Type | Non-Latching | Type; latching is a disqualifier |
-| Coil Current | 50 mA and every smaller value (0.6 W at 12 V; or Coil Resistance 240 ohm and up) | Coil power |
+| Coil Current | 44.2 mA and every smaller value (Mouser has no 50 mA step; 0.6 W at 12 V is 50 mA, and 44.2 mA is 0.53 W. Or Coil Resistance 240 ohm and up) | Coil power |
 | Contact Current Rating | 10 A and every larger value; 16 A preferred | Contacts; confirm a DC rating on the datasheet |
 | Mounting Style | PCB Mount, Through Hole | Mounting |
 | Packaging | Bulk, Tray, Tube (not Reel) | |
