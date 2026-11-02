@@ -1,0 +1,197 @@
+{
+  "schema": 1,
+  "entries": [
+    {
+      "abbr": "Blds",
+      "meaning": "boulders",
+      "kind": "type",
+      "sources": [
+        "enc"
+      ]
+    },
+    {
+      "abbr": "Cb",
+      "meaning": "cobbles",
+      "kind": "type",
+      "sources": [
+        "usgs-cmecs"
+      ]
+    },
+    {
+      "abbr": "Co",
+      "meaning": "coral",
+      "kind": "type",
+      "sources": [
+        "enc"
+      ]
+    },
+    {
+      "abbr": "Cy",
+      "meaning": "clay",
+      "kind": "type",
+      "sources": [
+        "enc"
+      ]
+    },
+    {
+      "abbr": "G",
+      "meaning": "gravel",
+      "kind": "type",
+      "sources": [
+        "enc",
+        "usgs-cmecs",
+        "usseabed"
+      ]
+    },
+    {
+      "abbr": "Kelp",
+      "meaning": "kelp",
+      "kind": "type",
+      "sources": [
+        "enc"
+      ]
+    },
+    {
+      "abbr": "M",
+      "meaning": "mud",
+      "kind": "type",
+      "sources": [
+        "enc",
+        "usgs-cmecs",
+        "usseabed"
+      ]
+    },
+    {
+      "abbr": "P",
+      "meaning": "pebbles",
+      "kind": "type",
+      "sources": [
+        "enc"
+      ]
+    },
+    {
+      "abbr": "Rk",
+      "meaning": "rock",
+      "kind": "type",
+      "sources": [
+        "enc",
+        "usgs-cmecs"
+      ]
+    },
+    {
+      "abbr": "S",
+      "meaning": "sand",
+      "kind": "type",
+      "sources": [
+        "enc",
+        "usgs-cmecs",
+        "usseabed"
+      ]
+    },
+    {
+      "abbr": "Sg",
+      "meaning": "seagrass",
+      "kind": "type",
+      "sources": [
+        "enc"
+      ]
+    },
+    {
+      "abbr": "Sh",
+      "meaning": "shells",
+      "kind": "type",
+      "sources": [
+        "enc"
+      ]
+    },
+    {
+      "abbr": "Si",
+      "meaning": "silt",
+      "kind": "type",
+      "sources": [
+        "enc"
+      ]
+    },
+    {
+      "abbr": "St",
+      "meaning": "stones",
+      "kind": "type",
+      "sources": [
+        "enc"
+      ]
+    },
+    {
+      "abbr": "Wd",
+      "meaning": "weed",
+      "kind": "type",
+      "sources": [
+        "enc"
+      ]
+    },
+    {
+      "abbr": "Ca",
+      "meaning": "calcareous",
+      "kind": "qualifier",
+      "sources": [
+        "enc"
+      ]
+    },
+    {
+      "abbr": "bk",
+      "meaning": "broken",
+      "kind": "qualifier",
+      "sources": [
+        "enc"
+      ]
+    },
+    {
+      "abbr": "c",
+      "meaning": "coarse",
+      "kind": "qualifier",
+      "sources": [
+        "enc"
+      ]
+    },
+    {
+      "abbr": "f",
+      "meaning": "fine",
+      "kind": "qualifier",
+      "sources": [
+        "enc"
+      ]
+    },
+    {
+      "abbr": "h",
+      "meaning": "hard",
+      "kind": "qualifier",
+      "sources": [
+        "enc",
+        "usseabed"
+      ]
+    },
+    {
+      "abbr": "m",
+      "meaning": "medium",
+      "kind": "qualifier",
+      "sources": [
+        "enc"
+      ]
+    },
+    {
+      "abbr": "so",
+      "meaning": "soft",
+      "kind": "qualifier",
+      "sources": [
+        "enc"
+      ]
+    },
+    {
+      "abbr": "sy",
+      "meaning": "sticky",
+      "kind": "qualifier",
+      "sources": [
+        "enc"
+      ]
+    }
+  ]
+}

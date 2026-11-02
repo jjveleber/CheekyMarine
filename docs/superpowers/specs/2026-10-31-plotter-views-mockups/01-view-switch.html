@@ -1,0 +1,111 @@
+<style>
+.scr{display:flex;width:300px;height:188px;border:2px solid #555;border-radius:4px;background:#e9e4d2;position:relative;overflow:hidden;font-family:sans-serif;color:#111}
+.scr .map{flex:1;position:relative;background:linear-gradient(135deg,#f1ecd8 0 45%,#bcd6ee 45% 70%,#e2e0c8 70%)}
+.scr .tabs{width:52px;background:#f3f3f3;border-left:1px solid #999;display:flex;flex-direction:column;align-items:center;padding-top:4px;gap:4px}
+.tab{width:44px;height:26px;border:1px solid #888;border-radius:3px;background:#fff;font-size:9px;display:flex;align-items:center;justify-content:center;text-align:center;line-height:1}
+.tab.on{background:#cfe3f7;border:2px solid #4a7fb5}
+.tab.sm{height:20px;margin-top:auto}
+.slot{position:absolute;background:rgba(255,255,255,.85);border-radius:3px;padding:2px 4px;font-weight:700;line-height:1}
+.slot small{display:block;font-weight:400;font-size:7px}
+.grid{flex:1;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:6px;padding:8px;background:#f3f3f3}
+.tile{border:1px solid #888;border-radius:4px;background:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:10px;gap:3px}
+.tile .thumb{width:46px;height:28px;border:1px solid #aaa;border-radius:2px;background:linear-gradient(135deg,#f1ecd8 0 45%,#bcd6ee 45% 70%,#e2e0c8 70%)}
+.tile .thumb.fish{background:linear-gradient(135deg,#7fb3d5,#2b5f8c)}
+.tile .thumb.none{background:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:11px}
+.tile.new{border-style:dashed;color:#555}
+.cap{font-size:11px;color:#666;margin:4px 0 0}
+.pair{display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap}
+.arrow{align-self:center;font-size:20px;color:#888}
+.home{flex:1;display:grid;grid-template-columns:1fr 1fr 1fr;grid-template-rows:1fr 1fr;gap:6px;padding:8px;background:#f3f3f3}
+</style>
+
+<h2>Where does the view switch live?</h2>
+<p class="subtitle">Garmin: Home, Pinned, pick a tile (3 taps). Each option below is the chart page as it is today on the left, and what the switch tap opens on the right. Tab bar stays on the right edge, 12 mm floor, 1024x600 and 1280x800. Click the one that feels right, or describe something else in the terminal.</p>
+
+<div class="options">
+
+<div class="option" data-choice="a" onclick="toggleSelect(this)">
+  <div class="letter">A</div>
+  <div class="content">
+    <h3>Views tab opens a tile grid (2 taps)</h3>
+    <p>Chart and Numbers tabs merge into one <b>Views</b> tab. Tap it: a grid of your named views, one tile each, plus New. Tap a tile: that view fills the page. Views tab label could show the current view's name.</p>
+    <div class="pair">
+      <div class="scr">
+        <div class="map">
+          <div class="slot" style="left:4px;top:4px;font-size:22px">137<small>Depth ft</small></div>
+          <div class="slot" style="right:4px;top:4px;font-size:22px">6.0<small>SOG kn</small></div>
+        </div>
+        <div class="tabs"><div class="tab on">Views</div><div class="tab">Tracks</div><div class="tab">Settings</div><div class="tab sm">Lock</div><div class="tab sm">Day</div></div>
+      </div>
+      <div class="arrow">&rarr;</div>
+      <div class="scr">
+        <div class="grid">
+          <div class="tile"><div class="thumb"></div>Navigation</div>
+          <div class="tile"><div class="thumb fish"></div>Fishing</div>
+          <div class="tile"><div class="thumb none">137</div>Big numbers</div>
+          <div class="tile new">+ New view</div>
+        </div>
+        <div class="tabs"><div class="tab on">Views</div><div class="tab">Tracks</div><div class="tab">Settings</div><div class="tab sm">Lock</div><div class="tab sm">Day</div></div>
+      </div>
+    </div>
+    <p class="cap">Hold a tile: Edit, Rename, Duplicate, Delete. Grid scrolls if more than six.</p>
+  </div>
+</div>
+
+<div class="option" data-choice="b" onclick="toggleSelect(this)">
+  <div class="letter">B</div>
+  <div class="content">
+    <h3>Each view is its own tab (1 tap)</h3>
+    <p>Saved views sit directly in the tab bar above Tracks and Settings. One tap switches. Room for about 3 views at 1024x600 and 4 at 1280x800 before tabs run out; more views need a scroll or an overflow tile. Names must be short.</p>
+    <div class="pair">
+      <div class="scr">
+        <div class="map">
+          <div class="slot" style="left:4px;top:4px;font-size:22px">137<small>Depth ft</small></div>
+          <div class="slot" style="right:4px;top:4px;font-size:22px">6.0<small>SOG kn</small></div>
+        </div>
+        <div class="tabs"><div class="tab on">Nav</div><div class="tab">Fish</div><div class="tab">Big #</div><div class="tab">Tracks</div><div class="tab">Settings</div><div class="tab sm">Lock</div><div class="tab sm">Day</div></div>
+      </div>
+      <div class="arrow">&rarr;</div>
+      <div class="scr">
+        <div class="map" style="background:linear-gradient(135deg,#7fb3d5,#2b5f8c)">
+          <div class="slot" style="left:4px;top:4px;font-size:30px">137<small>Depth ft</small></div>
+          <div class="slot" style="left:4px;bottom:4px;font-size:18px">54.2<small>Water F</small></div>
+        </div>
+        <div class="tabs"><div class="tab">Nav</div><div class="tab on">Fish</div><div class="tab">Big #</div><div class="tab">Tracks</div><div class="tab">Settings</div><div class="tab sm">Lock</div><div class="tab sm">Day</div></div>
+      </div>
+    </div>
+    <p class="cap">Views are created and edited from Settings. Tab bar gets crowded; Lock and Day shrink.</p>
+  </div>
+</div>
+
+<div class="option" data-choice="c" onclick="toggleSelect(this)">
+  <div class="letter">C</div>
+  <div class="content">
+    <h3>Garmin-style Home (2 taps, slim tab bar)</h3>
+    <p>Tab bar shrinks to <b>Home</b>, Lock, Day, so the chart gets more width. Home is a page of big tiles: your views first, then Tracks, Settings, About. Tap a view tile to show it. Closest to the Garmin, fewest things on the chart edge.</p>
+    <div class="pair">
+      <div class="scr">
+        <div class="map" style="flex:1">
+          <div class="slot" style="left:4px;top:4px;font-size:22px">137<small>Depth ft</small></div>
+          <div class="slot" style="right:4px;top:4px;font-size:22px">6.0<small>SOG kn</small></div>
+        </div>
+        <div class="tabs"><div class="tab">Home</div><div class="tab sm">Lock</div><div class="tab sm">Day</div></div>
+      </div>
+      <div class="arrow">&rarr;</div>
+      <div class="scr">
+        <div class="home">
+          <div class="tile"><div class="thumb"></div>Navigation</div>
+          <div class="tile"><div class="thumb fish"></div>Fishing</div>
+          <div class="tile"><div class="thumb none">137</div>Big numbers</div>
+          <div class="tile new">+ New view</div>
+          <div class="tile">Tracks</div>
+          <div class="tile">Settings</div>
+        </div>
+        <div class="tabs"><div class="tab on">Home</div><div class="tab sm">Lock</div><div class="tab sm">Day</div></div>
+      </div>
+    </div>
+    <p class="cap">Tracks and Settings become one tap further away than today.</p>
+  </div>
+</div>
+
+</div>

@@ -1,0 +1,87 @@
+<style>
+.bars{display:flex;gap:28px;align-items:flex-end;flex-wrap:wrap;margin:8px 0}
+.bar{display:flex;flex-direction:column;align-items:center;background:#f3f3f3;border:1px solid #999;width:46px;box-sizing:border-box;padding:2.4px 0;gap:2.4px;font-family:sans-serif}
+.t{width:38px;height:36px;border:1px solid #888;border-radius:3px;background:#fff;font-size:9px;display:flex;align-items:center;justify-content:center;text-align:center;line-height:1}
+.t.fav{background:#fff6d6;border-color:#c9a227}
+.t.on{background:#cfe3f7;border:2px solid #4a7fb5}
+.c{width:38px;height:28.8px;border:1px solid #888;border-radius:3px;background:#fff;font-size:9px;display:flex;align-items:center;justify-content:center}
+.c.res{border-style:dashed;color:#999;background:transparent}
+.gap{height:4.8px}
+.lbl{font-size:11px;color:#555;text-align:center;margin-top:4px;width:120px}
+.col{display:flex;flex-direction:column;align-items:center}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;padding:8px;background:#f3f3f3;border:2px solid #555;border-radius:4px;width:300px;box-sizing:border-box;font-family:sans-serif}
+.tile{border:1px solid #888;border-radius:4px;background:#fff;height:54px;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:10px;gap:3px;position:relative}
+.tile .star{position:absolute;top:2px;right:5px;color:#c9a227;font-size:12px}
+.tile .thumb{width:40px;height:22px;border:1px solid #aaa;border-radius:2px;background:linear-gradient(135deg,#f1ecd8 0 45%,#bcd6ee 45% 70%,#e2e0c8 70%)}
+.tile .thumb.fish{background:linear-gradient(135deg,#7fb3d5,#2b5f8c)}
+.tile .thumb.none{background:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:11px}
+.tile.new{border-style:dashed;color:#555}
+.tile.page{background:#eee}
+</style>
+
+<h2>Tab bar with favourites: what gives way?</h2>
+<p class="subtitle">Tab bars drawn to scale (15 mm tabs, 12 mm controls, 1 mm spacing) for the 10.1 in panel at both resolutions. Yellow = favourite view tabs, dashed = the reserved brightness and MOB spaces (empty today, plan 5 and phase 2). Fixed tabs stay; favourites take what is left. Click the one you want, or say something else in the terminal.</p>
+
+<div class="options">
+
+<div class="option" data-choice="v1" onclick="toggleSelect(this)">
+  <div class="letter">A</div>
+  <div class="content">
+    <h3>Tracks and Settings stay as tabs</h3>
+    <p>Favourites sit above Views, Tracks, Settings. Reserved spaces give way to favourites until brightness and MOB exist. <b>3 favourites</b> fit at both sizes (1 at 1024x600 and 2 at 1280x800 once brightness and MOB arrive).</p>
+    <div class="bars">
+      <div class="col"><div class="bar" style="height:311px">
+        <div class="t fav on">Nav</div><div class="t fav">Fish</div><div class="t fav">Big #</div>
+        <div class="t">Views</div><div class="t">Tracks</div><div class="t">Settings</div>
+        <div class="gap"></div><div class="c">Lock</div><div class="c">Day</div>
+      </div><div class="lbl">1024x600 (129.6 mm)</div></div>
+      <div class="col"><div class="bar" style="height:326px">
+        <div class="t fav on">Nav</div><div class="t fav">Fish</div><div class="t fav">Big #</div>
+        <div class="t">Views</div><div class="t">Tracks</div><div class="t">Settings</div>
+        <div class="gap"></div><div class="c">Lock</div><div class="c">Day</div>
+      </div><div class="lbl">1280x800 (136 mm)</div></div>
+      <div class="col"><div class="bar" style="height:326px">
+        <div class="t fav on">Nav</div><div class="t fav">Fish</div>
+        <div class="t">Views</div><div class="t">Tracks</div><div class="t">Settings</div>
+        <div class="gap"></div><div class="c">Lock</div><div class="c">Day</div><div class="c res">Bright</div><div class="c res">MOB</div>
+      </div><div class="lbl">1280x800 later, with brightness and MOB</div></div>
+    </div>
+  </div>
+</div>
+
+<div class="option" data-choice="v2" onclick="toggleSelect(this)">
+  <div class="letter">B</div>
+  <div class="content">
+    <h3>Tracks and Settings become tiles on the Views page</h3>
+    <p>Tab bar: favourites, Views, Lock, Day. Tracks, Settings and About are tiles after the views on the Views page (one tap further than today). <b>5 favourites</b> fit at both sizes (3 and 4 once brightness and MOB arrive).</p>
+    <div class="bars">
+      <div class="col"><div class="bar" style="height:311px">
+        <div class="t fav on">Nav</div><div class="t fav">Fish</div><div class="t fav">Big #</div><div class="t fav">Troll</div><div class="t fav">Dock</div>
+        <div class="t">Views</div>
+        <div class="gap"></div><div class="c">Lock</div><div class="c">Day</div>
+      </div><div class="lbl">1024x600</div></div>
+      <div class="col"><div class="bar" style="height:326px">
+        <div class="t fav on">Nav</div><div class="t fav">Fish</div><div class="t fav">Big #</div>
+        <div class="t">Views</div>
+        <div class="gap"></div><div class="c">Lock</div><div class="c">Day</div><div class="c res">Bright</div><div class="c res">MOB</div>
+      </div><div class="lbl">1280x800 later, with brightness and MOB</div></div>
+      <div class="col">
+        <div class="grid">
+          <div class="tile"><span class="star">&#9733;</span><div class="thumb"></div>Navigation</div>
+          <div class="tile"><span class="star">&#9733;</span><div class="thumb fish"></div>Fishing</div>
+          <div class="tile"><span class="star">&#9733;</span><div class="thumb none">137</div>Big numbers</div>
+          <div class="tile"><div class="thumb fish"></div>Trolling</div>
+          <div class="tile new">+ New view</div>
+          <div class="tile page">Tracks</div>
+          <div class="tile page">Settings</div>
+          <div class="tile page">About</div>
+        </div>
+        <div class="lbl" style="width:300px">Views page: star = favourite (shown as a tab)</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+</div>
+
+<p class="subtitle">Either way: a favourite's tab shows its short name (you type it, about 6 characters at the current tab font). The Views page tile holds the full name. Hold a tile for Edit, Rename, Favourite, Duplicate, Delete. If more favourites are starred than fit, the extras are plain views, with a note on the tile.</p>

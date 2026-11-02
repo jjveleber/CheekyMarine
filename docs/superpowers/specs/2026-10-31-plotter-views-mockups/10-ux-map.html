@@ -1,0 +1,81 @@
+<style>
+.map{font-family:sans-serif;font-size:12px;color:#222}
+.lane{display:flex;gap:14px;align-items:stretch;margin:10px 0;flex-wrap:wrap}
+.node{border:2px solid #555;border-radius:6px;background:#fff;padding:8px 10px;min-width:170px;max-width:260px;flex:1}
+.node h4{margin:0 0 4px;font-size:13px}
+.node ul{margin:0;padding-left:14px}
+.node li{margin:2px 0}
+.node.page{border-color:#4a7fb5;background:#eef5fc}
+.node.sheet{border-color:#d08a00;background:#fff8e6;border-style:dashed}
+.node.sys{border-color:#888;background:#f3f3f3}
+.node.bar{border-color:#c9a227;background:#fff6d6}
+.go{color:#4a7fb5;font-weight:700}
+.arr{align-self:center;font-size:22px;color:#888;flex:none}
+.lanehdr{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#666;margin:18px 0 2px;border-bottom:1px solid #ddd}
+.key{display:flex;gap:14px;font-size:11px;color:#555;margin:6px 0 14px;flex-wrap:wrap}
+.key span{display:inline-flex;align-items:center;gap:4px}
+.key i{display:inline-block;width:14px;height:10px;border:2px solid #555;border-radius:3px;background:#fff}
+.sw{display:inline-block;padding:1px 5px;border:1px solid #999;border-radius:3px;background:#fff;font-size:10px;margin:1px}
+.sw.fav{background:#fff6d6;border-color:#c9a227}
+.sw.on{background:#cfe3f7;border-color:#4a7fb5}
+</style>
+<div class="map">
+<h2>The whole UX, one map</h2>
+<p class="subtitle">Every page, sheet and control, with what each tap or hold does. <span class="go">Blue bold</span> names where you land. Read lane by lane. At the bottom: my guesses, click any that is wrong, and the default Fishing view question.</p>
+<div class="key"><span><i style="border-color:#4a7fb5;background:#eef5fc"></i> page</span><span><i style="border-color:#d08a00;background:#fff8e6;border-style:dashed"></i> pop-out sheet</span><span><i style="border-color:#c9a227;background:#fff6d6"></i> tab bar, always on the right edge</span><span><i style="border-color:#888;background:#f3f3f3"></i> system state</span></div>
+
+<div class="lanehdr">Start</div>
+<div class="lane">
+  <div class="node sys"><h4>Power on</h4><ul><li>Splash while packs load</li><li>Then: <span class="go">last used view</span> (guess)</li><li>No data yet: "No data" banner over it, as today</li></ul></div>
+  <div class="arr">&rarr;</div>
+  <div class="node page"><h4>A view (chart kind)</h4><ul><li>Chart: Nav or Fish, follow on, head-up</li><li>Overlay slots as configured</li><li>Legend button, + and -, Recenter when panned, "No position" chip, notice line</li><li>Tap AIS target: <span class="go">AIS sheet</span></li><li>Hold a slot: <span class="go">slot sheet</span> for that slot only (shortcut, guess)</li></ul></div>
+  <div class="node page"><h4>A view (cells kind)</h4><ul><li>Chart: None</li><li>Cells in the chosen shape, digits fill</li><li>No chart controls</li><li>Hold a cell: <span class="go">cell sheet</span> (guess)</li></ul></div>
+</div>
+
+<div class="lanehdr">Tab bar (right edge, every page except the editor, where it dims)</div>
+<div class="lane">
+  <div class="node bar"><h4>Favourite view tabs</h4><ul><li>Icon over short name, 15 mm, as many as fit (5 now, 3 to 4 once brightness and MOB arrive)</li><li>Tap: <span class="go">that view</span></li><li>Hold: <span class="go">editor</span> for that view (guess)</li><li>Order = order on Home</li></ul><div><span class="sw fav on">&#9875; Nav</span><span class="sw fav">&#127907; Fish</span><span class="sw fav"># Big #</span></div></div>
+  <div class="node bar"><h4>House tab</h4><ul><li>Tap: <span class="go">Home</span></li></ul><div><span class="sw">&#8962;</span></div></div>
+  <div class="node bar"><h4>Lock</h4><ul><li>Tap: <span class="go">locked</span>. All touch swallowed, padlock shown, bar dimmed</li><li>Hold 1.5 s with progress ring: unlock</li><li>Idle 2 min (setting) also locks, not while editing (guess)</li></ul></div>
+  <div class="node bar"><h4>Palette</h4><ul><li>Label = current mode</li><li>Tap cycles Auto, Day, Dusk, Night</li></ul></div>
+  <div class="node bar" style="opacity:.6"><h4>Reserved</h4><ul><li>Brightness (plan 5), MOB (phase 2)</li><li>Take two favourite spaces when they arrive</li></ul></div>
+</div>
+
+<div class="lanehdr">Home</div>
+<div class="lane">
+  <div class="node page"><h4>Home page</h4><ul><li>Tiles, 3 across, scrolls: every view (thumbnail, name, star if favourite), then <b>+ New view</b>, then Tracks, Settings, About</li><li>Tap view tile: <span class="go">that view</span></li><li>Hold view tile: <span class="go">tile menu</span></li><li>Tap + New view: <span class="go">editor</span> on a blank Nav view with the <span class="go">Setup sheet</span> already open</li><li>Tap Tracks / Settings / About: <span class="go">that page</span>, as today</li></ul></div>
+  <div class="arr">hold &rarr;</div>
+  <div class="node sheet"><h4>Tile menu</h4><ul><li>Edit: <span class="go">editor</span></li><li>Favourite on/off (star)</li><li>Move left / Move right (tab and tile order)</li><li>Duplicate: copy named "&lt;name&gt; 2"</li><li>Delete: confirm; the last view cannot be deleted</li></ul></div>
+  <div class="node page"><h4>Tracks, Settings, About</h4><ul><li>Unchanged pages</li><li>Settings loses "Edit overlays" and the Numbers cells entry (both live in views now)</li><li>Leave by any tab</li></ul></div>
+</div>
+
+<div class="lanehdr">Editor (one view at a time, chart live underneath)</div>
+<div class="lane">
+  <div class="node page"><h4>Editor</h4><ul><li>The view itself, tab bar dimmed and inert</li><li>Chart kind: all 8 slots outlined, off ones faint with their position name; tap a slot: <span class="go">slot sheet</span>; selected slot shows a corner handle, drag to resize live</li><li>Cells kind: cells outlined; tap a cell: <span class="go">cell sheet</span></li><li>Floating <b>&#9881; Setup</b>: <span class="go">Setup sheet</span></li><li>Floating <b>Done</b>: save, <span class="go">the view</span></li><li>Floating <b>Cancel</b>: discard changes, back to where you came from (guess: needed for a mis-tap)</li></ul></div>
+  <div class="arr">&rarr;</div>
+  <div class="node sheet"><h4>Setup sheet</h4><ul><li>Name (opens <span class="go">keyboard</span>), 24 max</li><li>Short name (keyboard), 6 max, the tab label</li><li>Icon: grid of about 16 bundled icons</li><li>Chart: Nav / Fish / None (switching to or from None swaps slots for cells; the other side's settings are kept until Done)</li><li>Layout (None only): opens <span class="go">layout gallery</span></li><li>Favourite on/off</li><li>Delete view</li><li>Done: closes the sheet, editor stays</li></ul></div>
+  <div class="node sheet"><h4>Slot sheet (half height)</h4><ul><li>Show: On / Off</li><li>Field: Depth, SOG, STW, COG, Heading, Water temp, Position, Time, RPM</li><li>Size: big + and -, value in mm, 6 mm floor, ceiling = what fits (R51)</li><li>Sheet sits in the half away from the slot</li><li>Done</li></ul></div>
+  <div class="node sheet"><h4>Cell sheet (half height)</h4><ul><li>Field list, same</li><li>Done</li></ul></div>
+  <div class="node sheet"><h4>Layout gallery</h4><ul><li>60 landscape thumbnails, scrolls, 12 mm floor</li><li>Tap one: cells re-flow, fields kept by cell order</li></ul></div>
+  <div class="node sheet"><h4>Keyboard</h4><ul><li>Our own QML keyboard (Qt's is GPL): letters, digits, space, backspace, Done</li><li>12 mm keys</li></ul></div>
+</div>
+
+<div class="lanehdr">Shipped views (first boot, all favourites, editable like any other)</div>
+<div class="lane">
+  <div class="node"><h4>&#9875; Nav: "Navigation"</h4><ul><li>Chart: Nav</li><li>TL Depth 25 mm, TR SOG 25 mm (today's defaults)</li></ul></div>
+  <div class="node"><h4>&#127907; Fish: "Fishing" (guess, your call below)</h4><ul><li>Chart: Fish</li><li>TL Depth 40 mm</li><li>BL Water temp 14 mm</li><li>TR SOG 14 mm</li></ul></div>
+  <div class="node"><h4># Big #: "Big numbers"</h4><ul><li>Chart: None</li><li>Two cells side by side: Depth, SOG (today's Numbers page)</li></ul></div>
+</div>
+
+<div class="lanehdr">Guesses: click every one that is wrong</div>
+<div class="options" data-multiselect>
+  <div class="option" data-choice="g-boot" onclick="toggleSelect(this)"><div class="letter">1</div><div class="content"><h3>Boot opens the last used view</h3></div></div>
+  <div class="option" data-choice="g-holdtab" onclick="toggleSelect(this)"><div class="letter">2</div><div class="content"><h3>Hold a favourite tab opens its editor; hold a slot or cell on a live view opens just that sheet</h3></div></div>
+  <div class="option" data-choice="g-cancel" onclick="toggleSelect(this)"><div class="letter">3</div><div class="content"><h3>Editor has Cancel next to Done</h3></div></div>
+  <div class="option" data-choice="g-nobathy" onclick="toggleSelect(this)"><div class="letter">4</div><div class="content"><h3>A Fish view with no bathy pack shows the Nav chart with a "No fishing chart installed" chip</h3></div></div>
+  <div class="option" data-choice="g-lock" onclick="toggleSelect(this)"><div class="letter">5</div><div class="content"><h3>Idle lock does not fire while editing</h3></div></div>
+  <div class="option" data-choice="g-defaults" onclick="toggleSelect(this)"><div class="letter">6</div><div class="content"><h3>Three shipped views, all favourites, last one cannot be deleted</h3></div></div>
+  <div class="option" data-choice="g-order" onclick="toggleSelect(this)"><div class="letter">7</div><div class="content"><h3>Tab order = Home tile order, moved with Move left / right in the tile menu</h3></div></div>
+</div>
+<p class="subtitle">Then in the terminal: the default Fishing view. Which numbers big, where, and does anything else go on it?</p>
+</div>

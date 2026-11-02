@@ -1,0 +1,118 @@
+<style>
+.scr{display:flex;width:400px;height:250px;border:2px solid #555;border-radius:4px;background:#e9e4d2;position:relative;overflow:hidden;font-family:sans-serif;color:#111;flex:none}
+.scr .map{flex:1;position:relative;background:linear-gradient(135deg,#7fb3d5,#2b5f8c)}
+.scr .tabs{width:52px;background:#f3f3f3;border-left:1px solid #999;display:flex;flex-direction:column;align-items:center;padding-top:4px;gap:4px}
+.tab{width:44px;height:30px;border:1px solid #888;border-radius:3px;background:#fff;font-size:8px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;line-height:1;gap:2px}
+.tab .ic{font-size:12px;line-height:1}
+.tab.fav{background:#fff6d6;border-color:#c9a227}
+.tab.on{background:#cfe3f7;border:2px solid #4a7fb5}
+.tab.sm{height:22px}
+.tab.push{margin-top:auto}
+.tab.dim{opacity:.4}
+.slot{position:absolute;background:rgba(255,255,255,.85);border-radius:3px;padding:2px 4px;font-weight:700;line-height:1}
+.slot small{display:block;font-weight:400;font-size:7px}
+.slot.edit{outline:2px dashed #d08a00;outline-offset:2px}
+.slot.off{background:rgba(255,255,255,.35);color:#666;font-weight:400;font-size:8px}
+.fab{position:absolute;border:1px solid #888;border-radius:3px;background:#fff;padding:4px 8px;font-size:9px;font-weight:700}
+.fab.pri{background:#cfe3f7;border:2px solid #4a7fb5}
+.sheet{position:absolute;left:30px;top:20px;right:30px;bottom:20px;background:#f3f3f3;border:1px solid #777;border-radius:4px;box-shadow:0 4px 14px rgba(0,0,0,.35);display:flex;flex-direction:column;padding:6px;font-size:9px;gap:5px}
+.sheet .cols{display:flex;gap:8px;flex:1}
+.sheet .list{flex:1;display:flex;flex-direction:column;gap:3px}
+.sheet .list div{border:1px solid #888;border-radius:3px;background:#fff;padding:3px 5px;text-align:center}
+.sheet .list div.on{background:#cfe3f7;border:2px solid #4a7fb5}
+.sheet .list .ttl{border:none;background:none;color:#555;text-align:left;padding:0}
+.btn{border:1px solid #888;border-radius:3px;background:#fff;padding:3px 8px;font-size:9px;display:inline-flex;align-items:center}
+.btn.pri{background:#cfe3f7;border:2px solid #4a7fb5;font-weight:700}
+.row{display:flex;align-items:center;gap:6px}
+.row .k{width:52px;color:#555}
+.fld{border:1px solid #888;border-radius:3px;background:#fff;padding:3px 6px;display:inline-flex;align-items:center;gap:4px}
+.fld.on{background:#cfe3f7;border:2px solid #4a7fb5}
+.icons{display:flex;gap:3px;flex-wrap:wrap}
+.icons span{width:18px;height:18px;border:1px solid #888;border-radius:3px;background:#fff;display:flex;align-items:center;justify-content:center;font-size:11px}
+.icons span.on{background:#cfe3f7;border:2px solid #4a7fb5}
+.grid{flex:1;display:grid;grid-template-columns:repeat(3,1fr);gap:6px;padding:8px;background:#f3f3f3}
+.tile{border:1px solid #888;border-radius:4px;background:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:9px;gap:3px;position:relative}
+.tile .star{position:absolute;top:1px;right:4px;color:#c9a227;font-size:11px}
+.tile .thumb{width:40px;height:22px;border:1px solid #aaa;border-radius:2px;background:linear-gradient(135deg,#f1ecd8 0 45%,#bcd6ee 45% 70%,#e2e0c8 70%)}
+.tile .thumb.fish{background:linear-gradient(135deg,#7fb3d5,#2b5f8c)}
+.tile .thumb.none{background:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:11px}
+.tile.new{border-style:dashed;color:#555}
+.tile.page{background:#eee}
+.step{display:flex;gap:14px;align-items:center;margin:14px 0;flex-wrap:wrap}
+.step .txt{max-width:360px;font-size:13px}
+.step .txt b{display:block;margin-bottom:4px}
+</style>
+
+<h2>Editor flow, take two</h2>
+<p class="subtitle">No strip. The editor is the live view with outlined slots. The view's own settings are a pop-out sheet, same look as the slot sheet. Read top to bottom: this is one pass through creating a fishing view. Say what is wrong or missing.</p>
+
+<div class="step">
+  <div class="scr">
+    <div class="grid">
+      <div class="tile"><span class="star">&#9733;</span><div class="thumb"></div>Navigation</div>
+      <div class="tile"><span class="star">&#9733;</span><div class="thumb none">137</div>Big numbers</div>
+      <div class="tile new">+ New view</div>
+      <div class="tile page">Tracks</div>
+      <div class="tile page">Settings</div>
+      <div class="tile page">About</div>
+    </div>
+    <div class="tabs"><div class="tab fav"><span class="ic">&#9875;</span>Nav</div><div class="tab fav"><span class="ic">#</span>Big #</div><div class="tab on"><span class="ic">&#8962;</span></div><div class="tab sm push">Lock</div><div class="tab sm">Day</div></div>
+  </div>
+  <div class="txt"><b>1. Home</b>Tap + New view. (Hold an existing tile: Edit, Rename, Favourite, Duplicate, Delete. Tap a tile: show that view.)</div>
+</div>
+
+<div class="step">
+  <div class="scr">
+    <div class="map">
+      <div class="slot edit off" style="left:6px;top:6px">TL off</div>
+      <div class="slot edit off" style="right:6px;top:6px">TR off</div>
+      <div class="slot edit off" style="left:6px;bottom:6px">BL off</div>
+      <div class="slot edit off" style="right:6px;bottom:6px">BR off</div>
+      <div class="slot edit off" style="left:50%;top:6px;transform:translateX(-50%)">Top off</div>
+      <div class="slot edit off" style="left:50%;bottom:6px;transform:translateX(-50%)">Bottom off</div>
+      <div class="sheet">
+        <div class="row"><b style="flex:1">View</b></div>
+        <div class="row"><span class="k">Name</span><span class="fld" style="flex:1">Fishing chart</span></div>
+        <div class="row"><span class="k">Short</span><span class="fld" style="width:50px">Fish</span><span style="color:#777">tab label, 6 max</span></div>
+        <div class="row"><span class="k">Icon</span><span class="icons"><span>&#9875;</span><span class="on">&#127907;</span><span>#</span><span>&#9973;</span><span>&#9888;</span><span>&#9728;</span><span>&#127754;</span><span>&#9881;</span></span></div>
+        <div class="row"><span class="k">Chart</span><span class="fld">Nav</span><span class="fld on">Fish</span><span class="fld">None</span></div>
+        <div class="row"><span class="k">Tab bar</span><span class="fld on">Favourite</span><span class="fld">Home only</span></div>
+        <div class="row" style="margin-top:auto;justify-content:flex-end;gap:6px"><span class="btn">Delete view</span><span class="btn pri">Done</span></div>
+      </div>
+    </div>
+    <div class="tabs"><div class="tab fav dim"><span class="ic">&#9875;</span>Nav</div><div class="tab fav dim"><span class="ic">#</span>Big #</div><div class="tab dim"><span class="ic">&#8962;</span></div><div class="tab sm push dim">Lock</div><div class="tab sm dim">Day</div></div>
+  </div>
+  <div class="txt"><b>2. View sheet pops over the new, empty view</b>Name, short name, icon, chart (Nav, Fish, None), favourite. Name fields open an on-screen keyboard. Chart choice is live behind the sheet. Done closes the sheet; the editor stays open underneath.</div>
+</div>
+
+<div class="step">
+  <div class="scr">
+    <div class="map">
+      <div class="slot edit" style="left:6px;top:6px;font-size:30px">137<small>Depth ft</small></div>
+      <div class="slot edit off" style="right:6px;top:6px">TR off</div>
+      <div class="slot edit" style="left:6px;bottom:6px;font-size:18px">54.2<small>Water F</small></div>
+      <div class="slot edit off" style="right:6px;bottom:6px">BR off</div>
+      <div class="slot edit off" style="left:50%;top:6px;transform:translateX(-50%)">Top off</div>
+      <div class="slot edit off" style="left:50%;bottom:6px;transform:translateX(-50%)">Bottom off</div>
+      <div class="slot edit off" style="left:6px;top:50%;transform:translateY(-50%)">Left</div>
+      <div class="slot edit off" style="right:6px;top:50%;transform:translateY(-50%)">Right</div>
+      <div class="fab" style="left:50%;top:45%;transform:translate(-50%,-50%)">&#9881; View</div>
+      <div class="fab pri" style="left:50%;top:62%;transform:translate(-50%,-50%)">Done</div>
+    </div>
+    <div class="tabs"><div class="tab fav dim"><span class="ic">&#9875;</span>Nav</div><div class="tab fav dim"><span class="ic">#</span>Big #</div><div class="tab dim"><span class="ic">&#8962;</span></div><div class="tab sm push dim">Lock</div><div class="tab sm dim">Day</div></div>
+  </div>
+  <div class="txt"><b>3. Edit mode</b>All eight slots outlined, off ones faint with their position. Tap a slot: the slot sheet (on/off, field, size), as today. Two buttons float mid-chart: <b>View</b> reopens the sheet from step 2, <b>Done</b> saves and leaves edit mode. Tab bar dimmed while editing. Chart is live underneath so the sizes are judged for real.</div>
+</div>
+
+<div class="step">
+  <div class="scr">
+    <div class="map">
+      <div class="slot" style="left:6px;top:6px;font-size:30px">137<small>Depth ft</small></div>
+      <div class="slot" style="left:6px;bottom:6px;font-size:18px">54.2<small>Water F</small></div>
+    </div>
+    <div class="tabs"><div class="tab fav"><span class="ic">&#9875;</span>Nav</div><div class="tab fav on"><span class="ic">&#127907;</span>Fish</div><div class="tab fav"><span class="ic">#</span>Big #</div><div class="tab"><span class="ic">&#8962;</span></div><div class="tab sm push">Lock</div><div class="tab sm">Day</div></div>
+  </div>
+  <div class="txt"><b>4. Done</b>The view is saved and shown. Its tab appears on the bar (it was marked favourite). Later: hold a slot on any live view to open its slot sheet without entering edit mode (Garmin's hold-a-box shortcut); hold the view's tab to jump to edit mode.</div>
+</div>
+
+<p class="subtitle">Open point from last screen: "custom sizes". Guess: a fourth size step (Huge, 40 mm digits) on top of Small 8, Medium 14, Large 25, all clamped to the space left (R51). Alternative: a free slider in mm. Say which.</p>
