@@ -2418,10 +2418,24 @@ body and leaves about 8 mm of glass overlap per long side and 10 mm per
 short side for a VHB ring on the outside face of the lid; the 167.4 x
 252.6 mm glass fits inside the lid’s corner screws (276 x 176 mm
 spacing) with about 4 mm to spare across the width, so check the screw
-heads clear the glass on the real lid. Fallback if the CLB can’t be had:
-the EAR version mounted from behind the lid (glass the same size as the
-LCD, sealed to the inside of the lid with a VHB or gasket ring on its
-printed border).</p>
+heads clear the glass on the real lid. 4D’s online datasheet R1.6
+(resources.4dsystems.com.au/datasheets/4dhdmi, read 2026-11-02) adds:
+the CLB-1000 draws 650 mA at 12 V or 1700 mA at 5 V USB, the same as the
+EAR-1000; the barrel jack is 5.5 mm, centre positive, and no barrel
+cable or power supply ships with the module (only a 50 cm USB cable and
+an HDMI cable), so a 5.5 mm barrel plug pigtail goes on the list
+(confirm the 2.1 or 2.5 mm pin size on arrival); DDC is supported; the
+12 V input is still only “12.0 V typical” with no maximum (so part 6’s
+buck-boost stays), and power-on behavior still isn’t stated. The OSD
+button board (with the power button) isn’t included but can be ordered
+from 4D sales; if the panel turns out to wake into standby, its power
+button line could be pulsed by the controller instead of a finger. 4D
+Systems sells the CLB-1000 directly at $162.75 USD (in stock,
+2026-11-02) plus $59 shipping to the US, before any duty; the EAR-1000
+is the same $162.75 there. Fallback if the CLB can’t be had: the EAR
+version mounted from behind the lid (glass the same size as the LCD,
+sealed to the inside of the lid with a VHB or gasket ring on its printed
+border).</p>
 <h3>14. Video cable</h3>
 <p><strong>Job.</strong> Pi 5 micro-HDMI port to the display’s HDMI
 input, inside the box.</p>
