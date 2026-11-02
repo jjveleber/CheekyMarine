@@ -1,5 +1,7 @@
 # DIY helm display: component buyer specs
 
+**Parked (2026-11-02).** The owner paused the Pi build for a touchscreen laptop proof of concept, to cut cost and complexity. This research is kept as-is for a possible return to the Pi path after the laptop's trip test. Nothing here was ordered, and prices and stock are as of the dates given.
+
 What each part of the main-helm Pi unit must do, so any product can be judged against it. These are requirements, not product picks. Each section ends with the part we already found, labeled **reference, not a requirement**, with the price and the date it was read. Nothing has been bought yet (decision to build: 2026-10-30). Written 2026-10-31, revised the same day after review on PR #25 and the owner's power and heat decisions.
 
 How to read each section:

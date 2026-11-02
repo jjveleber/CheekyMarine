@@ -1,5 +1,7 @@
 # Pi 5 bench dev kit
 
+**Parked (2026-11-02).** The owner paused the Pi build for a touchscreen laptop proof of concept, to cut cost and complexity. This research is kept as-is for a possible return to the Pi path after the laptop's trip test. Nothing here was ordered, and prices and stock are as of the dates given.
+
 Prices checked 2026-10-29 on the product pages (US, before tax and shipping). "Unverified" means seen only in a search listing. Prices move often; recheck before ordering.
 
 Purpose: run the plotter on real hardware under EGLFS (plan 3 Task 18) and start NMEA 2000 bench work, before the panel, power and enclosure are chosen in plan 5. Everything here except the bench-only items goes on the boat later.
