@@ -73,3 +73,4 @@ line and its action, so long actions (typing) can run past their line.
 | Socket in the scratchpad | `socket path too long` | Engine uses `/run/user/<uid>/` |
 | Frame-count timestamps, clock started at ffmpeg launch | Voice drifts seconds off the picture | Engine stamps wall clock and times from the first frame |
 | espeak or another voice | Not the owner's voice | edge-tts Andrew only |
+| `xdotool windowmove` to separate two apps | Under WSLg the moved window still draws, but clicks stop reaching it | Never move windows; one demo at a time (lock + refusal) |
