@@ -1530,7 +1530,13 @@ contact rating: read them off the datasheet’s coil operating range and
 load limit graphs. RT314012 is the flux-proof version of the same relay.
 Not the RT1 bistable: it latches.</li>
 </ul>
-<p>Controller: none chosen yet.</p>
+<p>Controller: none chosen yet. Hardware timer: a CD4060B (14-stage
+counter with its own RC oscillator, 3 to 18 V, -55 to +125 °C),
+oscillator about 30 Hz from 150 kohm and a 100 nF film capacitor, Q14
+high after 8192 periods (about 4.5 minutes, so ±25% stays inside 3.5 to
+6), MR on the buffered sense signal, and a diode from Q14 to the
+oscillator input to stop it once expired. A 74HC4060 (2 to 6 V) also
+works.</p>
 <p>Alternatives considered (2026-10-31):</p>
 <ul>
 <li><strong>Supercapacitor hold-up in the box</strong> (DIY, about $40
@@ -3172,15 +3178,17 @@ starting, a 70% coil should hold; if not, the crank test decides, and a
 more sensitive coil may be needed (part 4d).</li>
 <li><strong>Controller.</strong> Pick a controller board for part 4c.
 Relay picked: Panasonic ALZ52F12W (part 4d). Owner (2026-11-02):
-checking their stock of old Arduino boards first; if none fits, buy a
-board with native 3.3 V logic so no 5 V to 3.3 V translation is needed
-toward the Pi (for example a 3.3 V, 8 MHz ATmega328P Pro Mini). Either
-way: feed it from a separate regulator rated to 30 V (Arduino onboard
-regulators stop at about 15 to 20 V), solder it down rather than
-plugging it into headers, and write the firmware on avr-libc (or the
-maker’s permissive SDK), not the LGPL Arduino core. A 5 V ATmega328P
-board also needs its brown-out fuse set to 4.3 V and Optiboot re-flashed
-(some old clone bootloaders loop after a watchdog reset).</li>
+checking their stock of old Arduino boards, optocouplers, diodes and
+74HC or CD4000 logic first (parts 4b and 4c; markings to be read off);
+if none fits, buy a board with native 3.3 V logic so no 5 V to 3.3 V
+translation is needed toward the Pi (for example a 3.3 V, 8 MHz
+ATmega328P Pro Mini). Either way: feed it from a separate regulator
+rated to 30 V (Arduino onboard regulators stop at about 15 to 20 V),
+solder it down rather than plugging it into headers, and write the
+firmware on avr-libc (or the maker’s permissive SDK), not the LGPL
+Arduino core. A 5 V ATmega328P board also needs its brown-out fuse set
+to 4.3 V and Optiboot re-flashed (some old clone bootloaders loop after
+a watchdog reset).</li>
 <li><strong>Display 12 V maximum.</strong> 4D gives “12.0 V typ” with no
 maximum. Without a stated 30 V maximum, add a display regulator (part
 6).</li>
