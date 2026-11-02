@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
 # Poke a running demo app by hand to find coordinates (window coordinates at 1280x800).
 #   bash x.sh tap X Y | hold X Y SECS | drag X1 Y1 X2 Y2 | shot PATH.png
-# Only the app the engine started (it listens on the demo socket): other sessions run the same app.
-PID=$(ps -eo pid,comm,args | awk -v s="/run/user/$(id -u)/cm-demo-n2k.sock" '$2=="cheekyplotter" && index($0, s) {print $1; exit}')
-[ -n "$PID" ] || { echo "no demo cheekyplotter running (start one with engine.py ... rehearse, or App.launch)" >&2; exit 1; }
+# Only the app `engine.py DEMO open` started: it prints the PID. Other sessions run the same app.
+#   CM_DEMO_PID=<pid> bash x.sh tap 600 680
+PID=${CM_DEMO_PID:?set CM_DEMO_PID to the PID that engine.py open printed}
+[ "$(cat /proc/$PID/comm 2>/dev/null)" = cheekyplotter ] || { echo "PID $PID is not a running cheekyplotter" >&2; exit 1; }
 W=$(for w in $(xdotool search --onlyvisible --pid "$PID"); do
       xdotool getwindowgeometry "$w" | grep -q 1280x800 && echo "$w"; done | head -1)
-[ -n "$W" ] || { echo "demo app $PID has no 1280x800 window" >&2; exit 1; }
+[ -n "$W" ] || { echo "app $PID has no 1280x800 window" >&2; exit 1; }
+xdotool windowraise "$W"   # a click goes to the top window under the pointer
 case $1 in
   tap)  xdotool mousemove --window "$W" "$2" "$3" click 1 ;;
   hold) xdotool mousemove --window "$W" "$2" "$3" mousedown 1; sleep "$4"; xdotool mouseup 1 ;;

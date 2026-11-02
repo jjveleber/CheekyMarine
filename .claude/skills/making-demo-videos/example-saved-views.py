@@ -1,5 +1,5 @@
 """Whole-app tour of saved views (recorded 2026-11-01 at afc1ffa, 3:56). Run:
-    ~/.cache/cheekymarine/demo-venv/bin/python engine.py example-saved-views.py rehearse
+    ~/.cache/cheekymarine/demo-venv/bin/python engine.py example-saved-views.py rehearse --root WORKTREE
 Coordinates: screens.md. Starts on a fresh data dir: Nav, Fish and Big # are the favourites."""
 from engine import tap, hold, drag, move, wait, type_text, BACK, KDONE
 

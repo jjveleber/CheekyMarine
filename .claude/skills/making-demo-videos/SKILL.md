@@ -34,11 +34,13 @@ Changes with nothing to see (schema, CI, removals) get one spoken sentence, not 
    `.superpowers/demo/<date>-<slug>.py` (gitignored) in the shape of `example-saved-views.py`:
    `TITLE = "<date>-<slug>"` (the MP4 name: unique, or it overwrites), `LAUNCH_ARGS`,
    `STEPS = [(narration, lambda: ...)]`, optional `AFTER_RESTART`. Coordinates: `screens.md`.
-   Unknown screen: `engine.py SCRIPT open`, poke with `bash x.sh tap|hold|drag|shot`, then `close`.
+   Unknown screen: `engine.py SCRIPT open --root WORKTREE` prints the app PID; poke with
+   `CM_DEMO_PID=<pid> bash x.sh tap|hold|drag|shot`, then `close`.
 3. **Run** from this skill's folder with absolute paths: `P=~/.cache/cheekymarine/demo-venv/bin/python`
    (missing: `python3 -m venv` it, `pip install edge-tts`), `$P engine.py SCRIPT MODE --root WORKTREE`.
    `tts` (length), then `rehearse` and Read `sheet.png`; fix and rehearse until every frame shows
-   what its line says. Then `record`, then `check` and Read `check.png`. Narration-only edits: `mux`.
+   what its line says. Check the exit status every time (never pipe through `tail`/`grep` without
+   `set -o pipefail`): a failed run deletes the sheet rather than leaving an old one to misread. Then `record`, then `check` and Read `check.png`. Narration-only edits: `mux`.
 4. **Hand over** the MP4 path (`C:\Users\jjvel\Videos\CheekyMarine\<TITLE>.mp4`), length, the
    commit, what was left out and why. You can't hear it: say the voice is unchecked.
 
@@ -50,9 +52,13 @@ line and its action, so long actions (typing) can run past their line.
 
 ## Rules
 
+- One demo on the display at a time: there is one pointer, so two runs drive each other's
+  windows. The engine takes a machine-wide lock and refuses while any CheekyMarine window is
+  visible. If refused, wait (a background `until` loop on `xdotool search --onlyvisible --name
+  '^CheekyMarine$'`); never close another session's app.
 - Other sessions run the same binaries at the same window size. The engine and `x.sh` act only
-  on the app this run started (by PID); never `pkill`/`killall` by name, never target a window
-  by name alone.
+  on the app this run started (by PID, on its own socket, checked to be on top under the
+  pointer before each input); never `pkill`/`killall` by name, never target a window by name.
 - WSLg display with `QT_QPA_PLATFORM=xcb` (the engine sets it). Offscreen crashes; GL is needed.
 - Never record before a clean rehearsal sheet.
 - x11grab may print `Cannot get the image data`: harmless when the frame is written.
