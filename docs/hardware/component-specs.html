@@ -152,7 +152,7 @@ Part 4 has the details.</p>
 <td>TVS diode + LC filter</td>
 <td>TVS: unidirectional, 17 to 18 V standoff, clamp 30 V or less, across
 the filter output. Inductor: 10 µH, 6 A saturation</td>
-<td>$0.373 at 10 (TVS); LC not priced</td>
+<td>$0.373 at 10 (TVS); $9.30 for the LC parts on the To order list</td>
 </tr>
 <tr class="odd">
 <td>3</td>
@@ -633,14 +633,20 @@ current 1 A or more</td>
 <td>Damping</td>
 <td>An LC filter in front of a switching regulator can ring or oscillate
 unless it is damped. Preferred build: a low-ESR electrolytic with a 0.33
-ohm, 1/2 W resistor in series (the resistor doesn’t drift with cold;
-every relay close puts a short pulse of a few tens of mJ through it). Or
-an electrolytic whose own ESR is 0.3 to 0.5 ohm at room temperature,
+ohm resistor in series (the resistor doesn’t drift with cold). Resistor:
+±5% is enough (best damping spans about 0.27 to 0.38 ohm, and the
+inductor and ceramics vary far more); 1/2 W or more, 1 W for margin,
+since every relay close puts a pulse of about 20 mJ through it in about
+0.1 ms; wirewound, metal oxide or metal film (a small wirewound’s
+inductance doesn’t matter at the filter’s 15 to 25 kHz). Or an
+electrolytic whose own ESR is 0.3 to 0.5 ohm at room temperature,
 knowing that cold raises ESR 2 to 3 times and thins the margin on a cold
 crank. Not a polymer part on its own: its ESR is too low</td>
-<td>Datasheet “ESR” or “impedance” at 100 kHz; bench check at the lowest
-input (7 V) with the buck and the display regulator both loaded: no
-ringing on the buck input, buck output steady on a load step</td>
+<td>Datasheet “ESR” or “impedance” at 100 kHz; resistor on Mouser:
+Wirewound Resistors - Through Hole, 330 mOhms, 5%, 1 W to 3 W, Axial;
+bench check at the lowest input (7 V) with the buck and the display
+regulator both loaded: no ringing on the buck input, buck output steady
+on a load step</td>
 </tr>
 </tbody>
 </table>
@@ -762,7 +768,10 @@ mm tall, 10 mm lead spacing), $2.12 each, Mouser, 2026-10-31, tariff may
 apply (on the To order list). Electrolytic: owner’s stock (see On hand).
 Ceramic: 2 x Murata RDEC71H475K2K1H03B (4.7 µF, 50 V, X7S, radial),
 $0.384 each at 10, Mouser, 2026-11-01 (on the To order list). Damping
-resistor: none priced yet.</p>
+resistor: YAGEO KNP1WSJR-52-0R33 (KNP-S series, 0.33 ohm ±5%, 1 W
+wirewound, 300 ppm/°C, -40 to +200 °C, axial, 9 mm long, 3.5 mm across),
+$0.122 each at 10, Mouser, 2026-11-02, tariff may apply (on the To order
+list).</p>
 <h3>3. Unit on/off switch</h3>
 <p><strong>Job.</strong> Lets the owner turn the unit off while the boat
 stays on. It sits in the thin sense wire (part 4), not in the power
@@ -3017,6 +3026,17 @@ https://www.mouser.com/en/ProductDetail/Murata-Electronics/RDEC71H475K2K1H03B?qs
 DC-bias curve (SimSurfing) or on the bench that two leave about 5 µF or
 more at 15 V; if not, fit a third</td>
 <td>2026-11-01</td>
+</tr>
+<tr class="even">
+<td>2. LC filter damping resistor</td>
+<td>YAGEO KNP1WSJR-52-0R33 (0.33 ohm, ±5%, 1 W wirewound, axial,
+KNP-S)</td>
+<td>10 (one used, rest spares)</td>
+<td>Mouser,
+https://www.mouser.com/en/ProductDetail/YAGEO/KNP1WSJR-52-0R33?qs=sGAEpiMZZMtlubZbdhIBIC31u6TPet1pO4nFM6NHqOg%3D</td>
+<td>$0.122 each, $1.22 for 10, before tax and shipping; Mouser warns a
+30% tariff may apply (about $1.59)</td>
+<td>2026-11-02</td>
 </tr>
 </tbody>
 </table>
