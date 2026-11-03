@@ -111,7 +111,7 @@ Why each one:
 5. Crimp ferrules: **0.25 mm2** on the 24 AWG white and blue, **0.34 mm2** (or 0.5 mm2 if that is what the kit has) on the 22 AWG black.
 6. Land them on the terminal per the table: blue 1, white 2, black 3, terminal 4 empty. Tug each wire after tightening.
 7. Zip-tie the cable jacket to the adapter or its mount so a pull on the cable loads the jacket, not the screw terminal.
-8. Meter the finished cable before it goes near the boat: red against black, white, blue, the drain, and each of terminals 1 to 4. Every reading must be open. A reading here means the red cap or a strand is touching something, and on the boat it would blow the bus fuse.
+8. Meter the finished cable before it goes near the boat, probing at the male plug since the red and drain ends are now capped: pin 2 (red, NET-S) against pins 1, 3, 4 and 5, and pin 2 against adapter terminals 1 to 4. Every reading must be open. A reading here means the red cap or a strand is touching something, and on the boat it would blow the bus fuse.
 
 ### Mounting
 
