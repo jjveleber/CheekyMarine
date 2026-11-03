@@ -185,10 +185,13 @@ fastest.</p>
 <ul>
 <li><strong>Termination: OFF.</strong> The backbone already has its two
 120 ohm terminators, one at each end. The adapter is on a drop, and a
-third terminator would load the bus. Check the switch before connecting;
-confirm it on arrival with a meter across CAN_H and CAN_L on the
-adapter’s terminal with nothing connected (OFF reads open, ON reads
-about 120 ohm).</li>
+third terminator would load the bus. The listing does not say whether
+termination is set by a switch or a jumper; find it on arrival and set
+it off. Confirm with a meter across CAN_H and CAN_L on the adapter’s
+terminal, USB unplugged and nothing on the terminal: about 120 ohm means
+ON; tens of kilohms or more means OFF (the transceiver itself reads
+high, not a true open). The dock test confirms the two backbone
+terminators.</li>
 <li><strong>Firmware:</strong> candleLight (gs_usb), which the Linux
 kernel drives with no install. DSD TECH says units shipped from
 September 2026 have their newer build (uses the 24 MHz crystal, lights
@@ -315,12 +318,15 @@ The tee is close, so most of the 2 m is spare; leave enough to reach
 where the adapter mounts behind or under the cedar sleeve, plus a drip
 loop.</li>
 <li>Before stripping, confirm the colors with a meter: continuity from
-each pin of the male plug to its wire. Use the plug’s pin numbers molded
-on the face, or the standard Micro-C male pinout. If any color differs
-from the table, follow the meter.</li>
-<li>Strip the outer jacket back about 40 mm. Cut the bare drain short
-and cover it with heat shrink. Cut the red wire short, cover its end
-with heat shrink, fold it back and tape it to the jacket.</li>
+each pin of the male plug to its wire. Micro-C faces rarely have pin
+numbers molded on; pin 5 (blue, NET-L) is the center pin, and pins 1 to
+4 sit around it per the standard Micro-C male pinout. If any color
+differs from the table, follow the meter.</li>
+<li>Strip the outer jacket back about 40 mm. Trim any foil shield flush
+with the jacket. Cut the bare drain short and cover it with heat shrink.
+Cut the red wire short and cover its end with heat shrink running about
+10 mm past the cut end (adhesive-lined if the kit has it), then fold it
+back and tape it to the jacket.</li>
 <li>Strip white, blue and black about 8 mm (or the length the ferrule’s
 metal sleeve needs).</li>
 <li>Crimp ferrules: <strong>0.25 mm2</strong> on the 24 AWG white and
@@ -330,6 +336,10 @@ on the 22 AWG black.</li>
 terminal 4 empty. Tug each wire after tightening.</li>
 <li>Zip-tie the cable jacket to the adapter or its mount so a pull on
 the cable loads the jacket, not the screw terminal.</li>
+<li>Meter the finished cable before it goes near the boat: red against
+black, white, blue, the drain, and each of terminals 1 to 4. Every
+reading must be open. A reading here means the red cap or a strand is
+touching something, and on the boat it would blow the bus fuse.</li>
 </ol>
 <h3 id="mounting">Mounting</h3>
 <p>Mount the adapter behind or under the cedar sleeve where it stays dry
@@ -345,14 +355,25 @@ capacity against full charge capacity; the seller stated 39,604 of
 39,604 mWh).</p></li>
 <li><p><strong>Touch and rotation on Ubuntu:</strong> boot a live USB,
 check touch, and check the screen turns when the keyboard is detached
-and the tablet rotates.</p></li>
+and the tablet rotates. The 7320 has only two USB-C ports, so the stick
+must be USB-C (or on a USB-C adapter) and leaves one port free. Pick
+which physical port is “port 1” (power) and “port 2” (CAN adapter) now
+and mark them.</p></li>
+<li><p><strong>can-utils:</strong> <code>candump</code> comes from
+<code>can-utils</code>, which Ubuntu does not install by default, and
+the boat may have no internet. Install it at home with
+<code>sudo apt install can-utils</code>. On a live USB this has to be
+repeated every boot, so install Ubuntu (or at least can-utils on the
+installed system) before the dock test.</p></li>
 <li><p><strong>Adapter enumerates:</strong> plug the SH-C30G into port
 2, then:</p>
 <pre><code>ip -details link show can0</code></pre>
 <p>It should show a <code>can</code> link driven by gs_usb.</p></li>
-<li><p><strong>Termination switch:</strong> meter check per <a
-href="#adapter-settings">Adapter settings</a>, with the terminal
+<li><p><strong>Termination:</strong> meter check per <a
+href="#adapter-settings">Adapter settings</a>, USB unplugged, terminal
 empty.</p></li>
+<li><p><strong>Finished cable:</strong> meter check per step 8 of <a
+href="#making-the-cable">Making the cable</a>.</p></li>
 <li><p><strong>Sunlight:</strong> the 7320 is rated 500 nits, never
 measured. Look at the plotter at full brightness in direct sun before
 the trip.</p></li>
@@ -361,24 +382,82 @@ href="#power">Power</a>.</p></li>
 </ol>
 <h2 id="dock-test">Dock test</h2>
 <p>When the boat is back (see the boat checks: the backbone needs a free
-Micro-C tee drop port first):</p>
+Micro-C tee drop port first). Do the steps in this order: the hand-made
+cable goes onto the bus while the bus is off.</p>
 <ol type="1">
-<li><p>Instruments on, so the bus is powered and talking.</p></li>
-<li><p>Plug the drop into the tee, adapter into Dell port 2.</p></li>
-<li><p>Bring the interface up, listen-only:</p>
-<pre><code>sudo ip link set can0 up type can bitrate 250000 listen-only on</code></pre></li>
-<li><p>Watch traffic:</p>
+<li><p><strong>Bus off:</strong> instruments and the NMEA 2000 power
+off.</p></li>
+<li><p><strong>Plug in the drop, adapter off USB.</strong> Plug the
+cable’s male end into the tee’s drop port. The adapter is on the cable’s
+other end but not yet plugged into the laptop.</p></li>
+<li><p><strong>Meter the bus:</strong> across adapter terminals 1 and 2
+(blue and white). About 60 ohm confirms both backbone terminators are
+present, the adapter’s own terminator is off, and white and blue are the
+data pair. About 40 ohm means the adapter’s terminator is on; about 120
+ohm means the backbone is missing one terminator. Stop and fix either
+before going on.</p></li>
+<li><p><strong>Adapter into Dell port 2,</strong> then bring the
+interface up, listen-only. Take it down first, since the command fails
+with “Device or resource busy” if <code>can0</code> is already up.
+Repeat both lines after every replug or reboot:</p>
+<pre><code>sudo ip link set can0 down
+sudo ip link set can0 up type can bitrate 250000 listen-only on</code></pre></li>
+<li><p><strong>Bus on:</strong> instruments on, so the bus is powered
+and talking.</p></li>
+<li><p><strong>Watch traffic:</strong></p>
 <pre><code>candump can0</code></pre>
-<p>Frames should scroll steadily. Look for depth (PGN 128267), position
-(PGN 129025 or 129029) and, with the AIS on, AIS reports (PGN 129038 and
-129039).</p></li>
-<li><p>Check for errors:</p>
+<p>Frames should scroll steadily. <code>candump</code> prints the raw
+29-bit CAN ID in hex, not PGN numbers; the PGN sits in the middle of the
+ID. To see only depth, position and AIS:</p>
+<pre><code>candump can0 | grep -E &#39;F50B|F80[15EF]&#39;</code></pre>
+<table>
+<thead>
+<tr class="header">
+<th>Look for in the ID</th>
+<th>PGN</th>
+<th>Data</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>F50B</code></td>
+<td>128267</td>
+<td>water depth</td>
+</tr>
+<tr class="even">
+<td><code>F801</code></td>
+<td>129025</td>
+<td>position, rapid update</td>
+</tr>
+<tr class="odd">
+<td><code>F805</code></td>
+<td>129029</td>
+<td>GNSS position</td>
+</tr>
+<tr class="even">
+<td><code>F80E</code></td>
+<td>129038</td>
+<td>AIS Class A position report</td>
+</tr>
+<tr class="odd">
+<td><code>F80F</code></td>
+<td>129039</td>
+<td>AIS Class B position report</td>
+</tr>
+</tbody>
+</table>
+<p>The grep can match a few other frames by chance; it is a quick look,
+not a decoder. Step 8 is the real check.</p></li>
+<li><p><strong>Check for errors:</strong></p>
 <pre><code>ip -details -statistics link show can0</code></pre>
-<p>The state should be <code>ERROR-ACTIVE</code> and the error counters
-near zero. Errors usually mean CAN_H and CAN_L are swapped or
-termination is on.</p></li>
-<li><p>Start n2kd with <code>--can can0</code> and the plotter, and
-check depth, position and AIS on the chart.</p></li>
+<p>The state should be <code>ERROR-ACTIVE</code>. In listen-only mode
+the error counters can stay near zero even when reception is broken, so
+the real symptoms are no frames in step 6, or RX errors climbing here.
+Usual causes: white and blue swapped, black not on terminal 3, or the
+wrong bit rate.</p></li>
+<li><p><strong>Decode:</strong> start n2kd with <code>--can can0</code>
+and the plotter, and check depth, position and AIS on the
+chart.</p></li>
 </ol>
 <p>If it all works, the next step is the trip test.</p>
 

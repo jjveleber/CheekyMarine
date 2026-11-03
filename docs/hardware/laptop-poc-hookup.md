@@ -67,7 +67,7 @@ Set the Dell's BIOS battery charge mode to "Primarily AC use" or a custom 50 to 
 
 ### Adapter settings
 
-- **Termination: OFF.** The backbone already has its two 120 ohm terminators, one at each end. The adapter is on a drop, and a third terminator would load the bus. Check the switch before connecting; confirm it on arrival with a meter across CAN_H and CAN_L on the adapter's terminal with nothing connected (OFF reads open, ON reads about 120 ohm).
+- **Termination: OFF.** The backbone already has its two 120 ohm terminators, one at each end. The adapter is on a drop, and a third terminator would load the bus. The listing does not say whether termination is set by a switch or a jumper; find it on arrival and set it off. Confirm with a meter across CAN_H and CAN_L on the adapter's terminal, USB unplugged and nothing on the terminal: about 120 ohm means ON; tens of kilohms or more means OFF (the transceiver itself reads high, not a true open). The dock test confirms the two backbone terminators.
 - **Firmware:** candleLight (gs_usb), which the Linux kernel drives with no install. DSD TECH says units shipped from September 2026 have their newer build (uses the 24 MHz crystal, lights the TX/RX LEDs); older units work with the stock build and can be updated over USB if wanted.
 - **Interface:** appears as `can0`. NMEA 2000 runs at 250 kbit/s.
 - **Listen-only:** n2kd never transmits by default. Bring the interface up in listen-only mode too, so the adapter cannot send even an error frame or ACK onto the boat's bus.
@@ -105,12 +105,13 @@ Why each one:
 ### Making the cable
 
 1. Keep the **male** Micro-C end; it plugs into the drop port on the backbone tee just under the dash. Cut off the female end. The tee is close, so most of the 2 m is spare; leave enough to reach where the adapter mounts behind or under the cedar sleeve, plus a drip loop.
-2. Before stripping, confirm the colors with a meter: continuity from each pin of the male plug to its wire. Use the plug's pin numbers molded on the face, or the standard Micro-C male pinout. If any color differs from the table, follow the meter.
-3. Strip the outer jacket back about 40 mm. Cut the bare drain short and cover it with heat shrink. Cut the red wire short, cover its end with heat shrink, fold it back and tape it to the jacket.
+2. Before stripping, confirm the colors with a meter: continuity from each pin of the male plug to its wire. Micro-C faces rarely have pin numbers molded on; pin 5 (blue, NET-L) is the center pin, and pins 1 to 4 sit around it per the standard Micro-C male pinout. If any color differs from the table, follow the meter.
+3. Strip the outer jacket back about 40 mm. Trim any foil shield flush with the jacket. Cut the bare drain short and cover it with heat shrink. Cut the red wire short and cover its end with heat shrink running about 10 mm past the cut end (adhesive-lined if the kit has it), then fold it back and tape it to the jacket.
 4. Strip white, blue and black about 8 mm (or the length the ferrule's metal sleeve needs).
 5. Crimp ferrules: **0.25 mm2** on the 24 AWG white and blue, **0.34 mm2** (or 0.5 mm2 if that is what the kit has) on the 22 AWG black.
 6. Land them on the terminal per the table: blue 1, white 2, black 3, terminal 4 empty. Tug each wire after tightening.
 7. Zip-tie the cable jacket to the adapter or its mount so a pull on the cable loads the jacket, not the screw terminal.
+8. Meter the finished cable before it goes near the boat: red against black, white, blue, the drain, and each of terminals 1 to 4. Every reading must be open. A reading here means the red cap or a strand is touching something, and on the boat it would blow the bus fuse.
 
 ### Mounting
 
@@ -121,44 +122,63 @@ Mount the adapter behind or under the cedar sleeve where it stays dry and the US
 Inside the 30-day return windows, at home, before the boat is back:
 
 1. **Battery:** run `powercfg /batteryreport` in Windows before wiping (design capacity against full charge capacity; the seller stated 39,604 of 39,604 mWh).
-2. **Touch and rotation on Ubuntu:** boot a live USB, check touch, and check the screen turns when the keyboard is detached and the tablet rotates.
-3. **Adapter enumerates:** plug the SH-C30G into port 2, then:
+2. **Touch and rotation on Ubuntu:** boot a live USB, check touch, and check the screen turns when the keyboard is detached and the tablet rotates. The 7320 has only two USB-C ports, so the stick must be USB-C (or on a USB-C adapter) and leaves one port free. Pick which physical port is "port 1" (power) and "port 2" (CAN adapter) now and mark them.
+3. **can-utils:** `candump` comes from `can-utils`, which Ubuntu does not install by default, and the boat may have no internet. Install it at home with `sudo apt install can-utils`. On a live USB this has to be repeated every boot, so install Ubuntu (or at least can-utils on the installed system) before the dock test.
+4. **Adapter enumerates:** plug the SH-C30G into port 2, then:
 
    ```
    ip -details link show can0
    ```
 
    It should show a `can` link driven by gs_usb.
-4. **Termination switch:** meter check per [Adapter settings](#adapter-settings), with the terminal empty.
-5. **Sunlight:** the 7320 is rated 500 nits, never measured. Look at the plotter at full brightness in direct sun before the trip.
-6. **BIOS charge mode** set as in [Power](#power).
+5. **Termination:** meter check per [Adapter settings](#adapter-settings), USB unplugged, terminal empty.
+6. **Finished cable:** meter check per step 8 of [Making the cable](#making-the-cable).
+7. **Sunlight:** the 7320 is rated 500 nits, never measured. Look at the plotter at full brightness in direct sun before the trip.
+8. **BIOS charge mode** set as in [Power](#power).
 
 ## Dock test
 
-When the boat is back (see the boat checks: the backbone needs a free Micro-C tee drop port first):
+When the boat is back (see the boat checks: the backbone needs a free Micro-C tee drop port first). Do the steps in this order: the hand-made cable goes onto the bus while the bus is off.
 
-1. Instruments on, so the bus is powered and talking.
-2. Plug the drop into the tee, adapter into Dell port 2.
-3. Bring the interface up, listen-only:
+1. **Bus off:** instruments and the NMEA 2000 power off.
+2. **Plug in the drop, adapter off USB.** Plug the cable's male end into the tee's drop port. The adapter is on the cable's other end but not yet plugged into the laptop.
+3. **Meter the bus:** across adapter terminals 1 and 2 (blue and white). About 60 ohm confirms both backbone terminators are present, the adapter's own terminator is off, and white and blue are the data pair. About 40 ohm means the adapter's terminator is on; about 120 ohm means the backbone is missing one terminator. Stop and fix either before going on.
+4. **Adapter into Dell port 2,** then bring the interface up, listen-only. Take it down first, since the command fails with "Device or resource busy" if `can0` is already up. Repeat both lines after every replug or reboot:
 
    ```
+   sudo ip link set can0 down
    sudo ip link set can0 up type can bitrate 250000 listen-only on
    ```
 
-4. Watch traffic:
+5. **Bus on:** instruments on, so the bus is powered and talking.
+6. **Watch traffic:**
 
    ```
    candump can0
    ```
 
-   Frames should scroll steadily. Look for depth (PGN 128267), position (PGN 129025 or 129029) and, with the AIS on, AIS reports (PGN 129038 and 129039).
-5. Check for errors:
+   Frames should scroll steadily. `candump` prints the raw 29-bit CAN ID in hex, not PGN numbers; the PGN sits in the middle of the ID. To see only depth, position and AIS:
+
+   ```
+   candump can0 | grep -E 'F50B|F80[15EF]'
+   ```
+
+   | Look for in the ID | PGN | Data |
+   |---|---|---|
+   | `F50B` | 128267 | water depth |
+   | `F801` | 129025 | position, rapid update |
+   | `F805` | 129029 | GNSS position |
+   | `F80E` | 129038 | AIS Class A position report |
+   | `F80F` | 129039 | AIS Class B position report |
+
+   The grep can match a few other frames by chance; it is a quick look, not a decoder. Step 8 is the real check.
+7. **Check for errors:**
 
    ```
    ip -details -statistics link show can0
    ```
 
-   The state should be `ERROR-ACTIVE` and the error counters near zero. Errors usually mean CAN_H and CAN_L are swapped or termination is on.
-6. Start n2kd with `--can can0` and the plotter, and check depth, position and AIS on the chart.
+   The state should be `ERROR-ACTIVE`. In listen-only mode the error counters can stay near zero even when reception is broken, so the real symptoms are no frames in step 6, or RX errors climbing here. Usual causes: white and blue swapped, black not on terminal 3, or the wrong bit rate.
+8. **Decode:** start n2kd with `--can can0` and the plotter, and check depth, position and AIS on the chart.
 
 If it all works, the next step is the trip test.
