@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Laptop POC Hookup</title>
+<style>
+/* default - plain document, letter, sans-serif */
+@page { size: letter; margin: 0.6in; }
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+    font-family: 'Calibri', 'Carlito', 'Arial', sans-serif;
+    font-size: 11pt; line-height: 1.45; color: #111; background: #fff;
+}
+h1 { font-size: 20pt; margin-bottom: 8px; }
+h2 {
+    font-size: 14pt; margin-top: 18px; margin-bottom: 10px;
+    padding-bottom: 3px; border-bottom: 1px solid #888;
+}
+h3 { font-size: 12pt; margin-top: 12px; margin-bottom: 4px; }
+h1, h2, h3, h4 { page-break-after: avoid; break-after: avoid; }
+p { margin-bottom: 8px; }
+ul, ol { margin-left: 20px; margin-bottom: 10px; }
+li { margin-bottom: 4px; page-break-inside: avoid; break-inside: avoid; }
+a { color: #2c5282; text-decoration: none; }
+code, pre {
+    font-family: 'DejaVu Sans Mono', monospace; font-size: 9.5pt;
+    background: #f4f4f4;
+}
+pre { padding: 8px; margin-bottom: 10px; page-break-inside: avoid; break-inside: avoid; }
+table { border-collapse: collapse; margin-bottom: 10px; width: 100%; }
+th, td { border: 1px solid #ccc; padding: 4px 6px; text-align: left; }
+blockquote { margin: 0 0 10px 16px; padding-left: 10px; border-left: 3px solid #ccc; }
+img { max-width: 100%; }
+hr { border: none; border-top: 1px solid #ccc; margin: 12px 0; }
+
+</style>
+</head>
+<body>
+<h1 id="laptop-proof-of-concept-hookup">Laptop proof of concept:
+hookup</h1>
+<p>How the touchscreen laptop proof of concept connects to boat power
+and the NMEA 2000 backbone. Written 2026-11-02, before the parts
+arrived; checks marked “on arrival” have not been done yet.</p>
+<p>The Pi build in the other docs here is parked, not dropped. This
+laptop setup is the proof of concept that decides whether the Pi build
+comes back. Success is one trip with charts plus live depth, GPS and AIS
+on the laptop at the helm.</p>
+<p>The laptop design doc (OS setup, auto-login, plotter auto-start,
+mounting in the cedar sleeve) comes next and is separate from this
+hookup doc.</p>
+<h2 id="parts">Parts</h2>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Part</th>
+<th>Pick</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Tablet</td>
+<td>Dell Latitude 7320 Detachable, i7-1180G7, 16 GB, 256 GB, keyboard,
+65 W Dell USB-C charger (eBay 307244203304, Swing Computers,
+$383.99)</td>
+<td>bought 2026-11-02</td>
+</tr>
+<tr class="even">
+<td>12 V charger</td>
+<td>Estbuc flush-fit 125 W car charger (65 W PD USB-C plus 60 W QC
+USB-A), <a
+href="https://www.amazon.com/dp/B0GX1YDB8P">B0GX1YDB8P</a></td>
+<td>already on the boat</td>
+</tr>
+<tr class="odd">
+<td>Charge cable</td>
+<td>UGREEN 100 W 5 A USB-C to USB-C, 3.3 ft braided, 2-pack, <a
+href="https://www.amazon.com/dp/B09N94MZG9">B09N94MZG9</a></td>
+<td>ordered 2026-11-02</td>
+</tr>
+<tr class="even">
+<td>CAN adapter</td>
+<td>DSD TECH SH-C30G isolated USB to CAN (CANable 1.0 Pro, candleLight
+gs_usb firmware), <a
+href="https://www.amazon.com/dp/B0CDGGBZDT">B0CDGGBZDT</a></td>
+<td>ordered 2026-11-02</td>
+</tr>
+<tr class="odd">
+<td>Adapter cable</td>
+<td>UGREEN USB-C to USB-B, 3 ft braided, <a
+href="https://www.amazon.com/dp/B086ZGYK6K">B086ZGYK6K</a></td>
+<td>ordered 2026-11-02</td>
+</tr>
+<tr class="even">
+<td>NMEA 2000 drop</td>
+<td>Regatta Processing 2 m Micro-C drop cable (cut one end), <a
+href="https://www.amazon.com/dp/B08SCJVRGZ">B08SCJVRGZ</a></td>
+<td>ordered 2026-11-02</td>
+</tr>
+<tr class="odd">
+<td>Ferrules</td>
+<td>SOMELINE ferrule kit, AWG 24 to 8, 23 sizes, <a
+href="https://www.amazon.com/dp/B09FSWKRH5">B09FSWKRH5</a></td>
+<td>ordered 2026-11-02</td>
+</tr>
+</tbody>
+</table>
+<p>Fallback charger, only if the Estbuc falls short (see <a
+href="#power">Power</a>): Anker 167.5 W 3-port car charger, <a
+href="https://www.amazon.com/dp/B0CZ7BL16W">B0CZ7BL16W</a>, $37.79. Not
+ordered.</p>
+<p>Nothing else is needed. The 7320 has two Thunderbolt 4 (USB-C) ports
+and nothing else, so one port charges and the other takes the CAN
+adapter.</p>
+<h2 id="overview">Overview</h2>
+<pre><code> helm 12 V lighter socket (10 A)
+   |
+ Estbuc flush charger, USB-C 65 W PD port
+   |
+ UGREEN 100 W USB-C cable
+   |
+ Dell 7320  TB4 port 1 (power in)
+            TB4 port 2 (data)
+               |
+             UGREEN USB-C to USB-B cable, 3 ft
+               |
+             SH-C30G adapter  (termination OFF, isolated)
+               |  4-pin screw terminal
+             cut Regatta 2 m drop
+               |  Micro-C male
+             backbone tee, just under the dash</code></pre>
+<p>The laptop runs on its own battery, charged from the 12 V socket. It
+takes no power from the NMEA 2000 bus, and the adapter’s isolation keeps
+the laptop’s ground separate from the bus.</p>
+<h2 id="power">Power</h2>
+<p>Chain: helm 12 V lighter socket (rated 10 A, owner, 2026-11-02) to
+the Estbuc USB-C 65 W port, through the UGREEN 100 W cable, into either
+Thunderbolt port on the Dell. Use port 1 for power by habit so port 2 is
+always the CAN adapter.</p>
+<p>Load at 12 V:</p>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Load</th>
+<th>Current</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Dell charging at 65 W (charger losses included)</td>
+<td>about 6 A</td>
+</tr>
+<tr class="even">
+<td>Dell plus one phone on the USB-A port</td>
+<td>about 8 A, fits the 10 A socket</td>
+</tr>
+<tr class="odd">
+<td>All charger ports at full load (125 W)</td>
+<td>about 12 A, does not fit</td>
+</tr>
+</tbody>
+</table>
+<p>Keep it to the Dell plus one phone.</p>
+<p>The Estbuc listing says the full 65 W comes only “in a 20V car”,
+which is unclear. The plan is to try it first. Buy the Anker fallback
+only if the Dell shows a “slow charger” warning or its battery drains
+while the plotter runs. If the Anker is bought, check whether its
+included cable is rated 100 W; if the Dell still warns, use the UGREEN
+100 W cable instead.</p>
+<p>Set the Dell’s BIOS battery charge mode to “Primarily AC use” or a
+custom 50 to 80% range. The tablet sits on the charger for hours at a
+time in a warm cabin, and a full charge held hot wears the battery
+fastest.</p>
+<h2 id="nmea-2000-connection">NMEA 2000 connection</h2>
+<h3 id="adapter-settings">Adapter settings</h3>
+<ul>
+<li><strong>Termination: OFF.</strong> The backbone already has its two
+120 ohm terminators, one at each end. The adapter is on a drop, and a
+third terminator would load the bus. Check the switch before connecting;
+confirm it on arrival with a meter across CAN_H and CAN_L on the
+adapter’s terminal with nothing connected (OFF reads open, ON reads
+about 120 ohm).</li>
+<li><strong>Firmware:</strong> candleLight (gs_usb), which the Linux
+kernel drives with no install. DSD TECH says units shipped from
+September 2026 have their newer build (uses the 24 MHz crystal, lights
+the TX/RX LEDs); older units work with the stock build and can be
+updated over USB if wanted.</li>
+<li><strong>Interface:</strong> appears as <code>can0</code>. NMEA 2000
+runs at 250 kbit/s.</li>
+<li><strong>Listen-only:</strong> n2kd never transmits by default. Bring
+the interface up in listen-only mode too, so the adapter cannot send
+even an error frame or ACK onto the boat’s bus.</li>
+</ul>
+<h3 id="sh-c30g-terminal">SH-C30G terminal</h3>
+<p>The listing gives the 4-pin 5.0 mm terminal as CAN_L, CAN_H, isolated
+GND, isolated +5 V, and says pin 3 is isolated GND. Check the silkscreen
+on arrival before wiring; trust the board over this table.</p>
+<table>
+<thead>
+<tr class="header">
+<th>Terminal</th>
+<th>Signal</th>
+<th>Connect</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>1</td>
+<td>CAN_L</td>
+<td>blue (NET-L)</td>
+</tr>
+<tr class="even">
+<td>2</td>
+<td>CAN_H</td>
+<td>white (NET-H)</td>
+</tr>
+<tr class="odd">
+<td>3</td>
+<td>isolated GND</td>
+<td>black (NET-C)</td>
+</tr>
+<tr class="even">
+<td>4</td>
+<td>isolated +5 V out</td>
+<td>nothing, leave empty</td>
+</tr>
+</tbody>
+</table>
+<h3 id="drop-cable-wires">Drop cable wires</h3>
+<p>Micro-C wiring is standard across NMEA 2000 cables:</p>
+<table>
+<colgroup>
+<col style="width: 20%" />
+<col style="width: 20%" />
+<col style="width: 20%" />
+<col style="width: 20%" />
+<col style="width: 20%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Micro-C pin</th>
+<th>Name</th>
+<th>Color</th>
+<th>Regatta gauge</th>
+<th>At the adapter</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>1</td>
+<td>Shield</td>
+<td>bare drain</td>
+<td></td>
+<td>insulate, leave unconnected</td>
+</tr>
+<tr class="even">
+<td>2</td>
+<td>NET-S (bus +12 V)</td>
+<td>red</td>
+<td>22 AWG</td>
+<td>insulate, tape back, unconnected</td>
+</tr>
+<tr class="odd">
+<td>3</td>
+<td>NET-C (bus 0 V)</td>
+<td>black</td>
+<td>22 AWG</td>
+<td>terminal 3</td>
+</tr>
+<tr class="even">
+<td>4</td>
+<td>NET-H</td>
+<td>white</td>
+<td>24 AWG</td>
+<td>terminal 2</td>
+</tr>
+<tr class="odd">
+<td>5</td>
+<td>NET-L</td>
+<td>blue</td>
+<td>24 AWG</td>
+<td>terminal 1</td>
+</tr>
+</tbody>
+</table>
+<p>Why each one:</p>
+<ul>
+<li><strong>NET-C to isolated GND:</strong> gives the isolated CAN
+transceiver the bus’s own 0 V as its reference. Without it the
+transceiver floats and may read the bus badly.</li>
+<li><strong>NET-S unconnected:</strong> the adapter powers itself from
+USB through its isolated converter. NET-S is live 12 V whenever the bus
+is powered; a loose red wire touching anything blows the bus fuse and
+drops every instrument, so cap it properly.</li>
+<li><strong>Shield unconnected at this end:</strong> NMEA 2000 ties the
+shield to ground at one point only, near the bus power feed. Grounding
+it here too makes a loop.</li>
+<li><strong>+5 V out unused:</strong> it exists to power a small node;
+nothing here needs it.</li>
+</ul>
+<h3 id="making-the-cable">Making the cable</h3>
+<ol type="1">
+<li>Keep the <strong>male</strong> Micro-C end; it plugs into the drop
+port on the backbone tee just under the dash. Cut off the female end.
+The tee is close, so most of the 2 m is spare; leave enough to reach
+where the adapter mounts behind or under the cedar sleeve, plus a drip
+loop.</li>
+<li>Before stripping, confirm the colors with a meter: continuity from
+each pin of the male plug to its wire. Use the plug’s pin numbers molded
+on the face, or the standard Micro-C male pinout. If any color differs
+from the table, follow the meter.</li>
+<li>Strip the outer jacket back about 40 mm. Cut the bare drain short
+and cover it with heat shrink. Cut the red wire short, cover its end
+with heat shrink, fold it back and tape it to the jacket.</li>
+<li>Strip white, blue and black about 8 mm (or the length the ferrule’s
+metal sleeve needs).</li>
+<li>Crimp ferrules: <strong>0.25 mm2</strong> on the 24 AWG white and
+blue, <strong>0.34 mm2</strong> (or 0.5 mm2 if that is what the kit has)
+on the 22 AWG black.</li>
+<li>Land them on the terminal per the table: blue 1, white 2, black 3,
+terminal 4 empty. Tug each wire after tightening.</li>
+<li>Zip-tie the cable jacket to the adapter or its mount so a pull on
+the cable loads the jacket, not the screw terminal.</li>
+</ol>
+<h3 id="mounting">Mounting</h3>
+<p>Mount the adapter behind or under the cedar sleeve where it stays dry
+and the USB-B plug is not bent. Route the USB cable and the drop with a
+drip loop below the adapter so water runs off before reaching it.</p>
+<h2 id="bench-checks-on-arrival">Bench checks on arrival</h2>
+<p>Inside the 30-day return windows, at home, before the boat is
+back:</p>
+<ol type="1">
+<li><p><strong>Battery:</strong> run
+<code>powercfg /batteryreport</code> in Windows before wiping (design
+capacity against full charge capacity; the seller stated 39,604 of
+39,604 mWh).</p></li>
+<li><p><strong>Touch and rotation on Ubuntu:</strong> boot a live USB,
+check touch, and check the screen turns when the keyboard is detached
+and the tablet rotates.</p></li>
+<li><p><strong>Adapter enumerates:</strong> plug the SH-C30G into port
+2, then:</p>
+<pre><code>ip -details link show can0</code></pre>
+<p>It should show a <code>can</code> link driven by gs_usb.</p></li>
+<li><p><strong>Termination switch:</strong> meter check per <a
+href="#adapter-settings">Adapter settings</a>, with the terminal
+empty.</p></li>
+<li><p><strong>Sunlight:</strong> the 7320 is rated 500 nits, never
+measured. Look at the plotter at full brightness in direct sun before
+the trip.</p></li>
+<li><p><strong>BIOS charge mode</strong> set as in <a
+href="#power">Power</a>.</p></li>
+</ol>
+<h2 id="dock-test">Dock test</h2>
+<p>When the boat is back (see the boat checks: the backbone needs a free
+Micro-C tee drop port first):</p>
+<ol type="1">
+<li><p>Instruments on, so the bus is powered and talking.</p></li>
+<li><p>Plug the drop into the tee, adapter into Dell port 2.</p></li>
+<li><p>Bring the interface up, listen-only:</p>
+<pre><code>sudo ip link set can0 up type can bitrate 250000 listen-only on</code></pre></li>
+<li><p>Watch traffic:</p>
+<pre><code>candump can0</code></pre>
+<p>Frames should scroll steadily. Look for depth (PGN 128267), position
+(PGN 129025 or 129029) and, with the AIS on, AIS reports (PGN 129038 and
+129039).</p></li>
+<li><p>Check for errors:</p>
+<pre><code>ip -details -statistics link show can0</code></pre>
+<p>The state should be <code>ERROR-ACTIVE</code> and the error counters
+near zero. Errors usually mean CAN_H and CAN_L are swapped or
+termination is on.</p></li>
+<li><p>Start n2kd with <code>--can can0</code> and the plotter, and
+check depth, position and AIS on the chart.</p></li>
+</ol>
+<p>If it all works, the next step is the trip test.</p>
+
+</body>
+</html>
