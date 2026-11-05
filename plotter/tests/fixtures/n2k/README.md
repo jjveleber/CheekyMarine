@@ -25,3 +25,28 @@ build/n2kd/n2kd --replay plotter/tests/fixtures/n2k/everett-pt-townsend.log --sp
   class A MMSI 367000003 (129038 only).
 
 `plotter/tools/test_synth_n2k.py` checks these values through the real n2kd.
+
+## Scenario `navigating` (16 minutes, start t=1798056000.0)
+
+- Origin: generated. Regenerate: `python3 -I plotter/tools/synth_n2k.py --canboat third_party/canboat/canboat.json --scenario navigating --out plotter/tests/fixtures/n2k/navigating.log`
+- Waypoints (owner, 2026-11-05): (47.9482896, -122.3136073), (47.9021326, -122.3743223), (47.9080896, -122.4492273).
+  26 kn (13.3756 m/s, SOG wobbles by 0.5 kn), about 12,460 m; past the end the boat turns back along the route.
+  Start 2026-12-23 20:00 UTC (noon PST), so the auto palette picks day. Heading wanders by 0.03 rad.
+- AIS: the same three targets as `everett-pt-townsend`, laid along the first leg.
+- Depth: 8 m rising to 120 m at 55% of the route, 20 m at 80%, 60 m at the end, plus a 0.3 m ripple. Water 283.15 K.
+
+## Scenario `fishing` (31 minutes, start t=1798056000.0)
+
+- Origin: generated. Regenerate: `python3 -I plotter/tools/synth_n2k.py --canboat third_party/canboat/canboat.json --scenario fishing --out plotter/tests/fixtures/n2k/fishing.log`
+- Waypoints (owner, 2026-11-05): (47.7441216, -122.4728663), (47.7444076, -122.4562403), trolled back and forth
+  at 3 mph (1.34112 m/s), two passes of the 1,244 m leg.
+- AIS: one class A "TEST FERRY", MMSI 367000011, 12 kn on course 200 deg true, starting 800 m east and 2 km north of the first waypoint.
+- Depth: `27.5 + 12.5*cos(2*pi*f)` m (15 to 40 m, f = fraction along the leg) plus a 0.2 m ripple. Water 284.15 K.
+
+## Scenario `fishing-stopped` (10 minutes, start t=1798056000.0)
+
+- Origin: generated. Regenerate: `python3 -I plotter/tools/synth_n2k.py --canboat third_party/canboat/canboat.json --scenario fishing-stopped --out plotter/tests/fixtures/n2k/fishing-stopped.log`
+- Holds at the first fishing waypoint (owner, 2026-11-05), SOG 0, COG 0, position jitter under 1.7 m. No AIS.
+- Depth: 12 m flat. Water 284.15 K.
+
+All scenarios take `--duration-s N` to change the length.

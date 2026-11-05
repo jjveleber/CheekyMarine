@@ -173,7 +173,10 @@ Home order; favorite tabs follow it) and `json`, one JSON object per view:
 ## Dev run
 
 `plotter/tools/run-dev.sh [FIXTURE] [extra cheekyplotter args...]` replays an N2K log through n2kd
-and starts the app on it (see the script header for `CM_PACKS_DIR`). Hidden dev and checkpoint
+and starts the app on it (see the script header for `CM_PACKS_DIR`). The fixtures in
+`plotter/tests/fixtures/n2k/` are `everett-pt-townsend.log` (default), `navigating.log` (26 kn),
+`fishing.log` (trolling at 3 mph) and `fishing-stopped.log` (holding position). For example:
+`plotter/tools/run-dev.sh plotter/tests/fixtures/n2k/navigating.log`. Hidden dev and checkpoint
 options of `cheekyplotter` (not in `--help`):
 
 - `--palette auto|day|dusk|night`: writes the palette mode setting at start (it persists in the
