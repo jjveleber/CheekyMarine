@@ -1,4 +1,5 @@
 #pragma once
+#include <QList>
 
 // Spherical geo math (R = 6371008.8 m). Latitudes, longitudes and bearings are in degrees.
 struct LatLon {
@@ -11,3 +12,6 @@ double distanceM(LatLon a, LatLon b);
 double bearingDeg(LatLon from, LatLon to);
 // Ground resolution of MapLibre's 512 px world at latitude `latDeg` (degrees) and `zoom`.
 double metresPerPixel(double latDeg, double zoom);
+// `n` points `stepM` apart along the navigating route of synth_n2k.py (three waypoints, first point
+// at the first one), bouncing back along the route when it runs out. For dev measurements.
+QList<LatLon> syntheticTrack(int n, double stepM = 13.4);
