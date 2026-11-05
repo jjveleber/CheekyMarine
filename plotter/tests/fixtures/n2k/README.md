@@ -50,3 +50,18 @@ build/n2kd/n2kd --replay plotter/tests/fixtures/n2k/everett-pt-townsend.log --sp
 - Depth: 12 m flat. Water 284.15 K.
 
 All scenarios take `--duration-s N` to change the length.
+
+## Relocating a recorded log
+
+`plotter/tools/relocate_n2k.py` moves a recorded log (candump `-L` or canboat RAW) onto other waters: it
+shifts every position (PGNs 129025, 129029, 129038, 129039) so the first own-ship position lands on
+`--to`, and optionally rotates the track clockwise about `--to`. Other frames pass through unchanged.
+
+A real recording to try it on is OpenSkipper's `Kees NMEA2000 Sample.log` (IJsselmeer, 2009; canboat RAW
+with `2009-06-18Z09:46:01.129` timestamps, which n2kd does not read, so relocate it first), from https://github.com/OpenSkipper/SampleLogs (25 MB). Its license is CC BY-SA 3.0 plus a requirement that
+derivative works be public, which does not fit this repository, so it is not committed. Download it, then put it on Possession Sound:
+
+```bash
+python3 -I plotter/tools/relocate_n2k.py "Kees NMEA2000 Sample.log" kees-possession.log --to 47.9482896,-122.3136073 --rotate 0 --canboat third_party/canboat/canboat.json
+plotter/tools/run-dev.sh kees-possession.log
+```

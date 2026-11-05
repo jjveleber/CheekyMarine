@@ -134,7 +134,7 @@ Stored in `plotter.db`, changed in the Settings page. Defaults:
 | `trackIntervalS` | 5 | seconds between track points |
 | `trackMinDistanceM` | 10 | meters moved before a new point |
 
-Track points are written every 30 s or every 20 points. If the database refuses writes, the recorder holds at most one batch and retries; those points stay on the chart and in the Tracks row, and are lost if the app exits while writes still fail.
+Track points and the 10-minute gap that starts a new track are timed on a steady clock, so a GPS or NTP clock step neither splits nor stalls a track. A track closed with fewer than two points (a boat at the dock) is deleted. Track points are written every 30 s or every 20 points. If the database refuses writes, the recorder holds at most one batch and retries; those points stay on the chart and in the Tracks row, and are lost if the app exits while writes still fail.
 
 The plan 3 keys `chartMode`, `touchLockTimeoutS`, `slots` and `bigNumbers` are gone: the chart and
 the slots and cells live in each view, and the idle auto-lock was removed.
@@ -184,7 +184,9 @@ and starts the app on it (see the script header for `CM_PACKS_DIR`). The fixture
 `plotter/tools/run-dev.sh plotter/tests/fixtures/n2k/navigating.log`. The `ais-density` scenario (the fishing own ship among 76 real Puget Sound vessels from a
 MarineCadastre extract, `plotter/tests/fixtures/ais/`) is generated on demand, not committed as a log:
 `python3 -I plotter/tools/synth_n2k.py --canboat third_party/canboat/canboat.json --scenario ais-density --out /tmp/ais.log`
-then `plotter/tools/run-dev.sh /tmp/ais.log` (`--ais-csv PATH` swaps the traffic file).
+then `plotter/tools/run-dev.sh /tmp/ais.log` (`--ais-csv PATH` swaps the traffic file). To put a recorded log on other
+waters: `python3 plotter/tools/relocate_n2k.py IN OUT --to LAT,LON [--rotate DEG] --canboat third_party/canboat/canboat.json`
+(see the fixtures README).
 
 Hidden dev and checkpoint
 options of `cheekyplotter` (not in `--help`):
