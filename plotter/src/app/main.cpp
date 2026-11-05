@@ -16,6 +16,7 @@
 #include "core/VesselModel.h"
 #include "core/ViewDraft.h"
 #include "core/ViewsModel.h"
+#include "core/WindowOptions.h"
 
 #include <QCommandLineParser>
 #include <QDateTime>
@@ -86,7 +87,8 @@ int main(int argc, char* argv[]) {
     QCommandLineOption socketOpt("socket", "n2kd JSON socket.", "path", "/run/cheekymarine/n2k.sock");
     QCommandLineOption packsOpt("packs", "Directory of installed chart and bathy packs (default <data dir>/packs).", "dir");
     QCommandLineOption dataOpt("data", "Directory for plotter.db.", "dir", appData);
-    QCommandLineOption windowOpt("window", "Window size, WxH (for example 1024x600).", "WxH");
+    QCommandLineOption windowOpt("window", "Window size, WxH (for example 1024x600), ignored with --fullscreen.", "WxH");
+    QCommandLineOption fullscreenOpt("fullscreen", "Show the window full screen (--window is ignored).");
     // Dev and checkpoint aids: save a window grab N ms after start. Repeatable; paired in order.
     QCommandLineOption shotOpt("screenshot", "Save a window grab to PATH.", "path");
     QCommandLineOption shotAfterOpt("screenshot-after-ms", "Delay for the matching --screenshot.", "ms");
@@ -103,7 +105,7 @@ int main(int argc, char* argv[]) {
     for (QCommandLineOption* o : {&shotOpt, &shotAfterOpt, &paletteOpt, &viewOpt, &pageOpt, &editorOpt, &sheetOpt,
                                   &lockOpt, &recordOpt, &exitAfterOpt})
         o->setFlags(QCommandLineOption::HiddenFromHelp);
-    cli.addOptions({socketOpt, packsOpt, dataOpt, windowOpt, shotOpt, shotAfterOpt, paletteOpt, viewOpt, pageOpt,
+    cli.addOptions({socketOpt, packsOpt, dataOpt, windowOpt, fullscreenOpt, shotOpt, shotAfterOpt, paletteOpt, viewOpt, pageOpt,
                     editorOpt, sheetOpt, lockOpt, recordOpt, exitAfterOpt});
     cli.process(app);
 
@@ -291,7 +293,7 @@ int main(int argc, char* argv[]) {
         qCritical() << "the main QML is not a window";
         return 1;
     }
-    if (windowSize.isValid()) window->resize(windowSize);
+    applyWindowOptions(*window, cli.isSet(fullscreenOpt), windowSize);
     const auto resizeIcons = [&] { chart.setImages(chartIcons(iconPxPerMm(), palette.palette())); };
     resizeIcons();
     QObject::connect(window, &QWindow::widthChanged, &chart, resizeIcons);

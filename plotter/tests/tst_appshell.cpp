@@ -1,10 +1,14 @@
 #include "core/AppInfo.h"
 #include "core/Recovery.h"
 #include "core/Store.h"
+#include "core/WindowOptions.h"
 #include <QDir>
+#include <QGuiApplication>
 #include <QFile>
+#include <QScreen>
 #include <QSignalSpy>
 #include <QTemporaryDir>
+#include <QWindow>
 #include <QtTest>
 
 namespace {
@@ -48,6 +52,23 @@ private slots:
         QCOMPARE(info.packs().at(0).toMap().value("inUse").toBool(), false);
         QCOMPARE(info.packs().at(2).toMap().value("inUse").toBool(), true);
         QCOMPARE(info.packs().at(3).toMap().value("inUse").toBool(), false);
+    }
+
+    void fullscreenIgnoresWindowSize() {
+        QWindow w;
+        w.show();
+        applyWindowOptions(w, true, QSize(300, 200));
+        QVERIFY(w.windowState() & Qt::WindowFullScreen);
+        QVERIFY(w.isVisible());
+        QVERIFY(w.size() != QSize(300, 200) || QGuiApplication::primaryScreen()->size() == QSize(300, 200));
+    }
+
+    void windowSizeAppliesWithoutFullscreen() {
+        QWindow w;
+        w.show();
+        applyWindowOptions(w, false, QSize(300, 200));
+        QCOMPARE(w.size(), QSize(300, 200));
+        QVERIFY(!(w.windowState() & Qt::WindowFullScreen));
     }
 
     void appInfoNoPacks() {
@@ -141,5 +162,5 @@ private slots:
     }
 };
 
-QTEST_GUILESS_MAIN(TstAppShell)
+QTEST_MAIN(TstAppShell)
 #include "tst_appshell.moc"

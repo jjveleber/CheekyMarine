@@ -74,6 +74,10 @@ needs about 1.1 GB of free disk for the shallow clone plus the build tree (the c
 CMAKE_PREFIX_PATH=$HOME/Qt/6.8.3/gcc_64 scripts/build-maplibre-qt.sh ~/.local/maplibre-qt
 ```
 
+Ubuntu 26.04: GCC 15 and CMake 4.2 work. The apt step also needs `pipx` and `python3-venv` (for
+aqtinstall); `build-essential`, `cmake` and `git` are assumed. The maplibre script passes
+`-Wno-error=free-nonheap-object` for a GCC 15.2 false positive in `symbol_bucket.cpp`.
+
 ## Configure, build, test
 
 ```bash
@@ -92,12 +96,13 @@ linuxbrew libraries; configure and build with
 
 ## Command line
 
-`cheekyplotter [--socket PATH] [--packs DIR] [--data DIR] [--window WxH]`:
+`cheekyplotter [--socket PATH] [--packs DIR] [--data DIR] [--window WxH] [--fullscreen]`:
 
 - `--socket`: the n2kd JSON socket, default `/run/cheekymarine/n2k.sock`.
 - `--packs`: directory holding the installed charts and bathy packs, default `<data dir>/packs`.
 - `--data`: directory for `plotter.db`.
 - `--window`: window size, for example `1280x800`.
+- `--fullscreen`: show the window full screen; `--window` is ignored.
 
 ## Data location
 
