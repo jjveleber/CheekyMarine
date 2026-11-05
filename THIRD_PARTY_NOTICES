@@ -123,3 +123,12 @@ Qt Test is used only to build and run the tests and is not distributed.
 
 Not built, so no entry: FreeType and HarfBuzz (vendored by MapLibre Native but off in the Qt build), the
 maplibre-native-qt Qt Location plugin, sqlite (the plotter uses QtSql), FSST, SIMD Everywhere.
+
+Test data
+---------
+
+MarineCadastre AIS 2024 extract (plotter/tests/fixtures/ais/)
+  License: CC0 1.0 (public domain dedication)
+  Source: Martin, Brass, Dornback, Fontenault, 2025, Nationwide Automatic Identification System 2024,
+  NOAA Office for Coastal Management (https://marinecadastre.gov/ais/), file ais-2024-07-13.parquet.
+  A 30 minute, Puget Sound subset used only by the tests and dev runs, not distributed in the app.
