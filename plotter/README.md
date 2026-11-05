@@ -146,7 +146,7 @@ Home order; favorite tabs follow it) and `json`, one JSON object per view:
 
 ```json
 {"id": "shipped-nav", "name": "Navigation", "short": "Nav", "icon": "compass", "chart": "nav",
- "favourite": true,
+ "favorite": true,
  "slots": [{"id": "TL", "on": true, "field": "depth", "sizeMm": 25}, "...the other seven..."],
  "cells": {"layout": "2x2:0,0,1,2;1,0,1,2", "fields": ["depth", "sog"]},
  "created": 1793404800, "modified": 1793404800}
@@ -174,6 +174,8 @@ Home order; favorite tabs follow it) and `json`, one JSON object per view:
   three, 4 in the equal 2x2 quad; 0 or 1 fields are padded to two with the defaults, Depth then SOG,
   and more than 4 are cut to the first 4), a Fishing view is added, and `slots`, `bigNumbers`, `chartMode`
   and `touchLockTimeoutS` are deleted from `settings`.
+- Schema 1.2.0 renames the stored key `favourite` to `favorite` and rewrites every view row once; a 1.2.0
+  file is left alone.
 
 ## Dev run
 

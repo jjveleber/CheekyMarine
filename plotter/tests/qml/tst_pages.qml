@@ -567,7 +567,7 @@ TestCase {
         compare(plain.count, 2)
     }
 
-    // The QML faces of Tilings.h and favouriteCapacity.
+    // The QML faces of Tilings.h and favoriteCapacity.
     function test_layoutsAndCapacityForQml() {
         const g = Layouts.gallery()
         compare(g.length, 72)
@@ -576,8 +576,8 @@ TestCase {
         verify(g.every((e, i) => i === 0 || e.cells >= g[i - 1].cells), "ordered by cell count")
         compare(Layouts.rects(twoColumns), [{ x: 0, y: 0, w: 0.5, h: 1 }, { x: 0.5, y: 0, w: 0.5, h: 1 }])
         compare(Layouts.rects("not a layout"), [])
-        compare(PanelMath.favouriteCapacity(110), 4)
-        compare(PanelMath.favouriteCapacity(40), 0)
+        compare(PanelMath.favoriteCapacity(110), 4)
+        compare(PanelMath.favoriteCapacity(40), 0)
     }
 
     // The charts line tells "nothing installed" from "installed but refused" (the About page lists

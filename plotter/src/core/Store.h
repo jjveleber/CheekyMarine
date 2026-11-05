@@ -13,7 +13,7 @@ enum class StoreError { NewerMajor, Corrupt, Io };
 // state. Owns one uniquely named connection, removed on destruction.
 class Store {
 public:
-    static inline const QVersionNumber kSchemaVersion{1, 1, 0};
+    static inline const QVersionNumber kSchemaVersion{1, 2, 0};
 
     static std::expected<std::unique_ptr<Store>, StoreError> open(QString dir);
     // Renames plotter.db (and -wal, -shm) to plotter.db.bad-YYYYMMDD-HHMMSS[-N][-wal|-shm], N from 2

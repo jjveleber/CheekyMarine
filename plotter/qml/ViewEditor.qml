@@ -6,7 +6,7 @@ import QtQuick.Controls.Basic
 // stacked: Setup, Done, Cancel. A tap on a slot opens the slot sheet and selects the slot (its
 // resize handle shows); a tap on a cell opens the cell sheet. Every slot change is clamped against
 // the other slots at their drawn sizes (chartPage.maxMmFor) and the sheet shows what was applied.
-// Setup opens the Setup sheet (name, icon, chart, layout, favourite, delete). The floating buttons
+// Setup opens the Setup sheet (name, icon, chart, layout, favorite, delete). The floating buttons
 // hide while any sheet is open. The slot and cell sheets also open on their own, with editing off
 // (the live view hold shortcut, spec 6.9).
 // Shares its parent with the chart and cell pages, so their coordinates are its own.

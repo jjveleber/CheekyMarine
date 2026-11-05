@@ -4,7 +4,7 @@ import QtQuick.Controls.Basic
 // The Setup sheet of the view editor (spec 6.7): a pop-out the full height of the page at its left,
 // in the slot sheet's look, scrolling: Name and Short name (each opens the keyboard), the icon grid
 // (4 across), Chart (Nav, Fish or None), Layout (with no chart; opens the layout gallery),
-// Favourite, Delete view (asks first; not the last view). Every pick writes straight into the draft,
+// Favorite, Delete view (asks first; not the last view). Every pick writes straight into the draft,
 // so the view beside the sheet follows at once (Cancel in the editor drops it all). Done closes the
 // sheet only. The rest of the page is covered: a tap beside the sheet does nothing.
 Item {
@@ -21,13 +21,13 @@ Item {
     anchors.fill: parent
     visible: false
 
-    // A favourite with no tab: the stored view's own answer, or, while the draft's favourite is not
+    // A favorite with no tab: the stored view's own answer, or, while the draft's favorite is not
     // stored yet, whether the bar is already full.
     readonly property bool offTabBar: {
         void views.tabViews // onTabBar() is a call: tabViews changes whenever its answer can
-        if (!draft.favourite) return false
-        return views.viewJson(draft.id).favourite === true ? !views.onTabBar(draft.id)
-                                                           : views.tabViews.length >= views.favouriteCapacity
+        if (!draft.favorite) return false
+        return views.viewJson(draft.id).favorite === true ? !views.onTabBar(draft.id)
+                                                           : views.tabViews.length >= views.favoriteCapacity
     }
 
     onVisibleChanged: {
@@ -170,8 +170,8 @@ Item {
                 Heading { text: "Tab bar" }
                 RowButton {
                     objectName: "row-favorite"
-                    text: "Favorite: " + (sheet.draft.favourite ? "On" : "Off")
-                    onClicked: sheet.draft.favourite = !sheet.draft.favourite
+                    text: "Favorite: " + (sheet.draft.favorite ? "On" : "Off")
+                    onClicked: sheet.draft.favorite = !sheet.draft.favorite
                 }
                 Label {
                     objectName: "favoriteNote"

@@ -5,6 +5,8 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QSqlError>
 #include <QSqlQuery>
 #include <QUuid>
@@ -28,7 +30,7 @@ QSqlError execAll(QSqlDatabase& db, std::initializer_list<const char*> sqls) {
     return {};
 }
 
-const std::array<Migration, 2> kMigrations{{
+const std::array<Migration, 3> kMigrations{{
     {QVersionNumber(1, 0, 0),
      [](QSqlDatabase& db) {
          return execAll(db, {
@@ -44,6 +46,27 @@ const std::array<Migration, 2> kMigrations{{
              e.isValid())
              return e;
          return seedViews(db, QDateTime::currentSecsSinceEpoch());
+     }},
+    {QVersionNumber(1, 2, 0),
+     [](QSqlDatabase& db) {
+         // Rewrite every view row so the legacy favorite key is stored under its US spelling.
+         QSqlQuery q(db);
+         if (!q.exec(QStringLiteral("SELECT id, json FROM views"))) return q.lastError();
+         QList<QPair<QString, QString>> rows;
+         while (q.next()) rows.append({q.value(0).toString(), q.value(1).toString()});
+         for (const auto& [id, json] : rows) {
+             const QJsonDocument doc = QJsonDocument::fromJson(json.toUtf8());
+             if (!doc.isObject()) {
+                 qWarning() << "views: row" << id << "is not a JSON object; left as is";
+                 continue;
+             }
+             QSqlQuery u(db);
+             u.prepare(QStringLiteral("UPDATE views SET json = ? WHERE id = ?"));
+             u.addBindValue(viewJsonText(viewFromJson(doc.object())));
+             u.addBindValue(id);
+             if (!u.exec()) return u.lastError();
+         }
+         return QSqlError();
      }},
 }};
 
