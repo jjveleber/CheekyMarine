@@ -50,7 +50,7 @@ QVariant DraftSlotsModel::data(const QModelIndex& index, int role) const {
     case SizeMmRole: return s.sizeMm;
     case WidestSampleRole: return widestSample(s.field);
     case FormattedRole:
-    case UnitRole: return fieldRoleText(s.field, role == UnitRole, m_vessel, m_settings);
+    case UnitRole: return fieldRoleText(s.field, role == UnitRole ? FieldText::Unit : FieldText::Value, m_vessel, m_settings);
     }
     return {};
 }
@@ -78,7 +78,7 @@ QVariant DraftCellsModel::data(const QModelIndex& index, int role) const {
     case FieldRole: return fieldName(f);
     case FieldLabelRole: return fieldLabel(f);
     case FormattedRole:
-    case UnitRole: return fieldRoleText(f, role == UnitRole, m_vessel, m_settings);
+    case UnitRole: return fieldRoleText(f, role == UnitRole ? FieldText::Unit : FieldText::Value, m_vessel, m_settings);
     }
     return {};
 }

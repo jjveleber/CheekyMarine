@@ -220,9 +220,7 @@ int main(int argc, char* argv[]) {
     for (const PackInfo& p : chart.packs())
         if (!p.refused.isEmpty()) qWarning() << "pack refused:" << p.dir << p.refused;
     AppInfo appInfo(chart.packs());
-    // The client emits the hello's version before a schema mismatch.
-    QObject::connect(&client, &N2kClient::daemonVersion, &appInfo, &AppInfo::setDaemonVersion);
-    QObject::connect(&client, &N2kClient::schemaMismatch, &appInfo, &AppInfo::setSchemaMismatch);
+    connectAppInfo(client, appInfo);
     // The active track always draws, the finished ones when shown.
     bindTracks(chart, tracksController);
 

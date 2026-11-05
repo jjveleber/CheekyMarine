@@ -115,6 +115,7 @@ private:
     QVariantList m_legend;
     bool m_noPosition = true;
     double m_minZoom = 0, m_maxZoom = 22;
+    QHash<QString, QJsonObject> m_styles; // the accepted packs' parsed styles, keyed by style name
     QJsonObject m_style;       // the style being shown (or loading)
     bool m_loadPending = false; // a setStyleJson whose styleLoaded has not arrived yet
     bool m_ready = false;       // runtime sources and layers are on the map

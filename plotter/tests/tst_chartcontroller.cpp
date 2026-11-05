@@ -416,6 +416,18 @@ private slots:
         QVERIFY(r.map.styles.isEmpty());
     }
 
+    // The styles are parsed once at start: a file removed afterwards is not read again.
+    void stylesAreReadOnceAtStart() {
+        Rig r;
+        QVERIFY(r.settings);
+        r.make();
+        r.map.loaded();
+        QVERIFY(QFile::remove(r.chartsDir() + "/styles/nav-night.json"));
+        r.ctrl->setPalette("night");
+        QCOMPARE(r.map.styles.size(), 2);
+        QCOMPARE(r.map.styles[1]["name"].toString(), QStringLiteral("CheekyMarine nav night"));
+    }
+
     void paletteReloadReaddsRuntimeSources() {
         Rig r;
         QVERIFY(r.settings);

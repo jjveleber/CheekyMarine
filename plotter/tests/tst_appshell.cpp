@@ -1,5 +1,6 @@
 #include "core/AppInfo.h"
 #include "core/Recovery.h"
+#include "core/N2kClient.h"
 #include "core/Store.h"
 #include "core/WindowOptions.h"
 #include <QDir>
@@ -153,6 +154,18 @@ private slots:
         QCOMPARE(done.count(), 0);
         QVERIFY(rec.error().contains("still"));
         QCOMPARE(QFile(dbPath(d)).size(), 4096);
+    }
+
+    void connectAppInfoForwardsDaemonSignals() {
+        N2kClient c(QStringLiteral("/nonexistent"));
+        AppInfo i({});
+        connectAppInfo(c, i);
+        emit c.daemonVersion(QStringLiteral("1.2.3"));
+        QCOMPARE(i.daemonVersion(), QStringLiteral("1.2.3"));
+        emit c.schemaMismatch(2);
+        QVERIFY(i.schemaMismatch());
+        emit c.daemonVersion(QStringLiteral("1.2.3"));
+        QVERIFY(!i.schemaMismatch());
     }
 
     void reasons() {

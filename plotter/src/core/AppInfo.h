@@ -4,6 +4,8 @@
 #include <QVariantList>
 #include <QVariantMap>
 
+class N2kClient;
+
 // What the splash, the About page and the no-data banner show: versions, packs and the daemon's
 // schema state.
 class AppInfo : public QObject {
@@ -44,3 +46,7 @@ private:
     QVariantList m_packs;
     QVariantMap m_charts, m_bathy;
 };
+
+// Forwards the client's hello version and schema mismatch to `info`. The client emits the hello's
+// version before a schema mismatch.
+void connectAppInfo(N2kClient& client, AppInfo& info);

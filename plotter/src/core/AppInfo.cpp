@@ -1,4 +1,5 @@
 #include "AppInfo.h"
+#include "N2kClient.h"
 #include "plotter/Version.h"
 
 namespace {
@@ -38,4 +39,9 @@ void AppInfo::setSchemaMismatch(int) {
     if (m_schemaMismatch) return;
     m_schemaMismatch = true;
     emit schemaMismatchChanged();
+}
+
+void connectAppInfo(N2kClient& client, AppInfo& info) {
+    QObject::connect(&client, &N2kClient::daemonVersion, &info, &AppInfo::setDaemonVersion);
+    QObject::connect(&client, &N2kClient::schemaMismatch, &info, &AppInfo::setSchemaMismatch);
 }
