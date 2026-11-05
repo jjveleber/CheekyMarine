@@ -24,6 +24,8 @@
 #include <QDebug>
 #include <QElapsedTimer>
 #include <QGuiApplication>
+#include <QPointF>
+#include <optional>
 #include <QQmlApplicationEngine>
 #include <QtQml/qqmlextensionplugin.h>
 #include <QQuickView>
@@ -85,6 +87,10 @@ int main(int argc, char* argv[]) {
     // The MapLibre library is built with the OpenGL renderer only.
     QQuickWindow::setGraphicsApi(QSGRendererInterface::OpenGL);
     QGuiApplication app(argc, argv);
+    if (const QString problem = platformProblem(QGuiApplication::platformName()); !problem.isEmpty()) {
+        qCritical().noquote() << problem;
+        return 1;
+    }
     QGuiApplication::setApplicationName(QStringLiteral("cheekyplotter"));
 
     const QString appData = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
@@ -108,10 +114,11 @@ int main(int argc, char* argv[]) {
     QCommandLineOption lockOpt("lock", "Start with the touch lock on.");
     QCommandLineOption recordOpt("record", "Turn track recording on at start (it persists).");
     QCommandLineOption exitAfterOpt("exit-after-ms", "Quit N ms after start.", "ms");
-    for (QCommandLineOption* o : {&shotOpt, &shotAfterOpt, &paletteOpt, &viewOpt, &pageOpt, &editorOpt, &sheetOpt,
+    QCommandLineOption positionOpt("position", "Chart center while there is no vessel position.", "lat,lon");
+    for (QCommandLineOption* o : {&positionOpt, &shotOpt, &shotAfterOpt, &paletteOpt, &viewOpt, &pageOpt, &editorOpt, &sheetOpt,
                                   &lockOpt, &recordOpt, &exitAfterOpt})
         o->setFlags(QCommandLineOption::HiddenFromHelp);
-    cli.addOptions({socketOpt, packsOpt, dataOpt, windowOpt, fullscreenOpt, shotOpt, shotAfterOpt, paletteOpt, viewOpt, pageOpt,
+    cli.addOptions({positionOpt, socketOpt, packsOpt, dataOpt, windowOpt, fullscreenOpt, shotOpt, shotAfterOpt, paletteOpt, viewOpt, pageOpt,
                     editorOpt, sheetOpt, lockOpt, recordOpt, exitAfterOpt});
     cli.process(app);
 
@@ -123,6 +130,15 @@ int main(int argc, char* argv[]) {
             return 2;
         }
         windowSize = QSize(m.captured(1).toInt(), m.captured(2).toInt());
+    }
+    std::optional<QPointF> startPosition;
+    if (cli.isSet(positionOpt)) {
+        const auto m = QRegularExpression("^(-?\\d+(\\.\\d+)?),(-?\\d+(\\.\\d+)?)$").match(cli.value(positionOpt));
+        if (!m.hasMatch()) {
+            qCritical() << "--position wants LAT,LON, got" << cli.value(positionOpt);
+            return 2;
+        }
+        startPosition = QPointF(m.captured(1).toDouble(), m.captured(3).toDouble());
     }
     const QStringList shots = cli.values(shotOpt), shotDelays = cli.values(shotAfterOpt);
     if (shots.size() != shotDelays.size()) {
@@ -224,6 +240,7 @@ int main(int argc, char* argv[]) {
     auto mapItem = std::make_unique<MapLibreChartMap>();
     QQmlEngine::setObjectOwnership(mapItem.get(), QQmlEngine::CppOwnership);
     ChartController chart(mapItem->port(), settings, vessel, ais, packs);
+    if (startPosition) chart.setStartPosition(startPosition->x(), startPosition->y());
     mapItem->setZoomRange(chart.minZoom(), chart.maxZoom());
     // The controller adds its own refusals (a style it cannot use) to the scan's.
     for (const PackInfo& p : chart.packs())

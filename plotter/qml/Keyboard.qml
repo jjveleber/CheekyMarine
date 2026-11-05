@@ -147,7 +147,7 @@ Rectangle {
                 width: Units.mm(30)
                 padding: 0
                 text: "Done"
-                enabled: keyboard.text.length > 0
+                enabled: keyboard.text.trim().length > 0
                 onClicked: {
                     keyboard.visible = false
                     keyboard.accepted(keyboard.text)

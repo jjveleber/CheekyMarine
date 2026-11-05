@@ -1,6 +1,7 @@
 #pragma once
 #include "PackCatalog.h"
 #include <QObject>
+#include <QString>
 #include <QVariantList>
 #include <QVariantMap>
 
@@ -50,3 +51,7 @@ private:
 // Forwards the client's hello version and schema mismatch to `info`. The client emits the hello's
 // version before a schema mismatch.
 void connectAppInfo(N2kClient& client, AppInfo& info);
+
+// Why the chart cannot draw on this Qt platform, or empty when it can (the offscreen and minimal
+// platforms have no GL, and cheekyplotter crashes on them).
+QString platformProblem(const QString& platformName);

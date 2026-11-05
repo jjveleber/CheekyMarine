@@ -475,6 +475,22 @@ private slots:
         QVERIFY(!r.ctrl->noPosition());
     }
 
+    void startPositionCentersTheMapWithoutAFix() {
+        Rig r;
+        QVERIFY(r.settings);
+        r.settings->setOrientation("north");
+        r.make();
+        r.ctrl->setStartPosition(47.5, -122.5);
+        r.map.loaded();
+        QVERIFY(!r.map.cameras.isEmpty());
+        QCOMPARE(r.map.cameras.last().lat, 47.5);
+        QCOMPARE(r.map.cameras.last().lon, -122.5);
+        QCOMPARE(r.map.cameras.last().bearing, 0.0);
+        r.vessel.setState(boat());
+        QCOMPARE(r.map.cameras.last().lat, 47.98);
+        QCOMPARE(r.map.cameras.last().lon, -122.23);
+    }
+
     void headUpTrueHeadingAndLowerThird() {
         Rig r;
         QVERIFY(r.settings);

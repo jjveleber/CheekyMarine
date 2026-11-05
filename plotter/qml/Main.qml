@@ -122,10 +122,15 @@ ApplicationWindow {
             else if (root.sheet === "keyboard") editor.setupSheet.editText("name")
         }
     }
-    Timer {
-        interval: 300
-        running: root.editorOpen
-        onTriggered: root.openInitialEditor()
+    // Once, after the first frame is on screen.
+    property bool initialEditorOpened: false
+    Connections {
+        target: root
+        enabled: root.editorOpen && !root.initialEditorOpened
+        function onFrameSwapped() {
+            root.initialEditorOpened = true
+            Qt.callLater(root.openInitialEditor)
+        }
     }
     Connections {
         target: root.views

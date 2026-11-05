@@ -115,7 +115,7 @@ View viewFromJson(const QJsonObject& o) {
     View v;
     v.id = o.value("id").toString();
     v.name = o.value("name").toString().left(kMaxNameChars);
-    if (v.name.isEmpty()) v.name = QStringLiteral("View");
+    if (v.name.trimmed().isEmpty()) v.name = QStringLiteral("View");
     v.shortName = o.value("short").toString().left(kMaxShortChars);
     if (v.shortName.isEmpty()) v.shortName = shortFromName(v.name);
     v.icon = o.value("icon").toString();
@@ -179,9 +179,9 @@ QList<View> viewsFromPlan3(const QJsonArray& slotsJson, const QStringList& bigNu
     QList<Field> fields;
     for (int i = 0; i < 4 && (i < bigNumbers.size() || i < 2); ++i)
         fields << (i < bigNumbers.size() ? fieldFromName(bigNumbers.at(i)) : std::nullopt).value_or(defaultCellField(i));
-    static const char* const kLayouts[] = {"2x2:0,0,1,2;1,0,1,2", "3x2:0,0,1,2;1,0,1,2;2,0,1,2",
-                                           "2x2:0,0,1,1;1,0,1,1;0,1,1,1;1,1,1,1"};
-    views[2].cells = {QString::fromLatin1(kLayouts[fields.size() - 2]), fields};
+    const QString kLayouts[] = {kDefaultLayout, QStringLiteral("3x2:0,0,1,2;1,0,1,2;2,0,1,2"),
+                                QStringLiteral("2x2:0,0,1,1;1,0,1,1;0,1,1,1;1,1,1,1")};
+    views[2].cells = {kLayouts[fields.size() - 2], fields};
     return views;
 }
 

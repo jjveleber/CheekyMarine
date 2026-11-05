@@ -37,6 +37,7 @@ public:
         if (color.alpha() != 255)
             svg.replace("stroke=\"currentColor\"", QStringLiteral("stroke=\"currentColor\" stroke-opacity=\"%1\"")
                                                        .arg(color.alphaF(), 0, 'f', 3).toUtf8());
+        // Tabler icons are single-colour strokes: every currentColor is the tint, so no icon may use it for a second colour.
         svg.replace("currentColor", color.name().toUtf8());
         return QUrl(QStringLiteral("data:image/svg+xml;utf8,") + QString::fromLatin1(QUrl::toPercentEncoding(QString::fromUtf8(svg))),
                     QUrl::StrictMode);

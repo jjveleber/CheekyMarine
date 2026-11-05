@@ -72,6 +72,8 @@ public:
     Q_INVOKABLE void zoomIn();
     Q_INVOKABLE void zoomOut();
     Q_INVOKABLE void recenter();
+    // Dev option --position: where the map centers while the vessel has no position (a fix wins).
+    void setStartPosition(double lat, double lon);
 
     // MMSI (as uint) of the nearest AIS target whose screen position is within `radiusPx` of `px`
     // (item pixels); an invalid QVariant when there is none.
@@ -111,6 +113,7 @@ private:
     QString m_mode = QStringLiteral("nav");
     QString m_palette = QStringLiteral("day");
     bool m_follow = true;
+    std::optional<LatLon> m_startPosition;
     QString m_notice;
     QVariantList m_legend;
     bool m_noPosition = true;
