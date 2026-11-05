@@ -43,8 +43,8 @@ ApplicationWindow {
     Binding { target: Units; property: "windowWidth"; value: root.width }
     Binding { target: Units; property: "windowHeight"; value: root.height }
     Binding { target: Units; property: "diagonalIn"; value: root.settings.panelDiagonalIn }
-    // As many favourite tabs as the bar's column holds.
-    Binding { target: root.views; property: "favouriteCapacity"; value: PanelMath.favouriteCapacity(tabBar.height / Units.pxPerMm) }
+    // As many favorite tabs as the bar's column holds.
+    Binding { target: root.views; property: "favoriteCapacity"; value: PanelMath.favoriteCapacity(tabBar.height / Units.pxPerMm) }
 
     readonly property var pages: ["home", "view", "tracks", "settings", "about"]
 
@@ -122,10 +122,15 @@ ApplicationWindow {
             else if (root.sheet === "keyboard") editor.setupSheet.editText("name")
         }
     }
-    Timer {
-        interval: 300
-        running: root.editorOpen
-        onTriggered: root.openInitialEditor()
+    // Once, after the first frame is on screen.
+    property bool initialEditorOpened: false
+    Connections {
+        target: root
+        enabled: root.editorOpen && !root.initialEditorOpened
+        function onFrameSwapped() {
+            root.initialEditorOpened = true
+            Qt.callLater(root.openInitialEditor)
+        }
     }
     Connections {
         target: root.views

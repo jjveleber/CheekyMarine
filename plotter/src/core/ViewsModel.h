@@ -17,8 +17,8 @@ class ViewsModel : public QAbstractListModel {
     Q_PROPERTY(int count READ count NOTIFY countChanged)
     // Writes Settings::lastViewId; an unknown id is ignored.
     Q_PROPERTY(QString currentId READ currentId WRITE setCurrentId NOTIFY currentIdChanged)
-    Q_PROPERTY(int favouriteCapacity READ favouriteCapacity WRITE setFavouriteCapacity NOTIFY favouriteCapacityChanged)
-    // The first favouriteCapacity favourites in order, as {id, shortName, icon}.
+    Q_PROPERTY(int favoriteCapacity READ favoriteCapacity WRITE setFavoriteCapacity NOTIFY favoriteCapacityChanged)
+    // The first favoriteCapacity favorites in order, as {id, shortName, icon}.
     Q_PROPERTY(QVariantList tabViews READ tabViews NOTIFY tabViewsChanged)
 
 public:
@@ -28,7 +28,7 @@ public:
         ShortNameRole,
         IconRole,
         ChartRole,
-        FavouriteRole,
+        FavoriteRole,
         OnTabBarRole,
         SlotsRole, // QVariantList of {id, on, field, sizeMm}
         LayoutRole,
@@ -45,8 +45,8 @@ public:
     int count() const { return int(m_views.size()); }
     QString currentId() const { return m_currentId; }
     void setCurrentId(const QString& id);
-    int favouriteCapacity() const { return m_capacity; }
-    void setFavouriteCapacity(int capacity);
+    int favoriteCapacity() const { return m_capacity; }
+    void setFavoriteCapacity(int capacity);
     QVariantList tabViews() const;
 
     QList<View> views() const { return m_views; }
@@ -59,7 +59,7 @@ public:
     Q_INVOKABLE QString idOfShort(const QString& shortName) const;
 
     // Appends "View N" (N from count + 1 up to the first free name), every slot off, cells Depth and
-    // SOG in two columns, not a favourite. Returns its id.
+    // SOG in two columns, not a favorite. Returns its id.
     Q_INVOKABLE QString add();
     // Inserts a copy right after `id`, named duplicateName; returns its id, or empty for an unknown id.
     Q_INVOKABLE QString duplicate(const QString& id);
@@ -68,7 +68,7 @@ public:
     Q_INVOKABLE bool remove(const QString& id);
     // delta -1 or +1: swaps the view with its neighbour; nothing at the ends.
     Q_INVOKABLE void move(const QString& id, int delta);
-    Q_INVOKABLE void setFavourite(const QString& id, bool on);
+    Q_INVOKABLE void setFavorite(const QString& id, bool on);
     // Replaces the view with this id (false when there is none): modified = now; its ord, created and
     // stored extra keys are kept; name and short are cut to their caps, an empty name becomes
     // "View" and an empty short is made from the name.
@@ -81,14 +81,14 @@ public:
 signals:
     void countChanged();
     void currentIdChanged();
-    void favouriteCapacityChanged();
+    void favoriteCapacityChanged();
     void tabViewsChanged();
 
 private:
     bool writeView(const View& v); // UPDATE of an existing row's json
     void setCurrent(const QString& id, bool persist);
     void currentFromSettings();
-    void tabsChanged(); // favourite, order or capacity changed: onTabBar of every row and tabViews
+    void tabsChanged(); // favorite, order or capacity changed: onTabBar of every row and tabViews
 
     Store& m_store;
     Settings& m_settings;

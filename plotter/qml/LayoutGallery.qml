@@ -11,6 +11,12 @@ Rectangle {
     readonly property var layouts: Layouts.gallery()
     readonly property real thumbH: Units.mm(14)
     readonly property real pad: Units.mm(1.5)
+    // Columns that fit at least a thumbnail wide; the thumbnails then stretch to fill the row.
+    readonly property real gap: Units.mm(2)
+    readonly property real minThumbW: thumbH * 1.6 + 2 * pad
+    readonly property int columns: Math.max(1, Math.floor((grid.width + gap) / (minThumbW + gap)))
+    // The 0.01 keeps float rounding from wrapping the last thumbnail of a row.
+    readonly property real thumbW: (grid.width - (columns - 1) * gap) / columns - 0.01
 
     objectName: "layoutGallery"
     anchors.fill: parent
@@ -49,7 +55,7 @@ Rectangle {
         Flow {
             id: grid
             width: parent.width
-            spacing: Units.mm(2)
+            spacing: gallery.gap
             Repeater {
                 model: gallery.layouts
                 BigButton {
@@ -57,8 +63,8 @@ Rectangle {
                     required property var modelData
                     objectName: "layout-" + modelData.key
                     padding: gallery.pad
-                    width: gallery.thumbH * 1.6 + 2 * gallery.pad
-                    height: gallery.thumbH + 2 * gallery.pad
+                    width: gallery.thumbW
+                    height: (width - 2 * gallery.pad) / 1.6 + 2 * gallery.pad
                     highlighted: modelData.key === gallery.draft.layout
                     onClicked: {
                         gallery.draft.layout = modelData.key
@@ -67,8 +73,8 @@ Rectangle {
                     contentItem: Item {
                         LayoutThumb {
                             anchors.centerIn: parent
-                            width: gallery.thumbH * 1.6
-                            height: gallery.thumbH
+                            width: choice.width - 2 * gallery.pad
+                            height: width / 1.6
                             rects: choice.modelData.rects
                             highlighted: choice.highlighted
                         }

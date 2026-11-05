@@ -74,6 +74,10 @@ needs about 1.1 GB of free disk for the shallow clone plus the build tree (the c
 CMAKE_PREFIX_PATH=$HOME/Qt/6.8.3/gcc_64 scripts/build-maplibre-qt.sh ~/.local/maplibre-qt
 ```
 
+Ubuntu 26.04: GCC 15 and CMake 4.2 work. The apt step also needs `pipx` and `python3-venv` (for
+aqtinstall); `build-essential`, `cmake` and `git` are assumed. The maplibre script passes
+`-Wno-error=free-nonheap-object` for a GCC 15.2 false positive in `symbol_bucket.cpp`.
+
 ## Configure, build, test
 
 ```bash
@@ -86,18 +90,22 @@ ctest --test-dir build-plotter --output-on-failure
 `cheekyplotter` runs without `LD_LIBRARY_PATH`: its build RPATH contains Qt's lib dir and the
 maplibre lib dir (derived from the linked targets), so `libQMapLibre.so` finds `libQt6Sql`.
 
+Add `-DCM_PLOTTER_TESTS=OFF` to build the app without the Qt Test and QuickTest packages (no tests are
+registered then); CI and the dev box keep it ON.
+
 Dev machine trap: if your shell has linuxbrew in `PATH`/`LD_LIBRARY_PATH`, CMake can pick up
 linuxbrew libraries; configure and build with
 `env -u LD_LIBRARY_PATH PATH=$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin`.
 
 ## Command line
 
-`cheekyplotter [--socket PATH] [--packs DIR] [--data DIR] [--window WxH]`:
+`cheekyplotter [--socket PATH] [--packs DIR] [--data DIR] [--window WxH] [--fullscreen]`:
 
 - `--socket`: the n2kd JSON socket, default `/run/cheekymarine/n2k.sock`.
-- `--packs`: directory holding the installed charts and bathy packs, default `<data dir>/packs`.
+- `--packs`: directory holding the installed charts and bathy packs, default `<data dir>/packs`. The pack styles are read once at start, so a pack restyled while the app runs shows after an app restart.
 - `--data`: directory for `plotter.db`.
 - `--window`: window size, for example `1280x800`.
+- `--fullscreen`: show the window full screen; `--window` is ignored.
 
 ## Data location
 
@@ -129,7 +137,7 @@ Stored in `plotter.db`, changed in the Settings page. Defaults:
 | `trackIntervalS` | 5 | seconds between track points |
 | `trackMinDistanceM` | 10 | meters moved before a new point |
 
-Track points are written every 30 s or every 20 points. If the database refuses writes, the recorder holds at most one batch and retries; those points stay on the chart and in the Tracks row, and are lost if the app exits while writes still fail.
+Track points and the 10-minute gap that starts a new track are timed on a steady clock, so a GPS or NTP clock step neither splits nor stalls a track, and a sleep longer than 10 minutes starts a new track. A track closed with fewer than two points (a boat at the dock) is deleted. Track points are written every 30 s or every 20 points. If the database refuses writes, the recorder holds at most one batch and retries; those points stay on the chart and in the Tracks row, and are lost if the app exits while writes still fail. Ctrl-C, SIGTERM (systemctl stop) and SIGHUP quit cleanly and write the buffered points.
 
 The plan 3 keys `chartMode`, `touchLockTimeoutS`, `slots` and `bigNumbers` are gone: the chart and
 the slots and cells live in each view, and the idle auto-lock was removed.
@@ -141,7 +149,7 @@ Home order; favorite tabs follow it) and `json`, one JSON object per view:
 
 ```json
 {"id": "shipped-nav", "name": "Navigation", "short": "Nav", "icon": "compass", "chart": "nav",
- "favourite": true,
+ "favorite": true,
  "slots": [{"id": "TL", "on": true, "field": "depth", "sizeMm": 25}, "...the other seven..."],
  "cells": {"layout": "2x2:0,0,1,2;1,0,1,2", "fields": ["depth", "sog"]},
  "created": 1793404800, "modified": 1793404800}
@@ -169,11 +177,23 @@ Home order; favorite tabs follow it) and `json`, one JSON object per view:
   three, 4 in the equal 2x2 quad; 0 or 1 fields are padded to two with the defaults, Depth then SOG,
   and more than 4 are cut to the first 4), a Fishing view is added, and `slots`, `bigNumbers`, `chartMode`
   and `touchLockTimeoutS` are deleted from `settings`.
+- Schema 1.2.0 renames the stored key `favourite` to `favorite` and rewrites every view row once; a 1.2.0
+  file is left alone.
 
 ## Dev run
 
 `plotter/tools/run-dev.sh [FIXTURE] [extra cheekyplotter args...]` replays an N2K log through n2kd
-and starts the app on it (see the script header for `CM_PACKS_DIR`). Hidden dev and checkpoint
+and starts the app on it (see the script header for `CM_PACKS_DIR`). The fixtures in
+`plotter/tests/fixtures/n2k/` are `everett-pt-townsend.log` (default), `navigating.log` (26 kn),
+`fishing.log` (trolling at 3 mph) and `fishing-stopped.log` (holding position). For example:
+`plotter/tools/run-dev.sh plotter/tests/fixtures/n2k/navigating.log`. The `ais-density` scenario (the fishing own ship among 76 real Puget Sound vessels from a
+MarineCadastre extract, `plotter/tests/fixtures/ais/`) is generated on demand, not committed as a log:
+`python3 -I plotter/tools/synth_n2k.py --canboat third_party/canboat/canboat.json --scenario ais-density --out /tmp/ais.log`
+then `plotter/tools/run-dev.sh /tmp/ais.log` (`--ais-csv PATH` swaps the traffic file). To put a recorded log on other
+waters: `python3 plotter/tools/relocate_n2k.py IN OUT --to LAT,LON [--rotate DEG] --canboat third_party/canboat/canboat.json`
+(see the fixtures README).
+
+Hidden dev and checkpoint
 options of `cheekyplotter` (not in `--help`):
 
 - `--palette auto|day|dusk|night`: writes the palette mode setting at start (it persists in the
@@ -194,16 +214,25 @@ options of `cheekyplotter` (not in `--help`):
 - `--screenshot PATH --screenshot-after-ms N`: saves a grab of the window N ms after start;
   repeatable, paired in order.
 - `--exit-after-ms N`: quits N ms after start (for scripted renders).
+- `--frame-stats`: at quit prints two lines. `frame-stats: frames N max M ms p99 P ms over50 K` is
+  the intervals between redraws, in ms (the scene redraws on demand, so an idle gap counts too).
+  `track-writes: writes N max M ms p99 P ms over50 K` is the main-thread time inside each
+  active-track write (build, serialize and hand to MapLibre), in ms. K counts those over 50 ms.
+- `--position LAT,LON`: centers the chart there while the vessel has no position (a fix wins); a
+  malformed value exits 2. For renders on a run with no N2K data.
 
 For example `plotter/tools/run-dev.sh "" --palette dusk --view Fish` (an empty first argument
-means the default fixture).
+means the default fixture). Renders need a display (WSLg or X): the offscreen and minimal platforms
+exit 1 with a message saying so. The Settings and Legend renders are taller than the panel, so use a
+tall window (`--window 1024x1400`).
 
-The saved views renders (every page and editor sheet, day and night, at 1024x600 and 1280x800) are
-in `docs/plotter/renders/views/`, named `<name>-<day|night>-<WxH>.png`. They come from
+The saved views renders (every page and editor sheet, day and night, at 1024x600 and 1280x800 on a
+10.1 in panel, and 1920x1280 on a 13 in panel) are in `docs/plotter/renders/views/`, named `<name>-<day|night>-<WxH>.png`. They come from
 `CM_PACKS_DIR=DIR plotter/tools/run-dev.sh "" --palette P --window WxH --screenshot FILE
 --screenshot-after-ms 7000 --exit-after-ms 8000` (the splash stays up 5 s) plus `--view`, `--page`,
 `--editor`, `--sheet`, `--lock` or `--record` as needed (`splash` is taken at 800 ms,
-`nav-barhidden` and `big-barhidden` at 10000 ms, after the 8 s hide). The earlier walkthrough renders in `docs/plotter/renders/final/` predate views; they
+`nav-barhidden` and `big-barhidden` at 10000 ms, after the 8 s hide). Plan 4 retook `ais-*`, `gallery-*` and `nodata-*` at all three sizes; `settings-*` and `legend-*`
+are at 1024x1400 (tall window); `nodata-*` uses `--position 47.98,-122.23`. The earlier walkthrough renders in `docs/plotter/renders/final/` predate views; they
 keep the no-data banner (the app run without n2kd, `nodata-*.png`) and the recovery screen
 (`--data` pointing at a directory whose `plotter.db` is junk, `recovery-*.png`).
 

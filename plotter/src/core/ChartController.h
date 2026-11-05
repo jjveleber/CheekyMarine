@@ -65,6 +65,9 @@ public:
     // kept point re-sends only the active one.
     void setTracks(const QList<QList<LatLon>>& tracks);
     void setActiveTrack(const QList<LatLon>& points);
+    // --frame-stats: when on, records the main-thread time (us) of each active-track map write.
+    void setWriteTiming(bool on) { m_writeTiming = on; }
+    QList<qint64> writeTimesUs() const { return m_writeTimesUs; }
 
     // Changes the zoom by `log2Delta` (clamped to minZoom..maxZoom) and, when following, re-applies
     // the camera so the boat keeps its place. Pinch and wheel use it while following.
@@ -72,6 +75,8 @@ public:
     Q_INVOKABLE void zoomIn();
     Q_INVOKABLE void zoomOut();
     Q_INVOKABLE void recenter();
+    // Dev option --position: where the map centers while the vessel has no position (a fix wins).
+    void setStartPosition(double lat, double lon);
 
     // MMSI (as uint) of the nearest AIS target whose screen position is within `radiusPx` of `px`
     // (item pixels); an invalid QVariant when there is none.
@@ -111,16 +116,20 @@ private:
     QString m_mode = QStringLiteral("nav");
     QString m_palette = QStringLiteral("day");
     bool m_follow = true;
+    std::optional<LatLon> m_startPosition;
     QString m_notice;
     QVariantList m_legend;
     bool m_noPosition = true;
     double m_minZoom = 0, m_maxZoom = 22;
+    QHash<QString, QJsonObject> m_styles; // the accepted packs' parsed styles, keyed by style name
     QJsonObject m_style;       // the style being shown (or loading)
     bool m_loadPending = false; // a setStyleJson whose styleLoaded has not arrived yet
     bool m_ready = false;       // runtime sources and layers are on the map
     QHash<QString, QImage> m_images;
     QList<QList<LatLon>> m_tracks;
     QList<LatLon> m_activeTrack;
+    bool m_writeTiming = false;
+    QList<qint64> m_writeTimesUs;
     quint32 m_selectedMmsi = 0;
     QVariantMap m_aisSelection;
 };

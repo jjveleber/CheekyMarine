@@ -66,6 +66,7 @@ TestCase {
     Component { id: settingsComp; SettingsPage {} }
     Component { id: tracksComp; TracksPage {} }
     Component { id: spyComp; SignalSpy {} }
+    Component { id: aisSheetComp; AisSheet {} }
 
     readonly property string twoColumns: "2x2:0,0,1,2;1,0,1,2"
     readonly property string quad: "2x2:0,0,1,1;1,0,1,1;0,1,1,1;1,1,1,1"
@@ -80,6 +81,7 @@ TestCase {
         chartStub.fishAvailable = true
         chartStub.mode = "nav"
         chartStub.selected = []
+        chartStub.aisSelection = ({})
         chartStub.targetPoint = null
         chartStub.zooms = []
         Units.windowWidth = 1280
@@ -130,6 +132,7 @@ TestCase {
     function test_pagesConstruct(data) {
         Units.windowWidth = data.w
         Units.windowHeight = data.h
+        Units.diagonalIn = data.diagIn
         const props = { width: data.w - Units.mm(17), height: data.h }
         H.checkBigButtons(testCase, Units, makeChart(props))
         showView("shipped-big")
@@ -151,10 +154,10 @@ TestCase {
                                    range: "1.0", bearing: "307", posAge: "12 s" }
         verify(sheet.visible)
         const values = H.findAll(sheet, it => it.objectName === "aisValue").map(it => it.text)
-        verify(values.indexOf("SEA QUEEN") >= 0, "name")
-        verify(values.indexOf("367000001") >= 0, "mmsi")
+        verify(values.indexOf("Name: SEA QUEEN") >= 0, "name")
+        verify(values.indexOf("MMSI: 367000001") >= 0, "mmsi")
         compare(values.length, 8)
-        compare(H.checkBigButtons(testCase, Units, sheet), 1) // the Close button only
+        compare(H.checkBigButtons(testCase, Units, sheet), 3) // Close and the two page buttons
         const close = H.byName(sheet, "aisCloseButton")
         verify(close)
         close.clicked()
@@ -263,11 +266,131 @@ TestCase {
         verify(!button.visible)
     }
 
+    // The AIS sheet rows, long names, and every on slot at its default size (spec 6, #41).
+    readonly property var aisFull: ({ mmsi: "367000001", name: "MOTOR VESSEL SEA QUEEN OF TACOMA", cls: "A", sog: "10.0",
+                                      cog: "090", range: "1.0", bearing: "307", posAge: "12 s" })
+    function chartWithAllSlotsOn(data) {
+        Units.windowWidth = data.w
+        Units.windowHeight = data.h
+        Units.diagonalIn = data.diagIn
+        const ids = ["TL", "TR", "BL", "BR", "Top", "Bottom", "Left", "Right"]
+        const fields = ["depth", "sog", "cog", "wtemp", "time", "stw", "hdg", "depth"]
+        const sizes = [25, 25, 14, 14, 8, 8, 14, 14]
+        for (let i = 0; i < ids.length; ++i)
+            fixture.draft.setSlot(ids[i], true, fields[i], sizes[i])
+        chartStub.follow = false
+        const chart = makeChart({ width: data.w, height: data.h, rightInset: Units.mm(17) })
+        waitForRendering(chart)
+        return chart
+    }
+    function aisRowTexts(sheet) {
+        return H.findAll(sheet, it => it.objectName === "aisValue" && it.visible).map(it => it.text)
+    }
+
+    // Each size with every slot on, then rows with the top or bottom corners off (the sheet's band
+    // then reaches the top-center chips or Recenter) and no position (the chip shows).
+    function test_aisSheetNeverCoversASlot_data() {
+        const rows = H.sizes()
+        for (const s of H.sizes()) {
+            rows.push(Object.assign({}, s, { tag: s.tag + " top corners off, no position", off: ["TL", "TR"], noPosition: true }))
+            rows.push(Object.assign({}, s, { tag: s.tag + " bottom corners off", off: ["BL", "BR"] }))
+        }
+        return rows
+    }
+    function test_aisSheetNeverCoversASlot(data) {
+        const chart = chartWithAllSlotsOn(data)
+        for (const id of data.off || [])
+            fixture.draft.setSlot(id, false, "depth", 25)
+        chartStub.noPosition = data.noPosition === true // chartWithAllSlotsOn leaves follow off: Recenter shows
+        chartStub.aisSelection = aisFull
+        waitForRendering(chart)
+        const sheet = H.byName(chart, "aisSheet")
+        verify(sheet.visible)
+        const b = H.box(sheet, chart)
+        verify(b.x >= -0.5 && b.y >= -0.5 && b.x + b.w <= chart.width - chart.rightInset + 0.5 && b.y + b.h <= chart.height + 0.5,
+               "sheet inside the page: " + where(sheet, chart))
+        const free = chart.aisFreeRect
+        verify(b.x >= free.x - 0.5 && b.y >= free.y - 0.5 && b.x + b.w <= free.x + free.width + 0.5 && b.y + b.h <= free.y + free.height + 0.5,
+               "sheet inside the free rectangle " + JSON.stringify(free) + ": " + where(sheet, chart))
+        const controls = ["recenterButton", "zoomInButton", "zoomOutButton", "noPositionChip", "noFishChip"]
+                             .map(n => H.byName(chart, n)).filter(it => it.visible)
+        verify(controls.some(it => it.objectName === "recenterButton"), "Recenter shows")
+        if (data.noPosition) verify(controls.some(it => it.objectName === "noPositionChip"), "the chip shows")
+        for (const s of H.findAll(chart, it => it.objectName.startsWith("slot-") && it.visible).concat(controls))
+            verify(!H.overlaps(sheet, s, chart), where(sheet, chart) + " overlaps " + where(s, chart))
+        H.checkBigButtons(testCase, Units, sheet)
+    }
+
+    // The footer and the shown rows draw inside the sheet's own box (the slot test checks the sheet's
+    // box only). Every corner at 25 mm on the smallest window, where the slot clamp still leaves a
+    // band of several rows; then the sheet alone in a band shorter than one row plus the footer,
+    // where it keeps that floor (and may cover a slot only then).
+    function test_aisSheetFooterAndRowsStayInsideTheSheet() {
+        const chart = chartWithAllSlotsOn({ w: 1024, h: 600, diagIn: 10.1 })
+        for (const id of ["TL", "TR", "BL", "BR"])
+            fixture.draft.setSlot(id, true, "depth", 25)
+        chartStub.aisSelection = aisFull
+        waitForRendering(chart)
+        const tight = createTemporaryObject(aisSheetComp, testCase, { freeRect: Qt.rect(0, 0, Units.mm(90), Units.mm(15)),
+                                                                     info: aisFull })
+        verify(tight, "AisSheet")
+        waitForRendering(tight)
+        for (const sheet of [H.byName(chart, "aisSheet"), tight]) {
+            verify(sheet.visible)
+            const b = H.box(sheet, testCase)
+            const inside = it => {
+                const q = H.box(it, testCase)
+                return q.x >= b.x - 0.5 && q.y >= b.y - 0.5 && q.x + q.w <= b.x + b.w + 0.5 && q.y + q.h <= b.y + b.h + 0.5
+            }
+            const rows = H.findAll(sheet, it => it.objectName === "aisValue" && it.visible)
+            verify(rows.length >= 1, "at least one row shows")
+            for (const it of rows.concat([H.byName(sheet, "aisCloseButton"), H.byName(sheet, "aisNext")]))
+                verify(inside(it), where(it, testCase) + " outside " + where(sheet, testCase))
+        }
+    }
+
+    function test_aisSheetPagesReachEveryRow() {
+        Units.windowWidth = 1024
+        Units.windowHeight = 600
+        const chart = chartWithAllSlotsOn({ w: 1024, h: 600, diagIn: 10.1 })
+        chartStub.aisSelection = aisFull
+        waitForRendering(chart)
+        const sheet = H.byName(chart, "aisSheet")
+        const next = H.byName(sheet, "aisNext"), prev = H.byName(sheet, "aisPrev")
+        verify(sheet.pageCount >= 2, "pages: " + sheet.pageCount)
+        verify(!prev.enabled, "prev disabled on page 1")
+        let seen = []
+        for (let guard = 0; guard < 20; ++guard) {
+            seen = seen.concat(aisRowTexts(sheet))
+            if (!next.enabled) break
+            next.clicked()
+        }
+        const labels = ["Name", "MMSI", "Class", "SOG (kn)", "COG (deg)", "Range (nm)", "Bearing (deg)", "Position age"]
+        for (const l of labels)
+            compare(seen.filter(t => t.startsWith(l + ": ")).length, 1, l)
+        compare(seen.length, 8)
+        verify(next.enabled === false)
+        for (let guard = 0; guard < 20 && prev.enabled; ++guard) prev.clicked()
+        compare(sheet.page, 0)
+        compare(H.byName(sheet, "aisPageLabel").text, "1 of " + sheet.pageCount)
+    }
+
+    function test_aisSheetWrapsALongValue() {
+        const chart = makeChart()
+        chartStub.aisSelection = Object.assign({}, aisFull, { name: "MOTOR VESSEL SEA QUEEN OF TACOMA WA" })
+        const sheet = H.byName(chart, "aisSheet")
+        const rows = H.findAll(sheet, it => it.objectName === "aisValue")
+        const one = rows.filter(r => r.text.startsWith("MMSI"))[0]
+        const name = rows.filter(r => r.text.startsWith("Name"))[0]
+        verify(name.height > one.height * 1.5, "name " + name.height + " vs one line " + one.height)
+    }
+
     // The shipped Navigation view: depth and SOG in the top corners at 25 mm, the rest off.
     function test_chartPageRendersDraftSlots_data() { return H.sizes() }
     function test_chartPageRendersDraftSlots(data) {
         Units.windowWidth = data.w
         Units.windowHeight = data.h
+        Units.diagonalIn = data.diagIn
         fixture.setVessel(8 * 0.3048, 0)
         const chart = makeChart({ width: data.w, height: data.h, rightInset: Units.mm(17) })
         waitForRendering(chart)
@@ -290,12 +413,13 @@ TestCase {
         const both = [25, 25, 14, 25, 8, 8, 14, 14]
         const fields = ["depth", "sog", "cog", "wtemp", "time", "pos", "stw", "hdg"]
         return H.sizes().map(s => Object.assign({ fields: fields, sizes: both }, s)).concat([
-            { tag: "1024x600 position in TR", w: 1024, h: 600, position: true,
+            { tag: "1024x600 position in TR", w: 1024, h: 600, diagIn: 10.1, position: true,
               fields: ["depth", "pos", "cog", "wtemp", "time", "sog", "stw", "hdg"], sizes: both.map((z, i) => i === 1 ? 14 : z) }])
     }
     function test_allSlotsOnFitWithoutOverlap(data) {
         Units.windowWidth = data.w
         Units.windowHeight = data.h
+        Units.diagonalIn = data.diagIn
         if (data.position) fixture.setPosition(47.98, -122.23)
         const ids = ["TL", "TR", "BL", "BR", "Top", "Bottom", "Left", "Right"]
         for (let i = 0; i < ids.length; ++i)
@@ -340,6 +464,8 @@ TestCase {
 
     // A 7 in panel (many px per mm, so few mm of page) with every slot at 25 mm: the side bars stay
     // between the banners and no slot overlaps another or leaves the page.
+    // R66 is isolated in C++ (tst_slotclamp: bannerWidthFitsThePage, barHeightFitsThePage,
+    // sideBarFitsBetweenTheBanners); this is the end-to-end check on the page.
     function test_sideBarsClearTheBannersOnASmallPanel_data() { return H.sizes() }
     function test_sideBarsClearTheBannersOnASmallPanel(data) {
         Units.windowWidth = data.w
@@ -466,12 +592,13 @@ TestCase {
                              { id: "TR", field: "pos", label: "Position", unit: "", sample: "89°59.999'N\n122°59.999'W", mm: 14 },
                              { id: "Top", field: "pos", label: "Position", unit: "", sample: "89°59.999'N\n122°59.999'W", mm: 8 },
                              { id: "Left", field: "stw", label: "STW", unit: "kn", sample: "99.9", mm: 14 }])
-                out.push(Object.assign({ tag: s.tag + " " + c.id + " " + c.field, w: s.w, h: s.h }, c))
+                out.push(Object.assign({ tag: s.tag + " " + c.id + " " + c.field, w: s.w, h: s.h, diagIn: s.diagIn }, c))
         return out
     }
     function test_slotBoxWithinItsCoefficients(data) {
         Units.windowWidth = data.w
         Units.windowHeight = data.h
+        Units.diagonalIn = data.diagIn
         const slot = createTemporaryObject(slotComp, testCase, {
             slotId: data.id, on: true, field: data.field, fieldLabel: data.label, sizeMm: data.mm,
             formatted: data.sample, unit: data.unit, widestSample: data.sample })
@@ -489,6 +616,7 @@ TestCase {
     function test_cellPageLaysOutTheLayout(data) {
         Units.windowWidth = data.w
         Units.windowHeight = data.h
+        Units.diagonalIn = data.diagIn
         showView("shipped-big")
         compare(fixture.draft.layout, twoColumns)
         const page = makeCells({ width: data.w, height: data.h, rightInset: Units.mm(17) })
@@ -567,7 +695,7 @@ TestCase {
         compare(plain.count, 2)
     }
 
-    // The QML faces of Tilings.h and favouriteCapacity.
+    // The QML faces of Tilings.h and favoriteCapacity.
     function test_layoutsAndCapacityForQml() {
         const g = Layouts.gallery()
         compare(g.length, 72)
@@ -576,8 +704,8 @@ TestCase {
         verify(g.every((e, i) => i === 0 || e.cells >= g[i - 1].cells), "ordered by cell count")
         compare(Layouts.rects(twoColumns), [{ x: 0, y: 0, w: 0.5, h: 1 }, { x: 0.5, y: 0, w: 0.5, h: 1 }])
         compare(Layouts.rects("not a layout"), [])
-        compare(PanelMath.favouriteCapacity(110), 4)
-        compare(PanelMath.favouriteCapacity(40), 0)
+        compare(PanelMath.favoriteCapacity(110), 4)
+        compare(PanelMath.favoriteCapacity(40), 0)
     }
 
     // The charts line tells "nothing installed" from "installed but refused" (the About page lists
@@ -662,12 +790,13 @@ TestCase {
         let out = []
         for (const s of H.sizes())
             for (const mm of [8, 14, 25])
-                out.push({ tag: s.tag + " " + mm + " mm", w: s.w, h: s.h, mm: mm })
+                out.push({ tag: s.tag + " " + mm + " mm", w: s.w, h: s.h, diagIn: s.diagIn, mm: mm })
         return out
     }
     function test_slotDigitHeight(data) {
         Units.windowWidth = data.w
         Units.windowHeight = data.h
+        Units.diagonalIn = data.diagIn
         const want = Units.mm(data.mm)
         const slot = createTemporaryObject(slotComp, testCase, {
             x: 20, y: 20, slotId: "TL", on: true, field: "depth", fieldLabel: "Depth", sizeMm: data.mm,
@@ -707,6 +836,7 @@ TestCase {
     function test_settingsConstructs(data) {
         Units.windowWidth = data.w
         Units.windowHeight = data.h
+        Units.diagonalIn = data.diagIn
         const page = createTemporaryObject(settingsComp, testCase, { width: data.w - Units.mm(17), height: data.h, settings: fixture.settings })
         verify(page, "SettingsPage")
         H.checkBigButtons(testCase, Units, page)
@@ -888,6 +1018,7 @@ TestCase {
     function test_tracksConstructsEmptyAndWithRows(data) {
         Units.windowWidth = data.w
         Units.windowHeight = data.h
+        Units.diagonalIn = data.diagIn
         const page = makeTracks(data.w - Units.mm(17), data.h)
         verify(H.byName(page, "recordButton"))
         verify(H.byName(page, "noTracks").visible, "empty state")

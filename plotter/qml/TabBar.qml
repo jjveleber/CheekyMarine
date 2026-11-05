@@ -1,7 +1,7 @@
 import QtQuick
 import QtQuick.Controls.Basic
 
-// The right edge, top to bottom: one tab per favourite view that fits (tabViews), the house tab
+// The right edge, top to bottom: one tab per favorite view that fits (tabViews), the house tab
 // (Home), a 2 mm gap, then the global controls: touch lock and palette cycle (auto, day, dusk,
 // night). Main sizes tabViews to what fits, so the column never scrolls. A tap on a view tab
 // selects it, a 0.6 s hold emits viewHeld; every button press emits touched. Main binds x to shown:

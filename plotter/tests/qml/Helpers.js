@@ -1,6 +1,6 @@
 .pragma library
 
-// Shared by the QML tests: item lookup, the 12 mm control check, the two panel sizes and box maths.
+// Shared by the QML tests: item lookup, the 12 mm control check, the three panel sizes and box maths.
 
 // Every item under `root` (depth first) for which pred holds.
 function findAll(root, pred) {
@@ -33,7 +33,9 @@ function checkBigButtons(tc, units, root) {
 }
 
 function sizes() {
-    return [{ tag: "1024x600", w: 1024, h: 600, ppm: 4.626 }, { tag: "1280x800", w: 1280, h: 800, ppm: 5.884 }]
+    return [{ tag: "1024x600", w: 1024, h: 600, ppm: 4.626, diagIn: 10.1 },
+            { tag: "1280x800", w: 1280, h: 800, ppm: 5.884, diagIn: 10.1 },
+            { tag: "1920x1280", w: 1920, h: 1280, ppm: 6.988, diagIn: 13 }]
 }
 
 // The item's box in `ref` coordinates.

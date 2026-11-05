@@ -79,21 +79,32 @@ private slots:
     void fieldRoleTextFollowsVesselAndUnits() {
         Env e;
         QVERIFY(e.settings);
-        QCOMPARE(fieldRoleText(Field::Depth, false, e.vessel, *e.settings), QStringLiteral("--"));
-        QCOMPARE(fieldRoleText(Field::Depth, true, e.vessel, *e.settings), QStringLiteral("ft"));
+        QCOMPARE(fieldRoleText(Field::Depth, FieldText::Value, e.vessel, *e.settings), QStringLiteral("--"));
+        QCOMPARE(fieldRoleText(Field::Depth, FieldText::Unit, e.vessel, *e.settings), QStringLiteral("ft"));
         VesselState s;
         s.depthM = 12 * 0.3048;
         s.sogMs = 5.2 * 1852.0 / 3600.0;
         e.vessel.setLive(true);
         e.vessel.setState(s);
-        QCOMPARE(fieldRoleText(Field::Depth, false, e.vessel, *e.settings), QStringLiteral("12"));
-        QCOMPARE(fieldRoleText(Field::Sog, false, e.vessel, *e.settings), QStringLiteral("5.2"));
-        QCOMPARE(fieldRoleText(Field::Sog, true, e.vessel, *e.settings), QStringLiteral("kn"));
+        QCOMPARE(fieldRoleText(Field::Depth, FieldText::Value, e.vessel, *e.settings), QStringLiteral("12"));
+        QCOMPARE(fieldRoleText(Field::Sog, FieldText::Value, e.vessel, *e.settings), QStringLiteral("5.2"));
+        QCOMPARE(fieldRoleText(Field::Sog, FieldText::Unit, e.vessel, *e.settings), QStringLiteral("kn"));
         e.settings->setDepthUnit("m");
-        QCOMPARE(fieldRoleText(Field::Depth, false, e.vessel, *e.settings), QStringLiteral("3.7"));
-        QCOMPARE(fieldRoleText(Field::Depth, true, e.vessel, *e.settings), QStringLiteral("m"));
+        QCOMPARE(fieldRoleText(Field::Depth, FieldText::Value, e.vessel, *e.settings), QStringLiteral("3.7"));
+        QCOMPARE(fieldRoleText(Field::Depth, FieldText::Unit, e.vessel, *e.settings), QStringLiteral("m"));
         e.settings->setSpeedUnit("kmh");
-        QCOMPARE(fieldRoleText(Field::Sog, true, e.vessel, *e.settings), QStringLiteral("km/h"));
+        QCOMPARE(fieldRoleText(Field::Sog, FieldText::Unit, e.vessel, *e.settings), QStringLiteral("km/h"));
+    }
+
+    void fieldRoleTextValueAndUnit() {
+        Env e;
+        QVERIFY(e.settings);
+        VesselState s;
+        s.depthM = 3.0;
+        e.vessel.setLive(true);
+        e.vessel.setState(s);
+        QCOMPARE(fieldRoleText(Field::Depth, FieldText::Value, e.vessel, *e.settings), QStringLiteral("9.8"));
+        QCOMPARE(fieldRoleText(Field::Depth, FieldText::Unit, e.vessel, *e.settings), QStringLiteral("ft"));
     }
 
     // Each unit setting calls the refresh once.

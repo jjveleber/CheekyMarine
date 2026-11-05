@@ -78,14 +78,14 @@ Item {
                     width: page.tileW
                     height: page.tileH
                     name: model.name
-                    favourite: model.favourite
+                    favorite: model.favorite
                     chart: model.chart
                     slots: model.slots
                     layout: model.layout
                     // A property named on... cannot be bound with the plain syntax.
                     Binding { target: tile; property: "onTabBar"; value: tile.model.onTabBar }
                     onTapped: page.viewSelected(model.id)
-                    onHeld: menu.open(model.id, model.name, model.favourite, index)
+                    onHeld: menu.open(model.id, model.name, model.favorite, index)
                 }
             }
             PlainTile {
@@ -119,7 +119,7 @@ Item {
         areaWidth: page.width - page.rightInset
         viewCount: page.views.count
         onEditChosen: (id) => page.editView(id)
-        onFavouriteChosen: (id, on) => page.views.setFavourite(id, on)
+        onFavoriteChosen: (id, on) => page.views.setFavorite(id, on)
         onMoveChosen: (id, delta) => page.views.move(id, delta)
         onDuplicateChosen: (id) => page.views.duplicate(id)
         onDeleteChosen: (id) => page.views.remove(id)

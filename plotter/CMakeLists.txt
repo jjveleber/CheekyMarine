@@ -3,7 +3,11 @@ cmake_minimum_required(VERSION 3.25)
 # The app's semver, independent of the root project's (n2kd) version.
 set(PLOTTER_VERSION 0.1.0)
 
-find_package(Qt6 6.5 REQUIRED COMPONENTS Core Gui Network Sql Quick QuickControls2 Svg Test QuickTest)
+find_package(Qt6 6.5 REQUIRED COMPONENTS Core Gui Network Sql Quick QuickControls2 Svg)
+option(CM_PLOTTER_TESTS "Build the plotter tests (needs Qt Test and QuickTest)" ON)
+if(CM_PLOTTER_TESTS)
+    find_package(Qt6 6.5 REQUIRED COMPONENTS Test QuickTest)
+endif()
 qt_standard_project_setup(REQUIRES 6.5)
 qt_policy(SET QTP0004 NEW)
 find_package(QMapLibre REQUIRED COMPONENTS Core)
@@ -39,48 +43,52 @@ add_library(plottercore STATIC
     src/core/AppInfo.cpp
     src/core/Recovery.cpp
     src/core/TouchLock.cpp
-    src/core/Tracks.cpp)
+    src/core/Tracks.cpp
+    src/core/SignalBridge.cpp)
 set_target_properties(plottercore PROPERTIES AUTOMOC ON)
 target_include_directories(plottercore PUBLIC
     ${CMAKE_CURRENT_BINARY_DIR}/generated
     ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(plottercore PUBLIC Qt6::Core Qt6::Gui Qt6::Network Qt6::Sql)
 
-# plotter_add_test(NAME SOURCES...): Qt Test executable linked to plottercore, run by ctest.
-function(plotter_add_test name)
-    add_executable(${name} ${ARGN})
-    target_link_libraries(${name} PRIVATE plottercore Qt6::Test)
-    target_compile_definitions(${name} PRIVATE
-        PLOTTER_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures"
-        PLOTTER_EXPECTED_VERSION="${PLOTTER_VERSION}")
-    set_target_properties(${name} PROPERTIES AUTOMOC ON)
-    add_test(NAME ${name} COMMAND ${name})
-    set_tests_properties(${name} PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
-endfunction()
+if(CM_PLOTTER_TESTS)
+    # plotter_add_test(NAME SOURCES...): Qt Test executable linked to plottercore, run by ctest.
+    function(plotter_add_test name)
+        add_executable(${name} ${ARGN})
+        target_link_libraries(${name} PRIVATE plottercore Qt6::Test)
+        target_compile_definitions(${name} PRIVATE
+            PLOTTER_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures"
+            PLOTTER_EXPECTED_VERSION="${PLOTTER_VERSION}")
+        set_target_properties(${name} PROPERTIES AUTOMOC ON)
+        add_test(NAME ${name} COMMAND ${name})
+        set_tests_properties(${name} PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+    endfunction()
 
-plotter_add_test(tst_version tests/tst_version.cpp)
-plotter_add_test(tst_n2kparse tests/tst_n2kparse.cpp)
-plotter_add_test(tst_n2kclient tests/tst_n2kclient.cpp)
-plotter_add_test(tst_fields tests/tst_fields.cpp)
-plotter_add_test(tst_store tests/tst_store.cpp)
-plotter_add_test(tst_settings tests/tst_settings.cpp)
-plotter_add_test(tst_packcatalog tests/tst_packcatalog.cpp)
-plotter_add_test(tst_styleloader tests/tst_styleloader.cpp)
-plotter_add_test(tst_depthfilters tests/tst_depthfilters.cpp)
-plotter_add_test(tst_geo tests/tst_geo.cpp)
-plotter_add_test(tst_tilings tests/tst_tilings.cpp)
-plotter_add_test(tst_overlays tests/tst_overlays.cpp)
-plotter_add_test(tst_chartcontroller tests/tst_chartcontroller.cpp)
-plotter_add_test(tst_sun tests/tst_sun.cpp)
-plotter_add_test(tst_slots tests/tst_slots.cpp)
-plotter_add_test(tst_views tests/tst_views.cpp)
-plotter_add_test(tst_viewsmodel tests/tst_viewsmodel.cpp)
-plotter_add_test(tst_slotclamp tests/tst_slotclamp.cpp)
-plotter_add_test(tst_appshell tests/tst_appshell.cpp)
-plotter_add_test(tst_touchlock tests/tst_touchlock.cpp)
-plotter_add_test(tst_tracks tests/tst_tracks.cpp)
-# Icons.cpp is app code with no MapLibre dependency; the night icon rule is checked on its pixels.
-plotter_add_test(tst_palette tests/tst_palette.cpp src/app/Icons.cpp)
+    plotter_add_test(tst_version tests/tst_version.cpp)
+    plotter_add_test(tst_n2kparse tests/tst_n2kparse.cpp)
+    plotter_add_test(tst_n2kclient tests/tst_n2kclient.cpp)
+    plotter_add_test(tst_fields tests/tst_fields.cpp)
+    plotter_add_test(tst_store tests/tst_store.cpp)
+    plotter_add_test(tst_settings tests/tst_settings.cpp)
+    plotter_add_test(tst_packcatalog tests/tst_packcatalog.cpp)
+    plotter_add_test(tst_styleloader tests/tst_styleloader.cpp)
+    plotter_add_test(tst_depthfilters tests/tst_depthfilters.cpp)
+    plotter_add_test(tst_geo tests/tst_geo.cpp)
+    plotter_add_test(tst_tilings tests/tst_tilings.cpp)
+    plotter_add_test(tst_overlays tests/tst_overlays.cpp)
+    plotter_add_test(tst_chartcontroller tests/tst_chartcontroller.cpp)
+    plotter_add_test(tst_sun tests/tst_sun.cpp)
+    plotter_add_test(tst_slots tests/tst_slots.cpp)
+    plotter_add_test(tst_views tests/tst_views.cpp)
+    plotter_add_test(tst_viewsmodel tests/tst_viewsmodel.cpp)
+    plotter_add_test(tst_slotclamp tests/tst_slotclamp.cpp)
+    plotter_add_test(tst_appshell tests/tst_appshell.cpp)
+    plotter_add_test(tst_touchlock tests/tst_touchlock.cpp)
+    plotter_add_test(tst_tracks tests/tst_tracks.cpp)
+    plotter_add_test(tst_signalbridge tests/tst_signalbridge.cpp)
+    # Icons.cpp is app code with no MapLibre dependency; the night icon rule is checked on its pixels.
+    plotter_add_test(tst_palette tests/tst_palette.cpp src/app/Icons.cpp)
+endif()
 
 # Linking Qt6::Sql and QMapLibre directly puts Qt's lib dir and the QMapLibre lib dir in the
 # automatic build RPATH, so libQMapLibre.so resolves libQt6Sql without LD_LIBRARY_PATH.
@@ -114,17 +122,24 @@ set_target_properties(cheekyplotter PROPERTIES AUTOMOC ON)
 # dependencies of libQMapLibre.so, so emit a classic RPATH, which is.
 target_link_options(cheekyplotter PRIVATE -Wl,--disable-new-dtags)
 
-# QuickTest runner: runs every tests/qml/tst_*.qml against the CheekyMarine module, offscreen.
-add_executable(tst_qml tests/qml/tst_qml.cpp)
-set_target_properties(tst_qml PROPERTIES AUTOMOC ON)
-target_link_libraries(tst_qml PRIVATE plotterqmlplugin plottercore Qt6::QuickTest Qt6::Quick Qt6::QuickControls2 Qt6::Svg)
-target_compile_definitions(tst_qml PRIVATE QUICK_TEST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/qml")
-add_test(NAME tst_qml COMMAND tst_qml)
-set_tests_properties(tst_qml PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+if(CM_PLOTTER_TESTS)
+    # QuickTest runner: runs every tests/qml/tst_*.qml against the CheekyMarine module, offscreen.
+    add_executable(tst_qml tests/qml/tst_qml.cpp)
+    set_target_properties(tst_qml PROPERTIES AUTOMOC ON)
+    target_link_libraries(tst_qml PRIVATE plotterqmlplugin plottercore Qt6::QuickTest Qt6::Quick Qt6::QuickControls2 Qt6::Svg)
+    target_compile_definitions(tst_qml PRIVATE QUICK_TEST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/qml")
+    add_test(NAME tst_qml COMMAND tst_qml)
+    set_tests_properties(tst_qml PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 
-# Synthetic N2K generator test: replays the generated scenario through the real n2kd.
-if(TARGET n2kd)
     find_package(Python3 REQUIRED COMPONENTS Interpreter)
-    add_test(NAME synth_n2k COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_CURRENT_SOURCE_DIR}/tools/test_synth_n2k.py)
-    set_tests_properties(synth_n2k PROPERTIES ENVIRONMENT "N2KD=$<TARGET_FILE:n2kd>")
+    add_test(NAME notices COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_CURRENT_SOURCE_DIR}/tools/check_notices.py ${CMAKE_SOURCE_DIR}/THIRD_PARTY_NOTICES)
+    add_test(NAME check_notices COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_CURRENT_SOURCE_DIR}/tools/test_check_notices.py ${CMAKE_SOURCE_DIR}/THIRD_PARTY_NOTICES)
+
+    # Synthetic N2K generator test: replays the generated scenario through the real n2kd.
+    if(TARGET n2kd)
+        add_test(NAME synth_n2k COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_CURRENT_SOURCE_DIR}/tools/test_synth_n2k.py)
+        set_tests_properties(synth_n2k PROPERTIES ENVIRONMENT "N2KD=$<TARGET_FILE:n2kd>")
+        add_test(NAME relocate_n2k COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_CURRENT_SOURCE_DIR}/tools/test_relocate_n2k.py)
+        set_tests_properties(relocate_n2k PROPERTIES ENVIRONMENT "N2KD=$<TARGET_FILE:n2kd>")
+    endif()
 endif()

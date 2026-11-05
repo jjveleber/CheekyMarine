@@ -8,6 +8,7 @@
 #include "core/Tracks.h"
 #include "core/VesselModel.h"
 #include <QDebug>
+#include <QElapsedTimer>
 #include <QFile>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -67,8 +68,7 @@ QList<QJsonObject> runtimeLayers(const OverlayColours& c) {
 QString styleName(const QString& mode, const QString& palette) { return mode + QLatin1Char('-') + palette; }
 
 // The `mode` ("nav" or "fish") style for `palette`, read from its pack (bathy for fish, charts for
-// nav) and rewritten to load from local files. The start check and the runtime load both use it,
-// so they see the same pack directories. `bathy` is the bathy pack in use, if any.
+// nav) and rewritten to load from local files. `bathy` is the bathy pack in use, if any.
 std::expected<QJsonObject, QString> readStyle(const QString& mode, const QString& palette, const PackInfo& charts,
                                               const std::optional<PackInfo>& bathy) {
     const QString bathyDir = bathy ? bathy->dir : QString();
@@ -82,22 +82,27 @@ std::expected<QJsonObject, QString> readStyle(const QString& mode, const QString
     return rewriteStyle(doc.object(), packDir, charts.dir, bathyDir);
 }
 
-// Why the day, dusk and night `mode` styles cannot be used with these packs (each must read, rewrite
-// and take the depth filters), or empty when all can. The error is the same for any depths.
-QString styleProblem(const QString& mode, const PackInfo& charts, const std::optional<PackInfo>& bathy,
-                     const Depths& depths) {
+// The day, dusk and night `mode` styles of these packs, keyed by styleName, each read, rewritten and
+// checked to take the depth filters; or why they cannot be used. The error is the same for any depths.
+std::expected<QHash<QString, QJsonObject>, QString> readStyles(const QString& mode, const PackInfo& charts,
+                                                               const std::optional<PackInfo>& bathy,
+                                                               const Depths& depths) {
+    QHash<QString, QJsonObject> styles;
     for (const QString& palette : {QStringLiteral("day"), QStringLiteral("dusk"), QStringLiteral("night")}) {
         const QString name = styleName(mode, palette);
         QString error;
         if (auto style = readStyle(mode, palette, charts, bathy)) {
             if (auto filters = depthFilters(*style, depths, safetyContour(charts.valdco, depths.safetyM)); !filters)
                 error = filters.error();
+            else
+                styles.insert(name, *style);
         } else {
             error = style.error();
         }
-        if (!error.isEmpty()) return QStringLiteral("styles/") + name + QStringLiteral(".json: ") + error;
+        if (!error.isEmpty())
+            return std::unexpected(QStringLiteral("styles/") + name + QStringLiteral(".json: ") + error);
     }
-    return {};
+    return styles;
 }
 } // namespace
 
@@ -113,13 +118,20 @@ ChartController::ChartController(ChartMap& map, Settings& settings, VesselModel&
     // The bathy pack is picked for each charts candidate first: nav styles load with it too.
     while ((m_charts = PackCatalog::best(m_packs, u"charts"))) {
         while ((m_bathy = PackCatalog::best(m_packs, u"bathy", m_charts->region))) {
-            const QString problem = styleProblem(QStringLiteral("fish"), *m_charts, m_bathy, depths);
-            if (problem.isEmpty()) break;
-            refuse(m_bathy->dir, problem);
+            auto fish = readStyles(QStringLiteral("fish"), *m_charts, m_bathy, depths);
+            if (fish) {
+                m_styles.insert(*fish);
+                break;
+            }
+            refuse(m_bathy->dir, fish.error());
         }
-        const QString problem = styleProblem(QStringLiteral("nav"), *m_charts, m_bathy, depths);
-        if (problem.isEmpty()) break;
-        refuse(m_charts->dir, problem);
+        auto nav = readStyles(QStringLiteral("nav"), *m_charts, m_bathy, depths);
+        if (nav) {
+            m_styles.insert(*nav);
+            break;
+        }
+        m_styles.clear(); // the refused charts pack's fish styles
+        refuse(m_charts->dir, nav.error());
     }
     if (m_charts) {
         for (const LegendEntry& e : m_charts->legend)
@@ -129,6 +141,7 @@ ChartController::ChartController(ChartMap& map, Settings& settings, VesselModel&
         m_maxZoom = m_charts->maxZoom >= 0 ? m_charts->maxZoom + kOverzoom : kFallbackMaxZoom;
     } else {
         m_bathy.reset(); // the last refused charts pack's
+        m_styles.clear();
         qWarning() << "ChartController: no usable charts pack";
     }
     // Connect before the first load: the real map emits styleLoaded inside setStyleJson.
@@ -199,7 +212,11 @@ void ChartController::setTracks(const QList<QList<LatLon>>& tracks) {
 
 void ChartController::setActiveTrack(const QList<LatLon>& points) {
     m_activeTrack = points;
-    if (m_ready) m_map.setGeoJson(OverlayIds::kActiveTrackSource, tracksGeoJson({m_activeTrack}));
+    if (!m_ready) return;
+    QElapsedTimer timer;
+    if (m_writeTiming) timer.start();
+    m_map.setGeoJson(OverlayIds::kActiveTrackSource, tracksGeoJson({m_activeTrack}));
+    if (m_writeTiming) m_writeTimesUs.append(timer.nsecsElapsed() / 1000);
 }
 
 void bindTracks(ChartController& chart, TracksController& tracks) {
@@ -226,12 +243,13 @@ void ChartController::zoomBy(double log2Delta) {
 
 void ChartController::loadStyle() {
     if (!m_charts) return;
-    auto style = readStyle(m_mode, m_palette, *m_charts, m_bathy);
-    if (!style) { // the pack was checked at start; its files changed since
-        qWarning() << "ChartController: cannot use" << styleName(m_mode, m_palette) << style.error();
+    // Parsed once at start: files that change afterwards are not read again.
+    const QString name = styleName(m_mode, m_palette);
+    if (!m_styles.contains(name)) {
+        qWarning() << "ChartController: no parsed style for" << name;
         return;
     }
-    m_style = *style;
+    m_style = m_styles.value(name);
     const QString notice = m_style[QStringLiteral("metadata")][QStringLiteral("cheekymarine")]
                                [QStringLiteral("notice")].toString();
     if (notice != m_notice) {
@@ -255,6 +273,12 @@ void ChartController::onStyleLoaded() {
     for (const QJsonObject& layer : runtimeLayers(overlayColours(m_palette))) m_map.addLayer(layer);
     m_ready = true;
     applyDepthFilters();
+    applyCamera();
+}
+
+void ChartController::setStartPosition(double lat, double lon) {
+    m_startPosition = LatLon{lat, lon};
+    applyCamera();
 }
 
 void ChartController::applyDepthFilters() {
@@ -358,7 +382,11 @@ void ChartController::refreshSelection() {
 
 void ChartController::applyCamera() {
     const VesselState& s = m_vessel.state();
-    if (!m_follow || !s.lat || !s.lon) return;
+    if (!m_follow) return;
+    if (!s.lat || !s.lon) {
+        if (m_startPosition) m_map.setCamera(m_startPosition->lat, m_startPosition->lon, std::clamp(m_map.zoom(), m_minZoom, m_maxZoom), 0);
+        return;
+    }
     const LatLon pos{*s.lat, *s.lon};
     const double zoom = std::clamp(m_map.zoom(), m_minZoom, m_maxZoom);
     const QString o = orientation();

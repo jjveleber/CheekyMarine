@@ -45,7 +45,8 @@ QString widestSample(Field field);
 // Every field in enum order as {name, label} maps, for the QML pickers.
 QVariantList fieldChoices();
 
-// Shared by DraftSlotsModel and DraftCellsModel. The `formatted` (unit false) or `unit` (unit true) role of a field.
-QString fieldRoleText(Field field, bool unit, const VesselModel& vessel, const Settings& settings);
+// Shared by DraftSlotsModel and DraftCellsModel. The `formatted` (Value) or `unit` (Unit) role of a field.
+enum class FieldText { Value, Unit };
+QString fieldRoleText(Field field, FieldText text, const VesselModel& vessel, const Settings& settings);
 // Calls `refresh` while `context` lives, whenever a unit setting changes those role texts.
 void onUnitSettingsChanged(Settings& settings, QObject* context, const std::function<void()>& refresh);

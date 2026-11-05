@@ -9,7 +9,8 @@
 namespace {
 const QString kDefaultLayout = QStringLiteral("2x2:0,0,1,2;1,0,1,2");
 
-const QStringList kKnownKeys{"id", "name", "short", "icon", "chart", "favourite", "slots", "cells", "created", "modified"};
+// "favourite" is the legacy key, read until the 1.2.0 migration has run.
+const QStringList kKnownKeys{"id", "name", "short", "icon", "chart", "favorite", "favourite", "slots", "cells", "created", "modified"};
 const QStringList kKnownSlotKeys{"id", "on", "field", "sizeMm", "size"};
 
 QList<ViewSlot> toViewSlots(const QList<SlotConfig>& configs) {
@@ -26,7 +27,7 @@ View shippedView(const QString& id, const QString& name, const QString& shortNam
     v.shortName = shortName;
     v.icon = icon;
     v.chart = chart;
-    v.favourite = true;
+    v.favorite = true;
     v.slotList = defaultViewSlots();
     v.cells = {kDefaultLayout, {Field::Depth, Field::Sog}};
     v.created = v.modified = now;
@@ -91,7 +92,7 @@ QJsonObject viewToJson(const View& v) {
     o["short"] = v.shortName;
     o["icon"] = v.icon;
     o["chart"] = viewChartName(v.chart);
-    o["favourite"] = v.favourite;
+    o["favorite"] = v.favorite;
     QJsonArray slotArray;
     for (const ViewSlot& s : v.slotList) {
         QJsonObject so = s.extra;
@@ -114,13 +115,13 @@ View viewFromJson(const QJsonObject& o) {
     View v;
     v.id = o.value("id").toString();
     v.name = o.value("name").toString().left(kMaxNameChars);
-    if (v.name.isEmpty()) v.name = QStringLiteral("View");
+    if (v.name.trimmed().isEmpty()) v.name = QStringLiteral("View");
     v.shortName = o.value("short").toString().left(kMaxShortChars);
     if (v.shortName.isEmpty()) v.shortName = shortFromName(v.name);
     v.icon = o.value("icon").toString();
     if (!iconNames().contains(v.icon)) v.icon = iconNames().first();
     v.chart = viewChartFromName(o.value("chart").toString()).value_or(ViewChart::Nav);
-    v.favourite = o.value("favourite").toBool(false);
+    v.favorite = o.contains("favorite") ? o.value("favorite").toBool(false) : o.value("favourite").toBool(false);
 
     v.slotList = defaultViewSlots();
     QList<bool> seen(v.slotList.size(), false);
@@ -164,12 +165,23 @@ QList<View> shippedViews(qint64 now) {
 QList<View> viewsFromPlan3(const QJsonArray& slotsJson, const QStringList& bigNumbers, qint64 now) {
     QList<View> views = shippedViews(now);
     views[0].slotList = toViewSlots(slotsFromJson(slotsJson));
+    // slotsFromJson drops unknown slot keys; carry them over, first entry per id wins.
+    QList<bool> seen(views[0].slotList.size(), false);
+    for (const QJsonValue& sv : slotsJson) {
+        if (!sv.isObject()) continue;
+        const QJsonObject so = sv.toObject();
+        const auto id = slotIdFromName(so.value("id").toString());
+        if (!id || seen[int(*id)]) continue;
+        seen[int(*id)] = true;
+        for (auto it = so.begin(); it != so.end(); ++it)
+            if (!kKnownSlotKeys.contains(it.key())) views[0].slotList[int(*id)].extra.insert(it.key(), it.value());
+    }
     QList<Field> fields;
     for (int i = 0; i < 4 && (i < bigNumbers.size() || i < 2); ++i)
         fields << (i < bigNumbers.size() ? fieldFromName(bigNumbers.at(i)) : std::nullopt).value_or(defaultCellField(i));
-    static const char* const kLayouts[] = {"2x2:0,0,1,2;1,0,1,2", "3x2:0,0,1,2;1,0,1,2;2,0,1,2",
-                                           "2x2:0,0,1,1;1,0,1,1;0,1,1,1;1,1,1,1"};
-    views[2].cells = {QString::fromLatin1(kLayouts[fields.size() - 2]), fields};
+    const QString kLayouts[] = {kDefaultLayout, QStringLiteral("3x2:0,0,1,2;1,0,1,2;2,0,1,2"),
+                                QStringLiteral("2x2:0,0,1,1;1,0,1,1;0,1,1,1;1,1,1,1")};
+    views[2].cells = {kLayouts[fields.size() - 2], fields};
     return views;
 }
 
@@ -216,4 +228,4 @@ QSqlError seedViews(QSqlDatabase& db, qint64 now) {
     return {};
 }
 
-int favouriteCapacity(double barHeightMm) { return std::max(0, int(std::floor((barHeightMm - 46) / 16))); }
+int favoriteCapacity(double barHeightMm) { return std::max(0, int(std::floor((barHeightMm - 46) / 16))); }

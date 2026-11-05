@@ -50,7 +50,7 @@ QVariant DraftSlotsModel::data(const QModelIndex& index, int role) const {
     case SizeMmRole: return s.sizeMm;
     case WidestSampleRole: return widestSample(s.field);
     case FormattedRole:
-    case UnitRole: return fieldRoleText(s.field, role == UnitRole, m_vessel, m_settings);
+    case UnitRole: return fieldRoleText(s.field, role == UnitRole ? FieldText::Unit : FieldText::Value, m_vessel, m_settings);
     }
     return {};
 }
@@ -78,7 +78,7 @@ QVariant DraftCellsModel::data(const QModelIndex& index, int role) const {
     case FieldRole: return fieldName(f);
     case FieldLabelRole: return fieldLabel(f);
     case FormattedRole:
-    case UnitRole: return fieldRoleText(f, role == UnitRole, m_vessel, m_settings);
+    case UnitRole: return fieldRoleText(f, role == UnitRole ? FieldText::Unit : FieldText::Value, m_vessel, m_settings);
     }
     return {};
 }
@@ -155,10 +155,10 @@ void ViewDraft::setLayout(const QString& key) {
     setDirty(true);
 }
 
-void ViewDraft::setFavourite(bool on) {
-    if (on == m_view.favourite) return;
-    m_view.favourite = on;
-    emit favouriteChanged();
+void ViewDraft::setFavorite(bool on) {
+    if (on == m_view.favorite) return;
+    m_view.favorite = on;
+    emit favoriteChanged();
     setDirty(true);
 }
 
@@ -173,7 +173,7 @@ void ViewDraft::load(const View& view) {
         QList<ViewSlot> fixed = defaultViewSlots();
         QList<bool> seen(fixed.size(), false);
         for (const ViewSlot& s : view.slotList) {
-            if (seen[int(s.id)]) continue;
+            if (int(s.id) < 0 || int(s.id) >= fixed.size() || seen[int(s.id)]) continue;
             seen[int(s.id)] = true;
             fixed[int(s.id)] = s;
         }
@@ -182,7 +182,7 @@ void ViewDraft::load(const View& view) {
     m_slotsModel->setSlotList(m_view.slotList);
     m_cellsModel->setFields(m_view.cells.fields);
     for (auto sig : {&ViewDraft::idChanged, &ViewDraft::nameChanged, &ViewDraft::shortNameChanged, &ViewDraft::iconChanged,
-                     &ViewDraft::chartChanged, &ViewDraft::layoutChanged, &ViewDraft::favouriteChanged})
+                     &ViewDraft::chartChanged, &ViewDraft::layoutChanged, &ViewDraft::favoriteChanged})
         emit(this->*sig)();
     setDirty(false);
 }

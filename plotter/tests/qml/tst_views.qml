@@ -3,7 +3,7 @@ import QtTest
 import CheekyMarine
 import "Helpers.js" as H
 
-// The app shell over the saved views: the favourite tabs and the house tab, the Home page of
+// The app shell over the saved views: the favorite tabs and the house tab, the Home page of
 // tiles and its tile menu, the pages beside the bar, and the shell tests that need Main (lock,
 // banner, record dot).
 TestCase {
@@ -140,6 +140,7 @@ TestCase {
 
     function test_mainConstructs_data() { return H.sizes() }
     function test_mainConstructs(data) {
+        fixture.settings.panelDiagonalIn = data.diagIn
         const main = makeMain(data.w, data.h)
         compare(Units.windowWidth, data.w)
         compare(Units.windowHeight, data.h)
@@ -159,17 +160,19 @@ TestCase {
         verify(item(main, "tab-home").isBigButton)
     }
 
-    // Five favourites fit at both sizes on the 10.1 in panel; a sixth is a plain view whose tile
-    // says so.
-    function test_favouriteTabsFollowCapacity_data() { return H.sizes() }
-    function test_favouriteTabsFollowCapacity(data) {
+    // Five favorites fit at both sizes on the 10.1 in panel (eight on the 13 in one: more mm of
+    // height); one more is a plain view whose tile says so.
+    function test_favoriteTabsFollowCapacity_data() { return H.sizes() }
+    function test_favoriteTabsFollowCapacity(data) {
+        fixture.settings.panelDiagonalIn = data.diagIn
         const main = makeMain(data.w, data.h)
-        compare(fixture.views.favouriteCapacity, 5)
-        for (let i = 0; i < 2; ++i) fixture.views.setFavourite(fixture.views.add(), true)
-        compare(viewTabs(main).length, 5)
+        const cap = data.diagIn > 10.1 ? 8 : 5
+        compare(fixture.views.favoriteCapacity, cap)
+        for (let i = 0; i < cap - 3; ++i) fixture.views.setFavorite(fixture.views.add(), true)
+        compare(viewTabs(main).length, cap)
         const sixth = fixture.views.add()
-        fixture.views.setFavourite(sixth, true)
-        compare(viewTabs(main).length, 5)
+        fixture.views.setFavorite(sixth, true)
+        compare(viewTabs(main).length, cap)
         compare(H.byName(main.contentItem, "tab-view-" + sixth), null)
         verify(!fixture.views.onTabBar(sixth))
         const bar = item(main, "tabBar")
@@ -187,7 +190,7 @@ TestCase {
             verify(!H.byName(item(main, "tile-" + id), "tileNote").visible, id + " is on the tab bar")
     }
 
-    // A small panel diagonal leaves the column fewer favourite tabs; every tab and control stays
+    // A small panel diagonal leaves the column fewer favorite tabs; every tab and control stays
     // inside the window at full size.
     function test_tabBarFitsTheWindow_data() {
         let out = []
@@ -202,8 +205,8 @@ TestCase {
         compare(Units.diagonalIn, data.diag)
         const bar = item(main, "tabBar")
         waitForRendering(bar)
-        const capacity = PanelMath.favouriteCapacity(bar.height / Units.pxPerMm)
-        compare(fixture.views.favouriteCapacity, capacity)
+        const capacity = PanelMath.favoriteCapacity(bar.height / Units.pxPerMm)
+        compare(fixture.views.favoriteCapacity, capacity)
         compare(viewTabs(main).length, Math.min(3, capacity))
         const buttons = H.findAll(bar, it => it.isBigButton === true)
         compare(buttons.length, Math.min(3, capacity) + 3)
@@ -271,15 +274,15 @@ TestCase {
         compare(held.count, 1)
         compare(held.signalArguments[0][0], "shipped-fish")
         compare(selected.count, 0)
-        mouseClick(item(main, "editorCancel")) // the hold opened the editor (test_holdFavouriteTabOpensEditor)
+        mouseClick(item(main, "editorCancel")) // the hold opened the editor (test_holdFavoriteTabOpensEditor)
         mouseClick(item(main, "tab-home"))
         mouseClick(item(main, "paletteButton"))
         compare(touched.count, 3, "every bar button press")
     }
     Component { id: spyComp; SignalSpy {} }
 
-    // Hold a favourite tab 0.6 s: the editor on that view (spec 6.9); a plain tap still just shows it.
-    function test_holdFavouriteTabOpensEditor() {
+    // Hold a favorite tab 0.6 s: the editor on that view (spec 6.9); a plain tap still just shows it.
+    function test_holdFavoriteTabOpensEditor() {
         const main = makeMain(1024, 600)
         compare(fixture.views.currentId, "shipped-nav")
         const tab = item(main, "tab-view-shipped-fish")
@@ -328,7 +331,28 @@ TestCase {
         verify(!main.editing)
     }
 
-    function test_nonFavouriteViewHighlightsHouse() {
+    // The touch version of the same drag.
+    function test_touchDragFromTabDoesNotPanTheMap() {
+        const main = makeMain(1024, 600)
+        compare(main.page, "view")
+        compare(fixture.views.currentId, "shipped-nav")
+        verify(item(main, "tabBar").shown)
+        const tab = item(main, "tab-view-shipped-fish")
+        const x0 = tab.width / 2, y0 = tab.height / 2
+        touchEvent(main).press(0, tab, x0, y0).commit()
+        for (let i = 1; i <= 15; ++i)
+            touchEvent(main).move(0, tab, x0 - Units.mm(i), y0).commit()
+        wait(100)
+        touchEvent(main).release(0, tab, x0 - Units.mm(15), y0).commit()
+        compare(main.chartMap.moves, 0, "no pan")
+        compare(main.chartMap.gestures, 0, "no gesture")
+        compare(chartStub.follow, true, "Follow stays on")
+        compare(main.page, "view")
+        compare(fixture.views.currentId, "shipped-nav", "the tab was not pressed")
+        verify(!main.editing)
+    }
+
+    function test_nonFavoriteViewHighlightsHouse() {
         const main = makeMain(1024, 600)
         const id = fixture.views.add()
         goHome(main)
@@ -344,6 +368,7 @@ TestCase {
 
     function test_homeTilesInOrder_data() { return H.sizes() }
     function test_homeTilesInOrder(data) {
+        fixture.settings.panelDiagonalIn = data.diagIn
         const main = makeMain(data.w, data.h)
         const home = goHome(main)
         const order = ["tile-shipped-nav", "tile-shipped-fish", "tile-shipped-big", "tile-new", "tile-tracks", "tile-settings", "tile-about"]
@@ -368,7 +393,7 @@ TestCase {
             verify(thumb.height >= Units.mm(12) - 0.5, n + " thumb is " + thumb.height)
         }
         const stars = order.slice(0, 3).map(n => H.byName(item(main, n), "tileStar"))
-        verify(stars.every(s => s && s.visible && s.name === "star"), "the shipped views are favourites")
+        verify(stars.every(s => s && s.visible && s.name === "star"), "the shipped views are favorites")
         compare(H.findAll(item(main, "tile-tracks"), it => it.name === "map").length, 1)
         compare(H.findAll(item(main, "tile-settings"), it => it.name === "settings").length, 1)
         compare(item(main, "tile-new").text, "+ New view")
@@ -381,6 +406,7 @@ TestCase {
     function test_homeTwoColumnsWhenNarrow(data) {
         Units.windowWidth = data.w
         Units.windowHeight = data.h
+        Units.diagonalIn = data.diagIn
         const home = createTemporaryObject(homeComp, testCase, {
             width: Units.mm(17 + 6 + 110), height: data.h, rightInset: Units.mm(17), views: fixture.views })
         verify(home, "HomePage")
@@ -473,7 +499,7 @@ TestCase {
         const fav = H.byName(menu, "menu-favorite")
         compare(fav.text, "Favorite off")
         mouseClick(fav)
-        verify(!fixture.views.viewJson("shipped-fish").favourite)
+        verify(!fixture.views.viewJson("shipped-fish").favorite)
         verify(!H.byName(item(main, "tile-shipped-fish"), "tileStar").visible, "star gone")
         compare(H.byName(main.contentItem, "tab-view-shipped-fish"), null)
         menu = menuFor(main, "shipped-fish")
@@ -561,11 +587,12 @@ TestCase {
         let out = []
         for (const s of H.sizes())
             for (const p of [["tracks", "tracksPage"], ["settings", "settingsPage"], ["about", "aboutPage"], ["home", "homePage"]])
-                out.push({ tag: s.tag + " " + p[0], w: s.w, h: s.h, page: p[0], item: p[1] })
+                out.push({ tag: s.tag + " " + p[0], w: s.w, h: s.h, diagIn: s.diagIn, page: p[0], item: p[1] })
         return out
     }
     function test_pagesHonourRightInset(data) {
         fixture.addTrack(1.7e9)
+        fixture.settings.panelDiagonalIn = data.diagIn
         const main = makeMain(data.w, data.h)
         main.page = data.page
         const page = item(main, data.item)
@@ -954,6 +981,7 @@ TestCase {
     // shows; heights never change, digits never get smaller (they may refit larger, issue #35).
     function test_cellsFollowTheBar_data() { return H.sizes() }
     function test_cellsFollowTheBar(data) {
+        fixture.settings.panelDiagonalIn = data.diagIn
         const main = makeMain(data.w, data.h)
         main.hideDelayMs = 0
         mouseClick(item(main, "tab-view-shipped-big"))

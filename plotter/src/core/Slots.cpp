@@ -110,8 +110,8 @@ QVariantList fieldChoices() {
     return l;
 }
 
-QString fieldRoleText(Field field, bool unit, const VesselModel& vessel, const Settings& settings) {
-    return unit ? unitLabel(field, vessel.state(), settings.unitPrefs())
+QString fieldRoleText(Field field, FieldText text, const VesselModel& vessel, const Settings& settings) {
+    return text == FieldText::Unit ? unitLabel(field, vessel.state(), settings.unitPrefs())
                 : formatValue(field, vessel.state(), settings.unitPrefs());
 }
 

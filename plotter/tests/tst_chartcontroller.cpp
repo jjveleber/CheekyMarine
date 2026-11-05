@@ -1,11 +1,13 @@
 #include "core/AisModel.h"
 #include "core/ChartController.h"
+#include "core/Geo.h"
 #include "core/Overlays.h"
 #include "core/Settings.h"
 #include "core/Store.h"
 #include "core/Tracks.h"
 #include "core/VesselModel.h"
 #include <QDir>
+#include <QElapsedTimer>
 #include <QFile>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -36,6 +38,11 @@ public:
     bool syncStyleLoaded = false; // emit styleLoaded inside setStyleJson, like the real adapter
     double zoomValue = 13;
     double height = 600;
+    // When set, setGeoJson serializes the collection to compact text as MapLibreChartPort does, and
+    // records the time it took and the size.
+    bool serialize = false;
+    qint64 serializeNs = 0;
+    qsizetype serializedBytes = 0;
 
     QList<QJsonObject> styles;        // every style loaded
     QStringList calls;                // "style", "filter:<layer>", "geojson:<source>", "image:<id>", "layer:<id>"
@@ -68,6 +75,12 @@ public:
     void setGeoJson(const QString& source, const QJsonObject& fc) override {
         calls << "geojson:" + source;
         sources[source] = fc;
+        if (serialize) {
+            QElapsedTimer t;
+            t.start();
+            serializedBytes = QJsonDocument(fc).toJson(QJsonDocument::Compact).size();
+            serializeNs = t.nsecsElapsed();
+        }
     }
     void addImage(const QString& id, const QImage& image) override {
         calls << "image:" + id;
@@ -416,6 +429,18 @@ private slots:
         QVERIFY(r.map.styles.isEmpty());
     }
 
+    // The styles are parsed once at start: a file removed afterwards is not read again.
+    void stylesAreReadOnceAtStart() {
+        Rig r;
+        QVERIFY(r.settings);
+        r.make();
+        r.map.loaded();
+        QVERIFY(QFile::remove(r.chartsDir() + "/styles/nav-night.json"));
+        r.ctrl->setPalette("night");
+        QCOMPARE(r.map.styles.size(), 2);
+        QCOMPARE(r.map.styles[1]["name"].toString(), QStringLiteral("CheekyMarine nav night"));
+    }
+
     void paletteReloadReaddsRuntimeSources() {
         Rig r;
         QVERIFY(r.settings);
@@ -461,6 +486,22 @@ private slots:
         QCOMPARE(c.lon, -122.23);
         QCOMPARE(c.bearing, 0.0);
         QVERIFY(!r.ctrl->noPosition());
+    }
+
+    void startPositionCentersTheMapWithoutAFix() {
+        Rig r;
+        QVERIFY(r.settings);
+        r.settings->setOrientation("north");
+        r.make();
+        r.ctrl->setStartPosition(47.5, -122.5);
+        r.map.loaded();
+        QVERIFY(!r.map.cameras.isEmpty());
+        QCOMPARE(r.map.cameras.last().lat, 47.5);
+        QCOMPARE(r.map.cameras.last().lon, -122.5);
+        QCOMPARE(r.map.cameras.last().bearing, 0.0);
+        r.vessel.setState(boat());
+        QCOMPARE(r.map.cameras.last().lat, 47.98);
+        QCOMPARE(r.map.cameras.last().lon, -122.23);
     }
 
     void headUpTrueHeadingAndLowerThird() {
@@ -711,6 +752,68 @@ private slots:
         QCOMPARE(r.map.sources.value(OverlayIds::kTracksSource)["features"].toArray().size(), 1);
     }
 
+    // The #46 write cost: one active-track write at 7200 points, the controller's build and the
+    // serialization the real port does on the main thread, under 50 ms together.
+    // --frame-stats turns on write timing: each active-track write records its main-thread time.
+    void writeTimingRecordsEachActiveTrackWrite() {
+        Rig r;
+        QVERIFY(r.settings);
+        r.make();
+        r.map.loaded();
+        QVERIFY(r.ctrl->writeTimesUs().isEmpty());
+        r.ctrl->setActiveTrack({{47.98, -122.23}}); // off: not recorded
+        QVERIFY(r.ctrl->writeTimesUs().isEmpty());
+        r.ctrl->setWriteTiming(true);
+        r.ctrl->setActiveTrack({{47.98, -122.23}});
+        r.ctrl->setActiveTrack({{47.98, -122.23}, {47.99, -122.24}});
+        r.ctrl->setActiveTrack({});
+        r.ctrl->setTracks({{{47.98, -122.23}, {47.99, -122.24}}}); // finished tracks are not counted
+        const QList<qint64> times = r.ctrl->writeTimesUs();
+        QCOMPARE(times.size(), 3);
+        for (qint64 us : times) QVERIFY(us >= 0);
+    }
+
+    void activeTrackWriteCostAt7200Points() {
+        Rig r;
+        QVERIFY(r.settings);
+        r.make();
+        r.map.loaded();
+        // 2 h at 1 Hz and 26 kn: 7200 points 13.4 m apart along the navigating route of synth_n2k.py.
+        const QList<LatLon> way{{47.9482896, -122.3136073}, {47.9021326, -122.3743223}, {47.9080896, -122.4492273}};
+        QList<LatLon> pts;
+        LatLon cur = way[0];
+        for (int leg = 1; leg < way.size() && pts.size() < 7200; ++leg) {
+            while (pts.size() < 7200 && distanceM(cur, way[leg]) > 13.4) {
+                pts << cur;
+                cur = destination(cur, bearingDeg(cur, way[leg]), 13.4);
+            }
+        }
+        while (pts.size() < 7200) pts << cur;
+        QCOMPARE(pts.size(), 7200);
+        r.map.calls.clear();
+        r.map.serialize = true;
+        QElapsedTimer timer;
+        timer.start();
+        r.ctrl->setActiveTrack(pts); // the fake map serializes inside, as the real port does
+        const double ms = timer.nsecsElapsed() / 1e6;
+        const double serializeMs = r.map.serializeNs / 1e6;
+        const QJsonObject fc = r.map.sources.value(OverlayIds::kActiveTrackSource);
+        qInfo().noquote() << QStringLiteral("active-track write: build %1 ms, serialize %2 ms, total %3 ms, %4 bytes")
+                                 .arg(ms - serializeMs, 0, 'f', 2)
+                                 .arg(serializeMs, 0, 'f', 2)
+                                 .arg(ms, 0, 'f', 2)
+                                 .arg(r.map.serializedBytes);
+        QVERIFY(r.map.serializeNs > 0);
+        QVERIFY(r.map.serializedBytes > 100000);
+        QCOMPARE(r.map.calls.count(QStringLiteral("geojson:") + OverlayIds::kActiveTrackSource), 1);
+        const QJsonArray feats = fc["features"].toArray();
+        QCOMPARE(feats.size(), 1);
+        const QJsonObject geom = feats.at(0).toObject()["geometry"].toObject();
+        QCOMPARE(geom["type"].toString(), QStringLiteral("LineString"));
+        QCOMPARE(geom["coordinates"].toArray().size(), 7200);
+        QVERIFY2(ms < 50, qPrintable(QStringLiteral("active track write took %1 ms").arg(ms)));
+    }
+
     // A kept point re-sends only the active track; the finished tracks go to the map when the set
     // or a visibility changes, and both survive a style reload.
     void keptPointSendsOnlyTheActiveTrack() {
@@ -819,6 +922,20 @@ private slots:
         QVERIFY(!r.ctrl->targetAt(QPointF(0, 0), 8).isValid());
         r.ais.setTargets({});
         QVERIFY(!r.ctrl->targetAt(a, 8).isValid());
+    }
+
+    void targetAtPicksTheNearerOfTwoCloseTargets() {
+        Rig r;
+        QVERIFY(r.settings);
+        r.make();
+        r.map.loaded();
+        QList<AisTarget> two = fixtureTargets();
+        two[1].lon = -122.2470; // 30 px right of A at the fake map's 10000 px per degree
+        r.ais.setTargets(two);
+        const QPointF a = r.map.toScreen(47.99, -122.25);
+        // 8 mm at 4.626 px/mm is 37 px: both targets are inside the radius.
+        QCOMPARE(r.ctrl->targetAt(a + QPointF(5, 0), 37).toUInt(), 367000001u);
+        QCOMPARE(r.ctrl->targetAt(a + QPointF(25, 0), 37).toUInt(), 367000002u);
     }
 
     void selectedTargetCarriesFormattedValuesAndTracksUpdates() {

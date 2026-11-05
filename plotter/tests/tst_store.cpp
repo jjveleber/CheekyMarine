@@ -105,7 +105,7 @@ int killChildAfter(QProcess& child, const QString& mode, const QString& dir, int
 
 // A plotter.db as plan 3 (schema 1.0.0) left it: the 1.0.0 tables and the settings rows that
 // schema 1.1.0 moves into views or drops.
-void makePlan3Db(const QString& dir) {
+void makePlan3Db(const QString& dir, const QString& slotsJson = QStringLiteral(R"([{"id":"BL","on":true,"field":"rpm","size":"small"}])")) {
     rawExec(dir, {
         "CREATE TABLE schema_version(major INTEGER NOT NULL, minor INTEGER NOT NULL, patch INTEGER NOT NULL)",
         "CREATE TABLE settings(key TEXT PRIMARY KEY, value TEXT NOT NULL)",
@@ -113,7 +113,7 @@ void makePlan3Db(const QString& dir) {
         "CREATE TABLE track_points(track_id INTEGER, t REAL, lat REAL, lon REAL, sog REAL, cog REAL, depth REAL)",
         "CREATE INDEX track_points_by_track ON track_points(track_id, t)",
         "INSERT INTO schema_version VALUES(1,0,0)",
-        R"(INSERT INTO settings VALUES('slots','[{"id":"BL","on":true,"field":"rpm","size":"small"}]'))",
+        "INSERT INTO settings VALUES('slots','" + slotsJson + "')",
         R"(INSERT INTO settings VALUES('bigNumbers','["depth","sog","wtemp"]'))",
         R"(INSERT INTO settings VALUES('chartMode','"fish"'))",
         R"(INSERT INTO settings VALUES('touchLockTimeoutS','0'))",
@@ -134,13 +134,13 @@ private slots:
         QTemporaryDir t;
         auto s = Store::open(t.path());
         QVERIFY(s.has_value());
-        QCOMPARE((*s)->schemaVersion(), QVersionNumber(1, 1, 0));
+        QCOMPARE((*s)->schemaVersion(), QVersionNumber(1, 2, 0));
         QCOMPARE(scalar((*s)->db(), "PRAGMA journal_mode"), QStringLiteral("wal"));
         QCOMPARE(scalar((*s)->db(), "PRAGMA synchronous"), QStringLiteral("2"));
         for (const char* tbl : {"schema_version", "settings", "tracks", "track_points", "views"})
             QCOMPARE(scalar((*s)->db(), QStringLiteral("SELECT count(*) FROM sqlite_master WHERE name='%1'").arg(tbl)),
                      QStringLiteral("1"));
-        QCOMPARE(scalar((*s)->db(), "SELECT major||'.'||minor||'.'||patch FROM schema_version"), QStringLiteral("1.1.0"));
+        QCOMPARE(scalar((*s)->db(), "SELECT major||'.'||minor||'.'||patch FROM schema_version"), QStringLiteral("1.2.0"));
         QCOMPARE(scalar((*s)->db(), "SELECT count(*) FROM views"), QStringLiteral("3"));
     }
     // A fresh file is seeded with the shipped views, in order.
@@ -168,8 +168,8 @@ private slots:
         auto s = Store::open(t.path());
         QVERIFY(s.has_value());
         const QSqlDatabase db = (*s)->db();
-        QCOMPARE((*s)->schemaVersion(), QVersionNumber(1, 1, 0));
-        QCOMPARE(scalar(db, "SELECT major||'.'||minor||'.'||patch FROM schema_version"), QStringLiteral("1.1.0"));
+        QCOMPARE((*s)->schemaVersion(), QVersionNumber(1, 2, 0));
+        QCOMPARE(scalar(db, "SELECT major||'.'||minor||'.'||patch FROM schema_version"), QStringLiteral("1.2.0"));
         QCOMPARE(scalar(db, "SELECT count(*) FROM views"), QStringLiteral("3"));
         const View nav = viewFromJson(viewRow(db, 0));
         QCOMPARE(nav.id, QStringLiteral("shipped-nav"));
@@ -181,6 +181,45 @@ private slots:
         QCOMPARE(scalar(db, "SELECT count(*) FROM settings WHERE key IN ('slots','bigNumbers','chartMode','touchLockTimeoutS')"),
                  QStringLiteral("0"));
         QCOMPARE(scalar(db, "SELECT value FROM settings WHERE key='orientation'"), QStringLiteral("\"north\""));
+    }
+    // A 1.1.0 file stored "favourite"; opening it rewrites the row with "favorite".
+    void favouriteKeyBecomesFavoriteAt120() {
+        QTemporaryDir t;
+        { QVERIFY(Store::open(t.path()).has_value()); }
+        rawExec(t.path(), {"UPDATE schema_version SET minor=1",
+                           R"(UPDATE views SET json='{"id":"shipped-nav","name":"Navigation","favourite":true,"slots":[],"cells":{}}' WHERE ord=0)"});
+        auto s = Store::open(t.path());
+        QVERIFY(s.has_value());
+        QCOMPARE((*s)->schemaVersion(), QVersionNumber(1, 2, 0));
+        const QString json = scalar((*s)->db(), "SELECT json FROM views WHERE ord=0");
+        QVERIFY(!json.contains("favourite"));
+        QCOMPARE(viewRow((*s)->db(), 0).value("favorite").toBool(), true);
+    }
+    void plan3SlotExtrasSurviveMigration() {
+        QTemporaryDir t;
+        makePlan3Db(t.path(), R"([{"id":"TL","on":true,"field":"depth","size":"large","note":"x"}])");
+        auto s = Store::open(t.path());
+        QVERIFY(s.has_value());
+        bool found = false;
+        for (const QJsonValue& sv : viewRow((*s)->db(), 0).value("slots").toArray()) {
+            if (sv.toObject().value("id").toString() == "TL") {
+                found = true;
+                QCOMPARE(sv.toObject().value("note").toString(), QStringLiteral("x"));
+            }
+        }
+        QVERIFY(found);
+    }
+    void a120FileIsLeftAlone() {
+        QTemporaryDir t;
+        QString before;
+        {
+            auto s = Store::open(t.path());
+            QVERIFY(s.has_value());
+            before = scalar((*s)->db(), "SELECT group_concat(json, '|') FROM (SELECT json FROM views ORDER BY ord)");
+        }
+        auto s = Store::open(t.path());
+        QVERIFY(s.has_value());
+        QCOMPARE(scalar((*s)->db(), "SELECT group_concat(json, '|') FROM (SELECT json FROM views ORDER BY ord)"), before);
     }
     void reopenKeepsData() {
         QTemporaryDir t;
@@ -224,15 +263,15 @@ private slots:
     void newerMinorOpensAndIsNotLowered() {
         QTemporaryDir t;
         { QVERIFY(Store::open(t.path()).has_value()); }
-        rawExec(t.path(), {"UPDATE schema_version SET minor=2"});
+        rawExec(t.path(), {"UPDATE schema_version SET minor=3"});
         {
             auto s = Store::open(t.path());
             QVERIFY(s.has_value());
-            QCOMPARE((*s)->schemaVersion(), QVersionNumber(1, 2, 0));
+            QCOMPARE((*s)->schemaVersion(), QVersionNumber(1, 3, 0));
         }
         auto s = Store::open(t.path());
         QVERIFY(s.has_value());
-        QCOMPARE(scalar((*s)->db(), "SELECT major||'.'||minor||'.'||patch FROM schema_version"), QStringLiteral("1.2.0"));
+        QCOMPARE(scalar((*s)->db(), "SELECT major||'.'||minor||'.'||patch FROM schema_version"), QStringLiteral("1.3.0"));
     }
     void randomBytesIsCorrupt() {
         QTemporaryDir t;
@@ -387,6 +426,37 @@ private slots:
         QVERIFY(moved.error().contains("plotter.db.bad-20261031-120000"));
         QVERIFY(!QFile::exists(t.filePath("plotter.db")));
         QVERIFY(QFile::exists(t.filePath("plotter.db-wal")));
+    }
+    // Only the -wal exists (the main file is gone): that is still a move, reported as the stamp path.
+    void moveAsideOnlyWalSetsResult() {
+        QTemporaryDir t;
+        QFile wal(t.filePath("plotter.db-wal"));
+        QVERIFY(wal.open(QIODevice::WriteOnly));
+        wal.close();
+        const QDateTime now(QDate(2026, 10, 31), QTime(12, 0, 0));
+        const auto moved = Store::moveAside(t.path(), now);
+        QVERIFY(moved.has_value());
+        QCOMPARE(*moved, t.filePath("plotter.db.bad-20261031-120000"));
+        QVERIFY(!QFile::exists(t.filePath("plotter.db-wal")));
+        QVERIFY(QFile::exists(t.filePath("plotter.db.bad-20261031-120000-wal")));
+    }
+    // The error names what moved and what did not, and the main file is at the stamp.
+    void moveAsidePartialErrorNamesBoth() {
+        QTemporaryDir t;
+        { QVERIFY(Store::open(t.path()).has_value()); }
+        QFile wal(t.filePath("plotter.db-wal"));
+        QVERIFY(wal.open(QIODevice::WriteOnly));
+        wal.close();
+        const auto failWal = [](const QString& from, const QString& to) {
+            return !from.endsWith("-wal") && QFile::rename(from, to);
+        };
+        const QDateTime now(QDate(2026, 10, 31), QTime(12, 0, 0));
+        const auto moved = Store::moveAside(t.path(), now, failWal);
+        const QString stamp = t.filePath("plotter.db.bad-20261031-120000");
+        QVERIFY(!moved.has_value());
+        QVERIFY2(moved.error().contains("plotter.db was moved to " + stamp), qPrintable(moved.error()));
+        QVERIFY(moved.error().contains("plotter.db-wal could not be moved aside"));
+        QVERIFY(QFile::exists(stamp));
     }
     // Review Focus 4: SIGKILL a child mid-write; the database must open and pass integrity_check.
     void powerCutKeepsDatabaseIntact() {
