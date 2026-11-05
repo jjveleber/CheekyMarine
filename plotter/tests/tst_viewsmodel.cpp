@@ -281,6 +281,8 @@ private slots:
         QCOMPARE(count.count(), 1);
     }
 
+    // Guards the skip branch in ViewDraft::load: without the range check the QList index trips Qt's
+    // debug assert. A release build has no assert, so there this can pass even without the check.
     void loadIgnoresASlotWithAnOutOfRangeId() {
         Env e;
         QVERIFY(e.settings);

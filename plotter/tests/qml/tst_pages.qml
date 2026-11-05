@@ -66,6 +66,7 @@ TestCase {
     Component { id: settingsComp; SettingsPage {} }
     Component { id: tracksComp; TracksPage {} }
     Component { id: spyComp; SignalSpy {} }
+    Component { id: aisSheetComp; AisSheet {} }
 
     readonly property string twoColumns: "2x2:0,0,1,2;1,0,1,2"
     readonly property string quad: "2x2:0,0,1,1;1,0,1,1;0,1,1,1;1,1,1,1"
@@ -286,9 +287,21 @@ TestCase {
         return H.findAll(sheet, it => it.objectName === "aisValue" && it.visible).map(it => it.text)
     }
 
-    function test_aisSheetNeverCoversASlot_data() { return H.sizes() }
+    // Each size with every slot on, then rows with the top or bottom corners off (the sheet's band
+    // then reaches the top-center chips or Recenter) and no position (the chip shows).
+    function test_aisSheetNeverCoversASlot_data() {
+        const rows = H.sizes()
+        for (const s of H.sizes()) {
+            rows.push(Object.assign({}, s, { tag: s.tag + " top corners off, no position", off: ["TL", "TR"], noPosition: true }))
+            rows.push(Object.assign({}, s, { tag: s.tag + " bottom corners off", off: ["BL", "BR"] }))
+        }
+        return rows
+    }
     function test_aisSheetNeverCoversASlot(data) {
         const chart = chartWithAllSlotsOn(data)
+        for (const id of data.off || [])
+            fixture.draft.setSlot(id, false, "depth", 25)
+        chartStub.noPosition = data.noPosition === true // chartWithAllSlotsOn leaves follow off: Recenter shows
         chartStub.aisSelection = aisFull
         waitForRendering(chart)
         const sheet = H.byName(chart, "aisSheet")
@@ -299,9 +312,41 @@ TestCase {
         const free = chart.aisFreeRect
         verify(b.x >= free.x - 0.5 && b.y >= free.y - 0.5 && b.x + b.w <= free.x + free.width + 0.5 && b.y + b.h <= free.y + free.height + 0.5,
                "sheet inside the free rectangle " + JSON.stringify(free) + ": " + where(sheet, chart))
-        for (const s of H.findAll(chart, it => it.objectName.startsWith("slot-") && it.visible))
+        const controls = ["recenterButton", "zoomInButton", "zoomOutButton", "noPositionChip", "noFishChip"]
+                             .map(n => H.byName(chart, n)).filter(it => it.visible)
+        verify(controls.some(it => it.objectName === "recenterButton"), "Recenter shows")
+        if (data.noPosition) verify(controls.some(it => it.objectName === "noPositionChip"), "the chip shows")
+        for (const s of H.findAll(chart, it => it.objectName.startsWith("slot-") && it.visible).concat(controls))
             verify(!H.overlaps(sheet, s, chart), where(sheet, chart) + " overlaps " + where(s, chart))
         H.checkBigButtons(testCase, Units, sheet)
+    }
+
+    // The footer and the shown rows draw inside the sheet's own box (the slot test checks the sheet's
+    // box only). Every corner at 25 mm on the smallest window, where the slot clamp still leaves a
+    // band of several rows; then the sheet alone in a band shorter than one row plus the footer,
+    // where it keeps that floor (and may cover a slot only then).
+    function test_aisSheetFooterAndRowsStayInsideTheSheet() {
+        const chart = chartWithAllSlotsOn({ w: 1024, h: 600, diagIn: 10.1 })
+        for (const id of ["TL", "TR", "BL", "BR"])
+            fixture.draft.setSlot(id, true, "depth", 25)
+        chartStub.aisSelection = aisFull
+        waitForRendering(chart)
+        const tight = createTemporaryObject(aisSheetComp, testCase, { freeRect: Qt.rect(0, 0, Units.mm(90), Units.mm(15)),
+                                                                     info: aisFull })
+        verify(tight, "AisSheet")
+        waitForRendering(tight)
+        for (const sheet of [H.byName(chart, "aisSheet"), tight]) {
+            verify(sheet.visible)
+            const b = H.box(sheet, testCase)
+            const inside = it => {
+                const q = H.box(it, testCase)
+                return q.x >= b.x - 0.5 && q.y >= b.y - 0.5 && q.x + q.w <= b.x + b.w + 0.5 && q.y + q.h <= b.y + b.h + 0.5
+            }
+            const rows = H.findAll(sheet, it => it.objectName === "aisValue" && it.visible)
+            verify(rows.length >= 1, "at least one row shows")
+            for (const it of rows.concat([H.byName(sheet, "aisCloseButton"), H.byName(sheet, "aisNext")]))
+                verify(inside(it), where(it, testCase) + " outside " + where(sheet, testCase))
+        }
     }
 
     function test_aisSheetPagesReachEveryRow() {

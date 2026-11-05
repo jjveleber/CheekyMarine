@@ -608,12 +608,34 @@ TestCase {
         if (data.sheet === "") compare(editor.sheet, "")
     }
 
-    // The initial editor waits for the first frame, not for a fixed time.
+    // The initial editor waits for the first frame, not for a fixed time: it is closed at that
+    // frame's swap and open one callLater later (well before the 300 ms timer this replaced).
     function test_initialEditorOpensAfterFirstFrame() {
         const main = makeMain(1024, 600)
         verify(!main.editing)
+        let swaps = 0, firstSwapAt = 0, editingAtFirstSwap = null, swapsAtOpen = -1, openedAt = 0
+        const onSwap = () => {
+            if (++swaps === 1) {
+                firstSwapAt = Date.now()
+                editingAtFirstSwap = main.editing
+            }
+        }
+        const onEditing = () => {
+            if (main.editing && swapsAtOpen < 0) {
+                swapsAtOpen = swaps
+                openedAt = Date.now()
+            }
+        }
+        main.frameSwapped.connect(onSwap)
+        main.editingChanged.connect(onEditing)
         main.editorOpen = true
-        tryVerify(() => main.editing, 3000, "the editor opens after a frame")
+        main.requestUpdate()
+        tryVerify(() => main.editing, 1000, "the editor opens after a frame")
+        main.frameSwapped.disconnect(onSwap)
+        main.editingChanged.disconnect(onEditing)
+        compare(editingAtFirstSwap, false, "closed until the first frame")
+        verify(swapsAtOpen >= 1, "opened after a frame swap, swaps " + swapsAtOpen)
+        verify(openedAt - firstSwapAt < 150, "opened " + (openedAt - firstSwapAt) + " ms after the frame")
     }
 
     function test_liveHoldOpensSheetAndSaves() {

@@ -49,10 +49,13 @@ Item {
     property real brLeft: cornerArea.x + cornerArea.width
 
     // The rectangle between the on corner slots (the bars, notice and strip are already outside
-    // the corner area): where the AIS sheet lives, so it never covers a slot.
+    // the corner area), below the top-center chips and above Recenter when they show: where the AIS
+    // sheet lives, so it never covers a slot or those controls.
     readonly property rect aisFreeRect: {
-        const top = Math.max(tlBottom, trBottom, cornerArea.y) + margin
-        const bottom = Math.min(blTop, brTop, cornerArea.y + cornerArea.height) - margin
+        let top = Math.max(tlBottom, trBottom, cornerArea.y) + margin
+        if (chipsColumn.height > 0) top = Math.max(top, chipsColumn.y + chipsColumn.height + margin)
+        let bottom = Math.min(blTop, brTop, cornerArea.y + cornerArea.height) - margin
+        if (recenterButton.visible) bottom = Math.min(bottom, recenterButton.y - margin)
         return Qt.rect(cornerArea.x, top, cornerArea.width, Math.max(0, bottom - top))
     }
 
@@ -292,6 +295,7 @@ Item {
     function openLegend() { legendSheet.visible = true }
 
     BigButton {
+        id: recenterButton
         objectName: "recenterButton"
         anchors { horizontalCenter: shownCornerArea.horizontalCenter; bottom: cornerArea.bottom }
         visible: !page.chart.follow && !page.editing
@@ -330,6 +334,7 @@ Item {
 
     // Top centre: a Fishing view without a bathy pack says so, then the position chip.
     Column {
+        id: chipsColumn // no height when no chip shows
         anchors { horizontalCenter: shownCornerArea.horizontalCenter; top: cornerArea.top }
         spacing: Units.mm(1)
         Rectangle {

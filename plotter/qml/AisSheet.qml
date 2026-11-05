@@ -72,7 +72,10 @@ Rectangle {
     radius: Units.mm(1.5)
     z: 10
     width: Math.max(Math.min(freeRect.width, Units.mm(90)), Units.mm(60))
-    height: Math.min(column.implicitHeight + 2 * pad, freeRect.height)
+    // At least one row and the footer: in a band shorter than that the sheet runs past it (and may
+    // cover a slot) rather than draw its content outside its box.
+    readonly property real minHeight: 2 * pad + gap + footerHeight + (heights.length ? Math.max(...heights) : 0)
+    height: Math.min(column.implicitHeight + 2 * pad, Math.max(freeRect.height, minHeight))
     // Swallow touches so the chart underneath does not pan or pick another target.
     MouseArea { anchors.fill: parent; onWheel: (w) => w.accepted = true }
 
