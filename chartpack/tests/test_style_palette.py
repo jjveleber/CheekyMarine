@@ -12,23 +12,27 @@ def test_every_palette_has_every_token():
 
 
 def test_owner_water_and_land_colours():
-    assert PALETTES["day"]["DEPDW"] == "#F4EEE2" and PALETTES["night"]["DEPDW"] == "#18253A"
-    assert PALETTES["day"]["LANDA"] == "#EFD98A" and PALETTES["night"]["LANDA"] == "#3A3317"
+    assert PALETTES["day"]["DEPDW"] == "#F4EEE2" and PALETTES["night"]["DEPDW"] == "#000000"
+    assert PALETTES["day"]["LANDA"] == "#EFD98A" and PALETTES["night"]["LANDA"] == "#180404"
 
 
 def test_night_water_is_dark():
     day, night = PALETTES["day"]["DEPDW"], PALETTES["night"]["DEPDW"]
     assert luminance(night) < 0.15 and luminance(day) > 0.9
     assert int(day[1:3], 16) > int(day[5:7], 16)  # day deep water is warm
-    assert int(night[5:7], 16) > int(night[1:3], 16)  # night deep water leans blue
+    assert int(night[1:3], 16) >= max(int(night[3:5], 16), int(night[5:7], 16))  # night leans red
 
 
-def test_night_depth_fills_lighten_toward_shallow():
-    """R29: night DEPMD #15304C, so the night tints get lighter from deep to very shallow."""
+def test_night_is_red_only():
+    for token, colour in PALETTES["night"].items():
+        assert int(colour[3:5], 16) <= 0x20 and int(colour[5:7], 16) <= 0x20, token
+        assert int(colour[1:3], 16) >= int(colour[3:5], 16), token  # the red channel is the largest
+
+
+def test_night_depth_fills_brighten_toward_shallow():
     night = PALETTES["night"]
-    assert night["DEPMD"] == "#15304C"
     tints = [luminance(night[t]) for t in ("DEPDW", "DEPMD", "DEPMS", "DEPVS")]
-    assert tints == sorted(tints) and len(set(tints)) == 4
+    assert all(a < b for a, b in zip(tints, tints[1:]))
 
 
 def test_day_depth_fills_unchanged():

@@ -32,31 +32,32 @@ _DAY = {
     "NODTA": "#C8C8C8",  # no data
 }
 
+# Night is red only (#33): red on black keeps the eyes dark-adapted; every channel but red is at most 0x20.
 _NIGHT = {
-    "DEPDW": "#18253A",  # deep water fill (dark blue-grey)
-    "DEPMD": "#15304C",  # medium depth water fill (lighter than DEPDW, R29)
-    "DEPMS": "#123A5A",  # medium-shallow water fill
-    "DEPVS": "#1B5280",  # very shallow water fill
-    "DEPIT": "#1E3A1E",  # intertidal area fill
-    "LANDA": "#3A3317",  # land area fill
-    "LANDF": "#3A3420",  # land features
-    "CSTLN": "#8A8A7A",  # coastline
-    "CHBLK": "#C0C0C0",  # chart ink in place of black
-    "CHGRD": "#7A8690",  # grey chart ink (depth contours, default navaid)
-    "CHMGD": "#A000A0",  # magenta chart ink (cables, pipelines, routes)
-    "CHWHT": "#C0C0C0",  # white chart ink (white navaids)
-    "SNDG1": "#C0C0C0",  # soundings at or shallower than the safety depth
-    "SNDG2": "#98A4AE",  # soundings deeper than the safety depth
-    "LITRD": "#B01C14",  # red lights and navaids
-    "LITGN": "#157F32",  # green lights and navaids
-    "LITYW": "#B89A00",  # yellow lights and navaids
-    "NINFO": "#B05500",  # orange information text
-    "OUTLW": "#C0C0C0",  # outlines
-    "DNGHL": "#B01C14",  # danger highlight
-    "ADINF": "#705400",  # anchorage area fill
-    "RESBL": "#24488A",  # restricted area fill
-    "TRFCD": "#A000A0",  # traffic separation scheme fill
-    "NODTA": "#404040",  # no data
+    "DEPDW": "#000000",  # deep water fill (dark blue-grey)
+    "DEPMD": "#140000",  # medium depth water fill (lighter than DEPDW, R29)
+    "DEPMS": "#260000",  # medium-shallow water fill
+    "DEPVS": "#3A0000",  # very shallow water fill
+    "DEPIT": "#301010",  # intertidal area fill
+    "LANDA": "#180404",  # land area fill
+    "LANDF": "#200808",  # land features
+    "CSTLN": "#700000",  # coastline
+    "CHBLK": "#C00000",  # chart ink in place of black
+    "CHGRD": "#700000",  # grey chart ink (depth contours, default navaid)
+    "CHMGD": "#900000",  # magenta chart ink (cables, pipelines, routes)
+    "CHWHT": "#E00000",  # white chart ink (white navaids)
+    "SNDG1": "#E00000",  # soundings at or shallower than the safety depth
+    "SNDG2": "#900000",  # soundings deeper than the safety depth
+    "LITRD": "#FF0000",  # red lights and navaids
+    "LITGN": "#A00000",  # green lights and navaids
+    "LITYW": "#C00000",  # yellow lights and navaids
+    "NINFO": "#B00000",  # orange information text
+    "OUTLW": "#C00000",  # outlines
+    "DNGHL": "#FF0000",  # danger highlight
+    "ADINF": "#400000",  # anchorage area fill
+    "RESBL": "#500000",  # restricted area fill
+    "TRFCD": "#600000",  # traffic separation scheme fill
+    "NODTA": "#080000",  # no data
 }
 
 

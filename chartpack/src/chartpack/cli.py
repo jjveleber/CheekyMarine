@@ -32,6 +32,7 @@ from chartpack.pack.archive import archive_pack
 from chartpack.pack.assemble import assemble_bathy_pack, assemble_charts_pack
 from chartpack.pack.check import check_pack
 from chartpack.pack.manifest import describe_pack, write_manifest
+from chartpack.pack.restyle import restyle_pack
 from chartpack.region import load_region
 from chartpack.seabed.cmecs import BLOCKS, fetch_cmecs, read_cmecs
 from chartpack.seabed.usseabed import FILES, fetch_usseabed, read_usseabed
@@ -111,6 +112,11 @@ def _finish(root: Path, region) -> Path:
 
 def _manifest(args: argparse.Namespace) -> int:
     _finish(args.packdir, load_region(args.region))
+    return 0
+
+
+def _restyle(args: argparse.Namespace) -> int:
+    restyle_pack(args.packdir)
     return 0
 
 
@@ -243,6 +249,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("packdir", type=Path, metavar="PACKDIR")
     p.add_argument("--region", type=Path, required=True, help="region file the pack was built from")
     p.set_defaults(func=_manifest)
+    p = sub.add_parser("restyle")
+    p.add_argument("packdir", type=Path, metavar="PACKDIR")
+    p.set_defaults(func=_restyle)
     p = sub.add_parser("check")
     p.add_argument("packdir", type=Path, metavar="PACKDIR")
     p.add_argument("--enc-cache", type=Path, help="download cache holding the ENC zips, for the hazard and coverage checks")

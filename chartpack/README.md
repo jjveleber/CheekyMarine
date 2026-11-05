@@ -51,6 +51,7 @@ chartpack build-bathy $R work/bathy --cache cache --work work/tmp
 chartpack check work/charts/charts-puget-north-1.0.0 --enc-cache cache
 chartpack check work/bathy/bathy-puget-north-1.0.0
 chartpack manifest work/charts/charts-puget-north-1.0.0 --region $R   # rewrite manifest.json (builds already do this)
+chartpack restyle work/charts/charts-puget-north-1.0.0         # rewrite styles/ and sprites/ from the current palette, then manifest.json
 chartpack archive work/charts/charts-puget-north-1.0.0 dist           # dist/charts-puget-north-1.0.0.tar and SHA256SUMS
 chartpack archive work/bathy/bathy-puget-north-1.0.0 dist
 chartpack render work/charts/charts-puget-north-1.0.0 work/bathy/bathy-puget-north-1.0.0 --views $R --out renders
@@ -58,6 +59,15 @@ chartpack render work/charts/charts-puget-north-1.0.0 work/bathy/bathy-puget-nor
 
 `render` takes one or more pack directories and draws the region's `[[render.views]]` with MapLibre in
 headless Chromium (`--styles nav-day,fish-day` limits the styles).
+
+`restyle PACKDIR` rebuilds a built pack's `styles/*.json` and `sprites/` from the current code (the nav styles keep the
+pack's safety contour) and rewrites the `manifest.json` hashes. The version and the data stay, so a palette change
+reaches an existing pack without a rebuild; `chartpack check` passes afterwards.
+
+### Night
+
+The night palette is red only: every channel but red is at most `0x20`, water is black to dark red and the chart ink,
+lights and hazards are red, so the eyes stay dark-adapted. It is judged on a laptop in a dark room.
 
 ## Region files
 
