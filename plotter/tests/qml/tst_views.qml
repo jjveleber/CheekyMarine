@@ -140,6 +140,7 @@ TestCase {
 
     function test_mainConstructs_data() { return H.sizes() }
     function test_mainConstructs(data) {
+        fixture.settings.panelDiagonalIn = data.diagIn
         const main = makeMain(data.w, data.h)
         compare(Units.windowWidth, data.w)
         compare(Units.windowHeight, data.h)
@@ -159,17 +160,19 @@ TestCase {
         verify(item(main, "tab-home").isBigButton)
     }
 
-    // Five favorites fit at both sizes on the 10.1 in panel; a sixth is a plain view whose tile
-    // says so.
+    // Five favorites fit at both sizes on the 10.1 in panel (eight on the 13 in one: more mm of
+    // height); one more is a plain view whose tile says so.
     function test_favoriteTabsFollowCapacity_data() { return H.sizes() }
     function test_favoriteTabsFollowCapacity(data) {
+        fixture.settings.panelDiagonalIn = data.diagIn
         const main = makeMain(data.w, data.h)
-        compare(fixture.views.favoriteCapacity, 5)
-        for (let i = 0; i < 2; ++i) fixture.views.setFavorite(fixture.views.add(), true)
-        compare(viewTabs(main).length, 5)
+        const cap = data.diagIn > 10.1 ? 8 : 5
+        compare(fixture.views.favoriteCapacity, cap)
+        for (let i = 0; i < cap - 3; ++i) fixture.views.setFavorite(fixture.views.add(), true)
+        compare(viewTabs(main).length, cap)
         const sixth = fixture.views.add()
         fixture.views.setFavorite(sixth, true)
-        compare(viewTabs(main).length, 5)
+        compare(viewTabs(main).length, cap)
         compare(H.byName(main.contentItem, "tab-view-" + sixth), null)
         verify(!fixture.views.onTabBar(sixth))
         const bar = item(main, "tabBar")
@@ -344,6 +347,7 @@ TestCase {
 
     function test_homeTilesInOrder_data() { return H.sizes() }
     function test_homeTilesInOrder(data) {
+        fixture.settings.panelDiagonalIn = data.diagIn
         const main = makeMain(data.w, data.h)
         const home = goHome(main)
         const order = ["tile-shipped-nav", "tile-shipped-fish", "tile-shipped-big", "tile-new", "tile-tracks", "tile-settings", "tile-about"]
@@ -381,6 +385,7 @@ TestCase {
     function test_homeTwoColumnsWhenNarrow(data) {
         Units.windowWidth = data.w
         Units.windowHeight = data.h
+        Units.diagonalIn = data.diagIn
         const home = createTemporaryObject(homeComp, testCase, {
             width: Units.mm(17 + 6 + 110), height: data.h, rightInset: Units.mm(17), views: fixture.views })
         verify(home, "HomePage")
@@ -561,11 +566,12 @@ TestCase {
         let out = []
         for (const s of H.sizes())
             for (const p of [["tracks", "tracksPage"], ["settings", "settingsPage"], ["about", "aboutPage"], ["home", "homePage"]])
-                out.push({ tag: s.tag + " " + p[0], w: s.w, h: s.h, page: p[0], item: p[1] })
+                out.push({ tag: s.tag + " " + p[0], w: s.w, h: s.h, diagIn: s.diagIn, page: p[0], item: p[1] })
         return out
     }
     function test_pagesHonourRightInset(data) {
         fixture.addTrack(1.7e9)
+        fixture.settings.panelDiagonalIn = data.diagIn
         const main = makeMain(data.w, data.h)
         main.page = data.page
         const page = item(main, data.item)
@@ -954,6 +960,7 @@ TestCase {
     // shows; heights never change, digits never get smaller (they may refit larger, issue #35).
     function test_cellsFollowTheBar_data() { return H.sizes() }
     function test_cellsFollowTheBar(data) {
+        fixture.settings.panelDiagonalIn = data.diagIn
         const main = makeMain(data.w, data.h)
         main.hideDelayMs = 0
         mouseClick(item(main, "tab-view-shipped-big"))

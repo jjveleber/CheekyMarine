@@ -117,6 +117,7 @@ TestCase {
 
     function test_editorButtonsAndInertBar_data() { return H.sizes() }
     function test_editorButtonsAndInertBar(data) {
+        fixture.settings.panelDiagonalIn = data.diagIn
         const main = makeMain(data.w, data.h)
         main.hideDelayMs = 100
         main.editView("shipped-nav")
@@ -157,6 +158,7 @@ TestCase {
     // lie over, under it.
     function test_offSlotsTakeNoRoomInTheEditor_data() { return H.sizes() }
     function test_offSlotsTakeNoRoomInTheEditor(data) {
+        fixture.settings.panelDiagonalIn = data.diagIn
         const main = makeMain(data.w, data.h)
         const page = m(main, "chartPage")
         waitForRendering(page)
@@ -668,6 +670,7 @@ TestCase {
     function test_keyboardTypesShiftsAndCaps(data) {
         Units.windowWidth = data.w
         Units.windowHeight = data.h
+        Units.diagonalIn = data.diagIn
         const kb = makeKeyboard(data.w, data.h)
         verify(!kb.visible)
         kb.open("Name", "", 6)
@@ -749,6 +752,7 @@ TestCase {
 
     function test_setupSheetRowsAndScroll_data() { return H.sizes() }
     function test_setupSheetRowsAndScroll(data) {
+        fixture.settings.panelDiagonalIn = data.diagIn
         const main = makeMain(data.w, data.h)
         const sheet = openSetup(main, "shipped-big")
         const panel = find(sheet, "setupPanel")
@@ -1042,6 +1046,7 @@ TestCase {
     // A slot or cell sheet open: the floating buttons hide, and the sheet's Done is clear of them.
     function test_sheetsHideTheFloatingButtons_data() { return H.sizes() }
     function test_sheetsHideTheFloatingButtons(data) {
+        fixture.settings.panelDiagonalIn = data.diagIn
         const main = makeMain(data.w, data.h)
         const editor = m(main, "viewEditor")
         const floating = ["editorSetup", "editorDone", "editorCancel"].map(n => m(main, n))

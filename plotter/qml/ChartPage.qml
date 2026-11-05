@@ -43,8 +43,18 @@ Item {
     // column sits centred between them, or left of them when the gap is too small.
     property real trBottom: cornerArea.y
     property real brTop: cornerArea.y + cornerArea.height
+    property real tlBottom: cornerArea.y
+    property real blTop: cornerArea.y + cornerArea.height
     property real trLeft: cornerArea.x + cornerArea.width
     property real brLeft: cornerArea.x + cornerArea.width
+
+    // The rectangle between the on corner slots (the bars, notice and strip are already outside
+    // the corner area): where the AIS sheet lives, so it never covers a slot.
+    readonly property rect aisFreeRect: {
+        const top = Math.max(tlBottom, trBottom, cornerArea.y) + margin
+        const bottom = Math.min(blTop, brTop, cornerArea.y + cornerArea.height) - margin
+        return Qt.rect(cornerArea.x, top, cornerArea.width, Math.max(0, bottom - top))
+    }
 
     // The drawn digit height of each slot by id, from one clamp over every slot's box. The boxes
     // depend on the slots' text metrics and stored sizes only, never on drawnMm, so this does not
@@ -270,6 +280,8 @@ Item {
             Binding { when: slotView.slotId === "Bottom"; target: page; property: "bottomInset"; value: slotView.takesRoom ? slotView.height : 0 }
             Binding { when: slotView.slotId === "Left"; target: page; property: "leftInset"; value: slotView.takesRoom ? slotView.width : 0 }
             Binding { when: slotView.slotId === "Right"; target: page; property: "rightBarInset"; value: slotView.takesRoom ? slotView.width : 0 }
+            Binding { when: slotView.slotId === "TL"; target: page; property: "tlBottom"; value: slotView.on ? slotView.y + slotView.height : cornerArea.y }
+            Binding { when: slotView.slotId === "BL"; target: page; property: "blTop"; value: slotView.on ? slotView.y : cornerArea.y + cornerArea.height }
             Binding { when: slotView.slotId === "TR"; target: page; property: "trBottom"; value: slotView.on ? slotView.y + slotView.height : cornerArea.y }
             Binding { when: slotView.slotId === "BR"; target: page; property: "brTop"; value: slotView.on ? slotView.y : cornerArea.y + cornerArea.height }
             Binding { when: slotView.slotId === "TR"; target: page; property: "trLeft"; value: slotView.on ? slotView.x : cornerArea.x + cornerArea.width }
@@ -371,7 +383,11 @@ Item {
 
     AisSheet {
         id: aisSheet
-        anchors { horizontalCenter: shownCornerArea.horizontalCenter; top: cornerArea.top; topMargin: Units.mm(14) }
+        // Centred on the shown corner area like the other floating items, kept inside the free rectangle.
+        freeRect: page.aisFreeRect
+        x: Math.max(page.aisFreeRect.x, Math.min(page.aisFreeRect.x + page.aisFreeRect.width - width,
+                                                 shownCornerArea.x + (shownCornerArea.width - width) / 2))
+        y: page.aisFreeRect.y
         info: page.chart.aisSelection
         onClosed: page.chart.clearTarget()
     }
