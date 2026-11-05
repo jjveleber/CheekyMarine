@@ -1,11 +1,13 @@
 #include "core/AisModel.h"
 #include "core/ChartController.h"
+#include "core/Geo.h"
 #include "core/Overlays.h"
 #include "core/Settings.h"
 #include "core/Store.h"
 #include "core/Tracks.h"
 #include "core/VesselModel.h"
 #include <QDir>
+#include <QElapsedTimer>
 #include <QFile>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -725,6 +727,41 @@ private slots:
 
     // A kept point re-sends only the active track; the finished tracks go to the map when the set
     // or a visibility changes, and both survive a style reload.
+    void activeTrackWriteCostAt7200Points() {
+        Rig r;
+        QVERIFY(r.settings);
+        r.make();
+        r.map.loaded();
+        // 2 h at 1 Hz and 26 kn: 7200 points 13.4 m apart along the navigating route of synth_n2k.py.
+        const QList<LatLon> way{{47.9482896, -122.3136073}, {47.9021326, -122.3743223}, {47.9080896, -122.4492273}};
+        QList<LatLon> pts;
+        LatLon cur = way[0];
+        for (int leg = 1; leg < way.size() && pts.size() < 7200; ++leg) {
+            while (pts.size() < 7200 && distanceM(cur, way[leg]) > 13.4) {
+                pts << cur;
+                cur = destination(cur, bearingDeg(cur, way[leg]), 13.4);
+            }
+        }
+        while (pts.size() < 7200) pts << cur;
+        QCOMPARE(pts.size(), 7200);
+        r.map.calls.clear();
+        QElapsedTimer timer;
+        timer.start();
+        r.ctrl->setActiveTrack(pts);
+        const double ms = timer.nsecsElapsed() / 1e6;
+        // Sized after the timer stops, so the serialization is not counted in the write.
+        const QJsonObject fc = r.map.sources.value(OverlayIds::kActiveTrackSource);
+        const qsizetype bytes = QJsonDocument(fc).toJson(QJsonDocument::Compact).size();
+        qInfo().noquote() << QStringLiteral("active-track write: %1 ms, %2 bytes").arg(ms, 0, 'f', 2).arg(bytes);
+        QCOMPARE(r.map.calls.count(QStringLiteral("geojson:") + OverlayIds::kActiveTrackSource), 1);
+        const QJsonArray feats = fc["features"].toArray();
+        QCOMPARE(feats.size(), 1);
+        const QJsonObject geom = feats.at(0).toObject()["geometry"].toObject();
+        QCOMPARE(geom["type"].toString(), QStringLiteral("LineString"));
+        QCOMPARE(geom["coordinates"].toArray().size(), 7200);
+        QVERIFY2(ms < 50, qPrintable(QStringLiteral("active track write took %1 ms").arg(ms)));
+    }
+
     void keptPointSendsOnlyTheActiveTrack() {
         Rig r;
         QVERIFY(r.settings);

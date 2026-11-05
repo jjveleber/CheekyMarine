@@ -108,11 +108,12 @@ int main(int argc, char* argv[]) {
     QCommandLineOption lockOpt("lock", "Start with the touch lock on.");
     QCommandLineOption recordOpt("record", "Turn track recording on at start (it persists).");
     QCommandLineOption exitAfterOpt("exit-after-ms", "Quit N ms after start.", "ms");
+    QCommandLineOption frameStatsOpt("frame-stats", "Print the frame interval summary at quit.");
     for (QCommandLineOption* o : {&shotOpt, &shotAfterOpt, &paletteOpt, &viewOpt, &pageOpt, &editorOpt, &sheetOpt,
-                                  &lockOpt, &recordOpt, &exitAfterOpt})
+                                  &lockOpt, &recordOpt, &exitAfterOpt, &frameStatsOpt})
         o->setFlags(QCommandLineOption::HiddenFromHelp);
     cli.addOptions({socketOpt, packsOpt, dataOpt, windowOpt, fullscreenOpt, shotOpt, shotAfterOpt, paletteOpt, viewOpt, pageOpt,
-                    editorOpt, sheetOpt, lockOpt, recordOpt, exitAfterOpt});
+                    editorOpt, sheetOpt, lockOpt, recordOpt, exitAfterOpt, frameStatsOpt});
     cli.process(app);
 
     QSize windowSize;
@@ -310,6 +311,17 @@ int main(int argc, char* argv[]) {
         if (std::exchange(*readyLogged, true)) return;
         qInfo().noquote() << QStringLiteral("ready in %1 ms").arg(startTimer.elapsed());
     });
+    if (cli.isSet(frameStatsOpt)) {
+        // Intervals between consecutive frames (the first frame has no predecessor), printed at quit.
+        auto intervals = std::make_shared<QList<qint64>>();
+        auto frameTimer = std::make_shared<QElapsedTimer>();
+        QObject::connect(window, &QQuickWindow::frameSwapped, window, [intervals, frameTimer] {
+            if (frameTimer->isValid()) intervals->append(frameTimer->restart());
+            else frameTimer->start();
+        });
+        QObject::connect(&app, &QCoreApplication::aboutToQuit, &app,
+                         [intervals] { qInfo().noquote() << frameStatsLine(*intervals); });
+    }
     const auto resizeIcons = [&] { chart.setImages(chartIcons(iconPxPerMm(), palette.palette())); };
     resizeIcons();
     QObject::connect(window, &QWindow::widthChanged, &chart, resizeIcons);

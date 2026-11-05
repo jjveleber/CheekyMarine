@@ -168,6 +168,11 @@ private slots:
         QVERIFY(!i.schemaMismatch());
     }
 
+    void frameStatsSummary() {
+        QCOMPARE(frameStatsLine({16, 17, 16, 120, 16}), QStringLiteral("frame-stats: frames 5 max 120 ms p99 120 ms over50 1"));
+        QCOMPARE(frameStatsLine({}), QStringLiteral("frame-stats: frames 0 max 0 ms p99 0 ms over50 0"));
+    }
+
     void reasons() {
         QVERIFY(storeErrorReason(StoreError::NewerMajor).contains("newer version"));
         QVERIFY(storeErrorReason(StoreError::Corrupt).contains("damaged"));

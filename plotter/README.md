@@ -214,6 +214,8 @@ options of `cheekyplotter` (not in `--help`):
 - `--screenshot PATH --screenshot-after-ms N`: saves a grab of the window N ms after start;
   repeatable, paired in order.
 - `--exit-after-ms N`: quits N ms after start (for scripted renders).
+- `--frame-stats`: at quit prints `frame-stats: frames N max M ms p99 P ms over50 K` (the intervals
+  between frames, in ms; K counts those over 50 ms).
 
 For example `plotter/tools/run-dev.sh "" --palette dusk --view Fish` (an empty first argument
 means the default fixture).
