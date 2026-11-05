@@ -795,6 +795,29 @@ TestCase {
         verify(main.editing, "the editor stays open")
     }
 
+    function test_setupKeyboardAndGalleryWorkOnFirstOpen() {
+        const main = makeMain(1024, 600, { editorOpen: true, sheet: "setup" })
+        const editor = m(main, "viewEditor")
+        tryVerify(() => main.editing, 3000, "the editor opens")
+        const sheet = find(editor, "setupSheet")
+        tryVerify(() => sheet.visible, 3000, "the Setup sheet")
+        waitForRendering(sheet)
+        editor.setupSheet.editText("name")
+        const kb = find(sheet, "keyboard")
+        tryVerify(() => kb.visible, 3000, "the keyboard")
+        waitForRendering(kb)
+        const before = kb.text.length
+        tap(kb, "key-A")
+        compare(kb.text.length, before + 1)
+        tap(kb, "key-cancel")
+        verify(!kb.visible)
+        editor.setupSheet.openGallery()
+        const gallery = find(sheet, "layoutGallery")
+        tryVerify(() => gallery.visible, 3000, "the gallery")
+        waitForRendering(gallery)
+        compare(H.findAll(gallery, it => it.isBigButton === true && it.objectName.startsWith("layout-")).length, 72)
+    }
+
     function test_setupRenamesThroughKeyboard() {
         const main = makeMain(1024, 600)
         const sheet = openSetup(main, "shipped-nav")

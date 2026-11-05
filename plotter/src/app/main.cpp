@@ -22,6 +22,7 @@
 #include <QCommandLineParser>
 #include <QDateTime>
 #include <QDebug>
+#include <QElapsedTimer>
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
 #include <QtQml/qqmlextensionplugin.h>
@@ -34,6 +35,7 @@
 #include <QTimer>
 #include <csignal>
 #include <memory>
+#include <utility>
 
 Q_IMPORT_QML_PLUGIN(CheekyMarinePlugin)
 
@@ -78,6 +80,8 @@ std::unique_ptr<Store> recover(QGuiApplication& app, const QString& dir, StoreEr
 } // namespace
 
 int main(int argc, char* argv[]) {
+    QElapsedTimer startTimer;
+    startTimer.start();
     // The MapLibre library is built with the OpenGL renderer only.
     QQuickWindow::setGraphicsApi(QSGRendererInterface::OpenGL);
     QGuiApplication app(argc, argv);
@@ -297,6 +301,15 @@ int main(int argc, char* argv[]) {
         return 1;
     }
     applyWindowOptions(*window, cli.isSet(fullscreenOpt), windowSize);
+    // The start time, logged once at the first frame. Frames can queue up before the disconnect
+    // lands, so a flag keeps it to one line.
+    auto readyConn = std::make_shared<QMetaObject::Connection>();
+    auto readyLogged = std::make_shared<bool>(false);
+    *readyConn = QObject::connect(window, &QQuickWindow::frameSwapped, window, [&startTimer, readyConn, readyLogged] {
+        QObject::disconnect(*readyConn);
+        if (std::exchange(*readyLogged, true)) return;
+        qInfo().noquote() << QStringLiteral("ready in %1 ms").arg(startTimer.elapsed());
+    });
     const auto resizeIcons = [&] { chart.setImages(chartIcons(iconPxPerMm(), palette.palette())); };
     resizeIcons();
     QObject::connect(window, &QWindow::widthChanged, &chart, resizeIcons);
