@@ -38,6 +38,11 @@ public:
     bool syncStyleLoaded = false; // emit styleLoaded inside setStyleJson, like the real adapter
     double zoomValue = 13;
     double height = 600;
+    // When set, setGeoJson serializes the collection to compact text as MapLibreChartPort does, and
+    // records the time it took and the size.
+    bool serialize = false;
+    qint64 serializeNs = 0;
+    qsizetype serializedBytes = 0;
 
     QList<QJsonObject> styles;        // every style loaded
     QStringList calls;                // "style", "filter:<layer>", "geojson:<source>", "image:<id>", "layer:<id>"
@@ -70,6 +75,12 @@ public:
     void setGeoJson(const QString& source, const QJsonObject& fc) override {
         calls << "geojson:" + source;
         sources[source] = fc;
+        if (serialize) {
+            QElapsedTimer t;
+            t.start();
+            serializedBytes = QJsonDocument(fc).toJson(QJsonDocument::Compact).size();
+            serializeNs = t.nsecsElapsed();
+        }
     }
     void addImage(const QString& id, const QImage& image) override {
         calls << "image:" + id;
@@ -741,8 +752,27 @@ private slots:
         QCOMPARE(r.map.sources.value(OverlayIds::kTracksSource)["features"].toArray().size(), 1);
     }
 
-    // A kept point re-sends only the active track; the finished tracks go to the map when the set
-    // or a visibility changes, and both survive a style reload.
+    // The #46 write cost: one active-track write at 7200 points, the controller's build and the
+    // serialization the real port does on the main thread, under 50 ms together.
+    // --frame-stats turns on write timing: each active-track write records its main-thread time.
+    void writeTimingRecordsEachActiveTrackWrite() {
+        Rig r;
+        QVERIFY(r.settings);
+        r.make();
+        r.map.loaded();
+        QVERIFY(r.ctrl->writeTimesUs().isEmpty());
+        r.ctrl->setActiveTrack({{47.98, -122.23}}); // off: not recorded
+        QVERIFY(r.ctrl->writeTimesUs().isEmpty());
+        r.ctrl->setWriteTiming(true);
+        r.ctrl->setActiveTrack({{47.98, -122.23}});
+        r.ctrl->setActiveTrack({{47.98, -122.23}, {47.99, -122.24}});
+        r.ctrl->setActiveTrack({});
+        r.ctrl->setTracks({{{47.98, -122.23}, {47.99, -122.24}}}); // finished tracks are not counted
+        const QList<qint64> times = r.ctrl->writeTimesUs();
+        QCOMPARE(times.size(), 3);
+        for (qint64 us : times) QVERIFY(us >= 0);
+    }
+
     void activeTrackWriteCostAt7200Points() {
         Rig r;
         QVERIFY(r.settings);
@@ -761,14 +791,20 @@ private slots:
         while (pts.size() < 7200) pts << cur;
         QCOMPARE(pts.size(), 7200);
         r.map.calls.clear();
+        r.map.serialize = true;
         QElapsedTimer timer;
         timer.start();
-        r.ctrl->setActiveTrack(pts);
+        r.ctrl->setActiveTrack(pts); // the fake map serializes inside, as the real port does
         const double ms = timer.nsecsElapsed() / 1e6;
-        // Sized after the timer stops, so the serialization is not counted in the write.
+        const double serializeMs = r.map.serializeNs / 1e6;
         const QJsonObject fc = r.map.sources.value(OverlayIds::kActiveTrackSource);
-        const qsizetype bytes = QJsonDocument(fc).toJson(QJsonDocument::Compact).size();
-        qInfo().noquote() << QStringLiteral("active-track write: %1 ms, %2 bytes").arg(ms, 0, 'f', 2).arg(bytes);
+        qInfo().noquote() << QStringLiteral("active-track write: build %1 ms, serialize %2 ms, total %3 ms, %4 bytes")
+                                 .arg(ms - serializeMs, 0, 'f', 2)
+                                 .arg(serializeMs, 0, 'f', 2)
+                                 .arg(ms, 0, 'f', 2)
+                                 .arg(r.map.serializedBytes);
+        QVERIFY(r.map.serializeNs > 0);
+        QVERIFY(r.map.serializedBytes > 100000);
         QCOMPARE(r.map.calls.count(QStringLiteral("geojson:") + OverlayIds::kActiveTrackSource), 1);
         const QJsonArray feats = fc["features"].toArray();
         QCOMPARE(feats.size(), 1);
@@ -778,6 +814,8 @@ private slots:
         QVERIFY2(ms < 50, qPrintable(QStringLiteral("active track write took %1 ms").arg(ms)));
     }
 
+    // A kept point re-sends only the active track; the finished tracks go to the map when the set
+    // or a visibility changes, and both survive a style reload.
     void keptPointSendsOnlyTheActiveTrack() {
         Rig r;
         QVERIFY(r.settings);

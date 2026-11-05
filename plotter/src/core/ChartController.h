@@ -65,6 +65,9 @@ public:
     // kept point re-sends only the active one.
     void setTracks(const QList<QList<LatLon>>& tracks);
     void setActiveTrack(const QList<LatLon>& points);
+    // --frame-stats: when on, records the main-thread time (us) of each active-track map write.
+    void setWriteTiming(bool on) { m_writeTiming = on; }
+    QList<qint64> writeTimesUs() const { return m_writeTimesUs; }
 
     // Changes the zoom by `log2Delta` (clamped to minZoom..maxZoom) and, when following, re-applies
     // the camera so the boat keeps its place. Pinch and wheel use it while following.
@@ -125,6 +128,8 @@ private:
     QHash<QString, QImage> m_images;
     QList<QList<LatLon>> m_tracks;
     QList<LatLon> m_activeTrack;
+    bool m_writeTiming = false;
+    QList<qint64> m_writeTimesUs;
     quint32 m_selectedMmsi = 0;
     QVariantMap m_aisSelection;
 };

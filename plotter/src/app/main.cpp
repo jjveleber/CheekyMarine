@@ -115,7 +115,7 @@ int main(int argc, char* argv[]) {
     QCommandLineOption lockOpt("lock", "Start with the touch lock on.");
     QCommandLineOption recordOpt("record", "Turn track recording on at start (it persists).");
     QCommandLineOption exitAfterOpt("exit-after-ms", "Quit N ms after start.", "ms");
-    QCommandLineOption frameStatsOpt("frame-stats", "Print the frame interval summary at quit.");
+    QCommandLineOption frameStatsOpt("frame-stats", "Print the frame interval and track write summaries at quit.");
     QCommandLineOption positionOpt("position", "Chart center while there is no vessel position.", "lat,lon");
     for (QCommandLineOption* o : {&positionOpt, &shotOpt, &shotAfterOpt, &paletteOpt, &viewOpt, &pageOpt, &editorOpt, &sheetOpt,
                                   &lockOpt, &recordOpt, &exitAfterOpt, &frameStatsOpt})
@@ -338,8 +338,12 @@ int main(int argc, char* argv[]) {
             if (frameTimer->isValid()) intervals->append(frameTimer->restart());
             else frameTimer->start();
         });
-        QObject::connect(&app, &QCoreApplication::aboutToQuit, &app,
-                         [intervals] { qInfo().noquote() << frameStatsLine(*intervals); });
+        // And the main-thread time inside each active-track write, to tell a write stall from an idle gap.
+        chart.setWriteTiming(true);
+        QObject::connect(&app, &QCoreApplication::aboutToQuit, &app, [intervals, &chart] {
+            qInfo().noquote() << frameStatsLine(*intervals);
+            qInfo().noquote() << writeStatsLine(chart.writeTimesUs());
+        });
     }
     const auto resizeIcons = [&] { chart.setImages(chartIcons(iconPxPerMm(), palette.palette())); };
     resizeIcons();

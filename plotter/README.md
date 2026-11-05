@@ -214,8 +214,10 @@ options of `cheekyplotter` (not in `--help`):
 - `--screenshot PATH --screenshot-after-ms N`: saves a grab of the window N ms after start;
   repeatable, paired in order.
 - `--exit-after-ms N`: quits N ms after start (for scripted renders).
-- `--frame-stats`: at quit prints `frame-stats: frames N max M ms p99 P ms over50 K` (the intervals
-  between frames, in ms; K counts those over 50 ms).
+- `--frame-stats`: at quit prints two lines. `frame-stats: frames N max M ms p99 P ms over50 K` is
+  the intervals between redraws, in ms (the scene redraws on demand, so an idle gap counts too).
+  `track-writes: writes N max M ms p99 P ms over50 K` is the main-thread time inside each
+  active-track write (build, serialize and hand to MapLibre), in ms. K counts those over 50 ms.
 - `--position LAT,LON`: centers the chart there while the vessel has no position (a fix wins); a
   malformed value exits 2. For renders on a run with no N2K data.
 

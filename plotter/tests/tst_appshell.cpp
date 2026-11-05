@@ -181,6 +181,13 @@ private slots:
         QCOMPARE(frameStatsLine({}), QStringLiteral("frame-stats: frames 0 max 0 ms p99 0 ms over50 0"));
     }
 
+    void writeStatsSummary() {
+        QCOMPARE(writeStatsLine({500, 1250, 51000, 800}),
+                 QStringLiteral("track-writes: writes 4 max 51.00 ms p99 51.00 ms over50 1"));
+        QCOMPARE(writeStatsLine({50000, 1000}), QStringLiteral("track-writes: writes 2 max 50.00 ms p99 50.00 ms over50 0"));
+        QCOMPARE(writeStatsLine({}), QStringLiteral("track-writes: writes 0 max 0.00 ms p99 0.00 ms over50 0"));
+    }
+
     void reasons() {
         QVERIFY(storeErrorReason(StoreError::NewerMajor).contains("newer version"));
         QVERIFY(storeErrorReason(StoreError::Corrupt).contains("damaged"));

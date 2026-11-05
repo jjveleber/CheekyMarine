@@ -8,6 +8,7 @@
 #include "core/Tracks.h"
 #include "core/VesselModel.h"
 #include <QDebug>
+#include <QElapsedTimer>
 #include <QFile>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -211,7 +212,11 @@ void ChartController::setTracks(const QList<QList<LatLon>>& tracks) {
 
 void ChartController::setActiveTrack(const QList<LatLon>& points) {
     m_activeTrack = points;
-    if (m_ready) m_map.setGeoJson(OverlayIds::kActiveTrackSource, tracksGeoJson({m_activeTrack}));
+    if (!m_ready) return;
+    QElapsedTimer timer;
+    if (m_writeTiming) timer.start();
+    m_map.setGeoJson(OverlayIds::kActiveTrackSource, tracksGeoJson({m_activeTrack}));
+    if (m_writeTiming) m_writeTimesUs.append(timer.nsecsElapsed() / 1000);
 }
 
 void bindTracks(ChartController& chart, TracksController& tracks) {
