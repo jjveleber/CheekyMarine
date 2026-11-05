@@ -39,7 +39,8 @@ add_library(plottercore STATIC
     src/core/AppInfo.cpp
     src/core/Recovery.cpp
     src/core/TouchLock.cpp
-    src/core/Tracks.cpp)
+    src/core/Tracks.cpp
+    src/core/SignalBridge.cpp)
 set_target_properties(plottercore PROPERTIES AUTOMOC ON)
 target_include_directories(plottercore PUBLIC
     ${CMAKE_CURRENT_BINARY_DIR}/generated
@@ -79,6 +80,7 @@ plotter_add_test(tst_slotclamp tests/tst_slotclamp.cpp)
 plotter_add_test(tst_appshell tests/tst_appshell.cpp)
 plotter_add_test(tst_touchlock tests/tst_touchlock.cpp)
 plotter_add_test(tst_tracks tests/tst_tracks.cpp)
+plotter_add_test(tst_signalbridge tests/tst_signalbridge.cpp)
 # Icons.cpp is app code with no MapLibre dependency; the night icon rule is checked on its pixels.
 plotter_add_test(tst_palette tests/tst_palette.cpp src/app/Icons.cpp)
 
