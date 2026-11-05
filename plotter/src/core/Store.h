@@ -17,8 +17,8 @@ public:
 
     static std::expected<std::unique_ptr<Store>, StoreError> open(QString dir);
     // Renames plotter.db (and -wal, -shm) to plotter.db.bad-YYYYMMDD-HHMMSS[-N][-wal|-shm], N from 2
-    // when a name is taken; returns the new main file path (empty if there was nothing to move), or
-    // the error when any of the three could not be moved (a partial move says where the rest went).
+    // when a name is taken; returns the new main file path whenever any of the three moved (empty if there was nothing to
+    // move), or the error when one could not be moved (a partial move names what moved and what did not).
     // Destroy any Store on dir first. `now` and `rename` (QFile::rename when empty) are test seams.
     static std::expected<QString, QString> moveAside(
         QString dir, const QDateTime& now = QDateTime::currentDateTime(),

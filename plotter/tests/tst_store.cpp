@@ -388,6 +388,37 @@ private slots:
         QVERIFY(!QFile::exists(t.filePath("plotter.db")));
         QVERIFY(QFile::exists(t.filePath("plotter.db-wal")));
     }
+    // Only the -wal exists (the main file is gone): that is still a move, reported as the stamp path.
+    void moveAsideOnlyWalSetsResult() {
+        QTemporaryDir t;
+        QFile wal(t.filePath("plotter.db-wal"));
+        QVERIFY(wal.open(QIODevice::WriteOnly));
+        wal.close();
+        const QDateTime now(QDate(2026, 10, 31), QTime(12, 0, 0));
+        const auto moved = Store::moveAside(t.path(), now);
+        QVERIFY(moved.has_value());
+        QCOMPARE(*moved, t.filePath("plotter.db.bad-20261031-120000"));
+        QVERIFY(!QFile::exists(t.filePath("plotter.db-wal")));
+        QVERIFY(QFile::exists(t.filePath("plotter.db.bad-20261031-120000-wal")));
+    }
+    // The error names what moved and what did not, and the main file is at the stamp.
+    void moveAsidePartialErrorNamesBoth() {
+        QTemporaryDir t;
+        { QVERIFY(Store::open(t.path()).has_value()); }
+        QFile wal(t.filePath("plotter.db-wal"));
+        QVERIFY(wal.open(QIODevice::WriteOnly));
+        wal.close();
+        const auto failWal = [](const QString& from, const QString& to) {
+            return !from.endsWith("-wal") && QFile::rename(from, to);
+        };
+        const QDateTime now(QDate(2026, 10, 31), QTime(12, 0, 0));
+        const auto moved = Store::moveAside(t.path(), now, failWal);
+        const QString stamp = t.filePath("plotter.db.bad-20261031-120000");
+        QVERIFY(!moved.has_value());
+        QVERIFY2(moved.error().contains("plotter.db was moved to " + stamp), qPrintable(moved.error()));
+        QVERIFY(moved.error().contains("plotter.db-wal could not be moved aside"));
+        QVERIFY(QFile::exists(stamp));
+    }
     // Review Focus 4: SIGKILL a child mid-write; the database must open and pass integrity_check.
     void powerCutKeepsDatabaseIntact() {
         QTemporaryDir t;
