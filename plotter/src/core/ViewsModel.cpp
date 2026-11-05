@@ -49,7 +49,7 @@ QVariant ViewsModel::data(const QModelIndex& index, int role) const {
     case ShortNameRole: return v.shortName;
     case IconRole: return v.icon;
     case ChartRole: return viewChartName(v.chart);
-    case FavouriteRole: return v.favourite;
+    case FavoriteRole: return v.favorite;
     case OnTabBarRole: return onTabBar(v.id);
     case SlotsRole: return slotRows(v);
     case LayoutRole: return v.cells.layout;
@@ -60,7 +60,7 @@ QVariant ViewsModel::data(const QModelIndex& index, int role) const {
 
 QHash<int, QByteArray> ViewsModel::roleNames() const {
     return {{IdRole, "id"},         {NameRole, "name"},           {ShortNameRole, "shortName"},
-            {IconRole, "icon"},     {ChartRole, "chart"},         {FavouriteRole, "favourite"},
+            {IconRole, "icon"},     {ChartRole, "chart"},         {FavoriteRole, "favorite"},
             {OnTabBarRole, "onTabBar"}, {SlotsRole, "slots"},     {LayoutRole, "layout"},
             {CellFieldsRole, "cellFields"}};
 }
@@ -82,10 +82,10 @@ void ViewsModel::currentFromSettings() {
     setCurrent(indexOf(last) >= 0 ? last : m_views.isEmpty() ? QString() : m_views.first().id, false);
 }
 
-void ViewsModel::setFavouriteCapacity(int capacity) {
+void ViewsModel::setFavoriteCapacity(int capacity) {
     if (capacity == m_capacity) return;
     m_capacity = capacity;
-    emit favouriteCapacityChanged();
+    emit favoriteCapacityChanged();
     tabsChanged();
 }
 
@@ -93,7 +93,7 @@ QVariantList ViewsModel::tabViews() const {
     QVariantList l;
     for (const View& v : m_views) {
         if (l.size() >= m_capacity) break;
-        if (v.favourite) l.append(QVariantMap{{"id", v.id}, {"shortName", v.shortName}, {"icon", v.icon}});
+        if (v.favorite) l.append(QVariantMap{{"id", v.id}, {"shortName", v.shortName}, {"icon", v.icon}});
     }
     return l;
 }
@@ -241,11 +241,11 @@ void ViewsModel::move(const QString& id, int delta) {
     tabsChanged();
 }
 
-void ViewsModel::setFavourite(const QString& id, bool on) {
+void ViewsModel::setFavorite(const QString& id, bool on) {
     const int i = indexOf(id);
-    if (i < 0 || m_views[i].favourite == on) return;
+    if (i < 0 || m_views[i].favorite == on) return;
     View v = m_views[i];
-    v.favourite = on;
+    v.favorite = on;
     if (!writeView(v)) return;
     m_views[i] = v;
     tabsChanged();
@@ -313,6 +313,6 @@ bool ViewsModel::writeView(const View& v) {
 }
 
 void ViewsModel::tabsChanged() {
-    if (count() > 0) emit dataChanged(index(0), index(count() - 1), {FavouriteRole, OnTabBarRole});
+    if (count() > 0) emit dataChanged(index(0), index(count() - 1), {FavoriteRole, OnTabBarRole});
     emit tabViewsChanged();
 }

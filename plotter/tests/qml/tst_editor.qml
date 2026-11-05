@@ -873,7 +873,7 @@ TestCase {
         verify(m(main, "chartPage").visible)
     }
 
-    // Cancel drops every Setup change: name, short name, icon, chart, layout and favourite.
+    // Cancel drops every Setup change: name, short name, icon, chart, layout and favorite.
     function test_setupCancelDiscardsEverything() {
         const main = makeMain(1024, 600)
         const before = fixture.views.viewJson("shipped-nav")
@@ -894,13 +894,13 @@ TestCase {
         tapShown(find(sheet, "layout-" + quad))
         tapShown(find(sheet, "row-favorite"))
         const changed = fixture.draft.toJson()
-        compare([changed.name, changed.short, changed.icon, changed.chart, changed.cells.layout, changed.favourite],
+        compare([changed.name, changed.short, changed.icon, changed.chart, changed.cells.layout, changed.favorite],
                 ["Trolling", "Troll", "fish", "none", quad, false], "every change made")
         mouseClick(find(sheet, "setupDone"))
         mouseClick(m(main, "editorCancel"))
         const stored = fixture.views.viewJson("shipped-nav")
         compare(stored, before, "nothing stored")
-        for (const k of ["name", "short", "icon", "chart", "favourite"]) {
+        for (const k of ["name", "short", "icon", "chart", "favorite"]) {
             compare(fixture.draft.toJson()[k], before[k], "draft " + k)
             compare(stored[k], before[k], "stored " + k)
         }
@@ -957,12 +957,12 @@ TestCase {
         compare(fixture.draft.layout, quad)
     }
 
-    function test_favouriteRowNotesFullBar() {
+    function test_favoriteRowNotesFullBar() {
         const main = makeMain(1024, 600)
-        compare(fixture.views.favouriteCapacity, 5)
-        for (let i = 0; i < 2; ++i) fixture.views.setFavourite(fixture.views.add(), true)
+        compare(fixture.views.favoriteCapacity, 5)
+        for (let i = 0; i < 2; ++i) fixture.views.setFavorite(fixture.views.add(), true)
         const sixth = fixture.views.add()
-        fixture.views.setFavourite(sixth, true)
+        fixture.views.setFavorite(sixth, true)
         verify(!fixture.views.onTabBar(sixth))
         let sheet = openSetup(main, sixth)
         const row = find(sheet, "row-favorite")
@@ -971,13 +971,13 @@ TestCase {
         verify(note.visible, "the note")
         compare(note.text, "Not on tab bar (full)")
         tapShown(row)
-        compare(fixture.draft.favourite, false)
+        compare(fixture.draft.favorite, false)
         compare(row.text, "Favorite: Off")
         verify(!note.visible, "no note when off")
         mouseClick(find(sheet, "setupDone"))
         mouseClick(m(main, "editorCancel"))
 
-        // A favourite on the bar has no note.
+        // A favorite on the bar has no note.
         sheet = openSetup(main, "shipped-fish")
         verify(!find(sheet, "favoriteNote").visible)
     }
@@ -1020,21 +1020,21 @@ TestCase {
         verify(!main.editingNew)
     }
 
-    // The note before Done: the draft is a favourite, the stored view not yet, and the bar is full.
-    function test_favouriteNoteEstimatedBeforeDone() {
+    // The note before Done: the draft is a favorite, the stored view not yet, and the bar is full.
+    function test_favoriteNoteEstimatedBeforeDone() {
         const main = makeMain(1024, 600)
-        compare(fixture.views.favouriteCapacity, 5)
-        for (let i = 0; i < 2; ++i) fixture.views.setFavourite(fixture.views.add(), true)
+        compare(fixture.views.favoriteCapacity, 5)
+        for (let i = 0; i < 2; ++i) fixture.views.setFavorite(fixture.views.add(), true)
         compare(fixture.views.tabViews.length, 5)
         const plain = fixture.views.add()
-        verify(!fixture.views.viewJson(plain).favourite)
+        verify(!fixture.views.viewJson(plain).favorite)
         const sheet = openSetup(main, plain)
         const note = find(sheet, "favoriteNote")
         compare(find(sheet, "row-favorite").text, "Favorite: Off")
         verify(!note.visible)
         tapShown(find(sheet, "row-favorite"))
-        compare(fixture.draft.favourite, true)
-        verify(!fixture.views.viewJson(plain).favourite, "not stored before Done")
+        compare(fixture.draft.favorite, true)
+        verify(!fixture.views.viewJson(plain).favorite, "not stored before Done")
         verify(note.visible, "the note before Done")
         compare(note.text, "Not on tab bar (full)")
     }

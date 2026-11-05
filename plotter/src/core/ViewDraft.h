@@ -62,7 +62,7 @@ class ViewDraft : public QObject {
     Q_PROPERTY(QString icon READ icon WRITE setIcon NOTIFY iconChanged)
     Q_PROPERTY(QString chart READ chart WRITE setChart NOTIFY chartChanged)
     Q_PROPERTY(QString layout READ layout WRITE setLayout NOTIFY layoutChanged)
-    Q_PROPERTY(bool favourite READ favourite WRITE setFavourite NOTIFY favouriteChanged)
+    Q_PROPERTY(bool favorite READ favorite WRITE setFavorite NOTIFY favoriteChanged)
     Q_PROPERTY(bool dirty READ dirty NOTIFY dirtyChanged)
     Q_PROPERTY(QObject* slots READ slotsModel CONSTANT)
     Q_PROPERTY(QObject* cells READ cellsModel CONSTANT)
@@ -85,8 +85,8 @@ public:
     // An invalid key is logged and ignored; a valid one is stored canonical. Fields are kept by order,
     // new cells take defaultCellField, extra fields are dropped.
     void setLayout(const QString& key);
-    bool favourite() const { return m_view.favourite; }
-    void setFavourite(bool on);
+    bool favorite() const { return m_view.favorite; }
+    void setFavorite(bool on);
     bool dirty() const { return m_dirty; }
     QObject* slotsModel() const { return m_slotsModel; }
     QObject* cellsModel() const { return m_cellsModel; }
@@ -108,7 +108,7 @@ signals:
     void iconChanged();
     void chartChanged();
     void layoutChanged();
-    void favouriteChanged();
+    void favoriteChanged();
     void dirtyChanged();
 
 private:

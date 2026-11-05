@@ -155,10 +155,10 @@ void ViewDraft::setLayout(const QString& key) {
     setDirty(true);
 }
 
-void ViewDraft::setFavourite(bool on) {
-    if (on == m_view.favourite) return;
-    m_view.favourite = on;
-    emit favouriteChanged();
+void ViewDraft::setFavorite(bool on) {
+    if (on == m_view.favorite) return;
+    m_view.favorite = on;
+    emit favoriteChanged();
     setDirty(true);
 }
 
@@ -182,7 +182,7 @@ void ViewDraft::load(const View& view) {
     m_slotsModel->setSlotList(m_view.slotList);
     m_cellsModel->setFields(m_view.cells.fields);
     for (auto sig : {&ViewDraft::idChanged, &ViewDraft::nameChanged, &ViewDraft::shortNameChanged, &ViewDraft::iconChanged,
-                     &ViewDraft::chartChanged, &ViewDraft::layoutChanged, &ViewDraft::favouriteChanged})
+                     &ViewDraft::chartChanged, &ViewDraft::layoutChanged, &ViewDraft::favoriteChanged})
         emit(this->*sig)();
     setDirty(false);
 }

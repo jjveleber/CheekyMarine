@@ -27,7 +27,7 @@ private slots:
         QCOMPARE(v[1].id, QStringLiteral("shipped-fish"));
         QCOMPARE(v[2].id, QStringLiteral("shipped-big"));
         for (const View& x : v) {
-            QVERIFY(x.favourite);
+            QVERIFY(x.favorite);
             QCOMPARE(x.created, qint64(1000));
             QCOMPARE(x.modified, qint64(1000));
             QCOMPARE(x.slotList, defaultViewSlots());
@@ -140,13 +140,22 @@ private slots:
         for (const View& x : v) QCOMPARE(viewFromJson(viewToJson(x)), x);
     }
 
-    void favouriteCapacityValues() {
-        QCOMPARE(favouriteCapacity(129.7), 5);
-        QCOMPARE(favouriteCapacity(136), 5);
-        QCOMPARE(favouriteCapacity(100), 3);
-        QCOMPARE(favouriteCapacity(62), 1);
-        QCOMPARE(favouriteCapacity(61), 0);
-        QCOMPARE(favouriteCapacity(10), 0);
+    void favoriteKeyRoundTrip() {
+        View v;
+        v.favorite = true;
+        const QJsonObject o = viewToJson(v);
+        QVERIFY(o.contains("favorite"));
+        QVERIFY(!o.contains("favourite"));
+        QVERIFY(viewFromJson(QJsonObject{{"favourite", true}}).favorite);
+        QVERIFY(viewFromJson(o).favorite);
+    }
+    void favoriteCapacityValues() {
+        QCOMPARE(favoriteCapacity(129.7), 5);
+        QCOMPARE(favoriteCapacity(136), 5);
+        QCOMPARE(favoriteCapacity(100), 3);
+        QCOMPARE(favoriteCapacity(62), 1);
+        QCOMPARE(favoriteCapacity(61), 0);
+        QCOMPARE(favoriteCapacity(10), 0);
     }
 
     void iconNamesSixteenAnchorFirst() {

@@ -33,7 +33,7 @@ struct ViewCells {
 struct View {
     QString id, name, shortName, icon;
     ViewChart chart = ViewChart::Nav;
-    bool favourite = false;
+    bool favorite = false;
     QList<ViewSlot> slotList; // JSON key "slots" (a member named slots is a Qt keyword macro)
     ViewCells cells;
     qint64 created = 0, modified = 0;
@@ -78,5 +78,5 @@ QSqlError insertViewRow(QSqlDatabase& db, const View& view, qint64 ord);
 // with ord 0 to 2, then deletes the settings rows slots, bigNumbers, chartMode and touchLockTimeoutS.
 QSqlError seedViews(QSqlDatabase& db, qint64 now);
 
-// How many favourites fit a bar of this height.
-int favouriteCapacity(double barHeightMm);
+// How many favorites fit a bar of this height.
+int favoriteCapacity(double barHeightMm);
