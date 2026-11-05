@@ -320,5 +320,29 @@ class StoppedTest(ScenarioTestBase):
         self.assertTrue(all(x == 0 for x in sog))
 
 
+class AisDensityTest(ScenarioTestBase):
+    SCENARIO = "ais-density"
+
+    def test_real_traffic_plays(self):
+        mmsis, classes = set(), set()
+        for a in self.ais:
+            for t in a["targets"]:
+                mmsis.add(t["mmsi"])
+                classes.add(t["class"])
+        self.assertGreaterEqual(len(mmsis), 20)
+        self.assertIn("B", classes)
+        sog = [v["sog"] for v in self.vessel if v["sog"] is not None]
+        self.assertTrue(sog)
+        self.assertTrue(all(abs(x - 1.34112) < 0.05 for x in sog))
+
+    def test_density_deterministic(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            a, b = os.path.join(tmp, "a.log"), os.path.join(tmp, "b.log")
+            generate(a, "ais-density")
+            generate(b, "ais-density")
+            with open(a, "rb") as fa, open(b, "rb") as fb:
+                self.assertEqual(fa.read(), fb.read())
+
+
 if __name__ == "__main__":
     unittest.main()

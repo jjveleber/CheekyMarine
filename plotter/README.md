@@ -181,7 +181,12 @@ Home order; favorite tabs follow it) and `json`, one JSON object per view:
 and starts the app on it (see the script header for `CM_PACKS_DIR`). The fixtures in
 `plotter/tests/fixtures/n2k/` are `everett-pt-townsend.log` (default), `navigating.log` (26 kn),
 `fishing.log` (trolling at 3 mph) and `fishing-stopped.log` (holding position). For example:
-`plotter/tools/run-dev.sh plotter/tests/fixtures/n2k/navigating.log`. Hidden dev and checkpoint
+`plotter/tools/run-dev.sh plotter/tests/fixtures/n2k/navigating.log`. The `ais-density` scenario (the fishing own ship among 76 real Puget Sound vessels from a
+MarineCadastre extract, `plotter/tests/fixtures/ais/`) is generated on demand, not committed as a log:
+`python3 -I plotter/tools/synth_n2k.py --canboat third_party/canboat/canboat.json --scenario ais-density --out /tmp/ais.log`
+then `plotter/tools/run-dev.sh /tmp/ais.log` (`--ais-csv PATH` swaps the traffic file).
+
+Hidden dev and checkpoint
 options of `cheekyplotter` (not in `--help`):
 
 - `--palette auto|day|dusk|night`: writes the palette mode setting at start (it persists in the

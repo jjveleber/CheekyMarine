@@ -5,13 +5,16 @@ Resolution, Signed) of the PGN in canboat.json, so the log exercises n2kd's real
 Unset fields, including reserved ones, are all ones (not available); unset signed fields are the
 largest positive value instead, which is how a signed field reads not available.
 
-Usage: synth_n2k.py --canboat PATH --out FILE [--scenario NAME] [--duration-s N]
-Scenarios: everett-pt-townsend, navigating, fishing, fishing-stopped.
+Usage: synth_n2k.py --canboat PATH --out FILE [--scenario NAME] [--duration-s N] [--ais-csv PATH]
+Scenarios: everett-pt-townsend, navigating, fishing, fishing-stopped, ais-density (real Puget Sound
+traffic from tests/fixtures/ais/; --ais-csv overrides the file).
 Python stdlib only; deterministic (same bytes every run).
 """
 import argparse
+import csv
 import json
 import math
+import os
 import sys
 
 T0 = 1798000000.0  # 2026-12-23 UTC, fixed so tests are deterministic
@@ -245,12 +248,16 @@ def navigating(enc, duration=960):
     return ev
 
 
-def fishing(enc, duration=1860):
+def fishing_own(enc, duration):
     own = Track(FISH_WAYPOINTS, FISH_SPEED, bounce=True)
-    ev, emit = own_ship(
+    return own_ship(
         enc, duration, own.at, lambda s, cog: cog - VARIATION, lambda s: FISH_SPEED,
         lambda s: 27.5 + 12.5 * math.cos(2 * math.pi * own.fraction(s)) + 0.2 * math.sin(2 * math.pi * s / 8),
         284.15)
+
+
+def fishing(enc, duration=1860):
+    ev, emit = fishing_own(enc, duration)
     # One class A ferry, 800 m east and 2 km north of the start, steaming 200 deg true at 12 kn.
     course = math.radians(200)
     for s in range(0, duration, 10):
@@ -262,6 +269,50 @@ def fishing(enc, duration=1860):
         if s % 60 == 0:
             emit(s * 1000, 129794, 2, 6, {"userId": 367000011, "name": "TEST FERRY",
                                           "aisTransceiverInformation": 0, "messageId": 5, "typeOfShip": 60})
+    ev.sort(key=lambda e: (e[0], e[1]))
+    return ev
+
+
+AIS_CSV = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                       "tests", "fixtures", "ais", "puget-2024-07-13.csv")
+
+
+def ais_density(enc, duration=1800, ais_csv=None):
+    """Own ship as in fishing, plus the real Puget Sound traffic of the MarineCadastre extract."""
+    ev, emit = fishing_own(enc, duration)
+    seen = set()
+    with open(ais_csv or AIS_CSV, encoding="ascii", newline="") as f:
+        for row in csv.DictReader(f):
+            ms = int(round(float(row["t"]) * 1000))
+            if ms >= duration * 1000:
+                continue
+            mmsi = int(row["mmsi"])
+            cls = "B" if row["cls"] == "B" else "A"
+            kin = {"userId": mmsi, "latitude": float(row["lat"]), "longitude": float(row["lon"]),
+                   "timeStamp": (ms // 1000) % 60, "aisTransceiverInformation": 0}
+            if row["sog_kn"]:
+                kin["sog"] = float(row["sog_kn"]) * KN
+            if row["cog"]:
+                kin["cog"] = math.radians(float(row["cog"]))
+            if row["heading"] and int(row["heading"]) != 511:
+                kin["heading"] = math.radians(int(row["heading"]))
+            if cls == "A":
+                kin.update({"messageId": 1, "navStatus": 0})
+                emit(ms, 129038, 2, 4, kin)
+            else:
+                kin["messageId"] = 18
+                emit(ms, 129039, 2, 4, kin)
+            if mmsi not in seen:
+                seen.add(mmsi)
+                st = {"userId": mmsi, "name": row["name"], "aisTransceiverInformation": 0}
+                if cls == "A":
+                    st["messageId"] = 5
+                    if row["type"]:
+                        st["typeOfShip"] = int(row["type"])
+                    emit(ms, 129794, 2, 6, st)
+                else:
+                    st["messageId"] = 24
+                    emit(ms, 129809, 2, 6, st)
     ev.sort(key=lambda e: (e[0], e[1]))
     return ev
 
@@ -284,6 +335,7 @@ SCENARIOS = {
     "navigating": (navigating, T0_DAY, 960),
     "fishing": (fishing, T0_DAY, 1860),
     "fishing-stopped": (fishing_stopped, T0_DAY, 600),
+    "ais-density": (ais_density, T0_DAY, 1800),
 }
 
 
@@ -293,9 +345,11 @@ def main(argv=None):
     ap.add_argument("--out", required=True, help="candump log file to write")
     ap.add_argument("--scenario", default="everett-pt-townsend", choices=sorted(SCENARIOS))
     ap.add_argument("--duration-s", type=int, help="scenario length in seconds (default per scenario)")
+    ap.add_argument("--ais-csv", help="ais-density: traffic CSV (default: the committed fixture)")
     args = ap.parse_args(argv)
     fn, t0, default_s = SCENARIOS[args.scenario]
-    events = fn(Encoder(args.canboat), args.duration_s or default_s)
+    kw = {"ais_csv": args.ais_csv} if args.scenario == "ais-density" else {}
+    events = fn(Encoder(args.canboat), args.duration_s or default_s, **kw)
     with open(args.out, "w", encoding="ascii", newline="\n") as f:
         for ms, _, can_id, data in events:
             f.write("(%.6f) can0 %08X#%s\n" % (t0 + ms / 1000.0, can_id, data.hex().upper()))
