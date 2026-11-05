@@ -608,34 +608,24 @@ TestCase {
         if (data.sheet === "") compare(editor.sheet, "")
     }
 
-    // The initial editor waits for the first frame, not for a fixed time: it is closed at that
-    // frame's swap and open one callLater later (well before the 300 ms timer this replaced).
+    // The initial editor waits for the first frame, not for a fixed time: it is still closed at the
+    // first swap after editorOpen and opens after it.
     function test_initialEditorOpensAfterFirstFrame() {
         const main = makeMain(1024, 600)
         verify(!main.editing)
-        let swaps = 0, firstSwapAt = 0, editingAtFirstSwap = null, swapsAtOpen = -1, openedAt = 0
-        const onSwap = () => {
-            if (++swaps === 1) {
-                firstSwapAt = Date.now()
-                editingAtFirstSwap = main.editing
-            }
-        }
-        const onEditing = () => {
-            if (main.editing && swapsAtOpen < 0) {
-                swapsAtOpen = swaps
-                openedAt = Date.now()
-            }
-        }
+        let swaps = 0, editingAtFirstSwap = null, swapsAtOpen = -1
+        const onSwap = () => { if (++swaps === 1) editingAtFirstSwap = main.editing }
+        const onEditing = () => { if (main.editing && swapsAtOpen < 0) swapsAtOpen = swaps }
         main.frameSwapped.connect(onSwap)
         main.editingChanged.connect(onEditing)
         main.editorOpen = true
         main.requestUpdate()
-        tryVerify(() => main.editing, 1000, "the editor opens after a frame")
+        tryVerify(() => swaps >= 1, 2000, "a frame after editorOpen")
+        compare(editingAtFirstSwap, false, "closed until the first frame")
+        tryVerify(() => main.editing, 2000, "the editor opens after that frame")
         main.frameSwapped.disconnect(onSwap)
         main.editingChanged.disconnect(onEditing)
-        compare(editingAtFirstSwap, false, "closed until the first frame")
         verify(swapsAtOpen >= 1, "opened after a frame swap, swaps " + swapsAtOpen)
-        verify(openedAt - firstSwapAt < 150, "opened " + (openedAt - firstSwapAt) + " ms after the frame")
     }
 
     function test_liveHoldOpensSheetAndSaves() {

@@ -63,6 +63,25 @@ private slots:
     }
     void sigintIsReported() { QCOMPARE(bridged(SIGINT), SIGINT); }
     void sighupIsReported() { QCOMPARE(bridged(SIGHUP), SIGHUP); }
+    // A signal the process was told to ignore (SIGHUP under nohup) stays ignored.
+    void ignoredSignalStaysIgnored() {
+        ::signal(SIGHUP, SIG_IGN);
+        int got = 0;
+        {
+            SignalBridge b{SIGHUP};
+            QObject::connect(&b, &SignalBridge::signaled, [&](int s) { got = s; });
+            raise(SIGHUP); // would end the process if the default action were back
+            QEventLoop loop;
+            QTimer::singleShot(200, &loop, &QEventLoop::quit);
+            loop.exec();
+        }
+        struct sigaction now {};
+        QVERIFY(::sigaction(SIGHUP, nullptr, &now) == 0);
+        const bool stillIgnored = now.sa_handler == SIG_IGN;
+        ::signal(SIGHUP, SIG_DFL);
+        QCOMPARE(got, 0);
+        QVERIFY(stillIgnored);
+    }
 };
 
 QTEST_MAIN(TstSignalBridge)

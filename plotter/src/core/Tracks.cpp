@@ -217,8 +217,9 @@ void TrackRecorder::startTrack(double t) {
 TrackRecorder::ActiveTotals TrackRecorder::activeTotals() const {
     if (m_active == 0 || !m_last)
         return {};
-    // The duration runs on the recorder clock, so a vessel clock step does not bend it.
-    return {int(m_activePoints.size()), m_nowS() - m_activeStartS, m_activeDistanceM};
+    // The span of the kept points on the recorder clock, so a vessel clock step does not bend it and
+    // it matches the finished track's (start to last point) when the track closes.
+    return {int(m_activePoints.size()), *m_lastKeptS - m_activeStartS, m_activeDistanceM};
 }
 
 void TrackRecorder::onVessel(const VesselState& s) {

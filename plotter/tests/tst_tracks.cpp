@@ -725,17 +725,23 @@ private slots:
         QCOMPARE(row["points"].toInt(), 3); // the same once written
         QCOMPARE(row["durationS"].toDouble(), 20.0);
     }
-    // The active track's duration runs on the recorder clock: a vessel time that steps back an hour
-    // neither makes it negative nor stops it growing.
+    // The active track's duration is the span of its kept points on the recorder clock: a vessel
+    // time that steps back an hour neither makes it negative nor stops it growing, and it runs to
+    // the last kept point, not to now (so it does not drop when the track closes).
     void activeDurationFollowsTheRecorderClockAcrossAStep() {
         Rig r(true, 1, 0);
         TracksController c(*r.tracks, *r.rec);
         r.feedAt(0, 10000, 47.0);
+        c.refresh();
+        QCOMPARE(c.tracks().at(0).toMap()["durationS"].toDouble(), 0.0); // one point
         r.feedAt(10, 10010, 47.001);
         r.feedAt(20, 10020 - 3600, 47.002); // the vessel clock stepped back an hour
         c.refresh();
         QCOMPARE(c.tracks().at(0).toMap()["durationS"].toDouble(), 20.0);
         r.feedAt(30, 10030 - 3600, 47.003);
+        c.refresh();
+        QCOMPARE(c.tracks().at(0).toMap()["durationS"].toDouble(), 30.0);
+        r.now = 100; // time passes with no kept point
         c.refresh();
         QCOMPARE(c.tracks().at(0).toMap()["durationS"].toDouble(), 30.0);
     }

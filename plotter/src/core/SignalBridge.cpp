@@ -43,6 +43,9 @@ SignalBridge::SignalBridge(std::initializer_list<int> signos, QObject* parent) :
 
     saved_ = new Saved;
     for (int sig : signos) {
+        // A signal the process was told to ignore (SIGHUP under nohup) stays ignored.
+        struct sigaction current {};
+        if (::sigaction(sig, nullptr, &current) == 0 && current.sa_handler == SIG_IGN) continue;
         struct sigaction sa {};
         sa.sa_handler = handler;
         sigemptyset(&sa.sa_mask);
