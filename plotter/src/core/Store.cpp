@@ -164,17 +164,21 @@ std::expected<QString, QString> Store::moveAside(QString dir, const QDateTime& n
         moved = stamp + QLatin1Char('-') + QString::number(n);
 
     QString result;
+    QStringList movedNames;
     for (const QString& suffix : suffixes) {
         if (!QFile::exists(base + suffix))
             continue;
         if (!(rename ? rename(base + suffix, moved + suffix) : QFile::rename(base + suffix, moved + suffix))) {
             const QString failed = QStringLiteral("plotter.db%1 could not be moved aside").arg(suffix);
-            if (result.isEmpty())
+            if (movedNames.isEmpty())
                 return std::unexpected(failed);
-            return std::unexpected(QStringLiteral("plotter.db was moved to %1 but %2").arg(result, failed));
+            return std::unexpected(QStringLiteral("%1 moved to %2 but %3")
+                                       .arg(movedNames.join(QStringLiteral(" and ")) +
+                                                (movedNames.size() == 1 ? QStringLiteral(" was") : QStringLiteral(" were")),
+                                            moved, failed));
         }
-        if (suffix.isEmpty())
-            result = moved;
+        movedNames << QStringLiteral("plotter.db") + suffix;
+        result = moved;
     }
     return result;
 }
