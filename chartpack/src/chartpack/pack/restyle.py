@@ -11,7 +11,7 @@ from chartpack.style.palette import night_palette
 from chartpack.style.sprites import build_sprites
 
 
-def restyle_pack(root: Path, night: str = "red") -> None:
+def restyle_pack(root: Path, night: str = "amber") -> None:
     root = Path(root)
     old = json.loads((root / MANIFEST).read_text())
     pack = old["pack"]

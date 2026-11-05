@@ -252,7 +252,7 @@ def main(argv: list[str] | None = None) -> int:
     p.set_defaults(func=_manifest)
     p = sub.add_parser("restyle")
     p.add_argument("packdir", type=Path, metavar="PACKDIR")
-    p.add_argument("--night", choices=sorted(NIGHT_VARIANTS), default="red", help="night text variant (default red)")
+    p.add_argument("--night", choices=sorted(NIGHT_VARIANTS), default="amber", help="night style (default amber)")
     p.set_defaults(func=_restyle)
     p = sub.add_parser("check")
     p.add_argument("packdir", type=Path, metavar="PACKDIR")

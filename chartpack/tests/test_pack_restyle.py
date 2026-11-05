@@ -21,13 +21,15 @@ def test_restyle_rewrites_styles_and_manifest(charts_pack_root_copy, monkeypatch
     assert check_pack(root) == []
 
 
-def test_restyle_night_amber_writes_amber_text(charts_pack_root_copy):
+def test_restyle_night_variants_write_their_text(charts_pack_root_copy):
     root = charts_pack_root_copy
 
     def shallow():
         style = json.loads((root / "styles" / "nav-night.json").read_text())
         return next(l for l in style["layers"] if l["id"] == "soundg-shallow")["paint"]["text-color"]
 
+    assert main(["restyle", str(root)]) == 0
+    assert shallow() == "#E0A000"
     assert main(["restyle", str(root), "--night", "amber"]) == 0
     assert shallow() == "#E0A000"
     nav = json.loads((root / "styles" / "nav-night.json").read_text())

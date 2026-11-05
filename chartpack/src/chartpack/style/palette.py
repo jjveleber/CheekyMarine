@@ -35,8 +35,8 @@ _DAY = {
     "NODTA": "#C8C8C8",  # no data
 }
 
-# Night is red only (#33): red on black keeps the eyes dark-adapted; every channel but red is at most 0x20.
-_NIGHT = {
+# Red-only night (#33 variant `red`): red on black keeps the eyes dark-adapted; every channel but red is at most 0x20.
+_NIGHT_RED = {
     "DEPDW": "#000000",  # deep water fill (dark blue-grey)
     "DEPMD": "#140000",  # medium depth water fill (lighter than DEPDW, R29)
     "DEPMS": "#260000",  # medium-shallow water fill
@@ -72,21 +72,24 @@ def _toward_black(colour: str, fraction: float) -> str:
     return "#" + "".join(f"{c:02x}" for c in channels)
 
 
+# Amber night (#33, the default; owner choice 2026-11-06 after a dark-room test): amber text, dimmed navaid colors,
+# shoal band, land and coastline brightening toward shore. Water stays black.
+_NIGHT_AMBER = {**_NIGHT_RED,
+    "TXTSH": "#E0A000", "TXTDP": "#C08000", "LITGN": "#20A040", "LITYW": "#D0B000", "LITWH": "#C0C0C0",
+    "DEPMD": "#200000", "DEPMS": "#3C0000", "DEPVS": "#5A0000", "DEPIT": "#40200A", "LANDA": "#30200A",
+    "LANDF": "#3A2810", "CSTLN": "#C06000"}
+
 # Derived from day so the two cannot drift.
 PALETTES: dict[str, dict[str, str]] = {
     "day": _DAY,
     "dusk": {token: _toward_black(colour, 0.45) for token, colour in _DAY.items()},
-    "night": _NIGHT,
+    "night": _NIGHT_AMBER,
 }
 
 
-# Night variants for the dark-room comparison (#33). Amber changes the two text tokens and keeps navaid colors (dim);
-# the default stays red-only.
-NIGHT_VARIANTS: dict[str, dict[str, str]] = {"red": {}, "amber": {
-    "TXTSH": "#E0A000", "TXTDP": "#C08000", "LITGN": "#20A040", "LITYW": "#D0B000", "LITWH": "#C0C0C0",
-    "DEPMD": "#200000", "DEPMS": "#3C0000", "DEPVS": "#5A0000", "DEPIT": "#40200A", "LANDA": "#30200A",
-    "LANDF": "#3A2810", "CSTLN": "#C06000"}}
+NIGHT_VARIANTS: dict[str, dict[str, str]] = {"amber": _NIGHT_AMBER, "red": _NIGHT_RED}
+DEFAULT_NIGHT = "amber"
 
 
-def night_palette(variant: str) -> dict[str, str]:
-    return {**_NIGHT, **NIGHT_VARIANTS[variant]}
+def night_palette(variant: str = DEFAULT_NIGHT) -> dict[str, str]:
+    return NIGHT_VARIANTS[variant]

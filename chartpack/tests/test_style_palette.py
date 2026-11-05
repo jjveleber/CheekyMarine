@@ -13,18 +13,29 @@ def test_every_palette_has_every_token():
 
 def test_owner_water_and_land_colours():
     assert PALETTES["day"]["DEPDW"] == "#F4EEE2" and PALETTES["night"]["DEPDW"] == "#000000"
-    assert PALETTES["day"]["LANDA"] == "#EFD98A" and PALETTES["night"]["LANDA"] == "#180404"
+    assert PALETTES["day"]["LANDA"] == "#EFD98A" and PALETTES["night"]["LANDA"] == "#30200A"
 
 
 def test_night_water_is_dark():
     day, night = PALETTES["day"]["DEPDW"], PALETTES["night"]["DEPDW"]
     assert luminance(night) < 0.15 and luminance(day) > 0.9
     assert int(day[1:3], 16) > int(day[5:7], 16)  # day deep water is warm
-    assert int(night[1:3], 16) >= max(int(night[3:5], 16), int(night[5:7], 16))  # night leans red
+    assert night == "#000000"  # night deep water is black
+
+
+def test_default_night_is_amber():
+    from chartpack.style.palette import night_palette
+
+    night = PALETTES["night"]
+    assert night == night_palette("amber")
+    assert (night["TXTSH"], night["TXTDP"]) == ("#E0A000", "#C08000")
+    assert night["LANDA"] == "#30200A" and night["LITGN"] == "#20A040"
 
 
 def test_night_is_red_only():
-    for token, colour in PALETTES["night"].items():
+    from chartpack.style.palette import night_palette
+
+    for token, colour in night_palette("red").items():
         assert int(colour[3:5], 16) <= 0x20 and int(colour[5:7], 16) <= 0x20, token
         assert int(colour[1:3], 16) >= int(colour[3:5], 16), token  # the red channel is the largest
 
@@ -56,7 +67,7 @@ def test_night_amber_changes_text_navaid_fill_and_coastline_tokens():
     from chartpack.style.palette import night_palette
 
     red, amber = night_palette("red"), night_palette("amber")
-    assert red == PALETTES["night"]
+    assert amber == PALETTES["night"]
     assert {t for t in TOKENS if red[t] != amber[t]} == {
         "TXTSH", "TXTDP", "LITGN", "LITYW", "LITWH", "DEPMD", "DEPMS", "DEPVS", "DEPIT", "LANDA", "LANDF", "CSTLN"}
     assert (amber["LITGN"], amber["LITYW"], amber["LITWH"]) == ("#20A040", "#D0B000", "#C0C0C0")
@@ -86,7 +97,10 @@ def test_white_navaids_use_litwh():
     from chartpack.style.nav import nav_style
 
     day = PALETTES["day"]
-    assert day["LITWH"] == day["CHWHT"] and PALETTES["night"]["LITWH"] == PALETTES["night"]["CHWHT"]
+    from chartpack.style.palette import night_palette
+
+    red = night_palette("red")
+    assert day["LITWH"] == day["CHWHT"] and red["LITWH"] == red["CHWHT"]  # amber dims LITWH on purpose
     layers = [l for l in nav_style("day")["layers"] if "match" in str(l.get("paint", {}).get("icon-color", ""))]
     assert layers
     for layer in layers:
