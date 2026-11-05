@@ -66,7 +66,7 @@ public:
     static constexpr double kWriteIntervalS = 30;
     static constexpr int kWriteBatch = 20;
 
-    // nowS: a monotonic clock in seconds (only differences are used), for the write interval only; point times come from the vessel.
+    // nowS: a monotonic clock in seconds (only differences are used), for the write interval, the point interval and the new-track gap; point times come from the vessel.
     TrackRecorder(TrackStore& store, Settings& settings, std::function<double()> nowS, QObject* parent = nullptr);
     ~TrackRecorder() override;
 
@@ -93,6 +93,8 @@ private:
     void recordingChanged();
     void startTrack(double t);
     void dropUnwritten();
+    // Writes the buffer, then deletes the active track when it has fewer than two points.
+    void closeTrack();
 
     TrackStore& m_store;
     Settings& m_settings;
@@ -105,7 +107,8 @@ private:
     bool m_writeFailing = false; // the buffer's last write failed (and was reported)
     QList<LatLon> m_activePoints;
     std::optional<TrackPoint> m_last; // last stored point of the active track
-    std::optional<double> m_lastPosT; // last vessel update that carried a position, stored or not
+    std::optional<double> m_lastPosS; // monotonic time of the last update that carried a position, stored or not
+    std::optional<double> m_lastKeptS; // monotonic time the last point was kept
     double m_lastWriteS = 0;
     double m_activeStartT = 0;
     double m_activeDistanceM = 0;

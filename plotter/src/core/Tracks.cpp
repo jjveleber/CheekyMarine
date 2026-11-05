@@ -135,7 +135,7 @@ QList<LatLon> TrackStore::points(qint64 id, bool* ok) {
     ++m_pointReads;
     QList<LatLon> out;
     QSqlQuery q(m_store.db());
-    q.prepare(QStringLiteral("SELECT lat, lon FROM track_points WHERE track_id = ? ORDER BY t, rowid"));
+    q.prepare(QStringLiteral("SELECT lat, lon FROM track_points WHERE track_id = ? ORDER BY rowid"));
     q.addBindValue(id);
     const bool done = q.exec();
     if (!done)
@@ -181,7 +181,14 @@ TrackRecorder::TrackRecorder(TrackStore& store, Settings& settings, std::functio
 }
 
 TrackRecorder::~TrackRecorder() {
+    closeTrack();
+}
+
+void TrackRecorder::closeTrack() {
     flush();
+    // A track closed with fewer than two points (a boat at the dock) is not worth keeping.
+    if (m_active != 0 && m_activePoints.size() < 2)
+        m_store.remove(m_active);
 }
 
 void TrackRecorder::dropUnwritten() {
@@ -195,10 +202,11 @@ void TrackRecorder::dropUnwritten() {
 }
 
 void TrackRecorder::startTrack(double t) {
-    flush();
+    closeTrack();
     dropUnwritten();
     m_active = m_store.create(t);
     m_last.reset();
+    m_lastKeptS.reset();
     m_activePoints.clear();
     m_activeStartT = t;
     m_activeDistanceM = 0;
@@ -215,8 +223,9 @@ void TrackRecorder::onVessel(const VesselState& s) {
     if (!m_settings.trackRecording() || !s.lat || !s.lon)
         return;
     // The gap runs from the last update that carried a position, whether or not it was stored.
-    const bool gap = m_lastPosT && s.t - *m_lastPosT > kNewTrackGapS;
-    m_lastPosT = s.t;
+    const double nowS = m_nowS();
+    const bool gap = m_lastPosS && nowS - *m_lastPosS > kNewTrackGapS;
+    m_lastPosS = nowS;
     if (m_active == 0 || gap)
         startTrack(s.t);
     if (m_active == 0)
@@ -230,13 +239,14 @@ void TrackRecorder::onVessel(const VesselState& s) {
     p.cog = s.cogRad;
     p.depth = s.depthM;
     const double stepM = m_last ? distanceM({m_last->lat, m_last->lon}, {p.lat, p.lon}) : 0;
-    const bool keep = !m_last || (p.t - m_last->t >= m_settings.trackIntervalS() && stepM >= m_settings.trackMinDistanceM());
+    const bool keep = !m_last || (nowS - *m_lastKeptS >= m_settings.trackIntervalS() && stepM >= m_settings.trackMinDistanceM());
     if (keep) {
         m_activeDistanceM += stepM;
         if (m_buffer.isEmpty())
             m_bufferId = m_active;
         m_buffer.append(p);
         m_last = p;
+        m_lastKeptS = nowS;
         m_activePoints.append({p.lat, p.lon});
         emit activeTrackChanged(m_activePoints);
     }
@@ -273,11 +283,12 @@ void TrackRecorder::tick() {
 void TrackRecorder::recordingChanged() {
     if (m_settings.trackRecording())
         return;
-    flush();
+    closeTrack();
     dropUnwritten();
     m_active = 0;
     m_last.reset();
-    m_lastPosT.reset();
+    m_lastKeptS.reset();
+    m_lastPosS.reset();
     m_activePoints.clear();
     m_activeStartT = 0;
     m_activeDistanceM = 0;
