@@ -211,12 +211,14 @@ void TrackRecorder::startTrack(double t) {
     m_activeStartT = t;
     m_activeDistanceM = 0;
     m_lastWriteS = m_nowS();
+    m_activeStartS = m_lastWriteS;
 }
 
 TrackRecorder::ActiveTotals TrackRecorder::activeTotals() const {
     if (m_active == 0 || !m_last)
         return {};
-    return {int(m_activePoints.size()), m_last->t - m_activeStartT, m_activeDistanceM};
+    // The duration runs on the recorder clock, so a vessel clock step does not bend it.
+    return {int(m_activePoints.size()), m_nowS() - m_activeStartS, m_activeDistanceM};
 }
 
 void TrackRecorder::onVessel(const VesselState& s) {
@@ -318,7 +320,7 @@ void TracksController::refresh() {
         QVariantMap row;
         row[QStringLiteral("id")] = t.id;
         row[QStringLiteral("name")] = t.name;
-        row[QStringLiteral("durationS")] = t.ended - t.started;
+        row[QStringLiteral("durationS")] = std::max(0.0, t.ended - t.started); // a backward clock step
         row[QStringLiteral("distanceM")] = t.distanceM;
         row[QStringLiteral("points")] = t.points;
         if (t.id == active) {

@@ -111,6 +111,7 @@ private:
     std::optional<double> m_lastKeptS; // monotonic time the last point was kept
     double m_lastWriteS = 0;
     double m_activeStartT = 0;
+    double m_activeStartS = 0; // recorder clock time the active track started
     double m_activeDistanceM = 0;
 };
 

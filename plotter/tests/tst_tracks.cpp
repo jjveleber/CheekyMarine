@@ -292,6 +292,22 @@ private slots:
         const double later = clock();
         QVERIFY(later - start >= 0.045 && later - start < 5);
     }
+    // The clock main.cpp gives the recorder counts a suspend (CLOCK_BOOTTIME), so a sleep longer than
+    // the gap starts a new track. A test cannot suspend the machine: this checks that it advances and
+    // never goes backward.
+    void boottimeClockAdvances() {
+        const auto clock = boottimeSecondsClock();
+        const double start = clock();
+        QThread::msleep(20);
+        const double later = clock();
+        QVERIFY(later - start >= 0.015 && later - start < 5);
+        double prev = clock();
+        for (int i = 0; i < 50; ++i) {
+            const double t = clock();
+            QVERIFY(t >= prev);
+            prev = t;
+        }
+    }
     void turningRecordingOffFlushes() {
         Rig r;
         for (int i = 0; i < 3; ++i) r.feed(i * 5, 47.0 + i * 20 * kLatPerM);
@@ -708,6 +724,32 @@ private slots:
         row = c.tracks().at(0).toMap();
         QCOMPARE(row["points"].toInt(), 3); // the same once written
         QCOMPARE(row["durationS"].toDouble(), 20.0);
+    }
+    // The active track's duration runs on the recorder clock: a vessel time that steps back an hour
+    // neither makes it negative nor stops it growing.
+    void activeDurationFollowsTheRecorderClockAcrossAStep() {
+        Rig r(true, 1, 0);
+        TracksController c(*r.tracks, *r.rec);
+        r.feedAt(0, 10000, 47.0);
+        r.feedAt(10, 10010, 47.001);
+        r.feedAt(20, 10020 - 3600, 47.002); // the vessel clock stepped back an hour
+        c.refresh();
+        QCOMPARE(c.tracks().at(0).toMap()["durationS"].toDouble(), 20.0);
+        r.feedAt(30, 10030 - 3600, 47.003);
+        c.refresh();
+        QCOMPARE(c.tracks().at(0).toMap()["durationS"].toDouble(), 30.0);
+    }
+    // A finished track whose last point is older than its first (a backward vessel clock step) shows
+    // no time rather than a negative one.
+    void finishedTrackDurationIsClampedAtZero() {
+        Rig r(false);
+        const qint64 id = r.tracks->create(10000);
+        TrackPoint a; a.t = 10000; a.lat = 47.0; a.lon = -122.23;
+        TrackPoint b; b.t = 10000 - 3600; b.lat = 47.001; b.lon = -122.23;
+        QVERIFY(r.tracks->append(id, {a, b}));
+        TracksController c(*r.tracks, *r.rec);
+        QCOMPARE(c.tracks().size(), 1);
+        QCOMPARE(c.tracks().at(0).toMap()["durationS"].toDouble(), 0.0);
     }
     void hiddenActiveTrackIsNotDrawn() {
         Rig r(true, 1, 0);

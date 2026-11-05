@@ -9,7 +9,7 @@
 #include <vector>
 
 namespace {
-volatile int g_writeFd = -1; // write end of the active bridge
+volatile sig_atomic_t g_writeFd = -1; // write end of the active bridge (non-blocking)
 SignalBridge* g_instance = nullptr;
 
 void handler(int signo) {
@@ -31,7 +31,7 @@ SignalBridge::SignalBridge(std::initializer_list<int> signos, QObject* parent) :
         qWarning() << "SignalBridge: a second bridge is ignored";
         return;
     }
-    if (::socketpair(AF_UNIX, SOCK_STREAM, 0, fds_) != 0) {
+    if (::socketpair(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0, fds_) != 0) {
         qWarning() << "SignalBridge: socketpair failed, signals will not quit cleanly";
         fds_[0] = fds_[1] = -1;
         return;
@@ -68,6 +68,6 @@ SignalBridge::~SignalBridge() {
 void SignalBridge::onReadable() {
     notifier_->setEnabled(false);
     char b = 0;
-    if (::read(fds_[0], &b, 1) == 1) emit signalled(static_cast<unsigned char>(b));
+    if (::read(fds_[0], &b, 1) == 1) emit signaled(static_cast<unsigned char>(b));
     notifier_->setEnabled(true);
 }

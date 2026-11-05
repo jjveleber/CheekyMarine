@@ -383,7 +383,7 @@ Item {
 
     AisSheet {
         id: aisSheet
-        // Centred on the shown corner area like the other floating items, kept inside the free rectangle.
+        // Centered on the shown corner area like the other floating items, kept inside the free rectangle.
         freeRect: page.aisFreeRect
         x: Math.max(page.aisFreeRect.x, Math.min(page.aisFreeRect.x + page.aisFreeRect.width - width,
                                                  shownCornerArea.x + (shownCornerArea.width - width) / 2))

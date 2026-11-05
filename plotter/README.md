@@ -137,7 +137,7 @@ Stored in `plotter.db`, changed in the Settings page. Defaults:
 | `trackIntervalS` | 5 | seconds between track points |
 | `trackMinDistanceM` | 10 | meters moved before a new point |
 
-Track points and the 10-minute gap that starts a new track are timed on a steady clock, so a GPS or NTP clock step neither splits nor stalls a track. A track closed with fewer than two points (a boat at the dock) is deleted. Track points are written every 30 s or every 20 points. If the database refuses writes, the recorder holds at most one batch and retries; those points stay on the chart and in the Tracks row, and are lost if the app exits while writes still fail. Ctrl-C, SIGTERM (systemctl stop) and a desktop logout quit cleanly and write the buffered points.
+Track points and the 10-minute gap that starts a new track are timed on a steady clock, so a GPS or NTP clock step neither splits nor stalls a track, and a sleep longer than 10 minutes starts a new track. A track closed with fewer than two points (a boat at the dock) is deleted. Track points are written every 30 s or every 20 points. If the database refuses writes, the recorder holds at most one batch and retries; those points stay on the chart and in the Tracks row, and are lost if the app exits while writes still fail. Ctrl-C, SIGTERM (systemctl stop) and SIGHUP quit cleanly and write the buffered points.
 
 The plan 3 keys `chartMode`, `touchLockTimeoutS`, `slots` and `bigNumbers` are gone: the chart and
 the slots and cells live in each view, and the idle auto-lock was removed.

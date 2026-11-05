@@ -45,7 +45,7 @@ namespace {
 
 // Shows the recovery screen instead of the app until the store opens (returned) or the window is
 // closed (null).
-std::unique_ptr<Store> recover(QGuiApplication& app, const QString& dir, StoreError error, QSize size) {
+std::unique_ptr<Store> recover(QGuiApplication& app, const QString& dir, StoreError error, bool fullscreen, QSize size) {
     Recovery rec(dir, error);
     std::unique_ptr<Store> store;
     QQuickView view;
@@ -64,7 +64,7 @@ std::unique_ptr<Store> recover(QGuiApplication& app, const QString& dir, StoreEr
     };
     QObject::connect(&view, &QWindow::widthChanged, units, sizeUnits);
     QObject::connect(&view, &QWindow::heightChanged, units, sizeUnits);
-    view.resize(size.isValid() ? size : QSize(1024, 600));
+    view.resize(QSize(1024, 600));
     sizeUnits();
     QObject::connect(
         &rec, &Recovery::recovered, &app,
@@ -75,6 +75,7 @@ std::unique_ptr<Store> recover(QGuiApplication& app, const QString& dir, StoreEr
         },
         Qt::QueuedConnection);
     view.show();
+    applyWindowOptions(view, fullscreen, size);
     app.exec();
     return store;
 }
@@ -181,7 +182,7 @@ int main(int argc, char* argv[]) {
         store = std::move(*opened);
     } else {
         qWarning() << "cannot open the store in" << cli.value(dataOpt) << storeErrorReason(opened.error());
-        store = recover(app, cli.value(dataOpt), opened.error(), windowSize);
+        store = recover(app, cli.value(dataOpt), opened.error(), cli.isSet(fullscreenOpt), windowSize);
         if (!store) return 1;
     }
     Settings settings(*store);
@@ -200,16 +201,17 @@ int main(int argc, char* argv[]) {
     // Recording follows the setting; the vessel feeds it. The timer writes a buffer a quiet data
     // feed would leave waiting. Declared before the engine and the chart so they go first.
     TrackStore trackStore(*store);
-    TrackRecorder recorder(trackStore, settings, monotonicSecondsClock()); // the wall clock steps when GPS or NTP corrects it
+    TrackRecorder recorder(trackStore, settings, boottimeSecondsClock()); // the wall clock steps when GPS or NTP corrects it; a suspend counts
     TracksController tracksController(trackStore, recorder);
     QObject::connect(&vessel, &VesselModel::changed, &recorder, [&] { recorder.onVessel(vessel.state()); });
     QTimer recorderTimer;
     recorderTimer.setInterval(5000);
     QObject::connect(&recorderTimer, &QTimer::timeout, &recorder, &TrackRecorder::tick);
     recorderTimer.start();
-    // Ctrl-C and SIGTERM (systemctl stop) leave app.exec(), so the recorder destructor writes buffered points.
-    SignalBridge signalBridge{SIGINT, SIGTERM};
-    QObject::connect(&signalBridge, &SignalBridge::signalled, &app, [](int) { QCoreApplication::quit(); });
+    // Ctrl-C, SIGTERM (systemctl stop) and SIGHUP (a closed terminal) leave app.exec(), so the
+    // recorder destructor writes buffered points.
+    SignalBridge signalBridge{SIGINT, SIGTERM, SIGHUP};
+    QObject::connect(&signalBridge, &SignalBridge::signaled, &app, [](int) { QCoreApplication::quit(); });
 
     // The saved views and the draft of the shown one (Main.qml loads the current view into it).
     ViewsModel views(*store, settings, [] { return QDateTime::currentSecsSinceEpoch(); });

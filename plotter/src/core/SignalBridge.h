@@ -5,7 +5,7 @@
 
 class QSocketNotifier;
 
-// Turns POSIX signals (SIGTERM from systemctl stop, SIGINT from Ctrl-C) into a Qt signal on the
+// Turns POSIX signals (SIGTERM from systemctl stop, SIGINT from Ctrl-C, SIGHUP from a closed terminal) into a Qt signal on the
 // event loop, using a socketpair the C handler writes to and a QSocketNotifier reads. Only one
 // bridge may exist at a time; the previous handlers come back when it is destroyed.
 class SignalBridge : public QObject {
@@ -15,7 +15,7 @@ public:
     ~SignalBridge() override;
 
 signals:
-    void signalled(int signo);
+    void signaled(int signo);
 
 private:
     void onReadable();

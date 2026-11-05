@@ -10,11 +10,12 @@
 namespace {
 
 // Raises sig with a bridge installed and returns the signal number it reported, or 0 on timeout.
+// The signal quits the loop the way main.cpp quits the app.
 int bridged(int sig) {
     SignalBridge b{sig};
     QEventLoop loop;
     int got = 0;
-    QObject::connect(&b, &SignalBridge::signalled, &loop, [&](int s) {
+    QObject::connect(&b, &SignalBridge::signaled, &loop, [&](int s) {
         got = s;
         loop.quit();
     });
@@ -49,6 +50,11 @@ private slots:
             v.lon = -122.23;
             rec->onVessel(v);
         }
+        { // the points are waiting in the buffer, not yet written
+            QSqlQuery q(store->db());
+            QVERIFY(q.exec("SELECT count(*) FROM track_points") && q.next());
+            QCOMPARE(q.value(0).toInt(), 0);
+        }
         QCOMPARE(bridged(SIGTERM), SIGTERM);
         rec.reset();
         QSqlQuery q(store->db());
@@ -56,6 +62,7 @@ private slots:
         QCOMPARE(q.value(0).toInt(), 3);
     }
     void sigintIsReported() { QCOMPARE(bridged(SIGINT), SIGINT); }
+    void sighupIsReported() { QCOMPARE(bridged(SIGHUP), SIGHUP); }
 };
 
 QTEST_MAIN(TstSignalBridge)
