@@ -173,7 +173,7 @@ void ViewDraft::load(const View& view) {
         QList<ViewSlot> fixed = defaultViewSlots();
         QList<bool> seen(fixed.size(), false);
         for (const ViewSlot& s : view.slotList) {
-            if (seen[int(s.id)]) continue;
+            if (int(s.id) < 0 || int(s.id) >= fixed.size() || seen[int(s.id)]) continue;
             seen[int(s.id)] = true;
             fixed[int(s.id)] = s;
         }

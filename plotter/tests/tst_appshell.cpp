@@ -72,6 +72,14 @@ private slots:
         QVERIFY(!(w.windowState() & Qt::WindowFullScreen));
     }
 
+    void platformProblemNamesOffscreen() {
+        for (const QString& name : {QStringLiteral("offscreen"), QStringLiteral("minimal")})
+            QCOMPARE(platformProblem(name),
+                     QStringLiteral("renders need a GL display: QT_QPA_PLATFORM %1 cannot draw the chart").arg(name));
+        QVERIFY(platformProblem("xcb").isEmpty());
+        QVERIFY(platformProblem("wayland").isEmpty());
+    }
+
     void appInfoNoPacks() {
         const AppInfo info({});
         QVERIFY(info.chartsPack().isEmpty());

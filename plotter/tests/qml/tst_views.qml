@@ -331,6 +331,27 @@ TestCase {
         verify(!main.editing)
     }
 
+    // The touch version of the same drag.
+    function test_touchDragFromTabDoesNotPanTheMap() {
+        const main = makeMain(1024, 600)
+        compare(main.page, "view")
+        compare(fixture.views.currentId, "shipped-nav")
+        verify(item(main, "tabBar").shown)
+        const tab = item(main, "tab-view-shipped-fish")
+        const x0 = tab.width / 2, y0 = tab.height / 2
+        touchEvent(main).press(0, tab, x0, y0).commit()
+        for (let i = 1; i <= 15; ++i)
+            touchEvent(main).move(0, tab, x0 - Units.mm(i), y0).commit()
+        wait(100)
+        touchEvent(main).release(0, tab, x0 - Units.mm(15), y0).commit()
+        compare(main.chartMap.moves, 0, "no pan")
+        compare(main.chartMap.gestures, 0, "no gesture")
+        compare(chartStub.follow, true, "Follow stays on")
+        compare(main.page, "view")
+        compare(fixture.views.currentId, "shipped-nav", "the tab was not pressed")
+        verify(!main.editing)
+    }
+
     function test_nonFavoriteViewHighlightsHouse() {
         const main = makeMain(1024, 600)
         const id = fixture.views.add()

@@ -45,3 +45,9 @@ void connectAppInfo(N2kClient& client, AppInfo& info) {
     QObject::connect(&client, &N2kClient::daemonVersion, &info, &AppInfo::setDaemonVersion);
     QObject::connect(&client, &N2kClient::schemaMismatch, &info, &AppInfo::setSchemaMismatch);
 }
+
+QString platformProblem(const QString& platformName) {
+    if (platformName == QLatin1String("offscreen") || platformName == QLatin1String("minimal"))
+        return QStringLiteral("renders need a GL display: QT_QPA_PLATFORM %1 cannot draw the chart").arg(platformName);
+    return {};
+}

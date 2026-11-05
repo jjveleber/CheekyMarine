@@ -419,6 +419,8 @@ TestCase {
 
     // A 7 in panel (many px per mm, so few mm of page) with every slot at 25 mm: the side bars stay
     // between the banners and no slot overlaps another or leaves the page.
+    // R66 is isolated in C++ (tst_slotclamp: bannerWidthFitsThePage, barHeightFitsThePage,
+    // sideBarFitsBetweenTheBanners); this is the end-to-end check on the page.
     function test_sideBarsClearTheBannersOnASmallPanel_data() { return H.sizes() }
     function test_sideBarsClearTheBannersOnASmallPanel(data) {
         Units.windowWidth = data.w

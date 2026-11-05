@@ -11,6 +11,11 @@ const QString kTwoCols = QStringLiteral("2x2:0,0,1,2;1,0,1,2");
 class TstViews : public QObject {
     Q_OBJECT
 private slots:
+    void whitespaceOnlyNameIsFloored() {
+        QCOMPARE(viewFromJson(QJsonObject{{"name", "   "}}).name, QStringLiteral("View"));
+        QCOMPARE(viewFromJson(QJsonObject{{"name", " a "}}).name, QStringLiteral(" a "));
+    }
+
     void chartNames() {
         for (ViewChart c : {ViewChart::Nav, ViewChart::Fish, ViewChart::None})
             QCOMPARE(viewChartFromName(viewChartName(c)), std::optional<ViewChart>(c));

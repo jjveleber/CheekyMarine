@@ -216,9 +216,13 @@ options of `cheekyplotter` (not in `--help`):
 - `--exit-after-ms N`: quits N ms after start (for scripted renders).
 - `--frame-stats`: at quit prints `frame-stats: frames N max M ms p99 P ms over50 K` (the intervals
   between frames, in ms; K counts those over 50 ms).
+- `--position LAT,LON`: centers the chart there while the vessel has no position (a fix wins); a
+  malformed value exits 2. For renders on a run with no N2K data.
 
 For example `plotter/tools/run-dev.sh "" --palette dusk --view Fish` (an empty first argument
-means the default fixture).
+means the default fixture). Renders need a display (WSLg or X): the offscreen and minimal platforms
+exit 1 with a message saying so. The Settings and Legend renders are taller than the panel, so use a
+tall window (`--window 1024x1400`).
 
 The saved views renders (every page and editor sheet, day and night, at 1024x600 and 1280x800) are
 in `docs/plotter/renders/views/`, named `<name>-<day|night>-<WxH>.png`. They come from

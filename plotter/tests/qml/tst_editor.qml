@@ -608,6 +608,14 @@ TestCase {
         if (data.sheet === "") compare(editor.sheet, "")
     }
 
+    // The initial editor waits for the first frame, not for a fixed time.
+    function test_initialEditorOpensAfterFirstFrame() {
+        const main = makeMain(1024, 600)
+        verify(!main.editing)
+        main.editorOpen = true
+        tryVerify(() => main.editing, 3000, "the editor opens after a frame")
+    }
+
     function test_liveHoldOpensSheetAndSaves() {
         const main = makeMain(1024, 600)
         const sheet = find(m(main, "viewEditor"), "slotSheet")
@@ -665,6 +673,17 @@ TestCase {
         return page.keyboard
     }
     function tap(kb, name) { mouseClick(find(kb, name)) }
+
+    function test_keyboardDoneDisabledForWhitespace() {
+        Units.windowWidth = 1024
+        Units.windowHeight = 600
+        const kb = makeKeyboard(1024, 600)
+        kb.open("Name", "", 6)
+        waitForRendering(kb)
+        tap(kb, "key-space"); tap(kb, "key-space"); tap(kb, "key-space")
+        compare(kb.text, "   ")
+        compare(find(kb, "key-done").enabled, false, "Done needs more than spaces")
+    }
 
     function test_keyboardTypesShiftsAndCaps_data() { return H.sizes() }
     function test_keyboardTypesShiftsAndCaps(data) {
@@ -912,6 +931,29 @@ TestCase {
         compare(stored.cells.layout, before.cells.layout, "stored layout")
         compare(fixture.draft.toJson(), before)
         compare(chartStub.mode, "nav")
+    }
+
+    // The thumbnails stretch to fill each row: the first row's last one ends at the Flow's right edge.
+    function test_galleryRowsFillTheWidth_data() { return H.sizes() }
+    function test_galleryRowsFillTheWidth(data) {
+        Units.windowWidth = data.w
+        Units.windowHeight = data.h
+        Units.diagonalIn = data.diagIn
+        const main = makeMain(data.w, data.h)
+        const sheet = openSetup(main, "shipped-big")
+        tapShown(find(sheet, "row-layout"))
+        const gallery = find(sheet, "layoutGallery")
+        tryVerify(() => gallery.visible, 3000, "the gallery")
+        waitForRendering(gallery)
+        const thumbs = H.findAll(gallery, it => it.isBigButton === true && it.objectName.startsWith("layout-"))
+        const boxes = thumbs.map(t => H.box(t, gallery))
+        const y0 = Math.min(...boxes.map(b => b.y))
+        const row = boxes.filter(b => Math.abs(b.y - y0) < 0.5)
+        const left = Math.min(...row.map(b => b.x))
+        const right = Math.max(...row.map(b => b.x + b.w))
+        const flowW = find(gallery, "galleryScroller").width
+        verify(row.length >= 1)
+        verify(Math.abs((right - left) - flowW) <= 1, "row " + (right - left) + " vs Flow " + flowW)
     }
 
     function test_layoutGalleryHas72AndApplies() {

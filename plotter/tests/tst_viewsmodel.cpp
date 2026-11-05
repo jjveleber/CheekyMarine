@@ -242,6 +242,56 @@ private slots:
         QVERIFY(!m.onTabBar("shipped-nav"));
     }
 
+    void saveFloorsWhitespaceName() {
+        Env e;
+        QVERIFY(e.settings);
+        ViewsModel m(*e.store, *e.settings, e.clock());
+        View v = *m.view("shipped-fish");
+        v.name = "   ";
+        v.shortName = "";
+        QVERIFY(m.save(v));
+        QCOMPARE(m.view("shipped-fish")->name, QStringLiteral("View"));
+    }
+
+    void saveUnchangedEmitsNoDataChanged() {
+        Env e;
+        QVERIFY(e.settings);
+        ViewsModel m(*e.store, *e.settings, e.clock());
+        View v = *m.view("shipped-fish");
+        QSignalSpy data(&m, &QAbstractItemModel::dataChanged);
+        QSignalSpy tabs(&m, &ViewsModel::tabViewsChanged);
+        e.now += 10;
+        QVERIFY(m.save(v));
+        QCOMPARE(data.count(), 0);
+        QCOMPARE(tabs.count(), 0);
+        v.name = "Other";
+        QVERIFY(m.save(v));
+        QVERIFY(data.count() >= 1);
+        QVERIFY(tabs.count() >= 1);
+    }
+
+    void addNonFavoriteEmitsNoTabViewsChanged() {
+        Env e;
+        QVERIFY(e.settings);
+        ViewsModel m(*e.store, *e.settings, e.clock());
+        QSignalSpy tabs(&m, &ViewsModel::tabViewsChanged);
+        QSignalSpy count(&m, &ViewsModel::countChanged);
+        m.add();
+        QCOMPARE(tabs.count(), 0);
+        QCOMPARE(count.count(), 1);
+    }
+
+    void loadIgnoresASlotWithAnOutOfRangeId() {
+        Env e;
+        QVERIFY(e.settings);
+        ViewDraft d(e.vessel, *e.settings);
+        View v = shippedViews(5)[0];
+        v.slotList[3].id = SlotId(9);
+        QTest::ignoreMessage(QtWarningMsg, QRegularExpression("made whole"));
+        d.load(v);
+        QCOMPARE(d.toView().slotList.size(), 8);
+    }
+
     void saveKeepsOrdAndExtra() {
         Env e;
         QVERIFY(e.settings);

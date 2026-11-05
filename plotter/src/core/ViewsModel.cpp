@@ -153,7 +153,7 @@ QString ViewsModel::add() {
     m_ords << ord;
     endInsertRows();
     emit countChanged();
-    tabsChanged();
+    if (v.favorite) tabsChanged();
     return v.id;
 }
 
@@ -257,17 +257,22 @@ bool ViewsModel::save(const View& view) {
     View v = view;
     const View& old = m_views.at(i);
     v.name = v.name.left(kMaxNameChars);
-    if (v.name.isEmpty()) v.name = QStringLiteral("View"); // the floor viewFromJson applies
+    if (v.name.trimmed().isEmpty()) v.name = QStringLiteral("View"); // the floor viewFromJson applies
     v.shortName = v.shortName.left(kMaxShortChars);
     if (v.shortName.isEmpty()) v.shortName = shortFromName(v.name);
     v.created = old.created;
     v.modified = m_now();
     v.extra = old.extra;
     for (auto it = view.extra.begin(); it != view.extra.end(); ++it) v.extra.insert(it.key(), it.value());
+    View was = old;
+    was.modified = v.modified;
+    const bool changed = !(was == v);
     if (!writeView(v)) return false;
     m_views[i] = v;
-    emit dataChanged(index(i), index(i));
-    tabsChanged();
+    if (changed) {
+        emit dataChanged(index(i), index(i));
+        tabsChanged();
+    }
     return true;
 }
 
@@ -285,9 +290,13 @@ void ViewsModel::replaceAll(const QList<View>& views) {
     }
     QSqlQuery q(db);
     bool ok = q.exec(QStringLiteral("DELETE FROM views"));
-    for (int i = 0; ok && i < views.size(); ++i) ok = !insertViewRow(db, views[i], i).isValid();
+    QSqlError insertError;
+    for (int i = 0; ok && i < views.size(); ++i) {
+        insertError = insertViewRow(db, views[i], i);
+        ok = !insertError.isValid();
+    }
     if (!ok || !db.commit()) {
-        qWarning() << "views: replace failed:" << q.lastError().text() << db.lastError().text();
+        qWarning() << "views: replace failed:" << q.lastError().text() << insertError.text() << db.lastError().text();
         db.rollback();
         return;
     }

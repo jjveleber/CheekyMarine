@@ -268,6 +268,12 @@ void ChartController::onStyleLoaded() {
     for (const QJsonObject& layer : runtimeLayers(overlayColours(m_palette))) m_map.addLayer(layer);
     m_ready = true;
     applyDepthFilters();
+    applyCamera();
+}
+
+void ChartController::setStartPosition(double lat, double lon) {
+    m_startPosition = LatLon{lat, lon};
+    applyCamera();
 }
 
 void ChartController::applyDepthFilters() {
@@ -371,7 +377,11 @@ void ChartController::refreshSelection() {
 
 void ChartController::applyCamera() {
     const VesselState& s = m_vessel.state();
-    if (!m_follow || !s.lat || !s.lon) return;
+    if (!m_follow) return;
+    if (!s.lat || !s.lon) {
+        if (m_startPosition) m_map.setCamera(m_startPosition->lat, m_startPosition->lon, std::clamp(m_map.zoom(), m_minZoom, m_maxZoom), 0);
+        return;
+    }
     const LatLon pos{*s.lat, *s.lon};
     const double zoom = std::clamp(m_map.zoom(), m_minZoom, m_maxZoom);
     const QString o = orientation();
