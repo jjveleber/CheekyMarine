@@ -2,7 +2,7 @@
 
 TOKENS = (
     "DEPDW", "DEPMD", "DEPMS", "DEPVS", "DEPIT", "LANDA", "LANDF", "CSTLN", "CHBLK", "CHGRD", "CHMGD", "CHWHT",
-    "SNDG1", "SNDG2", "TXTSH", "TXTDP", "LITRD", "LITGN", "LITYW", "NINFO", "OUTLW", "DNGHL", "ADINF", "RESBL", "TRFCD", "NODTA",
+    "SNDG1", "SNDG2", "TXTSH", "TXTDP", "LITWH", "LITRD", "LITGN", "LITYW", "NINFO", "OUTLW", "DNGHL", "ADINF", "RESBL", "TRFCD", "NODTA",
 )
 
 _DAY = {
@@ -22,6 +22,7 @@ _DAY = {
     "SNDG2": "#4A5560",  # soundings deeper than the safety depth
     "TXTSH": "#000000",  # text of shallow soundings, place names, contour labels (the bright text)
     "TXTDP": "#4A5560",  # text of deep soundings and seabed codes (the dim text)
+    "LITWH": "#FFFFFF",  # white lights and navaids
     "LITRD": "#E2231A",  # red lights and navaids
     "LITGN": "#1A9E3F",  # green lights and navaids
     "LITYW": "#E9C400",  # yellow lights and navaids
@@ -52,6 +53,7 @@ _NIGHT = {
     "SNDG2": "#D00000",  # soundings deeper than the safety depth
     "TXTSH": "#FF2020",  # text of shallow soundings, place names, contour labels (the bright text)
     "TXTDP": "#D00000",  # text of deep soundings and seabed codes (the dim text)
+    "LITWH": "#FF2020",  # white lights and navaids
     "LITRD": "#FF0000",  # red lights and navaids
     "LITGN": "#B00000",  # green lights and navaids
     "LITYW": "#E00000",  # yellow lights and navaids
@@ -78,8 +80,12 @@ PALETTES: dict[str, dict[str, str]] = {
 }
 
 
-# Night text variants for the dark-room comparison (#33). Only the two text tokens differ; the default stays red-only.
-NIGHT_VARIANTS: dict[str, dict[str, str]] = {"red": {}, "amber": {"TXTSH": "#E0A000", "TXTDP": "#C08000"}}
+# Night variants for the dark-room comparison (#33). Amber changes the two text tokens and keeps navaid colors (dim);
+# the default stays red-only.
+NIGHT_VARIANTS: dict[str, dict[str, str]] = {"red": {}, "amber": {
+    "TXTSH": "#E0A000", "TXTDP": "#C08000", "LITGN": "#20A040", "LITYW": "#D0B000", "LITWH": "#C0C0C0",
+    "DEPMD": "#200000", "DEPMS": "#3C0000", "DEPVS": "#5A0000", "DEPIT": "#40200A", "LANDA": "#30200A",
+    "LANDF": "#3A2810", "CSTLN": "#C06000"}}
 
 
 def night_palette(variant: str) -> dict[str, str]:

@@ -30,6 +30,9 @@ def test_restyle_night_amber_writes_amber_text(charts_pack_root_copy):
 
     assert main(["restyle", str(root), "--night", "amber"]) == 0
     assert shallow() == "#E0A000"
+    nav = json.loads((root / "styles" / "nav-night.json").read_text())
+    exprs = [l["paint"]["icon-color"] for l in nav["layers"] if isinstance(l.get("paint", {}).get("icon-color"), list)]
+    assert any("4" in e and e[e.index("4") + 1] == "#20A040" for e in exprs if e[0] == "match" or "match" in e)
     assert main(["restyle", str(root), "--night", "red"]) == 0
     assert shallow() == "#FF2020"
     assert check_pack(root) == []

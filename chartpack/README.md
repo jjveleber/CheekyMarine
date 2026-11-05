@@ -74,7 +74,10 @@ lights and hazards are red, so the eyes stay dark-adapted. It is judged on a lap
 The default night is red only (`chartpack restyle PACKDIR`, same as `--night red`). For the dark-room comparison,
 `chartpack restyle PACKDIR --night amber` rewrites the night styles and sprites with amber text: the bright text
 (`TXTSH`: shallow soundings, place names, contour labels) is `#E0A000` and the dim text (`TXTDP`: deep soundings,
-seabed codes) is `#C08000`. Only those two tokens differ; lines, fills, icons and halos stay red. Run
+seabed codes) is `#C08000`. Amber also keeps navaid colors, dimmed: red lights and navaids stay red, green is
+`#20A040` (`LITGN`), yellow `#D0B000` (`LITYW`) and white `#C0C0C0` (`LITWH`), because there are few navaids on
+screen at once. Amber also lifts the shallow-water fills, intertidal, land and coastline (a dim orange) so shoals
+and land stand out from black deep water. Everything else (lines, other icons, halos) stays red. Run
 `chartpack restyle PACKDIR --night red` to go back. The full build always writes the red-only night.
 
 ## Region files

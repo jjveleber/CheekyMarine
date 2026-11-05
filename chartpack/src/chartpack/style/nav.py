@@ -75,7 +75,7 @@ def _first_colour_code() -> list:
 def _colour_by_code(p: dict, default: str) -> list:
     return [
         "match", _first_colour_code(),
-        "1", p["CHWHT"], "2", p["CHBLK"], "3", p["LITRD"], "4", p["LITGN"], "6", p["LITYW"],
+        "1", p["LITWH"], "2", p["CHBLK"], "3", p["LITRD"], "4", p["LITGN"], "6", p["LITYW"],
         p[default],
     ]
 
