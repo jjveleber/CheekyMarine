@@ -9,6 +9,7 @@
 #include "core/PaletteController.h"
 #include "core/Recovery.h"
 #include "core/Settings.h"
+#include "core/SignalBridge.h"
 #include "core/Store.h"
 #include "core/TouchLock.h"
 #include "core/Tracks.h"
@@ -31,6 +32,7 @@
 #include <QScreen>
 #include <QStandardPaths>
 #include <QTimer>
+#include <csignal>
 #include <memory>
 
 Q_IMPORT_QML_PLUGIN(CheekyMarinePlugin)
@@ -184,6 +186,9 @@ int main(int argc, char* argv[]) {
     recorderTimer.setInterval(5000);
     QObject::connect(&recorderTimer, &QTimer::timeout, &recorder, &TrackRecorder::tick);
     recorderTimer.start();
+    // Ctrl-C and SIGTERM (systemctl stop) leave app.exec(), so the recorder destructor writes buffered points.
+    SignalBridge signalBridge{SIGINT, SIGTERM};
+    QObject::connect(&signalBridge, &SignalBridge::signalled, &app, [](int) { QCoreApplication::quit(); });
 
     // The saved views and the draft of the shown one (Main.qml loads the current view into it).
     ViewsModel views(*store, settings, [] { return QDateTime::currentSecsSinceEpoch(); });
