@@ -224,12 +224,13 @@ means the default fixture). Renders need a display (WSLg or X): the offscreen an
 exit 1 with a message saying so. The Settings and Legend renders are taller than the panel, so use a
 tall window (`--window 1024x1400`).
 
-The saved views renders (every page and editor sheet, day and night, at 1024x600 and 1280x800) are
-in `docs/plotter/renders/views/`, named `<name>-<day|night>-<WxH>.png`. They come from
+The saved views renders (every page and editor sheet, day and night, at 1024x600 and 1280x800 on a
+10.1 in panel, and 1920x1280 on a 13 in panel) are in `docs/plotter/renders/views/`, named `<name>-<day|night>-<WxH>.png`. They come from
 `CM_PACKS_DIR=DIR plotter/tools/run-dev.sh "" --palette P --window WxH --screenshot FILE
 --screenshot-after-ms 7000 --exit-after-ms 8000` (the splash stays up 5 s) plus `--view`, `--page`,
 `--editor`, `--sheet`, `--lock` or `--record` as needed (`splash` is taken at 800 ms,
-`nav-barhidden` and `big-barhidden` at 10000 ms, after the 8 s hide). The earlier walkthrough renders in `docs/plotter/renders/final/` predate views; they
+`nav-barhidden` and `big-barhidden` at 10000 ms, after the 8 s hide). Plan 4 retook `ais-*`, `gallery-*` and `nodata-*` at all three sizes; `settings-*` and `legend-*`
+are at 1024x1400 (tall window); `nodata-*` uses `--position 47.98,-122.23`. The earlier walkthrough renders in `docs/plotter/renders/final/` predate views; they
 keep the no-data banner (the app run without n2kd, `nodata-*.png`) and the recovery screen
 (`--data` pointing at a directory whose `plotter.db` is junk, `recovery-*.png`).
 
