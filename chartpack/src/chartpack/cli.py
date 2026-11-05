@@ -34,6 +34,7 @@ from chartpack.pack.check import check_pack
 from chartpack.pack.manifest import describe_pack, write_manifest
 from chartpack.pack.restyle import restyle_pack
 from chartpack.region import load_region
+from chartpack.style.palette import NIGHT_VARIANTS
 from chartpack.seabed.cmecs import BLOCKS, fetch_cmecs, read_cmecs
 from chartpack.seabed.usseabed import FILES, fetch_usseabed, read_usseabed
 
@@ -116,7 +117,7 @@ def _manifest(args: argparse.Namespace) -> int:
 
 
 def _restyle(args: argparse.Namespace) -> int:
-    restyle_pack(args.packdir)
+    restyle_pack(args.packdir, args.night)
     return 0
 
 
@@ -251,6 +252,7 @@ def main(argv: list[str] | None = None) -> int:
     p.set_defaults(func=_manifest)
     p = sub.add_parser("restyle")
     p.add_argument("packdir", type=Path, metavar="PACKDIR")
+    p.add_argument("--night", choices=sorted(NIGHT_VARIANTS), default="red", help="night text variant (default red)")
     p.set_defaults(func=_restyle)
     p = sub.add_parser("check")
     p.add_argument("packdir", type=Path, metavar="PACKDIR")

@@ -64,14 +64,16 @@ def _notice(metadata: dict[str, str], name: str, version: str, cmecs_blocks: tup
     return _NOTICE_HEAD.format(name=name, version=version, cells=cells) + survey + fonts
 
 
-def write_styles(root: Path, pack: str, safety_contour_m: float | None = None) -> None:
-    """Write every palette's style file of a pack (nav-*.json for charts, fish-*.json for bathy)."""
+def write_styles(root: Path, pack: str, safety_contour_m: float | None = None, night: dict | None = None) -> None:
+    """Write every palette's style file of a pack (nav-*.json for charts, fish-*.json for bathy).
+    night replaces the night palette's colors (a night_palette variant)."""
     (root / "styles").mkdir(exist_ok=True)
     for palette in PALETTES:
+        colors = night if palette == "night" else None
         if pack == "charts":
-            style, name = nav_style(palette, safety_contour_m=safety_contour_m), f"nav-{palette}.json"
+            style, name = nav_style(palette, safety_contour_m=safety_contour_m, colors=colors), f"nav-{palette}.json"
         else:
-            style, name = fish_style(palette), f"fish-{palette}.json"
+            style, name = fish_style(palette, colors=colors), f"fish-{palette}.json"
         (root / "styles" / name).write_text(json.dumps(style, indent=2) + "\n")
 
 

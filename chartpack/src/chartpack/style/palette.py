@@ -2,7 +2,7 @@
 
 TOKENS = (
     "DEPDW", "DEPMD", "DEPMS", "DEPVS", "DEPIT", "LANDA", "LANDF", "CSTLN", "CHBLK", "CHGRD", "CHMGD", "CHWHT",
-    "SNDG1", "SNDG2", "LITRD", "LITGN", "LITYW", "NINFO", "OUTLW", "DNGHL", "ADINF", "RESBL", "TRFCD", "NODTA",
+    "SNDG1", "SNDG2", "TXTSH", "TXTDP", "LITRD", "LITGN", "LITYW", "NINFO", "OUTLW", "DNGHL", "ADINF", "RESBL", "TRFCD", "NODTA",
 )
 
 _DAY = {
@@ -20,6 +20,8 @@ _DAY = {
     "CHWHT": "#FFFFFF",  # white chart ink (white navaids)
     "SNDG1": "#000000",  # soundings at or shallower than the safety depth
     "SNDG2": "#4A5560",  # soundings deeper than the safety depth
+    "TXTSH": "#000000",  # text of shallow soundings, place names, contour labels (the bright text)
+    "TXTDP": "#4A5560",  # text of deep soundings and seabed codes (the dim text)
     "LITRD": "#E2231A",  # red lights and navaids
     "LITGN": "#1A9E3F",  # green lights and navaids
     "LITYW": "#E9C400",  # yellow lights and navaids
@@ -48,6 +50,8 @@ _NIGHT = {
     "CHWHT": "#FF2020",  # white chart ink (white navaids)
     "SNDG1": "#FF2020",  # soundings at or shallower than the safety depth
     "SNDG2": "#D00000",  # soundings deeper than the safety depth
+    "TXTSH": "#FF2020",  # text of shallow soundings, place names, contour labels (the bright text)
+    "TXTDP": "#D00000",  # text of deep soundings and seabed codes (the dim text)
     "LITRD": "#FF0000",  # red lights and navaids
     "LITGN": "#B00000",  # green lights and navaids
     "LITYW": "#E00000",  # yellow lights and navaids
@@ -72,3 +76,11 @@ PALETTES: dict[str, dict[str, str]] = {
     "dusk": {token: _toward_black(colour, 0.45) for token, colour in _DAY.items()},
     "night": _NIGHT,
 }
+
+
+# Night text variants for the dark-room comparison (#33). Only the two text tokens differ; the default stays red-only.
+NIGHT_VARIANTS: dict[str, dict[str, str]] = {"red": {}, "amber": {"TXTSH": "#E0A000", "TXTDP": "#C08000"}}
+
+
+def night_palette(variant: str) -> dict[str, str]:
+    return {**_NIGHT, **NIGHT_VARIANTS[variant]}

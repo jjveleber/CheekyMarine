@@ -69,6 +69,14 @@ reaches an existing pack without a rebuild; `chartpack check` passes afterwards.
 The night palette is red only: every channel but red is at most `0x20`, water is black to dark red and the chart ink,
 lights and hazards are red, so the eyes stay dark-adapted. It is judged on a laptop in a dark room.
 
+### Night variants
+
+The default night is red only (`chartpack restyle PACKDIR`, same as `--night red`). For the dark-room comparison,
+`chartpack restyle PACKDIR --night amber` rewrites the night styles and sprites with amber text: the bright text
+(`TXTSH`: shallow soundings, place names, contour labels) is `#E0A000` and the dim text (`TXTDP`: deep soundings,
+seabed codes) is `#C08000`. Only those two tokens differ; lines, fills, icons and halos stay red. Run
+`chartpack restyle PACKDIR --night red` to go back. The full build always writes the red-only night.
+
 ## Region files
 
 `regions/<region>.toml`:

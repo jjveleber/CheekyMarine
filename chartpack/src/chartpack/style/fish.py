@@ -69,7 +69,7 @@ def _label(layer_id: str, filter_: list, p: dict, minzoom: int | None = None) ->
         "layout": {"symbol-placement": "line", "symbol-spacing": 400,
                    "text-field": ["to-string", ["get", "depth_ft"]], "text-font": ["Noto Sans Bold"],
                    "text-size": 11},
-        "paint": {"text-color": p["CHBLK"], "text-halo-color": p["DEPDW"], "text-halo-width": 1.5},
+        "paint": {"text-color": p["TXTSH"], "text-halo-color": p["DEPDW"], "text-halo-width": 1.5},
     }
     if minzoom is not None:
         layer["minzoom"] = minzoom
@@ -89,9 +89,9 @@ def _pick(layers: list[dict], *ids: str) -> list[dict]:
     return [l for l in layers if l["id"] in ids]
 
 
-def fish_style(palette: str, depths: Depths = Depths()) -> dict:
+def fish_style(palette: str, depths: Depths = Depths(), *, colors: dict | None = None) -> dict:
     """A complete MapLibre style v8 dict over the enc, bathy and dem sources."""
-    p = PALETTES[palette]
+    p = colors or PALETTES[palette]
     hillshade = {
         "id": "hillshade", "type": "hillshade", "source": "dem",
         "paint": {"hillshade-exaggeration": 0.5, "hillshade-shadow-color": p["CHGRD"],

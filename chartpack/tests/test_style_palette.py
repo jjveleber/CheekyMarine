@@ -50,3 +50,26 @@ def test_night_ink_is_brighter_than_fills():
     for token in ("CHGRD", "SNDG1", "SNDG2", "CHBLK", "CHWHT", "CSTLN", "OUTLW", "NINFO"):
         red = int(night[token][1:3], 16)
         assert red >= 0xA0 and red > fills, token
+
+
+def test_night_amber_only_changes_text_tokens():
+    from chartpack.style.palette import night_palette
+
+    red, amber = night_palette("red"), night_palette("amber")
+    assert red == PALETTES["night"]
+    assert {t for t in TOKENS if red[t] != amber[t]} == {"TXTSH", "TXTDP"}
+    for token in ("TXTSH", "TXTDP"):
+        r, g, b = (int(amber[token][i : i + 2], 16) for i in (1, 3, 5))
+        assert r >= 0xC0 and 0x70 <= g <= 0xA8 and b <= 0x20, token
+
+
+def test_text_layers_use_text_tokens():
+    from chartpack.style.fish import fish_style
+    from chartpack.style.nav import nav_style
+
+    day = PALETTES["day"]
+    assert day["TXTSH"] == day["SNDG1"] and day["TXTDP"] == day["SNDG2"]
+    for style in (nav_style("day"), fish_style("day")):
+        for layer in style["layers"]:
+            if layer["type"] == "symbol" and "text-field" in layer.get("layout", {}):
+                assert layer["paint"]["text-color"] in (day["TXTSH"], day["TXTDP"]), layer["id"]
