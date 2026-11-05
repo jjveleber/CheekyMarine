@@ -14,7 +14,6 @@ Item {
     property real rightInset: 0     // the tab bar strip over the page's right edge
     property bool confirming: false // Delete asked "Delete <name>?"
     property string keyboardField: "" // name or short: what the keyboard edits
-    property bool everOpened: false // the keyboard and gallery load on the first open
     signal deleteRequested()
     signal closed()
 
@@ -33,23 +32,18 @@ Item {
 
     onVisibleChanged: {
         confirming = false
-        if (visible) everOpened = true
-        if (keyboardLoader.item) keyboardLoader.item.visible = false
-        if (galleryLoader.item) galleryLoader.item.visible = false
+        keyboard.visible = false
+        gallery.visible = false
         scroller.contentY = 0
     }
 
     function editText(field) {
         keyboardField = field
-        everOpened = true
-        if (field === "name") keyboardLoader.item.open("Name", draft.name, 24)
-        else keyboardLoader.item.open("Short name", draft.shortName, 6)
+        if (field === "name") keyboard.open("Name", draft.name, 24)
+        else keyboard.open("Short name", draft.shortName, 6)
     }
 
-    function openGallery() {
-        everOpened = true
-        galleryLoader.item.visible = true
-    }
+    function openGallery() { gallery.visible = true }
 
     // Taps beside the sheet do nothing.
     MouseArea { anchors.fill: parent }
@@ -225,25 +219,17 @@ Item {
         }
     }
 
-    Loader {
-        id: keyboardLoader
-        anchors.fill: parent
-        active: sheet.everOpened
-        sourceComponent: Keyboard {
-            rightInset: sheet.rightInset
-            onAccepted: (text) => {
-                if (sheet.keyboardField === "name") sheet.draft.name = text
-                else sheet.draft.shortName = text
-            }
+    Keyboard {
+        id: keyboard
+        rightInset: sheet.rightInset
+        onAccepted: (text) => {
+            if (sheet.keyboardField === "name") sheet.draft.name = text
+            else sheet.draft.shortName = text
         }
     }
-    Loader {
-        id: galleryLoader
-        anchors.fill: parent
-        active: sheet.everOpened
-        sourceComponent: LayoutGallery {
-            draft: sheet.draft
-            rightInset: sheet.rightInset
-        }
+    LayoutGallery {
+        id: gallery
+        draft: sheet.draft
+        rightInset: sheet.rightInset
     }
 }
