@@ -14,6 +14,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
 CANBOAT = os.path.join(ROOT, "third_party", "canboat", "canboat.json")
 T0 = 1798000000.0
+T0_DAY = 1798056000.0
+FIXTURES = os.path.join(ROOT, "plotter", "tests", "fixtures", "n2k")
 
 
 sys.path.insert(0, HERE)
@@ -65,9 +67,13 @@ class EncoderRangeTest(unittest.TestCase):
             self.pack(128267, offset=-0.001)  # raw -1 is all ones, not available
 
 
-def generate(out):
-    subprocess.run([sys.executable, "-I", os.path.join(HERE, "synth_n2k.py"),
-                    "--canboat", CANBOAT, "--out", out], check=True)
+def generate(out, scenario=None, duration_s=None):
+    cmd = [sys.executable, "-I", os.path.join(HERE, "synth_n2k.py"), "--canboat", CANBOAT, "--out", out]
+    if scenario:
+        cmd += ["--scenario", scenario]
+    if duration_s is not None:
+        cmd += ["--duration-s", str(duration_s)]
+    subprocess.run(cmd, check=True)
 
 
 class SynthN2kTest(unittest.TestCase):
@@ -178,6 +184,140 @@ class SynthN2kTest(unittest.TestCase):
         self.assertEqual(by_name["TEST SAIL"]["class"], "B")
         self.assertEqual(sorted(t["mmsi"] for t in last), [367000001, 367000002, 367000003])
         self.assertTrue(all(t["lat"] is not None for t in last))
+
+
+def replay(scenario, duration_s=None):
+    """(vessel lines, ais lines) of a scenario replayed through n2kd; skips without N2KD."""
+    n2kd = os.environ.get("N2KD")
+    if not n2kd:
+        raise unittest.SkipTest("N2KD not set")
+    with tempfile.TemporaryDirectory() as tmp:
+        log = os.path.join(tmp, "a.log")
+        generate(log, scenario, duration_s)
+        res = subprocess.run([n2kd, "--replay", log, "--speed", "0", "--stdout", "--pgns", CANBOAT],
+                             check=True, capture_output=True, text=True)
+    lines = [json.loads(l) for l in res.stdout.splitlines() if l.startswith("{")]
+    return [l for l in lines if l["type"] == "vessel"], [l for l in lines if l["type"] == "ais"]
+
+
+def flat(p, origin):
+    """(east, north) meters of p from origin, flat earth."""
+    return ((p[1] - origin[1]) * synth_n2k.M_PER_DEG * math.cos(math.radians(origin[0])),
+            (p[0] - origin[0]) * synth_n2k.M_PER_DEG)
+
+
+def dist_to_segment(p, a, b):
+    px, py = flat(p, a)
+    bx, by = flat(b, a)
+    f = max(0.0, min(1.0, (px * bx + py * by) / (bx * bx + by * by)))
+    return math.hypot(px - f * bx, py - f * by)
+
+
+class ScenarioTestBase(unittest.TestCase):
+    SCENARIO = None
+    DURATION = None
+
+    @classmethod
+    def setUpClass(cls):
+        cls.vessel, cls.ais = replay(cls.SCENARIO, cls.DURATION)
+        cls.positions = [(v["t"], v["pos"]["lat"], v["pos"]["lon"]) for v in cls.vessel if v["pos"]]
+
+
+class EverettUnchangedTest(unittest.TestCase):
+    def test_everett_unchanged(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            out = os.path.join(tmp, "e.log")
+            generate(out, "everett-pt-townsend")
+            with open(out, "rb") as a, open(os.path.join(FIXTURES, "everett-pt-townsend.log"), "rb") as b:
+                self.assertEqual(a.read(), b.read())
+
+    def test_duration_override(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            out = os.path.join(tmp, "d.log")
+            generate(out, "navigating", 30)
+            with open(out, encoding="ascii") as f:
+                stamps = [float(l[1:l.index(")")]) for l in f]
+        self.assertLess(max(stamps), synth_n2k.T0_DAY + 31)
+        self.assertGreaterEqual(min(stamps), synth_n2k.T0_DAY)
+
+
+class NavigatingTest(ScenarioTestBase):
+    SCENARIO = "navigating"
+
+    def test_speed_and_waypoints(self):
+        sog = [v for v in self.vessel if v["sog"] is not None and v["t"] >= T0_DAY + 61 - 1e-6][0]["sog"]
+        self.assertLess(abs(sog - synth_n2k.NAV_SPEED), 0.3)
+        first = self.positions[0]
+        self.assertLess(abs(first[1] - synth_n2k.NAV_WAYPOINTS[0][0]), 1e-6)
+        self.assertLess(abs(first[2] - synth_n2k.NAV_WAYPOINTS[0][1]), 1e-6)
+        wp1 = synth_n2k.NAV_WAYPOINTS[1]
+        self.assertTrue(any(t >= T0_DAY + 500 and math.hypot(*flat((la, lo), wp1)) < 50
+                            for t, la, lo in self.positions))
+
+    def test_heading_wanders(self):
+        h = [v["hdg"] for v in self.vessel if T0_DAY + 10 <= v["t"] <= T0_DAY + 70 and v["hdg"] is not None]
+        span = math.degrees(max(h) - min(h))
+        self.assertGreaterEqual(span, 2)
+        self.assertLess(span, 5)
+
+    def test_depth_profile(self):
+        depths = [v["depth"] for v in self.vessel if v["depth"] is not None]
+        self.assertLess(abs(depths[0] - 8), 1)
+        self.assertGreater(max(depths), 110)
+
+
+class BounceTest(unittest.TestCase):
+    def test_bounce_keeps_the_boat_on_route(self):
+        vessel, _ = replay("navigating", 2400)
+        wp = synth_n2k.NAV_WAYPOINTS
+        pts = [(v["pos"]["lat"], v["pos"]["lon"]) for v in vessel if v["pos"]]
+        self.assertGreater(len(pts), 2000)
+        for p in pts:
+            self.assertLess(min(dist_to_segment(p, a, b) for a, b in zip(wp, wp[1:])), 200)
+
+    def test_track_bounce_false_extrapolates(self):
+        t = synth_n2k.Track(synth_n2k.FISH_WAYPOINTS, 1.34112)
+        lat, lon, _ = t.at(1500)
+        self.assertGreater(lon, synth_n2k.FISH_WAYPOINTS[1][1])
+        b = synth_n2k.Track(synth_n2k.FISH_WAYPOINTS, 1.34112, bounce=True)
+        lat, lon, cog = b.at(1500)
+        self.assertLess(lon, synth_n2k.FISH_WAYPOINTS[1][1])
+        self.assertLess(abs((cog - t.at(0)[2]) % (2 * math.pi) - math.pi), 1e-9)
+
+
+class FishingTest(ScenarioTestBase):
+    SCENARIO = "fishing"
+
+    def test_trolls_back_and_forth(self):
+        sog = [v["sog"] for v in self.vessel if v["sog"] is not None]
+        self.assertTrue(all(abs(x - 1.34112) < 0.05 for x in sog))
+        out = [lo for t, la, lo in self.positions if t < T0_DAY + 920]
+        back = [lo for t, la, lo in self.positions if T0_DAY + 935 < t < T0_DAY + 1800]
+        self.assertTrue(all(b >= a for a, b in zip(out, out[1:])))
+        self.assertTrue(all(b <= a for a, b in zip(back, back[1:])))
+        self.assertGreater(out[-1], back[-1] + 1e-4)
+        depths = [v["depth"] for v in self.vessel if v["depth"] is not None]
+        self.assertTrue(all(14.5 <= d <= 40.5 for d in depths))
+
+    def test_one_ais_target(self):
+        full = [a for a in self.ais if a["targets"]]
+        last = full[-1]["targets"]
+        self.assertEqual([t["mmsi"] for t in last], [367000011])
+        self.assertEqual(last[0]["class"], "A")
+        self.assertEqual(last[0]["name"], "TEST FERRY")
+
+
+class StoppedTest(ScenarioTestBase):
+    SCENARIO = "fishing-stopped"
+
+    def test_stays_within_3_m_with_sog_zero(self):
+        o = synth_n2k.FISH_WAYPOINTS[0]
+        self.assertTrue(self.positions)
+        for t, la, lo in self.positions:
+            self.assertLess(math.hypot(*flat((la, lo), o)), 3)
+        sog = [v["sog"] for v in self.vessel if v["sog"] is not None]
+        self.assertTrue(sog)
+        self.assertTrue(all(x == 0 for x in sog))
 
 
 if __name__ == "__main__":
