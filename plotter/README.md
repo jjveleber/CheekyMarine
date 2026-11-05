@@ -90,6 +90,9 @@ ctest --test-dir build-plotter --output-on-failure
 `cheekyplotter` runs without `LD_LIBRARY_PATH`: its build RPATH contains Qt's lib dir and the
 maplibre lib dir (derived from the linked targets), so `libQMapLibre.so` finds `libQt6Sql`.
 
+Add `-DCM_PLOTTER_TESTS=OFF` to build the app without the Qt Test and QuickTest packages (no tests are
+registered then); CI and the dev box keep it ON.
+
 Dev machine trap: if your shell has linuxbrew in `PATH`/`LD_LIBRARY_PATH`, CMake can pick up
 linuxbrew libraries; configure and build with
 `env -u LD_LIBRARY_PATH PATH=$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin`.
