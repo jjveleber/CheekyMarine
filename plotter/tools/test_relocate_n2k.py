@@ -85,6 +85,28 @@ class RelocateUnitTest(unittest.TestCase):
         self.assertAlmostEqual(lat, 48.0, places=6)  # first position lands on --to
 
 
+class RelocateCliTest(unittest.TestCase):
+    def run_cli(self, frames, to):
+        with tempfile.TemporaryDirectory() as d:
+            src, out = os.path.join(d, "in.log"), os.path.join(d, "out.log")
+            write(src, "".join("(%.6f) can0 %08X#%s\n" % (ts, cid, data.hex().upper()) for ts, cid, data in frames))
+            return subprocess.run([sys.executable, "-I", os.path.join(HERE, "relocate_n2k.py"), src, out,
+                                   "--to", to, "--canboat", CANBOAT], capture_output=True, text=True)
+
+    def test_no_own_ship_position_exits_1(self):
+        other = (1.0, (2 << 26) | (127250 << 8) | 1, bytes(range(8)))
+        res = self.run_cli([other], "48.0,-123.0")
+        self.assertEqual(res.returncode, 1, res.stderr)
+        self.assertIn("no own-ship position (129025 or 129029): nothing moved", res.stderr)
+
+    def test_out_of_range_result_is_an_error_not_a_traceback(self):
+        pos = (2.0, (2 << 26) | (129025 << 8) | 1, (int(47.5e7)).to_bytes(4, "little") + (int(-122.5e7)).to_bytes(4, "little", signed=True))
+        res = self.run_cli([pos], "48.0,300.0")  # a longitude past the field's range
+        self.assertEqual(res.returncode, 1, res.stderr)
+        self.assertTrue(res.stderr.startswith("error: position out of range"), res.stderr)
+        self.assertNotIn("Traceback", res.stderr)
+
+
 def vessel_ais(n2kd, log):
     res = subprocess.run([n2kd, "--replay", log, "--speed", "0", "--stdout", "--pgns", CANBOAT],
                          check=True, capture_output=True, text=True)

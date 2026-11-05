@@ -224,12 +224,25 @@ class ScenarioTestBase(unittest.TestCase):
 
 
 class EverettUnchangedTest(unittest.TestCase):
-    def test_everett_unchanged(self):
+    def assert_fixture_current(self, scenario):
+        """The committed log is byte for byte what the generator writes today."""
         with tempfile.TemporaryDirectory() as tmp:
             out = os.path.join(tmp, "e.log")
-            generate(out, "everett-pt-townsend")
-            with open(out, "rb") as a, open(os.path.join(FIXTURES, "everett-pt-townsend.log"), "rb") as b:
-                self.assertEqual(a.read(), b.read())
+            generate(out, scenario)
+            with open(out, "rb") as a, open(os.path.join(FIXTURES, scenario + ".log"), "rb") as b:
+                self.assertEqual(a.read(), b.read(), scenario + ".log is stale: regenerate it")
+
+    def test_everett_unchanged(self):
+        self.assert_fixture_current("everett-pt-townsend")
+
+    def test_navigating_fixture_current(self):
+        self.assert_fixture_current("navigating")
+
+    def test_fishing_fixture_current(self):
+        self.assert_fixture_current("fishing")
+
+    def test_fishing_stopped_fixture_current(self):
+        self.assert_fixture_current("fishing-stopped")
 
     def test_duration_override(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -133,6 +133,7 @@ if(CM_PLOTTER_TESTS)
 
     find_package(Python3 REQUIRED COMPONENTS Interpreter)
     add_test(NAME notices COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_CURRENT_SOURCE_DIR}/tools/check_notices.py ${CMAKE_SOURCE_DIR}/THIRD_PARTY_NOTICES)
+    add_test(NAME check_notices COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_CURRENT_SOURCE_DIR}/tools/test_check_notices.py ${CMAKE_SOURCE_DIR}/THIRD_PARTY_NOTICES)
 
     # Synthetic N2K generator test: replays the generated scenario through the real n2kd.
     if(TARGET n2kd)

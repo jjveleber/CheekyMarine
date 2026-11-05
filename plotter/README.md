@@ -102,7 +102,7 @@ linuxbrew libraries; configure and build with
 `cheekyplotter [--socket PATH] [--packs DIR] [--data DIR] [--window WxH] [--fullscreen]`:
 
 - `--socket`: the n2kd JSON socket, default `/run/cheekymarine/n2k.sock`.
-- `--packs`: directory holding the installed charts and bathy packs, default `<data dir>/packs`.
+- `--packs`: directory holding the installed charts and bathy packs, default `<data dir>/packs`. The pack styles are read once at start, so a pack restyled while the app runs shows after an app restart.
 - `--data`: directory for `plotter.db`.
 - `--window`: window size, for example `1280x800`.
 - `--fullscreen`: show the window full screen; `--window` is ignored.

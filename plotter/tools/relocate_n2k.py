@@ -237,7 +237,16 @@ def main(argv=None):
         lat, lon = (float(x) for x in args.to.split(","))
     except ValueError:
         ap.error("--to wants LAT,LON")
-    out = relocate(reassemble(read_frames(args.input)), (lat, lon), args.rotate, args.canboat)
+    messages = reassemble(read_frames(args.input))
+    layouts = _layouts(args.canboat)
+    if not any(_position(m, layouts) for m in messages if m.pgn in ORIGIN_PGNS):
+        print("no own-ship position (129025 or 129029): nothing moved", file=sys.stderr)
+        return 1
+    try:
+        out = relocate(messages, (lat, lon), args.rotate, args.canboat)
+    except ValueError as e:  # a moved position past its field's range
+        print("error: %s" % e, file=sys.stderr)
+        return 1
     with open(args.output, "w", encoding="ascii", newline="\n") as f:
         for ts, can_id, data in out:
             f.write("(%.6f) can0 %08X#%s\n" % (ts, can_id, data.hex().upper()))
