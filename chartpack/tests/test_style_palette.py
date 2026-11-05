@@ -42,3 +42,11 @@ def test_day_depth_fills_unchanged():
 def test_dusk_is_day_mixed_toward_black():
     assert PALETTES["dusk"]["CHWHT"] == "#8c8c8c"
     assert PALETTES["dusk"]["CHBLK"] == "#000000"
+
+
+def test_night_ink_is_brighter_than_fills():
+    night = PALETTES["night"]
+    fills = max(int(night[t][1:3], 16) for t in ("DEPDW", "DEPMD", "DEPMS", "DEPVS", "DEPIT", "LANDA", "LANDF"))
+    for token in ("CHGRD", "SNDG1", "SNDG2", "CHBLK", "CHWHT", "CSTLN", "OUTLW", "NINFO"):
+        red = int(night[token][1:3], 16)
+        assert red >= 0xA0 and red > fills, token

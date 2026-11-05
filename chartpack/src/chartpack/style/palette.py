@@ -40,19 +40,19 @@ _NIGHT = {
     "DEPVS": "#3A0000",  # very shallow water fill
     "DEPIT": "#301010",  # intertidal area fill
     "LANDA": "#180404",  # land area fill
-    "LANDF": "#200808",  # land features
-    "CSTLN": "#700000",  # coastline
-    "CHBLK": "#C00000",  # chart ink in place of black
-    "CHGRD": "#700000",  # grey chart ink (depth contours, default navaid)
+    "LANDF": "#2A0A0A",  # land features
+    "CSTLN": "#A00000",  # coastline
+    "CHBLK": "#F00000",  # chart ink in place of black
+    "CHGRD": "#B00000",  # grey chart ink (depth contours, default navaid)
     "CHMGD": "#900000",  # magenta chart ink (cables, pipelines, routes)
-    "CHWHT": "#E00000",  # white chart ink (white navaids)
-    "SNDG1": "#E00000",  # soundings at or shallower than the safety depth
-    "SNDG2": "#900000",  # soundings deeper than the safety depth
+    "CHWHT": "#FF2020",  # white chart ink (white navaids)
+    "SNDG1": "#FF2020",  # soundings at or shallower than the safety depth
+    "SNDG2": "#D00000",  # soundings deeper than the safety depth
     "LITRD": "#FF0000",  # red lights and navaids
-    "LITGN": "#A00000",  # green lights and navaids
-    "LITYW": "#C00000",  # yellow lights and navaids
-    "NINFO": "#B00000",  # orange information text
-    "OUTLW": "#C00000",  # outlines
+    "LITGN": "#B00000",  # green lights and navaids
+    "LITYW": "#E00000",  # yellow lights and navaids
+    "NINFO": "#E00000",  # orange information text
+    "OUTLW": "#F00000",  # outlines
     "DNGHL": "#FF0000",  # danger highlight
     "ADINF": "#400000",  # anchorage area fill
     "RESBL": "#500000",  # restricted area fill
