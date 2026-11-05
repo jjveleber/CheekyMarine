@@ -821,6 +821,20 @@ private slots:
         QVERIFY(!r.ctrl->targetAt(a, 8).isValid());
     }
 
+    void targetAtPicksTheNearerOfTwoCloseTargets() {
+        Rig r;
+        QVERIFY(r.settings);
+        r.make();
+        r.map.loaded();
+        QList<AisTarget> two = fixtureTargets();
+        two[1].lon = -122.2470; // 30 px right of A at the fake map's 10000 px per degree
+        r.ais.setTargets(two);
+        const QPointF a = r.map.toScreen(47.99, -122.25);
+        // 8 mm at 4.626 px/mm is 37 px: both targets are inside the radius.
+        QCOMPARE(r.ctrl->targetAt(a + QPointF(5, 0), 37).toUInt(), 367000001u);
+        QCOMPARE(r.ctrl->targetAt(a + QPointF(25, 0), 37).toUInt(), 367000002u);
+    }
+
     void selectedTargetCarriesFormattedValuesAndTracksUpdates() {
         Rig r;
         QVERIFY(r.settings);
