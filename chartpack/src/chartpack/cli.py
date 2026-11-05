@@ -3,6 +3,7 @@
 import argparse
 import json
 import re
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -117,7 +118,11 @@ def _manifest(args: argparse.Namespace) -> int:
 
 
 def _restyle(args: argparse.Namespace) -> int:
-    restyle_pack(args.packdir, args.night)
+    try:
+        restyle_pack(args.packdir, args.night)
+    except ValueError as error:
+        print(f"restyle: {error}", file=sys.stderr)
+        return 1
     return 0
 
 

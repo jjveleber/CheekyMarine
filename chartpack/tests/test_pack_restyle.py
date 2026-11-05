@@ -1,5 +1,7 @@
 import json
 
+import pytest
+
 from chartpack.cli import main
 from chartpack.pack.check import check_pack
 from chartpack.pack.restyle import restyle_pack
@@ -38,3 +40,17 @@ def test_restyle_night_variants_write_their_text(charts_pack_root_copy):
     assert main(["restyle", str(root), "--night", "red"]) == 0
     assert shallow() == "#FF2020"
     assert check_pack(root) == []
+
+
+def test_restyle_refuses_a_pack_of_another_schema(charts_pack_root_copy, capsys):
+    root = charts_pack_root_copy
+    manifest = json.loads((root / "manifest.json").read_text())
+    manifest["schema"] = "0.0.1-old"
+    (root / "manifest.json").write_text(json.dumps(manifest))
+    before = (root / "styles" / "nav-night.json").read_text()
+    with pytest.raises(ValueError, match="rebuild"):
+        restyle_pack(root)
+    assert main(["restyle", str(root)]) == 1
+    assert "rebuild" in capsys.readouterr().err
+    assert (root / "styles" / "nav-night.json").read_text() == before
+    assert json.loads((root / "manifest.json").read_text())["schema"] == "0.0.1-old"

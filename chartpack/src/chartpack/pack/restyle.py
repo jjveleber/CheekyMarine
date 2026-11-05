@@ -5,6 +5,7 @@ from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
 
+from chartpack.enc.schema import SCHEMA_VERSION
 from chartpack.pack.assemble import PROJECT, write_styles
 from chartpack.pack.manifest import MANIFEST, write_manifest
 from chartpack.style.palette import night_palette
@@ -14,6 +15,8 @@ from chartpack.style.sprites import build_sprites
 def restyle_pack(root: Path, night: str = "amber") -> None:
     root = Path(root)
     old = json.loads((root / MANIFEST).read_text())
+    if old["schema"] != SCHEMA_VERSION:
+        raise ValueError(f"pack schema {old['schema']} is not the current {SCHEMA_VERSION}: rebuild this pack")
     pack = old["pack"]
     safety = None
     if pack == "charts":

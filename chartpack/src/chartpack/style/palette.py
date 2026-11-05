@@ -37,7 +37,7 @@ _DAY = {
 
 # Red-only night (#33 variant `red`): red on black keeps the eyes dark-adapted; every channel but red is at most 0x20.
 _NIGHT_RED = {
-    "DEPDW": "#000000",  # deep water fill (dark blue-grey)
+    "DEPDW": "#000000",  # deep water fill (black)
     "DEPMD": "#140000",  # medium depth water fill (lighter than DEPDW, R29)
     "DEPMS": "#260000",  # medium-shallow water fill
     "DEPVS": "#3A0000",  # very shallow water fill
@@ -72,7 +72,7 @@ def _toward_black(colour: str, fraction: float) -> str:
     return "#" + "".join(f"{c:02x}" for c in channels)
 
 
-# Amber night (#33, the default; owner choice 2026-11-06 after a dark-room test): amber text, dimmed navaid colors,
+# Amber night (#33, the default; owner choice 2026-11-05 after a look on the test laptop): amber text, dimmed navaid colors,
 # shoal band, land and coastline brightening toward shore. Water stays black.
 _NIGHT_AMBER = {**_NIGHT_RED,
     "TXTSH": "#E0A000", "TXTDP": "#C08000", "LITGN": "#20A040", "LITYW": "#D0B000", "LITWH": "#C0C0C0",

@@ -62,22 +62,20 @@ headless Chromium (`--styles nav-day,fish-day` limits the styles).
 
 `restyle PACKDIR` rebuilds a built pack's `styles/*.json` and `sprites/` from the current code (the nav styles keep the
 pack's safety contour) and rewrites the `manifest.json` hashes. The version and the data stay, so a palette change
-reaches an existing pack without a rebuild; `chartpack check` passes afterwards.
-
-### Night
-
-The night palette is red only: every channel but red is at most `0x20`, water is black to dark red and the chart ink,
-lights and hazards are red, so the eyes stay dark-adapted. It is judged on a laptop in a dark room.
+reaches an existing pack without a rebuild; `chartpack check` passes afterwards. `restyle` refuses a pack whose
+`manifest.json` schema is not the current one (rebuild it). A restyled pack keeps its version, so it no longer matches
+the released archive of that version: a release needs a version bump and a fresh build.
 
 ### Night variants
 
-Amber is the default night style (owner choice 2026-11-06 after a dark-room test on the laptop). `chartpack restyle
-PACKDIR` rewrites the night styles and sprites in amber, and a fresh build writes it too; `chartpack restyle PACKDIR
---night red` gives the red-only alternative. Amber keeps these colored: text is amber (`TXTSH`, the bright text of
+Amber is the default night style (owner choice 2026-11-05 after a look on the test laptop). `chartpack restyle
+PACKDIR` rewrites the night styles and sprites in amber, and a fresh build writes it too. `chartpack restyle PACKDIR
+--night red` gives the red-only alternative: every channel but red is at most `0x20`, water is black to dark red and the
+chart ink, lights and hazards are red, so the eyes stay dark-adapted. Amber keeps these colored: text is amber (`TXTSH`, the bright text of
 shallow soundings, place names and contour labels, is `#E0A000`; `TXTDP`, the dim text of deep soundings and seabed
 codes, is `#C08000`), navaids keep their own dimmed colors (red stays red, green `#20A040`, yellow `#D0B000`, white
 `#C0C0C0`), land is brown, the coastline is a dim orange (`#C06000`), and the shoal band brightens toward shore.
-Deep water stays black. Everything else (lines, other icons, halos) stays red.
+Deep water stays black. Everything else (lines, other icons) stays red; text halos are black.
 
 ## Region files
 

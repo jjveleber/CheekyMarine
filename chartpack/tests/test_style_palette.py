@@ -95,28 +95,46 @@ def test_night_amber_fills_brighten_toward_shore():
 def test_white_navaids_use_litwh():
     from chartpack.style.fish import fish_style
     from chartpack.style.nav import nav_style
-
-    day = PALETTES["day"]
     from chartpack.style.palette import night_palette
 
-    red = night_palette("red")
+    day = PALETTES["day"]
+    amber, red = night_palette("amber"), night_palette("red")
     assert day["LITWH"] == day["CHWHT"] and red["LITWH"] == red["CHWHT"]  # amber dims LITWH on purpose
-    layers = [l for l in nav_style("day")["layers"] if "match" in str(l.get("paint", {}).get("icon-color", ""))]
-    assert layers
-    for layer in layers:
-        expr = layer["paint"]["icon-color"]
-        assert expr[2:4] == ["1", day["LITWH"]], layer["id"]
-    hill = next(l for l in fish_style("day")["layers"] if l["type"] == "hillshade")
-    assert hill["paint"]["hillshade-highlight-color"] == day["CHWHT"]
+    assert amber["LITWH"] != amber["CHWHT"] == "#FF2020"
+    for name, pal in (("day", day), ("night", amber)):
+        layers = [l for l in nav_style(name)["layers"] if "match" in str(l.get("paint", {}).get("icon-color", ""))]
+        assert layers
+        for layer in layers:
+            expr = layer["paint"]["icon-color"]
+            assert expr[2:4] == ["1", pal["LITWH"]], (name, layer["id"])
+        hill = next(l for l in fish_style(name)["layers"] if l["type"] == "hillshade")
+        assert hill["paint"]["hillshade-highlight-color"] == pal["CHWHT"], name  # never LITWH
+
+
+TEXT_TIER = {"soundg-shallow": "TXTSH", "area-names": "TXTSH", "soundg-deep": "TXTDP", "seabed": "TXTDP",
+             "seabed-kelp": "TXTDP"}
+
+
+def _tier(layer_id):
+    if layer_id.startswith("contour-label"):
+        return "TXTSH"
+    return TEXT_TIER[layer_id]
 
 
 def test_text_layers_use_text_tokens():
     from chartpack.style.fish import fish_style
     from chartpack.style.nav import nav_style
+    from chartpack.style.palette import night_palette
 
-    day = PALETTES["day"]
+    day, amber = PALETTES["day"], night_palette("amber")
     assert day["TXTSH"] == day["SNDG1"] and day["TXTDP"] == day["SNDG2"]
-    for style in (nav_style("day"), fish_style("day")):
-        for layer in style["layers"]:
-            if layer["type"] == "symbol" and "text-field" in layer.get("layout", {}):
-                assert layer["paint"]["text-color"] in (day["TXTSH"], day["TXTDP"]), layer["id"]
+    assert amber["TXTSH"] != amber["TXTDP"] and amber["TXTSH"] not in (amber["CHBLK"], amber["SNDG1"])
+    seen = set()
+    for name, pal in (("day", day), ("night", amber)):
+        for style in (nav_style(name), fish_style(name)):
+            for layer in style["layers"]:
+                if layer["type"] == "symbol" and "text-field" in layer.get("layout", {}):
+                    assert layer["paint"]["text-color"] == pal[_tier(layer["id"])], (name, layer["id"])
+                    seen.add(layer["id"])
+    assert {"soundg-shallow", "soundg-deep", "area-names", "seabed", "seabed-kelp"} <= seen
+    assert any(i.startswith("contour-label") for i in seen)
