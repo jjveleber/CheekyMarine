@@ -77,7 +77,10 @@ git -C "$src/vendor/maplibre-native/vendor/maplibre-tile-spec" submodule update 
 # QMapLibre::Map in its own QQuickItem, so the Qt Location plugin (LGPL-3.0 or
 # GPL, and it needs Qt Location private headers), the QML MapLibre item and
 # the widgets library are switched off.
+# GCC 15.2 (Ubuntu 26.04) reports a -Wfree-nonheap-object false positive in
+# symbol_bucket.cpp, and the project builds with -Werror, so keep it a warning.
 cmake -S "$src" -B "$build" -G Ninja \
+    -DCMAKE_CXX_FLAGS=-Wno-error=free-nonheap-object \
     -DCMAKE_BUILD_TYPE=Release \
     -DBUILD_SHARED_LIBS=ON \
     -DCMAKE_INSTALL_PREFIX="$prefix" \

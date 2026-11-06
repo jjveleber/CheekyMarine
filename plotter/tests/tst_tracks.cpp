@@ -52,6 +52,11 @@ struct Rig {
         now = t;
         rec->onVessel(at(t, lat, lon));
     }
+    // Feeds an update at monotonic time n and vessel time t, apart.
+    void feedAt(double n, double t, double lat, double lon = -122.23) {
+        now = n;
+        rec->onVessel(at(t, lat, lon));
+    }
     int stored(qint64 id) { return int(tracks->points(id).size()); }
     int rows(const QString& table) {
         QSqlQuery q(store->db());
@@ -118,12 +123,91 @@ private slots:
     void gapOf601SecondsStartsASecondTrack() {
         Rig r;
         r.feed(0, 47.98);
-        r.feed(601, 47.99);
+        r.feed(10, 47.99); // two kept points: the first track survives its close
+        r.feed(611, 47.99);
         r.rec->flush();
         const auto l = r.tracks->list();
         QCOMPARE(l.size(), 2);
         QCOMPARE(l[0].points, 1); // the new one, newest first
-        QCOMPARE(l[1].points, 1);
+        QCOMPARE(l[1].points, 2);
+    }
+    void clockStepBackwardKeepsOneTrackAndKeepsStoring() {
+        Rig r;
+        for (int i = 0; i < 60; ++i) r.feed(i, 47.98 + i * 3 * kLatPerM);
+        for (int i = 60; i < 120; ++i) r.feedAt(i, i - 3600, 47.98 + i * 3 * kLatPerM);
+        r.rec->flush();
+        const auto l = r.tracks->list();
+        QCOMPARE(l.size(), 1);
+        QCOMPARE(l[0].points, 24);
+    }
+    void clockStepForwardKeepsOneTrack() {
+        Rig r;
+        for (int i = 0; i < 60; ++i) r.feed(i, 47.98 + i * 3 * kLatPerM);
+        for (int i = 60; i < 120; ++i) r.feedAt(i, i + 3600, 47.98 + i * 3 * kLatPerM);
+        r.rec->flush();
+        const auto l = r.tracks->list();
+        QCOMPARE(l.size(), 1);
+        QCOMPARE(l[0].points, 24);
+    }
+    void drawnOrderIsRecordedOrder() {
+        Rig r;
+        QList<LatLon> fed;
+        for (int i = 0; i < 120; ++i) {
+            const double lat = 47.98 + i * 3 * kLatPerM;
+            r.feedAt(i, i < 60 ? i : i - 3600, lat);
+            if (i % 5 == 0) fed.append({lat, -122.23});
+        }
+        r.rec->flush();
+        const auto l = r.tracks->list();
+        QCOMPARE(l.size(), 1);
+        const auto pts = r.tracks->points(l[0].id);
+        QCOMPARE(pts.size(), fed.size());
+        for (qsizetype i = 0; i < pts.size(); ++i) QCOMPARE(pts[i].lat, fed[i].lat);
+    }
+    void monotonicGapStartsASecondTrack() {
+        Rig r;
+        r.feedAt(0, 0, 47.98);
+        r.feedAt(10, 1, 47.981);
+        r.feedAt(611, 2, 47.99);
+        r.feedAt(612, 3, 47.991);
+        r.rec->flush();
+        QCOMPARE(r.tracks->list().size(), 2);
+    }
+    void trackClosedWithOnePointIsDeleted() {
+        {
+            Rig r; // (a) one fix, recording off
+            r.feed(0, 47.98);
+            r.settings->setTrackRecording(false);
+            QCOMPARE(r.tracks->list().size(), 0);
+            QCOMPARE(r.rows("track_points"), 0);
+        }
+        {
+            Rig r; // (b) two starts at the dock
+            r.feed(0, 47.98);
+            r.feed(601, 47.98);
+            QCOMPARE(r.tracks->list().size(), 1); // only the active one
+            r.settings->setTrackRecording(false);
+            QCOMPARE(r.tracks->list().size(), 0);
+        }
+        {
+            Rig r; // (c) two kept points
+            r.feed(0, 47.98);
+            r.feed(10, 47.98 + 20 * kLatPerM);
+            r.settings->setTrackRecording(false);
+            QCOMPARE(r.tracks->list().size(), 1);
+        }
+        {
+            Rig r; // (d) destroyed after one fix
+            r.feed(0, 47.98);
+            r.rec.reset();
+            QCOMPARE(r.tracks->list().size(), 0);
+        }
+    }
+    void stoppedBoatLeavesNoTrack() {
+        Rig r;
+        for (int i = 0; i <= 600; ++i) r.feed(i, 47.98 + (i % 2) * 2 * kLatPerM);
+        r.settings->setTrackRecording(false);
+        QCOMPARE(r.tracks->list().size(), 0);
     }
     void gapOf599SecondsKeepsTheTrack() {
         Rig r;
@@ -146,11 +230,12 @@ private slots:
     void updatesWithoutPositionAreIgnoredAndDoNotResetTheGap() {
         Rig r;
         r.feed(0, 47.98);
+        r.feed(10, 47.99);
         r.now = 300;
         VesselState none;
         none.t = 300;
         r.rec->onVessel(none);
-        r.feed(601, 47.99);
+        r.feed(611, 47.99);
         r.rec->flush();
         QCOMPARE(r.tracks->list().size(), 2);
     }
@@ -185,17 +270,16 @@ private slots:
         r.rec->tick();
         QCOMPARE(r.stored(r.rec->activeId()), 5);
     }
-    // The 30 s write interval runs on the recorder's injected clock, not on the vessel time the
-    // updates carry: an update whose vessel time is an hour behind the others neither delays nor
-    // blocks the write. Not covered here: the next update with the normal vessel time is then over
-    // 600 s after this one and starts a new track (the gap rule, which uses vessel time).
+    // The 30 s write interval and the point interval run on the recorder's injected clock, not on the
+    // vessel time the updates carry: an update whose vessel time is an hour behind the others neither
+    // delays nor blocks the point or the write.
     void writeIntervalIgnoresABackwardTimeStep() {
         Rig r(true, 1, 10);
         for (int i = 0; i < 5; ++i) r.feed(1.7e9 + i, 47.0 + i * 20 * kLatPerM);
         const qint64 id = r.rec->activeId();
         r.now = 1.7e9 + 31; // 31 s since the track began, on the recorder's clock
         r.rec->onVessel(at(1.7e9 - 3600, 47.0 + 5 * 20 * kLatPerM)); // the updates' clock went back an hour
-        QCOMPARE(r.stored(id), 5);
+        QCOMPARE(r.stored(id), 6); // the sixth point was kept and the write ran
         QCOMPARE(r.rec->activeId(), id);
     }
     // The clock main.cpp gives the recorder is Qt's monotonic clock in seconds.
@@ -207,6 +291,22 @@ private slots:
         QThread::msleep(50);
         const double later = clock();
         QVERIFY(later - start >= 0.045 && later - start < 5);
+    }
+    // The clock main.cpp gives the recorder counts a suspend (CLOCK_BOOTTIME), so a sleep longer than
+    // the gap starts a new track. A test cannot suspend the machine: this checks that it advances and
+    // never goes backward.
+    void boottimeClockAdvances() {
+        const auto clock = boottimeSecondsClock();
+        const double start = clock();
+        QThread::msleep(20);
+        const double later = clock();
+        QVERIFY(later - start >= 0.015 && later - start < 5);
+        double prev = clock();
+        for (int i = 0; i < 50; ++i) {
+            const double t = clock();
+            QVERIFY(t >= prev);
+            prev = t;
+        }
     }
     void turningRecordingOffFlushes() {
         Rig r;
@@ -222,18 +322,20 @@ private slots:
     void turningRecordingBackOnStartsANewTrack() {
         Rig r;
         r.feed(0, 47.98);
+        r.feed(10, 47.99);
         r.settings->setTrackRecording(false);
         r.settings->setTrackRecording(true);
-        r.feed(10, 47.98);
+        r.feed(20, 47.98);
         r.rec->flush();
         QCOMPARE(r.tracks->list().size(), 2);
     }
     void destructorWritesTheBuffer() {
         Rig r;
         r.feed(0, 47.98);
+        r.feed(10, 47.99);
         const qint64 id = r.rec->activeId();
         r.rec.reset();
-        QCOMPARE(r.stored(id), 1);
+        QCOMPARE(r.stored(id), 2);
     }
     void activeTrackSignalCarriesTheWholeTrackIncludingBuffered() {
         Rig r;
@@ -623,6 +725,38 @@ private slots:
         QCOMPARE(row["points"].toInt(), 3); // the same once written
         QCOMPARE(row["durationS"].toDouble(), 20.0);
     }
+    // The active track's duration is the span of its kept points on the recorder clock: a vessel
+    // time that steps back an hour neither makes it negative nor stops it growing, and it runs to
+    // the last kept point, not to now (so it does not drop when the track closes).
+    void activeDurationFollowsTheRecorderClockAcrossAStep() {
+        Rig r(true, 1, 0);
+        TracksController c(*r.tracks, *r.rec);
+        r.feedAt(0, 10000, 47.0);
+        c.refresh();
+        QCOMPARE(c.tracks().at(0).toMap()["durationS"].toDouble(), 0.0); // one point
+        r.feedAt(10, 10010, 47.001);
+        r.feedAt(20, 10020 - 3600, 47.002); // the vessel clock stepped back an hour
+        c.refresh();
+        QCOMPARE(c.tracks().at(0).toMap()["durationS"].toDouble(), 20.0);
+        r.feedAt(30, 10030 - 3600, 47.003);
+        c.refresh();
+        QCOMPARE(c.tracks().at(0).toMap()["durationS"].toDouble(), 30.0);
+        r.now = 100; // time passes with no kept point
+        c.refresh();
+        QCOMPARE(c.tracks().at(0).toMap()["durationS"].toDouble(), 30.0);
+    }
+    // A finished track whose last point is older than its first (a backward vessel clock step) shows
+    // no time rather than a negative one.
+    void finishedTrackDurationIsClampedAtZero() {
+        Rig r(false);
+        const qint64 id = r.tracks->create(10000);
+        TrackPoint a; a.t = 10000; a.lat = 47.0; a.lon = -122.23;
+        TrackPoint b; b.t = 10000 - 3600; b.lat = 47.001; b.lon = -122.23;
+        QVERIFY(r.tracks->append(id, {a, b}));
+        TracksController c(*r.tracks, *r.rec);
+        QCOMPARE(c.tracks().size(), 1);
+        QCOMPARE(c.tracks().at(0).toMap()["durationS"].toDouble(), 0.0);
+    }
     void hiddenActiveTrackIsNotDrawn() {
         Rig r(true, 1, 0);
         TracksController c(*r.tracks, *r.rec);
@@ -663,7 +797,7 @@ private slots:
     void controllerRefusesToDeleteTheActiveTrack() {
         Rig r;
         TracksController c(*r.tracks, *r.rec);
-        r.feed(0, 47.0);
+        r.feed(0, 47.0); r.feed(10, 47.001);
         r.rec->flush();
         c.remove(r.rec->activeId());
         QCOMPARE(r.tracks->list().size(), 1);

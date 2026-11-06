@@ -5,6 +5,8 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QSqlError>
 #include <QSqlQuery>
 #include <QUuid>
@@ -28,7 +30,7 @@ QSqlError execAll(QSqlDatabase& db, std::initializer_list<const char*> sqls) {
     return {};
 }
 
-const std::array<Migration, 2> kMigrations{{
+const std::array<Migration, 3> kMigrations{{
     {QVersionNumber(1, 0, 0),
      [](QSqlDatabase& db) {
          return execAll(db, {
@@ -44,6 +46,27 @@ const std::array<Migration, 2> kMigrations{{
              e.isValid())
              return e;
          return seedViews(db, QDateTime::currentSecsSinceEpoch());
+     }},
+    {QVersionNumber(1, 2, 0),
+     [](QSqlDatabase& db) {
+         // Rewrite every view row so the legacy favorite key is stored under its US spelling.
+         QSqlQuery q(db);
+         if (!q.exec(QStringLiteral("SELECT id, json FROM views"))) return q.lastError();
+         QList<QPair<QString, QString>> rows;
+         while (q.next()) rows.append({q.value(0).toString(), q.value(1).toString()});
+         for (const auto& [id, json] : rows) {
+             const QJsonDocument doc = QJsonDocument::fromJson(json.toUtf8());
+             if (!doc.isObject()) {
+                 qWarning() << "views: row" << id << "is not a JSON object; left as is";
+                 continue;
+             }
+             QSqlQuery u(db);
+             u.prepare(QStringLiteral("UPDATE views SET json = ? WHERE id = ?"));
+             u.addBindValue(viewJsonText(viewFromJson(doc.object())));
+             u.addBindValue(id);
+             if (!u.exec()) return u.lastError();
+         }
+         return QSqlError();
      }},
 }};
 
@@ -164,17 +187,21 @@ std::expected<QString, QString> Store::moveAside(QString dir, const QDateTime& n
         moved = stamp + QLatin1Char('-') + QString::number(n);
 
     QString result;
+    QStringList movedNames;
     for (const QString& suffix : suffixes) {
         if (!QFile::exists(base + suffix))
             continue;
         if (!(rename ? rename(base + suffix, moved + suffix) : QFile::rename(base + suffix, moved + suffix))) {
             const QString failed = QStringLiteral("plotter.db%1 could not be moved aside").arg(suffix);
-            if (result.isEmpty())
+            if (movedNames.isEmpty())
                 return std::unexpected(failed);
-            return std::unexpected(QStringLiteral("plotter.db was moved to %1 but %2").arg(result, failed));
+            return std::unexpected(QStringLiteral("%1 moved to %2 but %3")
+                                       .arg(movedNames.join(QStringLiteral(" and ")) +
+                                                (movedNames.size() == 1 ? QStringLiteral(" was") : QStringLiteral(" were")),
+                                            moved, failed));
         }
-        if (suffix.isEmpty())
-            result = moved;
+        movedNames << QStringLiteral("plotter.db") + suffix;
+        result = moved;
     }
     return result;
 }

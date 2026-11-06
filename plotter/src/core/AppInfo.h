@@ -1,8 +1,11 @@
 #pragma once
 #include "PackCatalog.h"
 #include <QObject>
+#include <QString>
 #include <QVariantList>
 #include <QVariantMap>
+
+class N2kClient;
 
 // What the splash, the About page and the no-data banner show: versions, packs and the daemon's
 // schema state.
@@ -44,3 +47,11 @@ private:
     QVariantList m_packs;
     QVariantMap m_charts, m_bathy;
 };
+
+// Forwards the client's hello version and schema mismatch to `info`. The client emits the hello's
+// version before a schema mismatch.
+void connectAppInfo(N2kClient& client, AppInfo& info);
+
+// Why the chart cannot draw on this Qt platform, or empty when it can (the offscreen and minimal
+// platforms have no GL, and cheekyplotter crashes on them).
+QString platformProblem(const QString& platformName);

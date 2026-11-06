@@ -70,14 +70,14 @@ private slots:
         QCOMPARE(m.rowCount(), 3);
         QCOMPARE(ids(m), (QStringList{"shipped-nav", "shipped-fish", "shipped-big"}));
         QCOMPARE(m.currentId(), QStringLiteral("shipped-nav"));
-        QCOMPARE(m.favouriteCapacity(), 5);
+        QCOMPARE(m.favoriteCapacity(), 5);
         QCOMPARE(role(m, 0, "id").toString(), QStringLiteral("shipped-nav"));
         QCOMPARE(role(m, 0, "name").toString(), QStringLiteral("Navigation"));
         QCOMPARE(role(m, 0, "shortName").toString(), QStringLiteral("Nav"));
         QCOMPARE(role(m, 0, "icon").toString(), QStringLiteral("compass"));
         QCOMPARE(role(m, 1, "chart").toString(), QStringLiteral("fish"));
         QCOMPARE(role(m, 2, "chart").toString(), QStringLiteral("none"));
-        QVERIFY(role(m, 0, "favourite").toBool());
+        QVERIFY(role(m, 0, "favorite").toBool());
         QVERIFY(role(m, 2, "onTabBar").toBool());
         const QVariantList slotRows = role(m, 0, "slots").toList();
         QCOMPARE(slotRows.size(), 8);
@@ -138,7 +138,7 @@ private slots:
         QCOMPARE(vb.shortName, QStringLiteral("View5"));
         QCOMPARE(vb.chart, ViewChart::Nav);
         QCOMPARE(vb.icon, iconNames().first());
-        QVERIFY(!vb.favourite);
+        QVERIFY(!vb.favorite);
         QCOMPARE(vb.slotList.size(), 8);
         for (const ViewSlot& s : vb.slotList) QVERIFY(!s.on);
         QCOMPARE(vb.cells, (ViewCells{kTwoColumns, {Field::Depth, Field::Sog}}));
@@ -163,7 +163,7 @@ private slots:
         const View v = *m.view(d);
         QCOMPARE(v.name, QStringLiteral("Navigation 2"));
         QCOMPARE(v.shortName, QStringLiteral("Naviga"));
-        QVERIFY(v.favourite);
+        QVERIFY(v.favorite);
         QCOMPARE(v.slotList, m.view("shipped-nav")->slotList);
         QCOMPARE(m.duplicate("nope"), QString());
         ViewsModel again(*e.store, *e.settings, e.clock());
@@ -221,13 +221,13 @@ private slots:
         ViewsModel m(*e.store, *e.settings, e.clock());
         const QString a = m.add(), b = m.add();
         QSignalSpy spy(&m, &ViewsModel::tabViewsChanged);
-        m.setFavourite(a, true);
-        m.setFavourite(b, true);
+        m.setFavorite(a, true);
+        m.setFavorite(b, true);
         QVERIFY(spy.count() >= 2);
-        QVERIFY(m.view(a)->favourite);
+        QVERIFY(m.view(a)->favorite);
         QCOMPARE(m.tabViews().size(), 5);
-        m.setFavouriteCapacity(3);
-        QCOMPARE(m.favouriteCapacity(), 3);
+        m.setFavoriteCapacity(3);
+        QCOMPARE(m.favoriteCapacity(), 3);
         const QVariantList tabs = m.tabViews();
         QCOMPARE(tabs.size(), 3);
         QCOMPARE(tabs[0].toMap(), (QVariantMap{{"id", "shipped-nav"}, {"shortName", "Nav"}, {"icon", "compass"}}));
@@ -235,11 +235,63 @@ private slots:
         QVERIFY(m.onTabBar("shipped-big"));
         QVERIFY(!m.onTabBar(a));
         QVERIFY(!role(m, 3, "onTabBar").toBool());
-        m.setFavourite("shipped-fish", false);
+        m.setFavorite("shipped-fish", false);
         QCOMPARE(m.tabViews()[2].toMap().value("id").toString(), a);
-        m.setFavouriteCapacity(0);
+        m.setFavoriteCapacity(0);
         QVERIFY(m.tabViews().isEmpty());
         QVERIFY(!m.onTabBar("shipped-nav"));
+    }
+
+    void saveFloorsWhitespaceName() {
+        Env e;
+        QVERIFY(e.settings);
+        ViewsModel m(*e.store, *e.settings, e.clock());
+        View v = *m.view("shipped-fish");
+        v.name = "   ";
+        v.shortName = "";
+        QVERIFY(m.save(v));
+        QCOMPARE(m.view("shipped-fish")->name, QStringLiteral("View"));
+    }
+
+    void saveUnchangedEmitsNoDataChanged() {
+        Env e;
+        QVERIFY(e.settings);
+        ViewsModel m(*e.store, *e.settings, e.clock());
+        View v = *m.view("shipped-fish");
+        QSignalSpy data(&m, &QAbstractItemModel::dataChanged);
+        QSignalSpy tabs(&m, &ViewsModel::tabViewsChanged);
+        e.now += 10;
+        QVERIFY(m.save(v));
+        QCOMPARE(data.count(), 0);
+        QCOMPARE(tabs.count(), 0);
+        v.name = "Other";
+        QVERIFY(m.save(v));
+        QVERIFY(data.count() >= 1);
+        QVERIFY(tabs.count() >= 1);
+    }
+
+    void addNonFavoriteEmitsNoTabViewsChanged() {
+        Env e;
+        QVERIFY(e.settings);
+        ViewsModel m(*e.store, *e.settings, e.clock());
+        QSignalSpy tabs(&m, &ViewsModel::tabViewsChanged);
+        QSignalSpy count(&m, &ViewsModel::countChanged);
+        m.add();
+        QCOMPARE(tabs.count(), 0);
+        QCOMPARE(count.count(), 1);
+    }
+
+    // Guards the skip branch in ViewDraft::load: without the range check the QList index trips Qt's
+    // debug assert. A release build has no assert, so there this can pass even without the check.
+    void loadIgnoresASlotWithAnOutOfRangeId() {
+        Env e;
+        QVERIFY(e.settings);
+        ViewDraft d(e.vessel, *e.settings);
+        View v = shippedViews(5)[0];
+        v.slotList[3].id = SlotId(9);
+        QTest::ignoreMessage(QtWarningMsg, QRegularExpression("made whole"));
+        d.load(v);
+        QCOMPARE(d.toView().slotList.size(), 8);
     }
 
     void saveKeepsOrdAndExtra() {
@@ -332,7 +384,7 @@ private slots:
         m.move("shipped-nav", 1);
         m.move(a, -1);
         QVERIFY(m.remove("shipped-fish"));
-        m.setFavourite(a, true);
+        m.setFavorite(a, true);
         View v = *m.view(a);
         v.name = "Saved";
         QVERIFY(m.save(v));
@@ -451,8 +503,8 @@ private slots:
         QCOMPARE(d.shortName(), QStringLiteral("ABCDEF"));
         d.setChart("fish");
         QCOMPARE(d.toView().chart, ViewChart::Fish);
-        d.setFavourite(false);
-        QVERIFY(!d.toView().favourite);
+        d.setFavorite(false);
+        QVERIFY(!d.toView().favorite);
 
         d.loadJson(viewToJson(shipped).toVariantMap());
         QVERIFY(!d.dirty());

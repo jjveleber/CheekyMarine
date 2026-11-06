@@ -43,8 +43,21 @@ Item {
     // column sits centred between them, or left of them when the gap is too small.
     property real trBottom: cornerArea.y
     property real brTop: cornerArea.y + cornerArea.height
+    property real tlBottom: cornerArea.y
+    property real blTop: cornerArea.y + cornerArea.height
     property real trLeft: cornerArea.x + cornerArea.width
     property real brLeft: cornerArea.x + cornerArea.width
+
+    // The rectangle between the on corner slots (the bars, notice and strip are already outside
+    // the corner area), below the top-center chips and above Recenter when they show: where the AIS
+    // sheet lives, so it never covers a slot or those controls.
+    readonly property rect aisFreeRect: {
+        let top = Math.max(tlBottom, trBottom, cornerArea.y) + margin
+        if (chipsColumn.height > 0) top = Math.max(top, chipsColumn.y + chipsColumn.height + margin)
+        let bottom = Math.min(blTop, brTop, cornerArea.y + cornerArea.height) - margin
+        if (recenterButton.visible) bottom = Math.min(bottom, recenterButton.y - margin)
+        return Qt.rect(cornerArea.x, top, cornerArea.width, Math.max(0, bottom - top))
+    }
 
     // The drawn digit height of each slot by id, from one clamp over every slot's box. The boxes
     // depend on the slots' text metrics and stored sizes only, never on drawnMm, so this does not
@@ -270,6 +283,8 @@ Item {
             Binding { when: slotView.slotId === "Bottom"; target: page; property: "bottomInset"; value: slotView.takesRoom ? slotView.height : 0 }
             Binding { when: slotView.slotId === "Left"; target: page; property: "leftInset"; value: slotView.takesRoom ? slotView.width : 0 }
             Binding { when: slotView.slotId === "Right"; target: page; property: "rightBarInset"; value: slotView.takesRoom ? slotView.width : 0 }
+            Binding { when: slotView.slotId === "TL"; target: page; property: "tlBottom"; value: slotView.on ? slotView.y + slotView.height : cornerArea.y }
+            Binding { when: slotView.slotId === "BL"; target: page; property: "blTop"; value: slotView.on ? slotView.y : cornerArea.y + cornerArea.height }
             Binding { when: slotView.slotId === "TR"; target: page; property: "trBottom"; value: slotView.on ? slotView.y + slotView.height : cornerArea.y }
             Binding { when: slotView.slotId === "BR"; target: page; property: "brTop"; value: slotView.on ? slotView.y : cornerArea.y + cornerArea.height }
             Binding { when: slotView.slotId === "TR"; target: page; property: "trLeft"; value: slotView.on ? slotView.x : cornerArea.x + cornerArea.width }
@@ -280,6 +295,7 @@ Item {
     function openLegend() { legendSheet.visible = true }
 
     BigButton {
+        id: recenterButton
         objectName: "recenterButton"
         anchors { horizontalCenter: shownCornerArea.horizontalCenter; bottom: cornerArea.bottom }
         visible: !page.chart.follow && !page.editing
@@ -318,6 +334,7 @@ Item {
 
     // Top centre: a Fishing view without a bathy pack says so, then the position chip.
     Column {
+        id: chipsColumn // no height when no chip shows
         anchors { horizontalCenter: shownCornerArea.horizontalCenter; top: cornerArea.top }
         spacing: Units.mm(1)
         Rectangle {
@@ -371,7 +388,11 @@ Item {
 
     AisSheet {
         id: aisSheet
-        anchors { horizontalCenter: shownCornerArea.horizontalCenter; top: cornerArea.top; topMargin: Units.mm(14) }
+        // Centered on the shown corner area like the other floating items, kept inside the free rectangle.
+        freeRect: page.aisFreeRect
+        x: Math.max(page.aisFreeRect.x, Math.min(page.aisFreeRect.x + page.aisFreeRect.width - width,
+                                                 shownCornerArea.x + (shownCornerArea.width - width) / 2))
+        y: page.aisFreeRect.y
         info: page.chart.aisSelection
         onClosed: page.chart.clearTarget()
     }

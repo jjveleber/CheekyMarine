@@ -18,7 +18,7 @@ class PanelMath : public QObject {
 public:
     using QObject::QObject;
     Q_INVOKABLE double pxPerMm(int w, int h, double diagIn) const { return ::pxPerMm(w, h, diagIn); }
-    Q_INVOKABLE int favouriteCapacity(double barHeightMm) const { return ::favouriteCapacity(barHeightMm); }
+    Q_INVOKABLE int favoriteCapacity(double barHeightMm) const { return ::favoriteCapacity(barHeightMm); }
 
     // boxes: [{id, takesRoom, sizeMm, fixedWMm, wPerMm, fixedHMm, hPerMm}]; space: {pageWMm, pageHMm}.
     // A box with an unknown id is logged and left out.

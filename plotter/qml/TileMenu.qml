@@ -1,7 +1,7 @@
 import QtQuick
 import QtQuick.Controls.Basic
 
-// The menu a held Home tile opens, over the page (a tap outside it closes it): Edit, Favourite
+// The menu a held Home tile opens, over the page (a tap outside it closes it): Edit, Favorite
 // on/off, Move left, Move right, Duplicate, Delete, Close. Delete asks first ("Delete <name>?",
 // Delete or Keep) and is disabled for the last view. Each action emits its signal; the moves keep
 // the menu open, the others close it.
@@ -9,13 +9,13 @@ Item {
     id: menu
     property string viewId: ""
     property string name: ""
-    property bool favourite: false
+    property bool favorite: false
     property int index: 0
     property int viewCount: 1
     property real areaWidth: width    // the page left of the tab bar
     property bool confirming: false
     signal editChosen(string id)
-    signal favouriteChosen(string id, bool on)
+    signal favoriteChosen(string id, bool on)
     signal moveChosen(string id, int delta)
     signal duplicateChosen(string id)
     signal deleteChosen(string id)
@@ -23,10 +23,10 @@ Item {
     objectName: "tileMenu"
     visible: false
 
-    function open(id, name, favourite, index) {
+    function open(id, name, favorite, index) {
         viewId = id
         menu.name = name
-        menu.favourite = favourite
+        menu.favorite = favorite
         menu.index = index
         confirming = false
         visible = true
@@ -85,8 +85,8 @@ Item {
                 BigButton {
                     objectName: "menu-favorite"
                     width: grid.cell
-                    text: menu.favourite ? "Favorite off" : "Favorite on"
-                    onClicked: { menu.close(); menu.favouriteChosen(menu.viewId, !menu.favourite) }
+                    text: menu.favorite ? "Favorite off" : "Favorite on"
+                    onClicked: { menu.close(); menu.favoriteChosen(menu.viewId, !menu.favorite) }
                 }
                 BigButton {
                     objectName: "menu-moveLeft"

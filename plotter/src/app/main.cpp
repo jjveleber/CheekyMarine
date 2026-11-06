@@ -9,6 +9,7 @@
 #include "core/PaletteController.h"
 #include "core/Recovery.h"
 #include "core/Settings.h"
+#include "core/SignalBridge.h"
 #include "core/Store.h"
 #include "core/TouchLock.h"
 #include "core/Tracks.h"
@@ -16,11 +17,15 @@
 #include "core/VesselModel.h"
 #include "core/ViewDraft.h"
 #include "core/ViewsModel.h"
+#include "core/WindowOptions.h"
 
 #include <QCommandLineParser>
 #include <QDateTime>
 #include <QDebug>
+#include <QElapsedTimer>
 #include <QGuiApplication>
+#include <QPointF>
+#include <optional>
 #include <QQmlApplicationEngine>
 #include <QtQml/qqmlextensionplugin.h>
 #include <QQuickView>
@@ -30,7 +35,9 @@
 #include <QScreen>
 #include <QStandardPaths>
 #include <QTimer>
+#include <csignal>
 #include <memory>
+#include <utility>
 
 Q_IMPORT_QML_PLUGIN(CheekyMarinePlugin)
 
@@ -38,7 +45,7 @@ namespace {
 
 // Shows the recovery screen instead of the app until the store opens (returned) or the window is
 // closed (null).
-std::unique_ptr<Store> recover(QGuiApplication& app, const QString& dir, StoreError error, QSize size) {
+std::unique_ptr<Store> recover(QGuiApplication& app, const QString& dir, StoreError error, bool fullscreen, QSize size) {
     Recovery rec(dir, error);
     std::unique_ptr<Store> store;
     QQuickView view;
@@ -57,7 +64,7 @@ std::unique_ptr<Store> recover(QGuiApplication& app, const QString& dir, StoreEr
     };
     QObject::connect(&view, &QWindow::widthChanged, units, sizeUnits);
     QObject::connect(&view, &QWindow::heightChanged, units, sizeUnits);
-    view.resize(size.isValid() ? size : QSize(1024, 600));
+    view.resize(QSize(1024, 600));
     sizeUnits();
     QObject::connect(
         &rec, &Recovery::recovered, &app,
@@ -68,6 +75,7 @@ std::unique_ptr<Store> recover(QGuiApplication& app, const QString& dir, StoreEr
         },
         Qt::QueuedConnection);
     view.show();
+    applyWindowOptions(view, fullscreen, size);
     app.exec();
     return store;
 }
@@ -75,9 +83,15 @@ std::unique_ptr<Store> recover(QGuiApplication& app, const QString& dir, StoreEr
 } // namespace
 
 int main(int argc, char* argv[]) {
+    QElapsedTimer startTimer;
+    startTimer.start();
     // The MapLibre library is built with the OpenGL renderer only.
     QQuickWindow::setGraphicsApi(QSGRendererInterface::OpenGL);
     QGuiApplication app(argc, argv);
+    if (const QString problem = platformProblem(QGuiApplication::platformName()); !problem.isEmpty()) {
+        qCritical().noquote() << problem;
+        return 1;
+    }
     QGuiApplication::setApplicationName(QStringLiteral("cheekyplotter"));
 
     const QString appData = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
@@ -86,7 +100,8 @@ int main(int argc, char* argv[]) {
     QCommandLineOption socketOpt("socket", "n2kd JSON socket.", "path", "/run/cheekymarine/n2k.sock");
     QCommandLineOption packsOpt("packs", "Directory of installed chart and bathy packs (default <data dir>/packs).", "dir");
     QCommandLineOption dataOpt("data", "Directory for plotter.db.", "dir", appData);
-    QCommandLineOption windowOpt("window", "Window size, WxH (for example 1024x600).", "WxH");
+    QCommandLineOption windowOpt("window", "Window size, WxH (for example 1024x600), ignored with --fullscreen.", "WxH");
+    QCommandLineOption fullscreenOpt("fullscreen", "Show the window full screen (--window is ignored).");
     // Dev and checkpoint aids: save a window grab N ms after start. Repeatable; paired in order.
     QCommandLineOption shotOpt("screenshot", "Save a window grab to PATH.", "path");
     QCommandLineOption shotAfterOpt("screenshot-after-ms", "Delay for the matching --screenshot.", "ms");
@@ -100,11 +115,13 @@ int main(int argc, char* argv[]) {
     QCommandLineOption lockOpt("lock", "Start with the touch lock on.");
     QCommandLineOption recordOpt("record", "Turn track recording on at start (it persists).");
     QCommandLineOption exitAfterOpt("exit-after-ms", "Quit N ms after start.", "ms");
-    for (QCommandLineOption* o : {&shotOpt, &shotAfterOpt, &paletteOpt, &viewOpt, &pageOpt, &editorOpt, &sheetOpt,
-                                  &lockOpt, &recordOpt, &exitAfterOpt})
+    QCommandLineOption frameStatsOpt("frame-stats", "Print the frame interval and track write summaries at quit.");
+    QCommandLineOption positionOpt("position", "Chart center while there is no vessel position.", "lat,lon");
+    for (QCommandLineOption* o : {&positionOpt, &shotOpt, &shotAfterOpt, &paletteOpt, &viewOpt, &pageOpt, &editorOpt, &sheetOpt,
+                                  &lockOpt, &recordOpt, &exitAfterOpt, &frameStatsOpt})
         o->setFlags(QCommandLineOption::HiddenFromHelp);
-    cli.addOptions({socketOpt, packsOpt, dataOpt, windowOpt, shotOpt, shotAfterOpt, paletteOpt, viewOpt, pageOpt,
-                    editorOpt, sheetOpt, lockOpt, recordOpt, exitAfterOpt});
+    cli.addOptions({positionOpt, socketOpt, packsOpt, dataOpt, windowOpt, fullscreenOpt, shotOpt, shotAfterOpt, paletteOpt, viewOpt, pageOpt,
+                    editorOpt, sheetOpt, lockOpt, recordOpt, exitAfterOpt, frameStatsOpt});
     cli.process(app);
 
     QSize windowSize;
@@ -115,6 +132,15 @@ int main(int argc, char* argv[]) {
             return 2;
         }
         windowSize = QSize(m.captured(1).toInt(), m.captured(2).toInt());
+    }
+    std::optional<QPointF> startPosition;
+    if (cli.isSet(positionOpt)) {
+        const auto m = QRegularExpression("^(-?\\d+(\\.\\d+)?),(-?\\d+(\\.\\d+)?)$").match(cli.value(positionOpt));
+        if (!m.hasMatch()) {
+            qCritical() << "--position wants LAT,LON, got" << cli.value(positionOpt);
+            return 2;
+        }
+        startPosition = QPointF(m.captured(1).toDouble(), m.captured(3).toDouble());
     }
     const QStringList shots = cli.values(shotOpt), shotDelays = cli.values(shotAfterOpt);
     if (shots.size() != shotDelays.size()) {
@@ -156,7 +182,7 @@ int main(int argc, char* argv[]) {
         store = std::move(*opened);
     } else {
         qWarning() << "cannot open the store in" << cli.value(dataOpt) << storeErrorReason(opened.error());
-        store = recover(app, cli.value(dataOpt), opened.error(), windowSize);
+        store = recover(app, cli.value(dataOpt), opened.error(), cli.isSet(fullscreenOpt), windowSize);
         if (!store) return 1;
     }
     Settings settings(*store);
@@ -175,13 +201,17 @@ int main(int argc, char* argv[]) {
     // Recording follows the setting; the vessel feeds it. The timer writes a buffer a quiet data
     // feed would leave waiting. Declared before the engine and the chart so they go first.
     TrackStore trackStore(*store);
-    TrackRecorder recorder(trackStore, settings, monotonicSecondsClock()); // the wall clock steps when GPS or NTP corrects it
+    TrackRecorder recorder(trackStore, settings, boottimeSecondsClock()); // the wall clock steps when GPS or NTP corrects it; a suspend counts
     TracksController tracksController(trackStore, recorder);
     QObject::connect(&vessel, &VesselModel::changed, &recorder, [&] { recorder.onVessel(vessel.state()); });
     QTimer recorderTimer;
     recorderTimer.setInterval(5000);
     QObject::connect(&recorderTimer, &QTimer::timeout, &recorder, &TrackRecorder::tick);
     recorderTimer.start();
+    // Ctrl-C, SIGTERM (systemctl stop) and SIGHUP (a closed terminal) leave app.exec(), so the
+    // recorder destructor writes buffered points.
+    SignalBridge signalBridge{SIGINT, SIGTERM, SIGHUP};
+    QObject::connect(&signalBridge, &SignalBridge::signaled, &app, [](int) { QCoreApplication::quit(); });
 
     // The saved views and the draft of the shown one (Main.qml loads the current view into it).
     ViewsModel views(*store, settings, [] { return QDateTime::currentSecsSinceEpoch(); });
@@ -213,14 +243,13 @@ int main(int argc, char* argv[]) {
     auto mapItem = std::make_unique<MapLibreChartMap>();
     QQmlEngine::setObjectOwnership(mapItem.get(), QQmlEngine::CppOwnership);
     ChartController chart(mapItem->port(), settings, vessel, ais, packs);
+    if (startPosition) chart.setStartPosition(startPosition->x(), startPosition->y());
     mapItem->setZoomRange(chart.minZoom(), chart.maxZoom());
     // The controller adds its own refusals (a style it cannot use) to the scan's.
     for (const PackInfo& p : chart.packs())
         if (!p.refused.isEmpty()) qWarning() << "pack refused:" << p.dir << p.refused;
     AppInfo appInfo(chart.packs());
-    // The client emits the hello's version before a schema mismatch.
-    QObject::connect(&client, &N2kClient::daemonVersion, &appInfo, &AppInfo::setDaemonVersion);
-    QObject::connect(&client, &N2kClient::schemaMismatch, &appInfo, &AppInfo::setSchemaMismatch);
+    connectAppInfo(client, appInfo);
     // The active track always draws, the finished ones when shown.
     bindTracks(chart, tracksController);
 
@@ -291,7 +320,31 @@ int main(int argc, char* argv[]) {
         qCritical() << "the main QML is not a window";
         return 1;
     }
-    if (windowSize.isValid()) window->resize(windowSize);
+    applyWindowOptions(*window, cli.isSet(fullscreenOpt), windowSize);
+    // The start time, logged once at the first frame. Frames can queue up before the disconnect
+    // lands, so a flag keeps it to one line.
+    auto readyConn = std::make_shared<QMetaObject::Connection>();
+    auto readyLogged = std::make_shared<bool>(false);
+    *readyConn = QObject::connect(window, &QQuickWindow::frameSwapped, window, [&startTimer, readyConn, readyLogged] {
+        QObject::disconnect(*readyConn);
+        if (std::exchange(*readyLogged, true)) return;
+        qInfo().noquote() << QStringLiteral("ready in %1 ms").arg(startTimer.elapsed());
+    });
+    if (cli.isSet(frameStatsOpt)) {
+        // Intervals between consecutive frames (the first frame has no predecessor), printed at quit.
+        auto intervals = std::make_shared<QList<qint64>>();
+        auto frameTimer = std::make_shared<QElapsedTimer>();
+        QObject::connect(window, &QQuickWindow::frameSwapped, window, [intervals, frameTimer] {
+            if (frameTimer->isValid()) intervals->append(frameTimer->restart());
+            else frameTimer->start();
+        });
+        // And the main-thread time inside each active-track write, to tell a write stall from an idle gap.
+        chart.setWriteTiming(true);
+        QObject::connect(&app, &QCoreApplication::aboutToQuit, &app, [intervals, &chart] {
+            qInfo().noquote() << frameStatsLine(*intervals);
+            qInfo().noquote() << writeStatsLine(chart.writeTimesUs());
+        });
+    }
     const auto resizeIcons = [&] { chart.setImages(chartIcons(iconPxPerMm(), palette.palette())); };
     resizeIcons();
     QObject::connect(window, &QWindow::widthChanged, &chart, resizeIcons);

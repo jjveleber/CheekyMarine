@@ -1,10 +1,15 @@
 #include "core/AppInfo.h"
 #include "core/Recovery.h"
+#include "core/N2kClient.h"
 #include "core/Store.h"
+#include "core/WindowOptions.h"
 #include <QDir>
+#include <QGuiApplication>
 #include <QFile>
+#include <QScreen>
 #include <QSignalSpy>
 #include <QTemporaryDir>
+#include <QWindow>
 #include <QtTest>
 
 namespace {
@@ -48,6 +53,31 @@ private slots:
         QCOMPARE(info.packs().at(0).toMap().value("inUse").toBool(), false);
         QCOMPARE(info.packs().at(2).toMap().value("inUse").toBool(), true);
         QCOMPARE(info.packs().at(3).toMap().value("inUse").toBool(), false);
+    }
+
+    void fullscreenIgnoresWindowSize() {
+        QWindow w;
+        w.show();
+        applyWindowOptions(w, true, QSize(300, 200));
+        QVERIFY(w.windowState() & Qt::WindowFullScreen);
+        QVERIFY(w.isVisible());
+        QVERIFY(w.size() != QSize(300, 200) || QGuiApplication::primaryScreen()->size() == QSize(300, 200));
+    }
+
+    void windowSizeAppliesWithoutFullscreen() {
+        QWindow w;
+        w.show();
+        applyWindowOptions(w, false, QSize(300, 200));
+        QCOMPARE(w.size(), QSize(300, 200));
+        QVERIFY(!(w.windowState() & Qt::WindowFullScreen));
+    }
+
+    void platformProblemNamesOffscreen() {
+        for (const QString& name : {QStringLiteral("offscreen"), QStringLiteral("minimal")})
+            QCOMPARE(platformProblem(name),
+                     QStringLiteral("renders need a GL display: QT_QPA_PLATFORM %1 cannot draw the chart").arg(name));
+        QVERIFY(platformProblem("xcb").isEmpty());
+        QVERIFY(platformProblem("wayland").isEmpty());
     }
 
     void appInfoNoPacks() {
@@ -134,6 +164,30 @@ private slots:
         QCOMPARE(QFile(dbPath(d)).size(), 4096);
     }
 
+    void connectAppInfoForwardsDaemonSignals() {
+        N2kClient c(QStringLiteral("/nonexistent"));
+        AppInfo i({});
+        connectAppInfo(c, i);
+        emit c.daemonVersion(QStringLiteral("1.2.3"));
+        QCOMPARE(i.daemonVersion(), QStringLiteral("1.2.3"));
+        emit c.schemaMismatch(2);
+        QVERIFY(i.schemaMismatch());
+        emit c.daemonVersion(QStringLiteral("1.2.3"));
+        QVERIFY(!i.schemaMismatch());
+    }
+
+    void frameStatsSummary() {
+        QCOMPARE(frameStatsLine({16, 17, 16, 120, 16}), QStringLiteral("frame-stats: frames 5 max 120 ms p99 120 ms over50 1"));
+        QCOMPARE(frameStatsLine({}), QStringLiteral("frame-stats: frames 0 max 0 ms p99 0 ms over50 0"));
+    }
+
+    void writeStatsSummary() {
+        QCOMPARE(writeStatsLine({500, 1250, 51000, 800}),
+                 QStringLiteral("track-writes: writes 4 max 51.00 ms p99 51.00 ms over50 1"));
+        QCOMPARE(writeStatsLine({50000, 1000}), QStringLiteral("track-writes: writes 2 max 50.00 ms p99 50.00 ms over50 0"));
+        QCOMPARE(writeStatsLine({}), QStringLiteral("track-writes: writes 0 max 0.00 ms p99 0.00 ms over50 0"));
+    }
+
     void reasons() {
         QVERIFY(storeErrorReason(StoreError::NewerMajor).contains("newer version"));
         QVERIFY(storeErrorReason(StoreError::Corrupt).contains("damaged"));
@@ -141,5 +195,5 @@ private slots:
     }
 };
 
-QTEST_GUILESS_MAIN(TstAppShell)
+QTEST_MAIN(TstAppShell)
 #include "tst_appshell.moc"

@@ -117,6 +117,7 @@ TestCase {
 
     function test_editorButtonsAndInertBar_data() { return H.sizes() }
     function test_editorButtonsAndInertBar(data) {
+        fixture.settings.panelDiagonalIn = data.diagIn
         const main = makeMain(data.w, data.h)
         main.hideDelayMs = 100
         main.editView("shipped-nav")
@@ -157,6 +158,7 @@ TestCase {
     // lie over, under it.
     function test_offSlotsTakeNoRoomInTheEditor_data() { return H.sizes() }
     function test_offSlotsTakeNoRoomInTheEditor(data) {
+        fixture.settings.panelDiagonalIn = data.diagIn
         const main = makeMain(data.w, data.h)
         const page = m(main, "chartPage")
         waitForRendering(page)
@@ -606,6 +608,26 @@ TestCase {
         if (data.sheet === "") compare(editor.sheet, "")
     }
 
+    // The initial editor waits for the first frame, not for a fixed time: it is still closed at the
+    // first swap after editorOpen and opens after it.
+    function test_initialEditorOpensAfterFirstFrame() {
+        const main = makeMain(1024, 600)
+        verify(!main.editing)
+        let swaps = 0, editingAtFirstSwap = null, swapsAtOpen = -1
+        const onSwap = () => { if (++swaps === 1) editingAtFirstSwap = main.editing }
+        const onEditing = () => { if (main.editing && swapsAtOpen < 0) swapsAtOpen = swaps }
+        main.frameSwapped.connect(onSwap)
+        main.editingChanged.connect(onEditing)
+        main.editorOpen = true
+        main.requestUpdate()
+        tryVerify(() => swaps >= 1, 2000, "a frame after editorOpen")
+        compare(editingAtFirstSwap, false, "closed until the first frame")
+        tryVerify(() => main.editing, 2000, "the editor opens after that frame")
+        main.frameSwapped.disconnect(onSwap)
+        main.editingChanged.disconnect(onEditing)
+        verify(swapsAtOpen >= 1, "opened after a frame swap, swaps " + swapsAtOpen)
+    }
+
     function test_liveHoldOpensSheetAndSaves() {
         const main = makeMain(1024, 600)
         const sheet = find(m(main, "viewEditor"), "slotSheet")
@@ -664,10 +686,22 @@ TestCase {
     }
     function tap(kb, name) { mouseClick(find(kb, name)) }
 
+    function test_keyboardDoneDisabledForWhitespace() {
+        Units.windowWidth = 1024
+        Units.windowHeight = 600
+        const kb = makeKeyboard(1024, 600)
+        kb.open("Name", "", 6)
+        waitForRendering(kb)
+        tap(kb, "key-space"); tap(kb, "key-space"); tap(kb, "key-space")
+        compare(kb.text, "   ")
+        compare(find(kb, "key-done").enabled, false, "Done needs more than spaces")
+    }
+
     function test_keyboardTypesShiftsAndCaps_data() { return H.sizes() }
     function test_keyboardTypesShiftsAndCaps(data) {
         Units.windowWidth = data.w
         Units.windowHeight = data.h
+        Units.diagonalIn = data.diagIn
         const kb = makeKeyboard(data.w, data.h)
         verify(!kb.visible)
         kb.open("Name", "", 6)
@@ -749,6 +783,7 @@ TestCase {
 
     function test_setupSheetRowsAndScroll_data() { return H.sizes() }
     function test_setupSheetRowsAndScroll(data) {
+        fixture.settings.panelDiagonalIn = data.diagIn
         const main = makeMain(data.w, data.h)
         const sheet = openSetup(main, "shipped-big")
         const panel = find(sheet, "setupPanel")
@@ -793,6 +828,29 @@ TestCase {
         mouseClick(find(panel, "setupDone"))
         verify(!sheet.visible, "Done closes the sheet")
         verify(main.editing, "the editor stays open")
+    }
+
+    function test_setupKeyboardAndGalleryWorkOnFirstOpen() {
+        const main = makeMain(1024, 600, { editorOpen: true, sheet: "setup" })
+        const editor = m(main, "viewEditor")
+        tryVerify(() => main.editing, 3000, "the editor opens")
+        const sheet = find(editor, "setupSheet")
+        tryVerify(() => sheet.visible, 3000, "the Setup sheet")
+        waitForRendering(sheet)
+        editor.setupSheet.editText("name")
+        const kb = find(sheet, "keyboard")
+        tryVerify(() => kb.visible, 3000, "the keyboard")
+        waitForRendering(kb)
+        const before = kb.text.length
+        tap(kb, "key-A")
+        compare(kb.text.length, before + 1)
+        tap(kb, "key-cancel")
+        verify(!kb.visible)
+        editor.setupSheet.openGallery()
+        const gallery = find(sheet, "layoutGallery")
+        tryVerify(() => gallery.visible, 3000, "the gallery")
+        waitForRendering(gallery)
+        compare(H.findAll(gallery, it => it.isBigButton === true && it.objectName.startsWith("layout-")).length, 72)
     }
 
     function test_setupRenamesThroughKeyboard() {
@@ -850,7 +908,7 @@ TestCase {
         verify(m(main, "chartPage").visible)
     }
 
-    // Cancel drops every Setup change: name, short name, icon, chart, layout and favourite.
+    // Cancel drops every Setup change: name, short name, icon, chart, layout and favorite.
     function test_setupCancelDiscardsEverything() {
         const main = makeMain(1024, 600)
         const before = fixture.views.viewJson("shipped-nav")
@@ -871,13 +929,13 @@ TestCase {
         tapShown(find(sheet, "layout-" + quad))
         tapShown(find(sheet, "row-favorite"))
         const changed = fixture.draft.toJson()
-        compare([changed.name, changed.short, changed.icon, changed.chart, changed.cells.layout, changed.favourite],
+        compare([changed.name, changed.short, changed.icon, changed.chart, changed.cells.layout, changed.favorite],
                 ["Trolling", "Troll", "fish", "none", quad, false], "every change made")
         mouseClick(find(sheet, "setupDone"))
         mouseClick(m(main, "editorCancel"))
         const stored = fixture.views.viewJson("shipped-nav")
         compare(stored, before, "nothing stored")
-        for (const k of ["name", "short", "icon", "chart", "favourite"]) {
+        for (const k of ["name", "short", "icon", "chart", "favorite"]) {
             compare(fixture.draft.toJson()[k], before[k], "draft " + k)
             compare(stored[k], before[k], "stored " + k)
         }
@@ -885,6 +943,29 @@ TestCase {
         compare(stored.cells.layout, before.cells.layout, "stored layout")
         compare(fixture.draft.toJson(), before)
         compare(chartStub.mode, "nav")
+    }
+
+    // The thumbnails stretch to fill each row: the first row's last one ends at the Flow's right edge.
+    function test_galleryRowsFillTheWidth_data() { return H.sizes() }
+    function test_galleryRowsFillTheWidth(data) {
+        Units.windowWidth = data.w
+        Units.windowHeight = data.h
+        Units.diagonalIn = data.diagIn
+        const main = makeMain(data.w, data.h)
+        const sheet = openSetup(main, "shipped-big")
+        tapShown(find(sheet, "row-layout"))
+        const gallery = find(sheet, "layoutGallery")
+        tryVerify(() => gallery.visible, 3000, "the gallery")
+        waitForRendering(gallery)
+        const thumbs = H.findAll(gallery, it => it.isBigButton === true && it.objectName.startsWith("layout-"))
+        const boxes = thumbs.map(t => H.box(t, gallery))
+        const y0 = Math.min(...boxes.map(b => b.y))
+        const row = boxes.filter(b => Math.abs(b.y - y0) < 0.5)
+        const left = Math.min(...row.map(b => b.x))
+        const right = Math.max(...row.map(b => b.x + b.w))
+        const flowW = find(gallery, "galleryScroller").width
+        verify(row.length >= 1)
+        verify(Math.abs((right - left) - flowW) <= 1, "row " + (right - left) + " vs Flow " + flowW)
     }
 
     function test_layoutGalleryHas72AndApplies() {
@@ -934,12 +1015,12 @@ TestCase {
         compare(fixture.draft.layout, quad)
     }
 
-    function test_favouriteRowNotesFullBar() {
+    function test_favoriteRowNotesFullBar() {
         const main = makeMain(1024, 600)
-        compare(fixture.views.favouriteCapacity, 5)
-        for (let i = 0; i < 2; ++i) fixture.views.setFavourite(fixture.views.add(), true)
+        compare(fixture.views.favoriteCapacity, 5)
+        for (let i = 0; i < 2; ++i) fixture.views.setFavorite(fixture.views.add(), true)
         const sixth = fixture.views.add()
-        fixture.views.setFavourite(sixth, true)
+        fixture.views.setFavorite(sixth, true)
         verify(!fixture.views.onTabBar(sixth))
         let sheet = openSetup(main, sixth)
         const row = find(sheet, "row-favorite")
@@ -948,13 +1029,13 @@ TestCase {
         verify(note.visible, "the note")
         compare(note.text, "Not on tab bar (full)")
         tapShown(row)
-        compare(fixture.draft.favourite, false)
+        compare(fixture.draft.favorite, false)
         compare(row.text, "Favorite: Off")
         verify(!note.visible, "no note when off")
         mouseClick(find(sheet, "setupDone"))
         mouseClick(m(main, "editorCancel"))
 
-        // A favourite on the bar has no note.
+        // A favorite on the bar has no note.
         sheet = openSetup(main, "shipped-fish")
         verify(!find(sheet, "favoriteNote").visible)
     }
@@ -997,21 +1078,21 @@ TestCase {
         verify(!main.editingNew)
     }
 
-    // The note before Done: the draft is a favourite, the stored view not yet, and the bar is full.
-    function test_favouriteNoteEstimatedBeforeDone() {
+    // The note before Done: the draft is a favorite, the stored view not yet, and the bar is full.
+    function test_favoriteNoteEstimatedBeforeDone() {
         const main = makeMain(1024, 600)
-        compare(fixture.views.favouriteCapacity, 5)
-        for (let i = 0; i < 2; ++i) fixture.views.setFavourite(fixture.views.add(), true)
+        compare(fixture.views.favoriteCapacity, 5)
+        for (let i = 0; i < 2; ++i) fixture.views.setFavorite(fixture.views.add(), true)
         compare(fixture.views.tabViews.length, 5)
         const plain = fixture.views.add()
-        verify(!fixture.views.viewJson(plain).favourite)
+        verify(!fixture.views.viewJson(plain).favorite)
         const sheet = openSetup(main, plain)
         const note = find(sheet, "favoriteNote")
         compare(find(sheet, "row-favorite").text, "Favorite: Off")
         verify(!note.visible)
         tapShown(find(sheet, "row-favorite"))
-        compare(fixture.draft.favourite, true)
-        verify(!fixture.views.viewJson(plain).favourite, "not stored before Done")
+        compare(fixture.draft.favorite, true)
+        verify(!fixture.views.viewJson(plain).favorite, "not stored before Done")
         verify(note.visible, "the note before Done")
         compare(note.text, "Not on tab bar (full)")
     }
@@ -1019,6 +1100,7 @@ TestCase {
     // A slot or cell sheet open: the floating buttons hide, and the sheet's Done is clear of them.
     function test_sheetsHideTheFloatingButtons_data() { return H.sizes() }
     function test_sheetsHideTheFloatingButtons(data) {
+        fixture.settings.panelDiagonalIn = data.diagIn
         const main = makeMain(data.w, data.h)
         const editor = m(main, "viewEditor")
         const floating = ["editorSetup", "editorDone", "editorCancel"].map(n => m(main, n))
