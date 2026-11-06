@@ -75,7 +75,7 @@ def _first_colour_code() -> list:
 def _colour_by_code(p: dict, default: str) -> list:
     return [
         "match", _first_colour_code(),
-        "1", p["CHWHT"], "2", p["CHBLK"], "3", p["LITRD"], "4", p["LITGN"], "6", p["LITYW"],
+        "1", p["LITWH"], "2", p["CHBLK"], "3", p["LITRD"], "4", p["LITGN"], "6", p["LITYW"],
         p[default],
     ]
 
@@ -145,7 +145,7 @@ def seabed_layers(p: dict) -> list[dict]:
     thin outline and their label, never a fill, which would change the depth colours."""
     text = {"text-field": ["get", "label"], "text-font": ["Noto Sans Regular"], "text-size": 10,
             "text-padding": ["step", ["zoom"], 20, 15, 2], "symbol-sort-key": _SEABED_SORT}
-    paint = {"text-color": p["SNDG2"], "text-halo-color": p["DEPDW"], "text-halo-width": 1.5}
+    paint = {"text-color": p["TXTDP"], "text-halo-color": p["DEPDW"], "text-halo-width": 1.5}
     return [
         {"id": "seabed-cmecs", "type": "line", "source": "enc", "source-layer": "seabed",
          "filter": ["==", ["get", "class"], "CMECS"],
@@ -161,7 +161,7 @@ def seabed_layers(p: dict) -> list[dict]:
 def _soundings(p: dict, depths: Depths, units: str) -> list[dict]:
     text_field = ["get", "depth"] if units == "m" else ["to-string", ["round", ["*", _num("depth"), FEET_PER_METRE]]]
     layers = []
-    for lid, colour in (("soundg-deep", p["SNDG2"]), ("soundg-shallow", p["SNDG1"])):
+    for lid, colour in (("soundg-deep", p["TXTDP"]), ("soundg-shallow", p["TXTSH"])):
         layers.append({
             "id": lid, "type": "symbol", "source": "enc", "source-layer": "soundg",
             "filter": depth_filter(lid, depths),
@@ -196,7 +196,7 @@ def _navaids_and_lights(p: dict) -> list[dict]:
         {"id": "area-names", "type": "symbol", "source": "enc", "source-layer": "area",
          "filter": ["all", _is_class("SEAARE"), ["has", "OBJNAM"]],
          "layout": {"text-field": ["get", "OBJNAM"], "text-font": ["Noto Sans Bold"], "text-size": 13},
-         "paint": {"text-color": p["CHGRD"], "text-halo-color": p["DEPDW"], "text-halo-width": 1}},
+         "paint": {"text-color": p["TXTSH"], "text-halo-color": p["DEPDW"], "text-halo-width": 1}},
     ]
 
 
@@ -230,13 +230,15 @@ def _hazards(p: dict, palette: str, depths: Depths) -> list[dict]:
     ]
 
 
-def nav_style(palette: str, depths: Depths = Depths(), *, units: str = "ft", safety_contour_m: float | None = None) -> dict:
+def nav_style(palette: str, depths: Depths = Depths(), *, units: str = "ft", safety_contour_m: float | None = None,
+              colors: dict | None = None) -> dict:
     """A complete MapLibre style v8 dict.
 
     safety_contour_m is the contour drawn as the safety contour (the next deeper available VALDCO,
-    computed at build time from the cells); None means the safety depth itself.
+    computed at build time from the cells); None means the safety depth itself. colors replaces the
+    palette's token table (the night variants).
     """
-    p = PALETTES[palette]
+    p = colors or PALETTES[palette]
     layers = [
         {"id": "background", "type": "background", "paint": {"background-color": p["NODTA"]}},
         *_depth_areas(p, depths),

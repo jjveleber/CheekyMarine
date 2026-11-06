@@ -220,7 +220,7 @@ def test_styles_show_seabed():
             assert ids.index("seabed-cmecs") < ids.index("seabed")
             text = next(l for l in seabed if l["id"] == "seabed")
             assert text["type"] == "symbol" and text["layout"]["text-field"] == ["get", "label"]
-            assert text["layout"]["text-font"] == ["Noto Sans Regular"] and text["paint"]["text-color"] == PALETTES[palette]["SNDG2"]
+            assert text["layout"]["text-font"] == ["Noto Sans Regular"] and text["paint"]["text-color"] == PALETTES[palette]["TXTDP"]
             kelp = next(l for l in seabed if l["id"] == "seabed-kelp")
             assert kelp["layout"]["icon-image"] == "kelp" and kelp["layout"]["text-field"] == ["get", "label"]
             assert kelp["filter"] == ["all", ["==", ["get", "class"], "WEDKLP"], ["==", ["get", "CATWED"], 1]]
@@ -230,7 +230,7 @@ def test_styles_show_seabed():
                     assert layer["layout"]["text-size"] < 11  # soundings are 11
                 assert ids.index(layer["id"]) < ids.index("hazard")
                 if layer["type"] == "symbol":
-                    assert layer["paint"]["text-color"] == PALETTES[palette]["SNDG2"]  # R30
+                    assert layer["paint"]["text-color"] == PALETTES[palette]["TXTDP"]  # R30
                     assert layer["layout"]["text-size"] == 10 and layer["paint"]["text-halo-width"] == 1.5
                 if "soundg-deep" in ids:
                     assert ids.index(layer["id"]) < min(ids.index("soundg-deep"), ids.index("soundg-shallow"))
