@@ -180,23 +180,23 @@ def _paint(layers: list[tuple[np.ndarray, str]], pad: int) -> np.ndarray:
     return np.pad(image, ((pad, pad), (pad, pad), (0, 0)))
 
 
-def _hazard_images(symbols_dir: Path, scale: int) -> dict[str, np.ndarray]:
+def _hazard_images(symbols_dir: Path, scale: int, palettes: dict) -> dict[str, np.ndarray]:
     """hazard_icon(shape, danger, palette) -> RGBA image, for every shape, both states and every palette."""
     size, folder = _HAZARD_PX * scale, Path(symbols_dir) / "hazard"
     ring = rasterize_svg(folder / "danger-ring.svg", size)
     marks = {shape: rasterize_svg(folder / f"{shape}.svg", size) for shape in HAZARD_SHAPES}
     images = {}
-    for palette, p in PALETTES.items():
+    for palette, p in palettes.items():
         for shape, mark in marks.items():
             images[hazard_icon(shape, False, palette)] = _paint([(mark, p["CHBLK"])], _HAZARD_PAD * scale)
             images[hazard_icon(shape, True, palette)] = _paint([(ring, p["DNGHL"]), (mark, p["CHBLK"])], _HAZARD_PAD * scale)
     return images
 
 
-def _sheet(symbols: list[Path], symbols_dir: Path, scale: int) -> tuple[Image.Image, dict]:
+def _sheet(symbols: list[Path], symbols_dir: Path, scale: int, palettes: dict) -> tuple[Image.Image, dict]:
     size, buffer, gutter = _VIEWBOX * scale, _SDF_BUFFER * scale, _GUTTER * scale
     cells = [bitmap_to_sdf(rasterize_svg(p, size), buffer=buffer, radius=8.0 * scale) for p in symbols]
-    baked = _hazard_images(symbols_dir, scale)
+    baked = _hazard_images(symbols_dir, scale, palettes)
     width = size + 2 * buffer
     total = len(cells) * (width + gutter) + sum(im.shape[1] + gutter for im in baked.values()) - gutter
     sheet = np.zeros((width, total, 4), np.uint8)
@@ -215,14 +215,15 @@ def _sheet(symbols: list[Path], symbols_dir: Path, scale: int) -> tuple[Image.Im
     return Image.fromarray(sheet, "RGBA"), index
 
 
-def build_sprites(symbols_dir: Path, out_dir: Path, name: str) -> dict:
+def build_sprites(symbols_dir: Path, out_dir: Path, name: str, night: dict | None = None) -> dict:
     """Write <name>.png/.json and <name>@2x.png/.json (SDF in the alpha channel); return the 1x index."""
+    palettes = {**PALETTES, "night": night} if night else PALETTES
     symbols = sorted(Path(symbols_dir).glob("*.svg"))
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     result = {}
     for scale, suffix in ((1, ""), (2, "@2x")):
-        image, index = _sheet(symbols, symbols_dir, scale)
+        image, index = _sheet(symbols, symbols_dir, scale, palettes)
         image.save(out_dir / f"{name}{suffix}.png")
         (out_dir / f"{name}{suffix}.json").write_text(json.dumps(index, indent=2, sort_keys=True) + "\n")
         if not suffix:

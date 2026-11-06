@@ -64,6 +64,19 @@ def _notice(metadata: dict[str, str], name: str, version: str, cmecs_blocks: tup
     return _NOTICE_HEAD.format(name=name, version=version, cells=cells) + survey + fonts
 
 
+def write_styles(root: Path, pack: str, safety_contour_m: float | None = None, night: dict | None = None) -> None:
+    """Write every palette's style file of a pack (nav-*.json for charts, fish-*.json for bathy).
+    night replaces the night palette's colors (a night_palette variant)."""
+    (root / "styles").mkdir(exist_ok=True)
+    for palette in PALETTES:
+        colors = night if palette == "night" else None
+        if pack == "charts":
+            style, name = nav_style(palette, safety_contour_m=safety_contour_m, colors=colors), f"nav-{palette}.json"
+        else:
+            style, name = fish_style(palette, colors=colors), f"fish-{palette}.json"
+        (root / "styles" / name).write_text(json.dumps(style, indent=2) + "\n")
+
+
 def _sprites_glyphs_readme(root: Path, sprite_name: str, title: str) -> None:
     build_sprites(PROJECT / "symbols", root / "sprites", sprite_name)
     for fontstack, filename in FONTS.items():
@@ -80,10 +93,7 @@ def assemble_charts_pack(region: Region, enc_mbtiles: Path, out_dir: Path) -> Pa
         metadata = m.metadata()
     safety_contour = _safety_contour_m(metadata)
 
-    (root / "styles").mkdir(exist_ok=True)
-    for palette in PALETTES:
-        style = nav_style(palette, safety_contour_m=safety_contour)
-        (root / "styles" / f"nav-{palette}.json").write_text(json.dumps(style, indent=2) + "\n")
+    write_styles(root, "charts", safety_contour)
 
     _sprites_glyphs_readme(root, "nav", f"charts-{region.name}-{region.charts_version}")
     legend = build_legend(json.loads(metadata["cheekymarine:seabed"]))
@@ -130,9 +140,7 @@ def assemble_bathy_pack(region: Region, bathy_mbtiles: Path, dem_mbtiles: Path, 
     with MBTiles.open(bathy_mbtiles) as m:
         metadata = m.metadata()
 
-    (root / "styles").mkdir(exist_ok=True)
-    for palette in PALETTES:
-        (root / "styles" / f"fish-{palette}.json").write_text(json.dumps(fish_style(palette), indent=2) + "\n")
+    write_styles(root, "bathy")
 
     _sprites_glyphs_readme(root, "fish", f"bathy-{region.name}-{region.bathy_version}")
     (root / "NOTICE").write_text(_bathy_notice(metadata, region.name, region.bathy_version))

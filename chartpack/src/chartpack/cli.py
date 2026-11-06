@@ -3,6 +3,7 @@
 import argparse
 import json
 import re
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -32,7 +33,9 @@ from chartpack.pack.archive import archive_pack
 from chartpack.pack.assemble import assemble_bathy_pack, assemble_charts_pack
 from chartpack.pack.check import check_pack
 from chartpack.pack.manifest import describe_pack, write_manifest
+from chartpack.pack.restyle import restyle_pack
 from chartpack.region import load_region
+from chartpack.style.palette import NIGHT_VARIANTS
 from chartpack.seabed.cmecs import BLOCKS, fetch_cmecs, read_cmecs
 from chartpack.seabed.usseabed import FILES, fetch_usseabed, read_usseabed
 
@@ -111,6 +114,15 @@ def _finish(root: Path, region) -> Path:
 
 def _manifest(args: argparse.Namespace) -> int:
     _finish(args.packdir, load_region(args.region))
+    return 0
+
+
+def _restyle(args: argparse.Namespace) -> int:
+    try:
+        restyle_pack(args.packdir, args.night)
+    except ValueError as error:
+        print(f"restyle: {error}", file=sys.stderr)
+        return 1
     return 0
 
 
@@ -243,6 +255,10 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("packdir", type=Path, metavar="PACKDIR")
     p.add_argument("--region", type=Path, required=True, help="region file the pack was built from")
     p.set_defaults(func=_manifest)
+    p = sub.add_parser("restyle")
+    p.add_argument("packdir", type=Path, metavar="PACKDIR")
+    p.add_argument("--night", choices=sorted(NIGHT_VARIANTS), default="amber", help="night style (default amber)")
+    p.set_defaults(func=_restyle)
     p = sub.add_parser("check")
     p.add_argument("packdir", type=Path, metavar="PACKDIR")
     p.add_argument("--enc-cache", type=Path, help="download cache holding the ENC zips, for the hazard and coverage checks")
