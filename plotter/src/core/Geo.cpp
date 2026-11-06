@@ -54,6 +54,10 @@ QList<LatLon> syntheticTrack(int n, double stepM) {
     }
     route << cur;
     QList<LatLon> out;
+    if (route.size() < 2) {
+        for (int i = 0; i < n; ++i) out << route[0];
+        return out;
+    }
     const int period = 2 * (route.size() - 1);
     for (int i = 0; i < n; ++i) {
         const int k = i % period;

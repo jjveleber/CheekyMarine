@@ -177,8 +177,8 @@ int main(int argc, char* argv[]) {
     }
     bool seedOk = true;
     const int seedN = cli.value(seedTrackOpt).toInt(&seedOk);
-    if (cli.isSet(seedTrackOpt) && (!seedOk || seedN < 0)) {
-        qCritical() << "--seed-track wants a whole number of points, got" << cli.value(seedTrackOpt);
+    if (cli.isSet(seedTrackOpt) && (!seedOk || seedN < 0 || seedN > 1000000)) {
+        qCritical() << "--seed-track wants a whole number up to 1000000, got" << cli.value(seedTrackOpt);
         return 2;
     }
 

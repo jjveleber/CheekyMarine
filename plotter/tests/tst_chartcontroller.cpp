@@ -825,6 +825,11 @@ private slots:
         QCOMPARE(c.at(3).toArray().at(1).toDouble(), 7.0);
         r.ctrl->setActiveTrack({});
         QCOMPARE(coords().size(), 3);
+        r.ctrl->setActiveTrack({{7, 8}, {9, 10}});
+        r.ctrl->setPalette("night");
+        r.map.loaded(); // a style reload rewrites the source: the seed must survive it
+        QCOMPARE(coords().size(), 5);
+        r.ctrl->setActiveTrack({});
         r.ctrl->setSeedTrack({});
         r.ctrl->setActiveTrack({});
         const QJsonObject fc = r.map.sources.value(OverlayIds::kActiveTrackSource);
