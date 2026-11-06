@@ -215,7 +215,7 @@ void ChartController::setActiveTrack(const QList<LatLon>& points) {
     if (!m_ready) return;
     QElapsedTimer timer;
     if (m_writeTiming) timer.start();
-    m_map.setGeoJson(OverlayIds::kActiveTrackSource, tracksGeoJson({m_activeTrack}));
+    m_map.setGeoJson(OverlayIds::kActiveTrackSource, tracksGeoJson({m_seedTrack + m_activeTrack}));
     if (m_writeTiming) m_writeTimesUs.append(timer.nsecsElapsed() / 1000);
 }
 
@@ -267,7 +267,7 @@ void ChartController::onStyleLoaded() {
     m_loadPending = false;
     for (auto it = m_images.cbegin(); it != m_images.cend(); ++it) m_map.addImage(it.key(), it.value());
     m_map.setGeoJson(OverlayIds::kTracksSource, tracksGeoJson(m_tracks));
-    m_map.setGeoJson(OverlayIds::kActiveTrackSource, tracksGeoJson({m_activeTrack}));
+    m_map.setGeoJson(OverlayIds::kActiveTrackSource, tracksGeoJson({m_seedTrack + m_activeTrack}));
     m_map.setGeoJson(OverlayIds::kAisSource, aisGeoJson(m_ais.targets(), m_vessel.state()));
     m_map.setGeoJson(OverlayIds::kOwnSource, ownShipGeoJson(m_vessel.state()));
     for (const QJsonObject& layer : runtimeLayers(overlayColours(m_palette))) m_map.addLayer(layer);

@@ -41,3 +41,27 @@ double metresPerPixel(double latDeg, double zoom)
 {
     return 40075016.686 * std::cos(rad(latDeg)) / (512.0 * std::pow(2.0, zoom));
 }
+
+QList<LatLon> syntheticTrack(int n, double stepM) {
+    const LatLon way[] = {{47.9482896, -122.3136073}, {47.9021326, -122.3743223}, {47.9080896, -122.4492273}};
+    QList<LatLon> route;
+    LatLon cur = way[0];
+    for (int leg = 1; leg < 3; ++leg) {
+        while (distanceM(cur, way[leg]) > stepM) {
+            route << cur;
+            cur = destination(cur, bearingDeg(cur, way[leg]), stepM);
+        }
+    }
+    route << cur;
+    QList<LatLon> out;
+    if (route.size() < 2) {
+        for (int i = 0; i < n; ++i) out << route[0];
+        return out;
+    }
+    const int period = 2 * (route.size() - 1);
+    for (int i = 0; i < n; ++i) {
+        const int k = i % period;
+        out << route[k < route.size() ? k : period - k];
+    }
+    return out;
+}

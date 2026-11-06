@@ -65,6 +65,8 @@ public:
     // kept point re-sends only the active one.
     void setTracks(const QList<QList<LatLon>>& tracks);
     void setActiveTrack(const QList<LatLon>& points);
+    // --seed-track: points written ahead of every active-track write (a measurement aid; the recorder never sees them).
+    void setSeedTrack(const QList<LatLon>& prefix) { m_seedTrack = prefix; }
     // --frame-stats: when on, records the main-thread time (us) of each active-track map write.
     void setWriteTiming(bool on) { m_writeTiming = on; }
     QList<qint64> writeTimesUs() const { return m_writeTimesUs; }
@@ -128,6 +130,7 @@ private:
     QHash<QString, QImage> m_images;
     QList<QList<LatLon>> m_tracks;
     QList<LatLon> m_activeTrack;
+    QList<LatLon> m_seedTrack;
     bool m_writeTiming = false;
     QList<qint64> m_writeTimesUs;
     quint32 m_selectedMmsi = 0;

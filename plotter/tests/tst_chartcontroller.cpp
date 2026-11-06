@@ -779,16 +779,7 @@ private slots:
         r.make();
         r.map.loaded();
         // 2 h at 1 Hz and 26 kn: 7200 points 13.4 m apart along the navigating route of synth_n2k.py.
-        const QList<LatLon> way{{47.9482896, -122.3136073}, {47.9021326, -122.3743223}, {47.9080896, -122.4492273}};
-        QList<LatLon> pts;
-        LatLon cur = way[0];
-        for (int leg = 1; leg < way.size() && pts.size() < 7200; ++leg) {
-            while (pts.size() < 7200 && distanceM(cur, way[leg]) > 13.4) {
-                pts << cur;
-                cur = destination(cur, bearingDeg(cur, way[leg]), 13.4);
-            }
-        }
-        while (pts.size() < 7200) pts << cur;
+        const QList<LatLon> pts = syntheticTrack(7200);
         QCOMPARE(pts.size(), 7200);
         r.map.calls.clear();
         r.map.serialize = true;
@@ -812,6 +803,37 @@ private slots:
         QCOMPARE(geom["type"].toString(), QStringLiteral("LineString"));
         QCOMPARE(geom["coordinates"].toArray().size(), 7200);
         QVERIFY2(ms < 50, qPrintable(QStringLiteral("active track write took %1 ms").arg(ms)));
+    }
+
+    // The seed prefix (--seed-track) goes ahead of every active-track write and is never stored.
+    void seedTrackPrefixesEveryActiveWrite() {
+        Rig r;
+        QVERIFY(r.settings);
+        r.make();
+        r.map.loaded();
+        const auto coords = [&r] {
+            const QJsonObject fc = r.map.sources.value(OverlayIds::kActiveTrackSource);
+            return fc["features"].toArray().at(0).toObject()["geometry"].toObject()["coordinates"].toArray();
+        };
+        r.ctrl->setSeedTrack({{1, 2}, {3, 4}, {5, 6}});
+        r.ctrl->setActiveTrack({{7, 8}, {9, 10}});
+        QJsonArray c = coords();
+        QCOMPARE(c.size(), 5);
+        QCOMPARE(c.at(0).toArray().at(0).toDouble(), 2.0); // lon first
+        QCOMPARE(c.at(0).toArray().at(1).toDouble(), 1.0);
+        QCOMPARE(c.at(2).toArray().at(1).toDouble(), 5.0);
+        QCOMPARE(c.at(3).toArray().at(1).toDouble(), 7.0);
+        r.ctrl->setActiveTrack({});
+        QCOMPARE(coords().size(), 3);
+        r.ctrl->setActiveTrack({{7, 8}, {9, 10}});
+        r.ctrl->setPalette("night");
+        r.map.loaded(); // a style reload rewrites the source: the seed must survive it
+        QCOMPARE(coords().size(), 5);
+        r.ctrl->setActiveTrack({});
+        r.ctrl->setSeedTrack({});
+        r.ctrl->setActiveTrack({});
+        const QJsonObject fc = r.map.sources.value(OverlayIds::kActiveTrackSource);
+        QCOMPARE(fc, tracksGeoJson({{}}));
     }
 
     // A kept point re-sends only the active track; the finished tracks go to the map when the set

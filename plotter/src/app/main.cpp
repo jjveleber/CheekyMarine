@@ -4,6 +4,7 @@
 #include "core/AppInfo.h"
 #include "core/ChartController.h"
 #include "core/MonotonicClock.h"
+#include "core/Geo.h"
 #include "core/N2kClient.h"
 #include "core/PackCatalog.h"
 #include "core/PaletteController.h"
@@ -116,12 +117,13 @@ int main(int argc, char* argv[]) {
     QCommandLineOption recordOpt("record", "Turn track recording on at start (it persists).");
     QCommandLineOption exitAfterOpt("exit-after-ms", "Quit N ms after start.", "ms");
     QCommandLineOption frameStatsOpt("frame-stats", "Print the frame interval and track write summaries at quit.");
+    QCommandLineOption seedTrackOpt("seed-track", "Prepend N synthetic points to every active-track write (for the frame measurement).", "n");
     QCommandLineOption positionOpt("position", "Chart center while there is no vessel position.", "lat,lon");
     for (QCommandLineOption* o : {&positionOpt, &shotOpt, &shotAfterOpt, &paletteOpt, &viewOpt, &pageOpt, &editorOpt, &sheetOpt,
-                                  &lockOpt, &recordOpt, &exitAfterOpt, &frameStatsOpt})
+                                  &lockOpt, &recordOpt, &exitAfterOpt, &frameStatsOpt, &seedTrackOpt})
         o->setFlags(QCommandLineOption::HiddenFromHelp);
     cli.addOptions({positionOpt, socketOpt, packsOpt, dataOpt, windowOpt, fullscreenOpt, shotOpt, shotAfterOpt, paletteOpt, viewOpt, pageOpt,
-                    editorOpt, sheetOpt, lockOpt, recordOpt, exitAfterOpt, frameStatsOpt});
+                    editorOpt, sheetOpt, lockOpt, recordOpt, exitAfterOpt, frameStatsOpt, seedTrackOpt});
     cli.process(app);
 
     QSize windowSize;
@@ -171,6 +173,12 @@ int main(int argc, char* argv[]) {
     const int exitAfterMs = cli.value(exitAfterOpt).toInt(&exitAfterOk);
     if (cli.isSet(exitAfterOpt) && (!exitAfterOk || exitAfterMs < 0)) {
         qCritical() << "--exit-after-ms wants a whole number of ms, got" << cli.value(exitAfterOpt);
+        return 2;
+    }
+    bool seedOk = true;
+    const int seedN = cli.value(seedTrackOpt).toInt(&seedOk);
+    if (cli.isSet(seedTrackOpt) && (!seedOk || seedN < 0 || seedN > 1000000)) {
+        qCritical() << "--seed-track wants a whole number up to 1000000, got" << cli.value(seedTrackOpt);
         return 2;
     }
 
@@ -251,6 +259,7 @@ int main(int argc, char* argv[]) {
     AppInfo appInfo(chart.packs());
     connectAppInfo(client, appInfo);
     // The active track always draws, the finished ones when shown.
+    if (cli.isSet(seedTrackOpt)) chart.setSeedTrack(syntheticTrack(seedN));
     bindTracks(chart, tracksController);
 
     // --sheet ais: select the first AIS target that arrives (a dev aid, like the other hidden options).

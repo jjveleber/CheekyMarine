@@ -218,6 +218,18 @@ options of `cheekyplotter` (not in `--help`):
   the intervals between redraws, in ms (the scene redraws on demand, so an idle gap counts too).
   `track-writes: writes N max M ms p99 P ms over50 K` is the main-thread time inside each
   active-track write (build, serialize and hand to MapLibre), in ms. K counts those over 50 ms.
+  The #46 measurement (a 7200-point active track) takes 90 s instead of 2 hours. Create a data
+  dir once with a 3 s start
+  (`cheekyplotter --data DIR --socket /nonexistent --exit-after-ms 3000 --window 800x480`), then
+  set the recorder to 1 s and 1 m in it:
+  `sqlite3 DIR/plotter.db "INSERT INTO settings(key,value) VALUES('trackIntervalS','1'),('trackMinDistanceM','1') ON CONFLICT(key) DO UPDATE SET value=excluded.value"`.
+  Run
+  `CM_PACKS_DIR=... plotter/tools/run-dev.sh plotter/tests/fixtures/n2k/navigating.log --record --frame-stats --seed-track 7200 --exit-after-ms 90000 --data DIR`
+  (the last `--data` wins over run-dev's temporary one). It writes a 7200-plus-point line about
+  once a second after the first fix (expect about 50 to 85 writes in 90 s) and prints the
+  frame-stats and track-writes lines at quit.
+- `--seed-track N`: prepends N synthetic points along the navigating route to every active-track
+  write, for the #46 measurement; nothing is stored.
 - `--position LAT,LON`: centers the chart there while the vessel has no position (a fix wins); a
   malformed value exits 2. For renders on a run with no N2K data.
 

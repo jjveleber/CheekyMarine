@@ -25,6 +25,25 @@ private slots:
     {
         QVERIFY(std::fabs(bearingDeg({0, 0}, {0, -1}) - 270.0) < 1e-9);
     }
+    void syntheticTrackSpacingAndCount()
+    {
+        // 5000 points run past the end of the route (about 12.5 km, about 930 points, one way), so this covers the bounce.
+        for (int n : {1, 2, 5000}) {
+            const QList<LatLon> t = syntheticTrack(n);
+            QCOMPARE(t.size(), n);
+            QVERIFY(distanceM(t[0], {47.9482896, -122.3136073}) < 0.01);
+            for (int i = 1; i < t.size(); ++i) QVERIFY(std::fabs(distanceM(t[i - 1], t[i]) - 13.4) < 0.1);
+        }
+        QCOMPARE(syntheticTrack(0).size(), 0);
+        QVERIFY(std::fabs(distanceM(syntheticTrack(2, 50.0)[0], syntheticTrack(2, 50.0)[1]) - 50.0) < 0.1);
+    }
+    void syntheticTrackLargeStepDoesNotDivideByZero()
+    {
+        // A step longer than the first leg leaves a one-point route: n copies of the first waypoint.
+        const QList<LatLon> t = syntheticTrack(5, 20000.0);
+        QCOMPARE(t.size(), 5);
+        for (const LatLon& p : t) QVERIFY(distanceM(p, {47.9482896, -122.3136073}) < 0.01);
+    }
     void metresPerPixelEquatorZoom0()
     {
         QVERIFY(std::fabs(metresPerPixel(0, 0) - 78271.517) < 0.001);
