@@ -36,9 +36,11 @@ Q_LOGIN = ("Turn on automatic login for %s? Anyone who opens this tablet gets yo
            "password. [y/N]")
 Q_LOCK = "Turn off the lock screen? The screen will not ask for your password after it wakes. [y/N]"
 LEFT = "Left as it is. To change it later: "
-CMD_LOGIN = "sudo sed -i '/^\\[daemon\\]/a AutomaticLoginEnable=true\\nAutomaticLogin=%s' /etc/gdm3/custom.conf"
-CMD_LOCK = ("sudo -u %s gsettings set org.gnome.desktop.screensaver lock-enabled false"
-            " && sudo -u %s gsettings set org.gnome.desktop.screensaver ubuntu-lock-on-suspend false")
+CMD_LOGIN = ("sudo sh -c 'f=/etc/gdm3/custom.conf; grep -q \"^\\[daemon\\]\" $f || echo \"[daemon]\" >> $f; "
+             "sed -i -E \"/^[[:space:]]*AutomaticLogin(Enable)?[[:space:]]*=/d; "
+             "/^\\[daemon\\]/a AutomaticLoginEnable=true\\nAutomaticLogin=%s\" $f'")
+CMD_LOCK = ("gsettings set org.gnome.desktop.screensaver lock-enabled false"
+            " && gsettings set org.gnome.desktop.screensaver ubuntu-lock-on-suspend false")
 
 
 class TestDesktop(unittest.TestCase):
@@ -97,7 +99,7 @@ class TestDesktop(unittest.TestCase):
             self.assertIn(Q_LOGIN % self.u, r.stdout)
             self.assertIn(Q_LOCK, r.stdout)
             self.assertIn(LEFT + CMD_LOGIN % self.u, r.stdout)
-            self.assertIn(LEFT + CMD_LOCK % (self.u, self.u), r.stdout)
+            self.assertIn(LEFT + CMD_LOCK, r.stdout)
 
     def test_no_tty_leaves_settings_without_asking(self):
         r = self.install()
@@ -105,8 +107,31 @@ class TestDesktop(unittest.TestCase):
         self.assertEqual(self.gs()[(SS, "lock-enabled")], "true")
         self.assertNotIn("[y/N]", r.stdout)
         self.assertIn(LEFT + CMD_LOGIN % self.u, r.stdout)
-        self.assertIn(LEFT + CMD_LOCK % (self.u, self.u), r.stdout)
+        self.assertIn(LEFT + CMD_LOCK, r.stdout)
         self.assertNotIn(str(self.rig.root), r.stdout.split("installed:")[0])
+
+    def test_printed_login_command_works(self):
+        r = self.install()
+        line = [l for l in r.stdout.splitlines() if l.startswith(LEFT + "sudo sh -c")][0]
+        cmd = line[len(LEFT + "sudo "):].replace("/etc/gdm3/custom.conf", "$CONF")
+        variants = {
+            "stock": (STOCK_CONF, 1),
+            "twice": (STOCK_CONF, 2),
+            "false": (STOCK_CONF.replace("[daemon]\n", "[daemon]\nAutomaticLoginEnable=false\n"), 1),
+            "nodaemon": ("[security]\n\n[debug]\n", 1),
+        }
+        for name, (text, times) in variants.items():
+            f = self.rig.write("/t/%s.conf" % name, text)
+            for _ in range(times):
+                run = self.rig.sh(cmd, env={"CONF": str(f)})
+                self.assertEqual(run.returncode, 0, run.stderr)
+            txt = f.read_text()
+            self.assertEqual(txt.count("AutomaticLoginEnable=true"), 1, (name, txt))
+            self.assertEqual(txt.count("AutomaticLogin=%s" % self.u), 1, (name, txt))
+            self.assertNotIn("AutomaticLoginEnable=false", txt)
+            g = self.rig.sh('CM_SOURCE_ONLY=1 . "$1"; ini_get "$2" daemon AutomaticLoginEnable; '
+                            'ini_get "$2" daemon AutomaticLogin', str(Rig.SCRIPT), str(f))
+            self.assertEqual(g.stdout, "true\n%s\n" % self.u, name)
 
     def test_already_set_asks_nothing(self):
         self.conf.write_text(STOCK_CONF.replace(

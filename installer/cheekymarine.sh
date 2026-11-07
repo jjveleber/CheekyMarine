@@ -501,7 +501,7 @@ desktop_settings() {
     ini_set "$conf" daemon AutomaticLoginEnable true
     ini_set "$conf" daemon AutomaticLogin "$CM_USER"
   else
-    cmd="sudo sed -i '/^\\[daemon\\]/a AutomaticLoginEnable=true\\nAutomaticLogin=$CM_USER' /etc/gdm3/custom.conf"
+    cmd="sudo sh -c 'f=/etc/gdm3/custom.conf; grep -q \"^\\[daemon\\]\" \$f || echo \"[daemon]\" >> \$f; sed -i -E \"/^[[:space:]]*AutomaticLogin(Enable)?[[:space:]]*=/d; /^\\[daemon\\]/a AutomaticLoginEnable=true\\nAutomaticLogin=$CM_USER\" \$f'"
     printf 'Left as it is. To change it later: %s\n' "$cmd"
   fi
 
@@ -511,7 +511,8 @@ desktop_settings() {
     gset org.gnome.desktop.screensaver lock-enabled false
     gset org.gnome.desktop.screensaver ubuntu-lock-on-suspend false
   else
-    printf 'Left as it is. To change it later: sudo -u %s gsettings set org.gnome.desktop.screensaver lock-enabled false && sudo -u %s gsettings set org.gnome.desktop.screensaver ubuntu-lock-on-suspend false\n' "$CM_USER" "$CM_USER"
+    printf 'Left as it is. To change it later: gsettings set org.gnome.desktop.screensaver lock-enabled false && gsettings set org.gnome.desktop.screensaver ubuntu-lock-on-suspend false\n'
+    printf '(Run that as %s in their desktop session, without sudo.)\n' "$CM_USER"
   fi
 }
 
