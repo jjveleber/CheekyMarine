@@ -1,13 +1,15 @@
 # CheekyMarine installer: design
 
-Date: 2026-11-06, revised 2026-11-07 after an adversarial review. Status: draft for owner approval.
+Date: 2026-11-06, revised 2026-11-07 after an adversarial review and owner feedback (shared pack
+store, pack schema range, lid switch left to Ubuntu). Status: draft for owner approval.
 Plan 5, first project.
 
 ## Intent
 
 The owner wants every install on CapnButts (the Dell Latitude 7320 Detachable helm tablet, Ubuntu
 26.04 LTS, x86_64) to come from a GitHub release, never from a source build. Today only n2kd has a
-release; the chart packs have releases that predate the amber night style; the plotter has none.
+release; the chart packs have releases (1.1.0, with the amber night style, published 2026-11-07);
+the plotter has none.
 
 This project delivers one install script, published in a release, that turns a freshly installed
 Ubuntu into a working helm in one run, from a pinned, matched set of component versions. It also
@@ -25,6 +27,13 @@ particular, the machine is never left running parts of two different sets.
 2. **A pinned set.** `cheekymarine.lock` names the exact version of each part: n2kd, the charts
    pack, the bathy pack and the plotter. One set version always installs the same parts. Running the
    script of a set again upgrades or repairs in place to exactly that set (owner).
+   The lock also carries the pack schema range the set's plotter accepts and the schema of each
+   pack, so a later project can update packs apart from sets without a new format (owner, option
+   A of the pack discussion: sets still pin packs for now).
+2a. **Packs are big and change rarely, so they are stored once** (owner). Packs live in a shared
+   store under `/opt/cheekymarine/packs/`, one copy per pack version. A set whose packs are already
+   in the store downloads nothing for them; a plotter-only set downloads only n2kd and the plotter
+   (charts 1.1.0 is 176 MB, bathy 1.1.0 is 293 MB).
 3. **Whole helm, nothing manual.** One run of the script, on a fresh Ubuntu 26.04 x86_64, installs
    (owner: "enough so that it will work ... nothing manual needs to happen"):
    - the apt packages that n2kd and the bundled plotter need at run time;
@@ -70,8 +79,10 @@ particular, the machine is never left running parts of two different sets.
 - **Machine health.** No apt full-upgrade, Ubuntu updates, firmware, backups or general setup
   (owner).
 - **aarch64 / the Pi.** x86_64 only. The Pi build is parked.
-- **The packs themselves.** PR #57 (merged 2026-11-07) bumped them to 1.1.0; their tags and
-  workflow are unchanged.
+- **The packs themselves.** PR #57 (merged 2026-11-07) bumped them to 1.1.0 and their releases are
+  published; their workflow is unchanged.
+- **Pack updates apart from sets.** Installing or updating packs without a new set (option B of the
+  pack discussion) is a later project; this one only adds the schema fields that make it possible.
 - **Tamper-proofing.** The concern is the right version, not an attacker. HTTPS plus the SHA-256
   pinned in the lock is the integrity check; no signing.
 
@@ -121,7 +132,11 @@ particular, the machine is never left running parts of two different sets.
   Socket `/run/cheekymarine/n2k.sock`, group `cheekymarine`, mode 0660.
 - **Pack releases**: `charts-puget-north-vX.Y.Z` and `bathy-puget-north-vX.Y.Z`, each a
   `<pack>-<region>-<version>.tar` plus `SHA256SUMS`. 1.1.0 (PR #57, merged) is the first with amber
-  night; its two tags are not cut yet.
+  night; both 1.1.0 releases are published. Each pack's `manifest.json` has an integer `schema`
+  (`SCHEMA_VERSION` in `chartpack/src/chartpack/enc/schema.py`, 1 today).
+- **Pack schema in the plotter**: `PackCatalog` refuses a pack whose manifest `schema` is not
+  exactly 1 (`plotter/src/core/PackCatalog.cpp`). So pack and plotter compatibility is a contract
+  on that number: any plotter today reads both 1.0.0 and 1.1.0 packs.
 - **Plotter**: `cheekyplotter [--socket PATH] [--packs DIR] [--data DIR] [--window WxH]
   [--fullscreen]`. All user data is one SQLite file, `plotter.db`, in `--data`, default
   `~/.local/share/cheekyplotter/`, opened in WAL mode (so `plotter.db-wal` and `plotter.db-shm` sit
@@ -151,9 +166,11 @@ particular, the machine is never left running parts of two different sets.
 - **Desktop**: Ubuntu 26.04 with GNOME on Wayland and GDM, NetworkManager (not systemd-networkd).
   Auto-login is `/etc/gdm3/custom.conf`, `[daemon]` `AutomaticLoginEnable=true` and
   `AutomaticLogin=<user>`. Screen blank, lock, dim and idle sleep are per-user GNOME settings (the
-  gist's `post-install.sh` has the gsettings keys used on CapnButts so far). The lid switch is
-  logind, a system setting. A fresh install runs unattended-upgrades soon after first boot, so apt
-  may be locked for minutes.
+  gist's `post-install.sh` has the gsettings keys used on CapnButts so far). A fresh install runs
+  unattended-upgrades soon after first boot, so apt may be locked for minutes.
+- **Lid switch**: on the boat the keyboard cover is detached and stowed, so the lid event never
+  fires there. The installer leaves the lid switch at Ubuntu's default (closing the cover suspends)
+  and writes no logind file (owner).
 - **Downloads**: the repo is public. Release assets download from fixed URLs
   `https://github.com/jjveleber/CheekyMarine/releases/download/<tag>/<asset>` with no GitHub API
   call, so no token and no API rate limit apply. The installer depends on the repo staying public.
@@ -168,7 +185,11 @@ particular, the machine is never left running parts of two different sets.
     cheekymarine.lock          the set's lock
     n2kd/                      n2kd tarball contents (usr/bin/n2kd, canboat.json, ...)
     plotter/                   plotter bundle
-    packs/                     this set's charts and bathy packs only
+    packs/                     one symlink per pack of this set, into the store:
+      charts-puget-north-1.1.0 -> ../../../packs/charts-puget-north-1.1.0
+  packs/                       the shared pack store, one dir per pack version:
+    <pack>-<region>-<version>/         unpacked pack
+    <pack>-<region>-<version>.sha256   SHA-256 of the release tar it came from
   current -> sets/<dir>      the active set
   previous -> sets/<dir>     the set rollback returns to
   bin/cheekymarine           the command: version, rollback (the running set's own script,
@@ -178,7 +199,8 @@ particular, the machine is never left running parts of two different sets.
   plotter-<set-version>-<timestamp>.db   saved databases (see "Data rule")
 ```
 
-Only the active set and the one before it are kept (my call). Every part runs through `current`:
+Only the active set and the one before it are kept (my call), and only the packs those two sets
+link to. Every part runs through `current`:
 
 - **n2kd**: the script installs `/etc/systemd/system/n2kd.service` (taken from the set's unit, so
   it shadows any `/usr/lib/systemd/system/n2kd.service` from an earlier tarball install) with
@@ -188,7 +210,8 @@ Only the active set and the one before it are kept (my call). Every part runs th
   `systemd-sysusers`. A `/usr/bin/n2kd` from an earlier hand install is left in place, unused.
 - **plotter and packs**: the GNOME autostart entry and any desktop entry run the launcher, which
   execs `/opt/cheekymarine/current/plotter/bin/cheekyplotter --fullscreen --packs
-  /opt/cheekymarine/current/packs`.
+  /opt/cheekymarine/current/packs`. The plotter scans that dir and follows the symlinks, so it sees
+  exactly the set's packs.
 
 So flipping `current` is the whole switch for all three parts, and it is one atomic rename.
 
@@ -218,17 +241,23 @@ Either way no mix of sets runs.
    `SUDO_USER` stops with a message). Anything else stops with a plain message. The desktop user
    (autostart, auto-login, group membership, `plotter.db`) is `SUDO_USER` (my call).
 3. It downloads every part named in the lock from its fixed release URL into a staging directory
-   and checks each against the SHA-256 in the lock (the lock is the single source of truth). Any
+   and checks each against the SHA-256 in the lock (the lock is the single source of truth). A pack
+   is skipped when its store dir exists and its `.sha256` file equals the lock's SHA-256. Any
    mismatch or failed download stops the script with the active set untouched.
 4. It installs the run-time apt packages (waiting up to 10 minutes for the apt lock, so a running
    unattended-upgrade does not fail the run). Failure stops the script with the active set
    untouched.
-5. It unpacks every part into a fresh `sets/<version>.<stamp>` (never over the running dir, so a
-   repair of the running set is as safe as an upgrade). It installs or refreshes the sysusers file
+5. It unpacks n2kd and the plotter into a fresh `sets/<version>.<stamp>` (never over the running
+   dir, so a repair of the running set is as safe as an upgrade). A downloaded pack unpacks into a
+   temporary dir in the store, moves into place with one rename, and only then gets its `.sha256`
+   file, so a half-unpacked pack is never taken as present (a leftover temporary dir is deleted on
+   the next run). The set dir gets one symlink per pack. It checks the pack schema (below) and
+   stops with the active set untouched on a mismatch. It installs or refreshes the sysusers file
    (which creates the group), group membership, the launcher, autostart, `can0`, and the desktop
    settings, and asks the two security questions (goal 4).
 6. It runs the switch.
-7. It deletes set dirs other than the targets of `current` and `previous`.
+7. It deletes set dirs other than the targets of `current` and `previous`, then store packs that
+   neither of those two sets links to.
 
 The n2kd unit is written after the flip (switch step 4), so it always matches the running set.
 
@@ -243,7 +272,8 @@ earlier layout is needed.
 
 `cheekymarine rollback` runs the switch to `previous` with no network. Afterwards `current` is the
 older set, `previous` is cleared and the newer set is deleted (its database copy is kept, see the
-data rule). A second rollback is refused with a plain message. Running the newer set's script again
+data rule), along with store packs only the newer set used. The older set's packs are still in the
+store, because pruning keeps the packs of both `current` and `previous`. A second rollback is refused with a plain message. Running the newer set's script again
 later is an ordinary upgrade (fresh download).
 
 ### Installing an older set over a newer one (my call)
@@ -283,10 +313,9 @@ for example `sudo -u "$SUDO_USER"` with the user's session bus when it exists, e
 
 System files:
 
-- auto-login: `/etc/gdm3/custom.conf`, only after a yes (goal 4);
-- lid switch: logind drop-in `/etc/systemd/logind.conf.d/cheekymarine.conf`
-  (OPEN: owner decides whether closing the keyboard cover keeps the helm running or sleeps; see
-  "Open questions").
+- auto-login: `/etc/gdm3/custom.conf`, only after a yes (goal 4).
+
+The lid switch is not touched (see "Lid switch" under Constraints).
 
 ### `can0`
 
@@ -300,8 +329,30 @@ and this tablet goes error-passive, so bench loopback tests need a second acknow
 
 `cheekymarine.lock` is a flat `key=value` text file (my call: bash reads it with no extra tool, the
 plotter reads it as an INI file through `QSettings`) with a schema number, the set version, and for
-each part its release tag, asset name and SHA-256. The later self-update reads the same file, so
-the format is a contract: document it in the repo the way the n2kd JSON contract is documented.
+each part its release tag, asset name and SHA-256. It also has the pack schema fields:
+
+- `plotter.pack_schema_min` and `plotter.pack_schema_max`: the range of pack manifest `schema`
+  values the set's plotter accepts (inclusive);
+- `charts.schema` and `bathy.schema`: each pack's manifest `schema`.
+
+The later self-update reads the same file, so the format is a contract: document it in the repo the
+way the n2kd JSON contract is documented.
+
+### Pack schema range
+
+The plotter's accepted range lives in one place, `PLOTTER_PACK_SCHEMA_MIN` and
+`PLOTTER_PACK_SCHEMA_MAX` in `plotter/CMakeLists.txt` (both 1 today), next to `PLOTTER_VERSION`.
+`PackCatalog` refuses a pack outside that range instead of anything but 1. The plotter bundle
+carries a `PACK_SCHEMA` file (`min=1`, `max=1`) written from those values.
+
+Three checks keep the fields honest:
+
+- `lock-tool.sh check` fails when a pack's `schema` in the lock is outside the plotter range in the
+  lock (no download).
+- The installer, after unpacking and before the switch, fails when a pack's `manifest.json` schema
+  differs from the lock, or when the bundle's `PACK_SCHEMA` differs from the lock's range. A
+  failure leaves the active set untouched.
+- The plotter refuses an out-of-range pack at run time, as today.
 
 ### The plotter release
 
@@ -337,15 +388,16 @@ that print the one-liner.
 
 The project ends with CapnButts running a real set, not only with workflows. The first set pins
 n2kd `v0.1.0` (no n2kd code changed since; `release.yml` still gets `make_latest: false` for later
-releases), charts and bathy 1.1.0 (PR #57 merged; waits on its two tags), and the first plotter
+releases), charts and bathy 1.1.0 (released), and the first plotter
 release (which carries the About page set version). Then the first `cheekymarine-v0.1.0` tag is cut
 as a pre-release and the owner installs it on CapnButts.
 
 ## Verification
 
 - A throwaway Ubuntu environment (container with systemd, VM, or CI runner; builder picks) tests the
-  logic: fresh install, a rerun with nothing to do, an upgrade between two sets, a rollback with the
-  network off, a downgrade, the data rule, and a failed download that leaves the old set active.
+  logic: fresh install, a rerun with nothing to do, an upgrade between two sets, a plotter-only
+  upgrade that downloads no pack, a rollback with the network off, a downgrade, the data rule, a
+  pack schema mismatch, and a failed download that leaves the old set active.
 - The ThinkPad test laptop (Ubuntu 26.04.1, GNOME on Wayland, the `laptop-chart` session) runs the
   full script from a real release before CapnButts: both prompts, the desktop settings, auto-login,
   reboot to the full-screen plotter, and rollback. A container cannot exercise GDM, GNOME, Wayland
@@ -361,7 +413,3 @@ as a pre-release and the owner installs it on CapnButts.
 - The test environment for the logic tests.
 - How desktop settings are written as the user, within "Desktop settings".
 
-## Open questions (owner)
-
-- Lid switch: when the keyboard cover is closed on CapnButts, should the helm keep running (screen
-  on, plotter live) or go to sleep?
