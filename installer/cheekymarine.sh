@@ -163,10 +163,12 @@ fetch_parts() {
         name=${asset%.tar}
         if [ -d "$(p /opt/cheekymarine/packs)/$name" ] \
           && [ "$(cat "$(p /opt/cheekymarine/packs)/$name.sha256" 2>/dev/null || true)" = "$want" ]; then
+          echo "$part already in the store"
           continue
         fi
         ;;
     esac
+    echo "downloading $part $asset"
     fetch_file "$base/$(lock_get "$part.tag")/$asset" "$stage/$asset" "$part"
     check_sum "$stage/$asset" "$want" "$part" "$asset"
   done

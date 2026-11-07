@@ -108,6 +108,12 @@ class TestDownload(unittest.TestCase):
         urls = self.rig.downloads()
         self.assertFalse([u for u in urls if u.endswith("charts-puget-north-1.1.0.tar")])
         self.assertTrue([u for u in urls if u.endswith("bathy-puget-north-1.1.0.tar")])
+        lines = r.stdout.splitlines()
+        self.assertEqual([l for l in lines if l.startswith("downloading ") or l.endswith(" in the store")], [
+            "downloading n2kd n2kd-0.1.0-x86_64.tar.gz",
+            "charts already in the store",
+            "downloading bathy bathy-puget-north-1.1.0.tar",
+            "downloading plotter cheekyplotter-0.3.0-x86_64.tar.gz"])
 
     def test_pack_with_wrong_sidecar_is_downloaded(self):
         rel = self.rig.make_set("0.2.0", "0.3.0")
