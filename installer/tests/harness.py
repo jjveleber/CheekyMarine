@@ -228,14 +228,15 @@ class Rig:
         return _tar("%s-puget-north-%s" % (pack, ver), files, gz=False)
 
     def make_set(self, set_ver, plotter_ver, n2kd_ver="0.1.0", charts_ver="1.1.0", bathy_ver="1.1.0",
-                 pack_schema=1, plotter_range=(1, 1), lock_overrides=None):
+                 pack_schema=1, plotter_range=(1, 1), lock_overrides=None, n2kd_tar=None):
         """Build every release of one set under self.base and return the set release dir
         cheekymarine-v<set>/ holding install-cheekymarine.sh (lock embedded by lock-tool.sh),
         cheekymarine.lock and SHA256SUMS. Part releases with the same tag and asset as an earlier
         make_set must be identical (ValueError otherwise). lock_overrides: {key: value} applied to
-        the lock after the real hashes, before embedding."""
+        the lock after the real hashes, before embedding. n2kd_tar: bytes of a real n2kd x86_64 tarball
+        used instead of the fake one."""
         n2kd_tag, n2kd_asset = "v" + n2kd_ver, "n2kd-%s-x86_64.tar.gz" % n2kd_ver
-        n2kd = self._n2kd(n2kd_ver)
+        n2kd = n2kd_tar or self._n2kd(n2kd_ver)
         self.make_release(n2kd_tag, n2kd_asset, n2kd)
         self.make_release(n2kd_tag, "n2kd-%s-aarch64.tar.gz" % n2kd_ver, self._n2kd(n2kd_ver, "aarch64"))
         plotter_tag, plotter_asset = "plotter-v" + plotter_ver, "cheekyplotter-%s-x86_64.tar.gz" % plotter_ver
@@ -274,3 +275,29 @@ class Rig:
         rel.joinpath("SHA256SUMS").write_text("".join(
             "%s  %s\n" % (sha256((rel / n).read_bytes()), n) for n in ("cheekymarine.lock", "install-cheekymarine.sh")))
         return rel
+
+
+def _main(argv):
+    """make-sets DIR [--n2kd TARBALL]: build the sets the e2e scenarios need under DIR (the file://
+    release base) and print one `NAME LOCK_PATH` line per set: first (0.2.0), second (0.3.0, same
+    packs as first), bad (0.4.0, plotter asset corrupted after the lock was made)."""
+    if len(argv) < 2 or argv[0] != "make-sets":
+        raise SystemExit("usage: harness.py make-sets DIR [--n2kd TARBALL]")
+    dest = Path(argv[1]).resolve()
+    n2kd = Path(argv[argv.index("--n2kd") + 1]).read_bytes() if "--n2kd" in argv else None
+    dest.mkdir(parents=True, exist_ok=True)
+    rig = Rig()
+    rig.base = dest
+    out = {}
+    for name, ver in (("first", "0.2.0"), ("second", "0.3.0"), ("bad", "0.4.0")):
+        out[name] = rig.make_set(ver, ver, n2kd_tar=n2kd) / "cheekymarine.lock"
+    bad = dest / "plotter-v0.4.0" / "cheekyplotter-0.4.0-x86_64.tar.gz"
+    bad.write_bytes(bad.read_bytes() + b"corrupt")
+    for name, lock in out.items():
+        print(name, lock)
+    rig.cleanup()
+
+
+if __name__ == "__main__":
+    import sys
+    _main(sys.argv[1:])

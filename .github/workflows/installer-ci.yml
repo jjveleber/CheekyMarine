@@ -1,0 +1,37 @@
+name: installer-ci
+
+on:
+  push:
+    paths:
+      - "installer/**"
+      - ".github/workflows/installer-ci.yml"
+  pull_request:
+    paths:
+      - "installer/**"
+      - ".github/workflows/installer-ci.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  unit:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Unit tests
+        run: python3 -m unittest discover -s installer/tests -v
+      - name: Syntax check
+        run: bash -n installer/*.sh
+
+  e2e:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Desktop user and packages
+        run: |
+          sudo useradd -m -s /bin/bash helm
+          sudo apt-get update
+          sudo apt-get install -y dbus libglib2.0-bin gsettings-desktop-schemas \
+            gnome-settings-daemon-common dconf-gsettings-backend
+      - name: Real-systemd scenarios
+        run: installer/tests/e2e.sh
