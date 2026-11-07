@@ -164,14 +164,15 @@ particular, the machine is never left running parts of two different sets.
 
 ```
 /opt/cheekymarine/
-  sets/<set-version>/        one installed set, all parts unpacked:
+  sets/<set-version>.<stamp>/  one unpack of a set (a fresh dir every run), all parts:
     cheekymarine.lock          the set's lock
     n2kd/                      n2kd tarball contents (usr/bin/n2kd, canboat.json, ...)
     plotter/                   plotter bundle
     packs/                     this set's charts and bathy packs only
-  current -> sets/<ver>      the active set
-  previous -> sets/<ver>     the set rollback returns to
-  bin/cheekymarine           the command: version, rollback
+  current -> sets/<dir>      the active set
+  previous -> sets/<dir>     the set rollback returns to
+  bin/cheekymarine           the command: version, rollback (the running set's own script,
+                             rewritten on every switch)
   bin/cheekyplotter          launcher: runs current/plotter with --fullscreen --packs current/packs
 /var/lib/cheekymarine/db-copies/
   plotter-<set-version>-<timestamp>.db   saved databases (see "Data rule")
@@ -222,15 +223,17 @@ Either way no mix of sets runs.
 4. It installs the run-time apt packages (waiting up to 10 minutes for the apt lock, so a running
    unattended-upgrade does not fail the run). Failure stops the script with the active set
    untouched.
-5. It unpacks every part into a fresh `sets/<version>.new`, then renames it to `sets/<version>`
-   (replacing a previous copy of the same set when repairing). It installs or refreshes the n2kd
-   unit, sysusers file, group membership, the launcher, autostart, `can0`, and the desktop
+5. It unpacks every part into a fresh `sets/<version>.<stamp>` (never over the running dir, so a
+   repair of the running set is as safe as an upgrade). It installs or refreshes the sysusers file
+   (which creates the group), group membership, the launcher, autostart, `can0`, and the desktop
    settings, and asks the two security questions (goal 4).
 6. It runs the switch.
-7. It deletes sets other than `current` and `previous`.
+7. It deletes set dirs other than the targets of `current` and `previous`.
 
-A rerun of the set that is already `current` re-unpacks it fresh and runs the switch; `previous`
-does not move, so the rollback target is kept.
+The n2kd unit is written after the flip (switch step 4), so it always matches the running set.
+
+A rerun of the set that is already `current` unpacks it into a new dir and runs the switch;
+`previous` does not move, so the rollback target is kept.
 
 CapnButts today has Ubuntu installed and no plotter, no packs and no `plotter.db`; it may already
 have n2kd `v0.1.0` in `/usr` from its tarball, which the `/etc` unit shadows. So no adoption of an
@@ -264,8 +267,10 @@ copies). On a switch to set T, with the plotter stopped:
    database from a newer set. Data recorded since the upgrade is lost (owner accepts; it remains in
    `db-copies`).
 
-Restored and moved files keep the desktop user as owner. A first install with no `plotter.db` skips
-the rule.
+Restored and moved files keep the desktop user as owner. The label is written for T on every
+switch; a first install with no `plotter.db` skips steps 1 to 3. A live `plotter.db` with no label
+(a hand install) counts as unknown and newer: it is copied (labeled `unknown`), moved aside, and T
+starts fresh.
 
 ### Desktop settings
 
