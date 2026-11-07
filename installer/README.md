@@ -71,9 +71,10 @@ and `sudo` ignores your `PATH` anyway.
 - `sudo /opt/cheekymarine/bin/cheekymarine rollback`: go back to the previous set (the one active
   before the last upgrade or downgrade), with no network. The set you are leaving is deleted, with
   the packs only it used. A second rollback is refused (`cheekymarine: nothing to roll back to`).
-  To return to the set you left, run its install one-liner; it downloads only what is missing.
-- `sudo /opt/cheekymarine/bin/cheekymarine install`: reinstall the active set (downloads what is
-  missing).
+  To return to the set you left, run its install one-liner. Packs already in the store are reused;
+  n2kd, the plotter bundle, the set script and the lock download again.
+- `sudo /opt/cheekymarine/bin/cheekymarine install`: reinstall the active set. Packs already in the
+  store are reused; n2kd, the plotter bundle, the set script and the lock download again.
 
 ## Your data
 
