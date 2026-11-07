@@ -197,6 +197,7 @@ particular, the machine is never left running parts of two different sets.
   bin/cheekyplotter          launcher: runs current/plotter with --fullscreen --packs current/packs
 /var/lib/cheekymarine/db-copies/
   plotter-<set-version>-<timestamp>.db   saved databases (see "Data rule")
+  plotter-<set-version>-<timestamp>.db.label   its set and plotter version
 ```
 
 Only the active set and the one before it are kept (my call), and only the packs those two sets
@@ -290,19 +291,22 @@ The installer records which set's plotter last used the live `plotter.db` (a lab
 copies). On a switch to set T, with the plotter stopped:
 
 1. Copy the live `plotter.db` with its `-wal` and `-shm` files (or one `sqlite3 .backup`) to
-   `db-copies`, labeled with the set it belonged to. Copies are kept (disk is cheap); the owner
-   can delete them.
+   `db-copies`, labeled with the set it belonged to, with a sidecar `<copy>.label` (`set=` and
+   `plotter=` lines, as in the label file) recording that set and its plotter version. Copies are
+   kept (disk is cheap); the owner can delete them.
 2. If T's plotter is the same as or newer than the db's plotter, keep the live database: the newer
    plotter migrates it forward. Data recorded on the older set is kept.
-3. If T's plotter is older: restore the newest copy labeled T if one exists, otherwise move the
-   live database aside and let T's plotter start with a fresh one. An older plotter never meets a
-   database from a newer set. Data recorded since the upgrade is lost (owner accepts; it remains in
+3. If T's plotter is older: restore the newest copy (by the timestamp in its name, across all
+   sets) whose sidecar names T's plotter version, if one exists, otherwise move the live database
+   aside and let T's plotter start with a fresh one. A copy made by the same plotter version is
+   always openable, whichever set ran it, so a new set that pins an older plotter gets back the
+   data that plotter had. An older plotter never meets a database from a newer set. Data recorded since the upgrade is lost (owner accepts; it remains in
    `db-copies`).
 
 Restored and moved files keep the desktop user as owner. The label is written for T on every
 switch; a first install with no `plotter.db` skips steps 1 to 3. A live `plotter.db` with no label
-(a hand install) counts as unknown and newer: it is copied (labeled `unknown`), moved aside, and T
-starts fresh.
+(a hand install) counts as unknown and newer: it is copied (labeled `unknown`, with an empty
+`plotter=` in its sidecar, so it is never restored), moved aside, and T starts fresh.
 
 ### Desktop settings
 

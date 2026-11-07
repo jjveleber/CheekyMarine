@@ -284,10 +284,11 @@ class TestSwitch(unittest.TestCase):
         self.plant_db()
         self.install(rel)
         got = self.copies()
-        self.assertEqual(len(got), 3, got)
+        self.assertEqual(len(got), 4, got)
         base = [n for n in got if n.endswith(".db")][0]
         self.assertRegex(base, r"^plotter-unknown-%s\.db$" % STAMP)
-        self.assertEqual(set(got), {base, base + "-wal", base + "-shm"})
+        self.assertEqual(set(got), {base, base + "-wal", base + "-shm", base + ".label"})
+        self.assertEqual((self.copies_dir / (base + ".label")).read_text(), "set=unknown\nplotter=\n")
         self.assertEqual((self.copies_dir / base).read_text(), "live\n")
         for sfx in ("", "-wal", "-shm"):
             self.assertFalse(self.db.with_name(self.db.name + sfx).exists())
@@ -312,9 +313,10 @@ class TestSwitch(unittest.TestCase):
         self.assertIn("pkill -TERM -u %s -x cheekyplotter" % self.rig.user, self.rig.calls())
         self.assertEqual(set(marker.read_text().split()), before)
         new = sorted(set(self.copies()) - before)
-        self.assertEqual(len(new), 3, new)
+        self.assertEqual(len(new), 4, new)
         base = [n for n in new if n.endswith(".db")][0]
         self.assertRegex(base, r"^plotter-0\.1\.0-%s\.db$" % STAMP)
+        self.assertEqual((self.copies_dir / (base + ".label")).read_text(), "set=0.1.0\nplotter=0.1.0\n")
         for sfx in ("", "-wal", "-shm"):
             self.assertEqual((self.copies_dir / (base + sfx)).read_text(), "live%s\n" % sfx)
 
@@ -340,6 +342,48 @@ class TestSwitch(unittest.TestCase):
         self.assertEqual(self.db.with_name("plotter.db-wal").read_text(), "data from A-wal\n")
         self.assertTrue([n for n in self.copies() if re.match(r"^plotter-0\.2\.0-%s\.db$" % STAMP, n)])
         self.assertEqual(self.label.read_text(), "set=0.1.0\nplotter=0.1.0\n")
+
+    def test_new_set_with_older_plotter_restores_copy_of_that_plotter(self):
+        a = self.rig.make_set("0.1.0", "0.1.0")
+        b = self.rig.make_set("0.2.0", "0.2.0")
+        c = self.rig.make_set("0.3.0", "0.1.0")  # a newer set that pins the older plotter
+        self.install(a)
+        self.plant_db("data from A")
+        self.install(b)
+        self.plant_db("data from B")
+        self.install(c, tty_answers=["y"])  # an older plotter: confirm it
+        self.assertEqual(self.db.read_text(), "data from A\n")
+        self.assertEqual(self.db.with_name("plotter.db-shm").read_text(), "data from A-shm\n")
+        self.assertEqual(self.label.read_text(), "set=0.3.0\nplotter=0.1.0\n")
+
+    def test_restore_picks_newest_stamp_across_sets(self):
+        a = self.rig.make_set("0.1.0", "0.1.0")
+        b = self.rig.make_set("0.2.0", "0.2.0")
+        self.install(b)
+        self.plant_db("data from B")
+        self.copies_dir.mkdir(parents=True, exist_ok=True)
+        # an older copy labeled with a set that sorts after the target in the glob
+        for name, text, lset in (("plotter-0.9.0-20260101T000000Z.db", "old", "0.9.0"),
+                                  ("plotter-0.0.1-20260601T000000Z.db", "newest", "0.0.1")):
+            (self.copies_dir / name).write_text(text + "\n")
+            (self.copies_dir / (name + ".label")).write_text("set=%s\nplotter=0.1.0\n" % lset)
+        self.install(a, tty_answers=["y"])
+        self.assertEqual(self.db.read_text(), "newest\n")
+
+    def test_copy_of_other_plotter_or_unknown_is_not_restored(self):
+        a = self.rig.make_set("0.1.0", "0.1.0")
+        b = self.rig.make_set("0.2.0", "0.2.0")
+        self.install(b)
+        self.plant_db("data from B")
+        self.copies_dir.mkdir(parents=True, exist_ok=True)
+        for name, label in (("plotter-0.1.0-20990101T000000Z.db", "set=0.1.0\nplotter=0.1.5\n"),
+                            ("plotter-unknown-20990102T000000Z.db", "set=unknown\nplotter=\n"),
+                            ("plotter-0.1.0-20990103T000000Z.db", None)):
+            (self.copies_dir / name).write_text("wrong\n")
+            if label is not None:
+                (self.copies_dir / (name + ".label")).write_text(label)
+        self.install(a, tty_answers=["y"])
+        self.assertFalse(self.db.exists())
 
     def test_older_plotter_without_copy_starts_fresh(self):
         a = self.rig.make_set("0.1.0", "0.1.0")

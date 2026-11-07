@@ -602,12 +602,14 @@ newer_than() {
   [ "$1" != "$2" ] && [ "$(printf '%s\n' "$1" "$2" | sort -V | tail -n 1)" = "$1" ]
 }
 
-# data_rule FROM_PLOTTER_VER TO_PLOTTER_VER TO_SET: with the plotter stopped, copy the live
-# plotter.db (labeled with its set from db-label), keep it when TO's plotter is the same or newer,
-# else restore the newest copy labeled TO_SET or move it aside. A db with no label counts as
-# unknown and newer. The label itself is written by switch_to, around the flip.
+# data_rule FROM_PLOTTER_VER TO_PLOTTER_VER: with the plotter stopped, copy the live
+# plotter.db (named with its set from db-label, with a sidecar <copy>.label holding that set and
+# plotter version), keep it when TO's plotter is the same or newer, else restore the newest copy
+# (by the stamp in its name) whose sidecar names TO's plotter version, or move it aside. A db with
+# no label counts as unknown and newer; its copy's sidecar has an empty plotter= and is never
+# restored. The label itself is written by switch_to, around the flip.
 data_rule() {
-  local from=$1 to=$2 toset=$3 db label copies fromset base sfx newest f n
+  local from=$1 to=$2 db label copies fromset base sfx newest stamp best f n
   db=$(p "$CM_HOME/.local/share/cheekyplotter/plotter.db")
   label=$(p /var/lib/cheekymarine/db-label)
   copies=$(p /var/lib/cheekymarine/db-copies)
@@ -618,15 +620,18 @@ data_rule() {
     for sfx in "" -wal -shm; do
       [ ! -f "$db$sfx" ] || cp -p "$db$sfx" "$base$sfx"
     done
+    printf 'set=%s\nplotter=%s\n' "$fromset" "$from" > "$base.label"
     if [ -z "$from" ] || [ "$(printf '%s\n' "$from" "$to" | sort -V | tail -n 1)" != "$to" ]; then
       rm -f "$db" "$db-wal" "$db-shm"
-      if [ "$fromset" != unknown ]; then
-        newest=
-        for f in "$copies/plotter-$toset-"*.db; do
+      if [ "$fromset" != unknown ] && [ -n "$to" ]; then
+        newest= best=
+        for f in "$copies"/plotter-*.db; do
           n=${f##*/}
-          n=${n#"plotter-$toset-"}
-          # the glob sorts, and stamps sort by time; skip names of other sets like <toset>-rc1
-          if [[ $n =~ ^[0-9]{8}T[0-9]{6}Z\.db$ ]]; then newest=${f##*/}; fi
+          [[ $n =~ -([0-9]{8}T[0-9]{6}Z)\.db$ ]] || continue
+          stamp=${BASH_REMATCH[1]}
+          if [ ! -f "$f.label" ] || [ "$(lock_file_get "$f.label" plotter)" != "$to" ]; then continue; fi
+          # stamps compare by time as strings; the newest wins whatever set made it
+          if [ -z "$best" ] || [[ $stamp > $best ]]; then best=$stamp newest=$n; fi
         done
         if [ -n "$newest" ]; then
           for sfx in "" -wal -shm; do
@@ -659,7 +664,7 @@ switch_to() {
   lver=$(label_get plotter)
   stop_plotter
   stop_n2kd
-  data_rule "$lver" "$tover" "$toset"
+  data_rule "$lver" "$tover"
   bset=$toset bver=$tover
   if [ -n "$lver" ] && newer_than "$lver" "$bver"; then bset=$lset bver=$lver; fi
   if [ -f "$root/current/cheekymarine.lock" ]; then

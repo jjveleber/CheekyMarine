@@ -79,13 +79,28 @@ and `sudo` ignores your `PATH` anyway.
 
 All the plotter's user data is one file, `~/.local/share/cheekyplotter/plotter.db`.
 On every switch the script copies it to `/var/lib/cheekymarine/db-copies/`, named
-`plotter-<set>-<time>.db` after the set that used it. The copies are kept; delete old ones by hand
-if you like.
+`plotter-<set>-<time>.db` after the set that used it, with a `plotter-<set>-<time>.db.label` file
+beside it that names that set and its plotter version (`plotter=` is empty when unknown). The
+copies are kept; delete old ones by hand if you like.
 
 Moving to a set whose plotter is the same or newer keeps your data. Moving to an older plotter (a
 rollback or a downgrade) never hands it data from a newer one: the script puts back the newest copy
-made from that older set, or, if there is none, the older plotter starts with an empty database.
-Data recorded on the newer set stays in `db-copies`.
+made by that same plotter version (from any set), or, if there is none, the older plotter starts
+with an empty database. Data recorded on the newer set stays in `db-copies`.
+
+To put a copy back by hand, pick one whose `.label` names a plotter the same as or older than the
+installed one (`/opt/cheekymarine/bin/cheekymarine version`), then run these lines as yourself,
+with your copy's name in `c=` (the first line closes the plotter):
+
+```
+pkill -x cheekyplotter
+c=/var/lib/cheekymarine/db-copies/plotter-<set>-<time>.db
+cd ~/.local/share/cheekyplotter && rm -f plotter.db-wal plotter.db-shm
+for s in "" -wal -shm; do [ ! -f "$c$s" ] || sudo cp "$c$s" "plotter.db$s"; done
+sudo chown "$USER:" plotter.db*
+```
+
+Then log out and back in, and the plotter starts on that data.
 
 ## Lock format (contract)
 
