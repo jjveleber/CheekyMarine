@@ -42,7 +42,7 @@ prepare() {
 cm() {
   local lock=${LOCK[$1]}; shift
   RC=0
-  OUT=$(setsid -w sudo env SUDO_USER=helm "CM_BASE_URL=${BASE_URL:-file://$REL}" "CM_LOCK_FILE=$lock" "$INSTALLER" "$@" 2>&1 < /dev/null) || RC=$?
+  OUT=$(timeout 300 setsid -w sudo env SUDO_USER=helm "CM_BASE_URL=${BASE_URL:-file://$REL}" "CM_LOCK_FILE=$lock" "$INSTALLER" "$@" 2>&1 < /dev/null) || RC=$?
   printf '%s\n' "$OUT"
 }
 
@@ -50,7 +50,7 @@ cm() {
 cm_tty() {
   local lock=${LOCK[$1]}
   RC=0
-  OUT=$(printf '%b' "$2" | script -qec "sudo env SUDO_USER=helm CM_BASE_URL=${BASE_URL:-file://$REL} CM_LOCK_FILE=$lock $INSTALLER" /dev/null 2>&1) || RC=$?
+  OUT=$(printf '%b' "$2" | timeout 300 script -qec "sudo env SUDO_USER=helm CM_BASE_URL=${BASE_URL:-file://$REL} CM_LOCK_FILE=$lock $INSTALLER" /dev/null 2>&1) || RC=$?
   printf '%s\n' "$OUT"
 }
 
@@ -126,7 +126,7 @@ rollback_offline() {
 }
 cm_rollback() {
   RC=0
-  OUT=$(setsid -w sudo env SUDO_USER=helm "CM_BASE_URL=$BASE_URL" "$ROOT/bin/cheekymarine" rollback 2>&1 < /dev/null) || RC=$?
+  OUT=$(timeout 300 setsid -w sudo env SUDO_USER=helm "CM_BASE_URL=$BASE_URL" "$ROOT/bin/cheekymarine" rollback 2>&1 < /dev/null) || RC=$?
   printf '%s\n' "$OUT"
 }
 
@@ -153,6 +153,7 @@ corrupted_asset() {
 
 prepare
 for SCENARIO in fresh_install rerun prompts_yes upgrade_same_packs rollback_offline downgrade corrupted_asset; do
+  echo "RUN $SCENARIO"
   "$SCENARIO"
   echo "PASS $SCENARIO"
 done
