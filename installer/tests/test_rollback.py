@@ -200,7 +200,7 @@ class TestRollback(unittest.TestCase):
         b_dir = self.link("current")
         self.write_db("b")
         r = self.install(a, tty_answers=["yes"])
-        self.assertIn(QUESTION, r.stdout)
+        self.assertIn(QUESTION, r.stderr)
         self.assertRegex(self.link("current"), r"^sets/0\.1\.0\.")
         self.assertEqual(self.link("previous"), b_dir)
         self.assertFalse(self.db.exists())
@@ -218,7 +218,7 @@ class TestRollback(unittest.TestCase):
         for answers in (["n"], [""], []):
             r = self.install(a, ok=False, tty_answers=answers)
             self.assertEqual(r.returncode, 1, r.stderr)
-            self.assertIn(QUESTION, r.stdout)
+            self.assertIn(QUESTION, r.stderr)
             self.assertIn("cheekymarine: downgrade from 0.2.0 to 0.1.0 not confirmed; nothing was changed",
                           r.stderr)
             self.assertEqual(self.snapshot(), before)
@@ -246,9 +246,9 @@ class TestRollback(unittest.TestCase):
         b = self.rig.make_set("0.2.0", "0.2.0")
         self.install(b)
         r = self.install(a, tty_answers=["y", "y", "y"])
-        self.assertIn(QUESTION, r.stdout)
-        self.assertIn("Turn on automatic login", r.stdout)
-        self.assertIn("Turn off the lock screen", r.stdout)
+        self.assertIn(QUESTION, r.stderr)
+        self.assertIn("Turn on automatic login", r.stderr)
+        self.assertIn("Turn off the lock screen", r.stderr)
         self.assertIn("AutomaticLogin=%s" % self.rig.user, self.rig.path("/etc/gdm3/custom.conf").read_text())
         self.assertRegex(self.link("current"), r"^sets/0\.1\.0\.")
 

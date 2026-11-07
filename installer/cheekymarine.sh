@@ -453,7 +453,8 @@ gset() {
   [ "$got" = "$3" ] || die "could not set $1 $2 to $3 (it reads $got)"
 }
 
-# ask QUESTION: ask on the terminal (fd 3, opened once per run). Returns 0 for y or yes (any case),
+# ask QUESTION: ask on the terminal (QUESTION to stderr, so it shows when stdout is redirected;
+# the answer from fd 3, opened once per run). Returns 0 for y or yes (any case),
 # 1 for anything else, 2 when there is no terminal (the open failed; stays failed for the run).
 CM_TTY_STATE=
 ask() {
@@ -462,7 +463,7 @@ ask() {
     if { exec 3< "${CM_TTY:-/dev/tty}"; } 2> /dev/null; then CM_TTY_STATE=open; else CM_TTY_STATE=failed; fi
   fi
   [ "$CM_TTY_STATE" = open ] || return 2
-  printf '%s ' "$1"
+  printf '%s ' "$1" >&2
   ans=
   read -r ans <&3 || true
   case "${ans,,}" in y | yes) return 0 ;; *) return 1 ;; esac

@@ -85,8 +85,9 @@ class TestDesktop(unittest.TestCase):
         g = self.gs()
         self.assertEqual(g[(SS, "lock-enabled")], "false")
         self.assertEqual(g[(SS, "ubuntu-lock-on-suspend")], "false")
-        self.assertIn(Q_LOGIN % self.u, r.stdout)
-        self.assertIn(Q_LOCK, r.stdout)
+        self.assertIn(Q_LOGIN % self.u, r.stderr)
+        self.assertIn(Q_LOCK, r.stderr)
+        self.assertNotIn("[y/N]", r.stdout)  # prompts go to stderr, visible when stdout is redirected
         self.assertNotIn(LEFT, r.stdout)
 
     def test_no_answer_leaves_settings_and_asks_again(self):
@@ -96,8 +97,8 @@ class TestDesktop(unittest.TestCase):
             g = self.gs()
             self.assertEqual(g[(SS, "lock-enabled")], "true")
             self.assertEqual(g[(SS, "ubuntu-lock-on-suspend")], "true")
-            self.assertIn(Q_LOGIN % self.u, r.stdout)
-            self.assertIn(Q_LOCK, r.stdout)
+            self.assertIn(Q_LOGIN % self.u, r.stderr)
+            self.assertIn(Q_LOCK, r.stderr)
             self.assertIn(LEFT + CMD_LOGIN % self.u, r.stdout)
             self.assertIn(LEFT + CMD_LOCK, r.stdout)
 
@@ -105,7 +106,7 @@ class TestDesktop(unittest.TestCase):
         r = self.install()
         self.assertEqual(self.conf.read_text(), STOCK_CONF)
         self.assertEqual(self.gs()[(SS, "lock-enabled")], "true")
-        self.assertNotIn("[y/N]", r.stdout)
+        self.assertNotIn("[y/N]", r.stdout + r.stderr)
         self.assertIn(LEFT + CMD_LOGIN % self.u, r.stdout)
         self.assertIn(LEFT + CMD_LOCK, r.stdout)
         self.assertNotIn(str(self.rig.root), r.stdout.split("installed:")[0])
@@ -140,7 +141,7 @@ class TestDesktop(unittest.TestCase):
         g = self.rig.state("gsettings")
         g.write_text(g.read_text().replace("%s\tlock-enabled\ttrue" % SS, "%s\tlock-enabled\tfalse" % SS))
         r = self.install(tty_answers=["y", "y"])
-        self.assertNotIn("[y/N]", r.stdout)
+        self.assertNotIn("[y/N]", r.stdout + r.stderr)
         self.assertNotIn(LEFT, r.stdout)
         self.assertEqual(self.conf.read_text(), before)
 
@@ -173,12 +174,13 @@ class TestDesktop(unittest.TestCase):
         r = self.rig.sh('setsid -w bash -c \'%s\' x "$1"' % script, str(Rig.SCRIPT), env={"CM_TTY": None})
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertIn("rc=2", r.stdout)
-        self.assertNotIn("Q?", r.stdout)
+        self.assertNotIn("Q?", r.stdout + r.stderr)
 
     def test_ask_answers(self):
         script = 'CM_SOURCE_ONLY=1 . "$1"; for i in 1 2 3 4 5; do ask Q && echo yes || echo "no$?"; done'
         r = self.rig.sh(script, str(Rig.SCRIPT), tty_answers=["y", "YES", "n", "", "maybe"])
-        self.assertEqual(r.stdout.replace("Q ", "").split(), ["yes", "yes", "no1", "no1", "no1"])
+        self.assertEqual(r.stdout.split(), ["yes", "yes", "no1", "no1", "no1"])
+        self.assertEqual(r.stderr, "Q " * 5)
 
     def test_no_logind_file_written(self):
         self.install(tty_answers=["y", "y"])
