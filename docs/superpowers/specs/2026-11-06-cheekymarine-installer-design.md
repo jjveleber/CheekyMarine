@@ -273,8 +273,9 @@ earlier layout is needed.
 `cheekymarine rollback` runs the switch to `previous` with no network. Afterwards `current` is the
 older set, `previous` is cleared and the newer set is deleted (its database copy is kept, see the
 data rule), along with store packs only the newer set used. The older set's packs are still in the
-store, because pruning keeps the packs of both `current` and `previous`. A second rollback is refused with a plain message. Running the newer set's script again
-later is an ordinary upgrade (fresh download).
+store, because pruning keeps the packs of both `current` and `previous`. A second rollback is
+refused with a plain message. Running the newer set's script again later is an ordinary upgrade (a
+fresh download of what the store lacks).
 
 ### Installing an older set over a newer one (my call)
 
