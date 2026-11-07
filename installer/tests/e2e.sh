@@ -42,7 +42,7 @@ prepare() {
 cm() {
   local lock=${LOCK[$1]}; shift
   RC=0
-  OUT=$(timeout 300 setsid -w sudo env SUDO_USER=helm "CM_BASE_URL=${BASE_URL:-file://$REL}" "CM_LOCK_FILE=$lock" "$INSTALLER" "$@" 2>&1 < /dev/null) || RC=$?
+  OUT=$(timeout 300 setsid -w sudo env SUDO_USER=helm "CM_BASE_URL=file://$REL" "CM_LOCK_FILE=$lock" "$INSTALLER" "$@" 2>&1 < /dev/null) || RC=$?
   printf '%s\n' "$OUT"
 }
 
@@ -51,7 +51,7 @@ cm_tty() {
   local lock=${LOCK[$1]}
   RC=0
   # shellcheck disable=SC2086
-  OUT=$(python3 -I "$REPO/installer/tests/pty-answer.py" $2 -- sudo env SUDO_USER=helm "CM_BASE_URL=${BASE_URL:-file://$REL}" "CM_LOCK_FILE=$lock" "$INSTALLER" 2>&1 < /dev/null) || RC=$?
+  OUT=$(python3 -I "$REPO/installer/tests/pty-answer.py" $2 -- sudo env SUDO_USER=helm "CM_BASE_URL=file://$REL" "CM_LOCK_FILE=$lock" "$INSTALLER" 2>&1 < /dev/null) || RC=$?
   printf '%s\n' "$OUT"
 }
 
@@ -119,15 +119,21 @@ upgrade_same_packs() {
 }
 
 rollback_offline() {
-  BASE_URL=http://127.0.0.1:9/ cm_rollback
+  # the namespace really has no network
+  if sudo unshare -n curl -fsS --max-time 10 -o /dev/null https://github.com; then
+    fail "network reachable under unshare -n"
+  fi
+  cm_rollback
   want_rc 0
   case "$(cur)" in 0.2.0*) ;; *) fail "current is $(readlink "$ROOT/current")" ;; esac
   [ ! -e "$ROOT/previous" ] || fail "previous still there"
   n2kd_active
 }
+# cm_rollback: the installed command's rollback in a new network namespace (unshare -n: only a
+# loopback that is down), so any network use fails it. Sets OUT and RC.
 cm_rollback() {
   RC=0
-  OUT=$(timeout 300 setsid -w sudo env SUDO_USER=helm "CM_BASE_URL=$BASE_URL" "$ROOT/bin/cheekymarine" rollback 2>&1 < /dev/null) || RC=$?
+  OUT=$(timeout 300 setsid -w sudo unshare -n env SUDO_USER=helm "$ROOT/bin/cheekymarine" rollback 2>&1 < /dev/null) || RC=$?
   printf '%s\n' "$OUT"
 }
 
