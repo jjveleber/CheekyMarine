@@ -102,10 +102,58 @@ take_lock() {
   flock -n 9 || die "another CheekyMarine install or rollback is running; wait for it to finish, then try again"
 }
 
+# base_url: the release download base.
+base_url() {
+  printf '%s\n' "${CM_BASE_URL:-https://github.com/jjveleber/CheekyMarine/releases/download}"
+}
+
+# fetch_file URL DEST WHAT: download URL to DEST, or die `download failed: WHAT URL`.
+fetch_file() {
+  curl -fL --retry 3 -sS -o "$2" "$1" || die "download failed: $3 $1"
+}
+
+# check_sum FILE WANT WHAT NAME: die `checksum mismatch: WHAT NAME` unless FILE hashes to WANT.
+check_sum() {
+  local got
+  got=$(sha256sum "$1" | cut -d' ' -f1)
+  [ "$got" = "$2" ] || die "checksum mismatch: $3 $4"
+}
+
+# fetch_parts STAGE_DIR: download and verify every part of the set, and the set's own script.
+# A pack already in the store (dir plus a sidecar equal to the lock's sha256) is skipped.
+fetch_parts() {
+  local stage=$1 base part asset want name set
+  base=$(base_url)
+  set=$(lock_get set)
+  for part in n2kd charts bathy plotter; do
+    asset=$(lock_get "$part.asset")
+    want=$(lock_get "$part.sha256")
+    case "$asset" in
+      *.tar)
+        name=${asset%.tar}
+        if [ -d "$(p /opt/cheekymarine/packs)/$name" ] \
+          && [ "$(cat "$(p /opt/cheekymarine/packs)/$name.sha256" 2>/dev/null || true)" = "$want" ]; then
+          continue
+        fi
+        ;;
+    esac
+    fetch_file "$base/$(lock_get "$part.tag")/$asset" "$stage/$asset" "$part"
+    check_sum "$stage/$asset" "$want" "$part" "$asset"
+  done
+  fetch_file "$base/cheekymarine-v$set/SHA256SUMS" "$stage/SHA256SUMS" set
+  fetch_file "$base/cheekymarine-v$set/install-cheekymarine.sh" "$stage/install-cheekymarine.sh" set
+  want=$(awk '$2=="install-cheekymarine.sh" {print $1; exit}' "$stage/SHA256SUMS")
+  check_sum "$stage/install-cheekymarine.sh" "$want" set install-cheekymarine.sh
+}
+
 cmd_install() {
   preflight
   take_lock
-  echo "cheekymarine: install is not implemented yet"
+  CM_STAGE=$(p "/opt/cheekymarine/.stage-$(lock_get set)")
+  rm -rf "$CM_STAGE"
+  mkdir -p "$CM_STAGE"
+  trap 'rm -rf "$CM_STAGE"' EXIT
+  fetch_parts "$CM_STAGE"
 }
 
 cmd_rollback() {

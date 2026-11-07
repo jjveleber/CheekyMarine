@@ -33,7 +33,8 @@ class TestPreflight(unittest.TestCase):
 
     def test_accepts_ubuntu_2604(self):
         self.rig.write("/etc/os-release", 'ID=ubuntu\nVERSION_ID="26.04"\n')
-        r = self.rig.run("install")
+        rel = self.rig.make_set("0.2.0", "0.3.0")
+        r = self.rig.run("install", script=rel / "install-cheekymarine.sh")
         self.assertEqual(r.returncode, 0, r.stderr)
 
     def test_refuses_aarch64(self):
@@ -61,11 +62,13 @@ class TestPreflight(unittest.TestCase):
                 self.assertEqual(first_line(r.stderr),
                                  "cheekymarine: another CheekyMarine install or rollback is running; "
                                  "wait for it to finish, then try again")
-        r = self.rig.run("install")
+        rel = self.rig.make_set("0.2.0", "0.3.0")
+        r = self.rig.run("install", script=rel / "install-cheekymarine.sh")
         self.assertEqual(r.returncode, 0, r.stderr)
 
     def test_install_stub_passes_preflight_and_creates_lock_dir(self):
-        r = self.rig.run()
+        rel = self.rig.make_set("0.2.0", "0.3.0")
+        r = self.rig.run(script=rel / "install-cheekymarine.sh")
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertTrue((self.rig.root / "run" / "cheekymarine-install.lock").exists())
 
