@@ -147,7 +147,8 @@ check_linked_packs() {
   done
 }
 
-# fetch_parts STAGE_DIR: download and verify every part of the set, and the set's own script.
+# fetch_parts STAGE_DIR: download and verify every part of the set, and the set's own script and
+# lock (which must equal the lock in use).
 # A pack already in the store (dir plus a sidecar equal to the lock's sha256) is skipped.
 fetch_parts() {
   local stage=$1 base part asset want name set
@@ -173,6 +174,12 @@ fetch_parts() {
   fetch_file "$base/cheekymarine-v$set/install-cheekymarine.sh" "$stage/install-cheekymarine.sh" set
   want=$(awk '$2=="install-cheekymarine.sh" {print $1; exit}' "$stage/SHA256SUMS")
   check_sum "$stage/install-cheekymarine.sh" "$want" set install-cheekymarine.sh
+  fetch_file "$base/cheekymarine-v$set/cheekymarine.lock" "$stage/cheekymarine.lock" set
+  want=$(awk '$2=="cheekymarine.lock" {print $1; exit}' "$stage/SHA256SUMS")
+  check_sum "$stage/cheekymarine.lock" "$want" set cheekymarine.lock
+  # The set script becomes bin/cheekymarine: its set's lock must be the one installed now.
+  [ "$(cat "$stage/cheekymarine.lock")" = "$(lock_text)" ] \
+    || die "the set release's cheekymarine.lock differs from the lock in this script; nothing was changed"
 }
 
 # lock_text: the lock this script installs ($CM_LOCK_FILE or the embedded one).

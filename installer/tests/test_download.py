@@ -51,6 +51,30 @@ class TestDownload(unittest.TestCase):
         self.assertEqual(r.returncode, 1)
         self.assertIn("checksum mismatch: set install-cheekymarine.sh", r.stderr)
 
+    def test_set_lock_checked_against_release_sums(self):
+        rel = self.rig.make_set("0.2.0", "0.3.0")
+        lock = rel / "cheekymarine.lock"
+        lock.write_text(lock.read_text() + "# changed\n")
+        r = self.rig.run("install", script=rel / "install-cheekymarine.sh")
+        self.assertEqual(r.returncode, 1, r.stderr)
+        self.assertIn("checksum mismatch: set cheekymarine.lock", r.stderr)
+        self.assertFalse([c for c in self.rig.calls() if c.startswith("apt-get")])
+
+    def test_set_lock_must_equal_running_lock(self):
+        rel = self.rig.make_set("0.2.0", "0.3.0")
+        lock = rel / "cheekymarine.lock"
+        lock.write_text(lock.read_text().replace("plotter.version=0.3.0", "plotter.version=0.3.9"))
+        sums = rel / "SHA256SUMS"
+        sums.write_text(re.sub(r"(?m)^\w+(  cheekymarine.lock)$",
+                               hashlib.sha256(lock.read_bytes()).hexdigest() + r"\1", sums.read_text()))
+        r = self.rig.run("install", script=rel / "install-cheekymarine.sh")
+        self.assertEqual(r.returncode, 1, r.stderr)
+        self.assertIn("cheekymarine: the set release's cheekymarine.lock differs from the lock in this script; "
+                      "nothing was changed", r.stderr)
+        self.assertFalse([c for c in self.rig.calls() if c.startswith("apt-get")])
+        self.assertFalse(self.rig.path("/opt/cheekymarine/current").is_symlink())
+        self.assertFalse(self.stage("0.2.0").exists())
+
     def test_downloads_use_fixed_urls_only(self):
         rel = self.rig.make_set("0.2.0", "0.3.0")
         r = self.rig.run("install", script=rel / "install-cheekymarine.sh")
@@ -100,6 +124,7 @@ class TestDownload(unittest.TestCase):
         self.assertIn("%s/plotter-v0.3.0/cheekyplotter-0.3.0-x86_64.tar.gz" % self.rig.base_url, urls)
         self.assertIn("%s/cheekymarine-v0.2.0/SHA256SUMS" % self.rig.base_url, urls)
         self.assertIn("%s/cheekymarine-v0.2.0/install-cheekymarine.sh" % self.rig.base_url, urls)
+        self.assertIn("%s/cheekymarine-v0.2.0/cheekymarine.lock" % self.rig.base_url, urls)
         self.assertEqual(self.rig.path("/opt/cheekymarine/bin/cheekymarine").read_bytes(),
                          (rel / "install-cheekymarine.sh").read_bytes())
 
