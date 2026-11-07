@@ -41,6 +41,12 @@ LOCK
 )
 # END LOCK
 
+# Run-time packages for the plotter bundle and the tools the installer drives (Task 10 refines).
+CM_APT_PACKAGES="iproute2 libxkbcommon0 libxcb-cursor0 libegl1 libgl1 libwayland-client0 libwayland-egl1 fontconfig libcurl4t64 libuv1t64 libopengl0 libglx0"
+
+# NEED_RELOGIN is set to 1 by ensure_group when it added the desktop user to a group.
+NEED_RELOGIN=
+
 # lock_get KEY: value of KEY from $CM_LOCK_FILE if set, else the embedded $CM_LOCK.
 lock_get() {
   if [ -n "${CM_LOCK_FILE:-}" ]; then
@@ -235,22 +241,119 @@ check_pack_schema() {
   done
 }
 
-# install_sysusers DIR: install set DIR's sysusers file (Task 5).
-install_sysusers() {
-  :
+# install_apt: refresh the package lists and install the run-time packages; either failing stops
+# the install (the set is still untouched at this point).
+install_apt() {
+  DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=600 update
+  # shellcheck disable=SC2086
+  DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=600 install -y --no-install-recommends \
+    $CM_APT_PACKAGES
 }
 
-# install_n2kd_unit DIR: install set DIR's n2kd unit to /etc/systemd/system, daemon-reload when
-# it changed. Minimal for now: Task 5 rewrites ExecStart to run through `current`.
+# install_sysusers DIR: install set DIR's sysusers file and run systemd-sysusers (creates the
+# cheekymarine user and group, which ensure_group needs).
+install_sysusers() {
+  local dst
+  dst=$(p /etc/sysusers.d/cheekymarine.conf)
+  mkdir -p "$(dirname "$dst")"
+  cp "$1/n2kd/usr/lib/sysusers.d/cheekymarine.conf" "$dst"
+  systemd-sysusers
+}
+
+# ensure_group: add the desktop user to group cheekymarine (n2kd's socket) when not a member, and
+# set NEED_RELOGIN, since a new group only applies to a new login.
+ensure_group() {
+  if ! id -nG "$CM_USER" | tr ' ' '\n' | grep -qxF cheekymarine; then
+    usermod -aG cheekymarine "$CM_USER"
+    NEED_RELOGIN=1
+  fi
+}
+
+# install_launcher: /opt/cheekymarine/bin/cheekyplotter runs the active set's plotter. The
+# content names production paths, whatever CM_ROOT is.
+install_launcher() {
+  local f
+  f=$(p /opt/cheekymarine/bin/cheekyplotter)
+  mkdir -p "$(dirname "$f")"
+  cat > "$f.tmp" <<'LAUNCHER'
+#!/bin/sh
+exec /opt/cheekymarine/current/plotter/bin/cheekyplotter --fullscreen --packs /opt/cheekymarine/current/packs "$@"
+LAUNCHER
+  chmod 755 "$f.tmp"
+  mv -T "$f.tmp" "$f"
+}
+
+# install_autostart: the GNOME autostart entry that runs the launcher at login, owned by the user.
+install_autostart() {
+  local d f
+  d=$(p "$CM_HOME/.config/autostart")
+  f=$d/cheekyplotter.desktop
+  if [ ! -d "$(p "$CM_HOME/.config")" ]; then
+    mkdir -p "$(p "$CM_HOME/.config")"
+    chown "$CM_USER:" "$(p "$CM_HOME/.config")"
+  fi
+  if [ ! -d "$d" ]; then
+    mkdir "$d"
+    chown "$CM_USER:" "$d"
+  fi
+  cat > "$f.tmp" <<'DESKTOP'
+[Desktop Entry]
+Type=Application
+Name=CheekyMarine plotter
+Exec=/opt/cheekymarine/bin/cheekyplotter
+DESKTOP
+  chown "$CM_USER:" "$f.tmp"
+  mv -T "$f.tmp" "$f"
+}
+
+# install_can0: bring can0 up at 250 kbit/s, listen-only, whenever the adapter appears (udev rule
+# pulls in a oneshot unit), and now when it is already present.
+install_can0() {
+  local rule unit
+  rule=$(p /etc/udev/rules.d/80-cheekymarine-can0.rules)
+  unit=$(p /etc/systemd/system/cheekymarine-can0.service)
+  mkdir -p "$(dirname "$rule")" "$(dirname "$unit")"
+  cat > "$rule" <<'RULE'
+ACTION=="add", SUBSYSTEM=="net", KERNEL=="can0", TAG+="systemd", ENV{SYSTEMD_WANTS}+="cheekymarine-can0.service"
+RULE
+  cat > "$unit" <<'UNIT'
+[Unit]
+Description=CheekyMarine can0 at 250 kbit/s, listen-only
+BindsTo=sys-subsystem-net-devices-can0.device
+After=sys-subsystem-net-devices-can0.device
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/sbin/ip link set can0 down
+ExecStart=/usr/sbin/ip link set can0 type can bitrate 250000 listen-only on
+ExecStart=/usr/sbin/ip link set can0 up
+UNIT
+  systemctl daemon-reload
+  udevadm control --reload
+  if [ -e "$(p /sys/class/net/can0)" ]; then
+    udevadm trigger --action=add "$(p /sys/class/net/can0)"
+  fi
+}
+
+# install_n2kd_unit DIR: write /etc/systemd/system/n2kd.service from set DIR's unit with ExecStart
+# running through `current`, daemon-reload when it changed, and enable it. A regular file, never a
+# symlink. The content names production paths, whatever CM_ROOT is.
 install_n2kd_unit() {
   local src=$1/n2kd/usr/lib/systemd/system/n2kd.service dst
   dst=$(p /etc/systemd/system/n2kd.service)
-  if ! cmp -s "$src" "$dst"; then
-    mkdir -p "$(dirname "$dst")"
-    cp "$src" "$dst.tmp"
+  mkdir -p "$(dirname "$dst")"
+  awk '/^ExecStart=/ {
+    print "ExecStart=/opt/cheekymarine/current/n2kd/usr/bin/n2kd --can can0 --rawlog /var/lib/cheekymarine/rawlog --pgns /opt/cheekymarine/current/n2kd/usr/share/cheekymarine/canboat.json"
+    next }
+    { print }' "$src" > "$dst.tmp"
+  if ! cmp -s "$dst.tmp" "$dst"; then
     mv -T "$dst.tmp" "$dst"
     systemctl daemon-reload
+  else
+    rm -f "$dst.tmp"
   fi
+  systemctl enable n2kd
 }
 
 stop_n2kd() {
@@ -272,9 +375,28 @@ stop_plotter() {
   pkill -KILL -u "$CM_USER" -x cheekyplotter || true
 }
 
-# start_plotter: start the plotter in the desktop user's session (Task 5 completes this).
+# graphical_session: true when the desktop user has an active wayland or x11 session.
+graphical_session() {
+  local id out
+  while read -r id; do
+    [ -n "$id" ] || continue
+    out=$(loginctl show-session "$id" -p Type -p State) || continue
+    if printf '%s\n' "$out" | grep -Eqx 'Type=(wayland|x11)' && printf '%s\n' "$out" | grep -qx 'State=active'; then
+      return 0
+    fi
+  done < <(loginctl list-sessions --no-legend | awk -v u="$CM_USER" '$3==u {print $1}')
+  return 1
+}
+
+# start_plotter: start the plotter in the desktop user's session, unless this run added a group
+# (a new group needs a new login) or the user has no graphical session.
 start_plotter() {
-  systemd-run --user --machine="$CM_USER@" --collect /opt/cheekymarine/bin/cheekyplotter
+  if [ -z "${NEED_RELOGIN:-}" ] && graphical_session; then
+    systemd-run --user --machine="$CM_USER@" --collect /opt/cheekymarine/bin/cheekyplotter \
+      || echo "Log out and back in (or reboot) to start the plotter."
+  else
+    echo "Log out and back in (or reboot) to start the plotter."
+  fi
 }
 
 # label_get KEY: KEY (set or plotter) from db-label, empty when there is no label.
@@ -418,11 +540,18 @@ cmd_install() {
   rm -rf "$CM_STAGE"
   mkdir -p "$CM_STAGE"
   trap 'rm -rf "$CM_STAGE"' EXIT
+  # Task 7: the downgrade confirmation goes here, before the fetch.
   fetch_parts "$CM_STAGE"
+  install_apt
   unpack_set "$CM_STAGE" "$(lock_get set)"
   rm -rf "$CM_STAGE"
   check_pack_schema "$CM_SET_DIR"
   install_sysusers "$CM_SET_DIR"
+  ensure_group
+  install_launcher
+  install_autostart
+  install_can0
+  # Task 6: the desktop settings (auto-login, lock screen, blanking) go here, before the switch.
   switch_to "$CM_SET_DIR"
   prune_sets
   cmd_version

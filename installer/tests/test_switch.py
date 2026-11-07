@@ -11,6 +11,8 @@ class TestSwitch(unittest.TestCase):
     def setUp(self):
         self.rig = Rig()
         self.addCleanup(self.rig.cleanup)
+        self.rig.add_to_group()
+        self.rig.login()
         self.opt = self.rig.path("/opt/cheekymarine")
         self.store = self.opt / "packs"
         self.copies_dir = self.rig.path("/var/lib/cheekymarine/db-copies")

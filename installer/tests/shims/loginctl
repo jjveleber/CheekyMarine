@@ -9,5 +9,10 @@ case "${1:-}" in
   list-sessions)
     [ -f "$STATE/loginctl-session" ] && echo "$(cat "$STATE/loginctl-session") $(id -u) ${SUDO_USER:-} seat0"
     exit 0 ;;
+  show-session)
+    # Type and State come from $STATE/loginctl-type and loginctl-state (default wayland, active).
+    echo "Type=$(cat "$STATE/loginctl-type" 2>/dev/null || echo wayland)"
+    echo "State=$(cat "$STATE/loginctl-state" 2>/dev/null || echo active)"
+    exit 0 ;;
 esac
 exit 0

@@ -126,10 +126,25 @@ class Rig:
             link.symlink_to("sets/" + d.name)
         return d
 
+    def add_to_group(self, group="cheekymarine"):
+        """Make `id -nG` report GROUP for the desktop user, through a per-rig `id` wrapper that
+        goes first on PATH (the real id is never in the shim dir)."""
+        d = self.work / "idbin"
+        d.mkdir(exist_ok=True)
+        f = d / "id"
+        f.write_text('#!/bin/bash\nout=$(/usr/bin/id "$@")\ncase " $* " in *" -nG "*) out="$out %s" ;; esac\n'
+                     'printf \'%%s\\n\' "$out"\n' % group)
+        f.chmod(0o755)
+
+    def login(self, session="c1"):
+        """The desktop user has an active graphical session (the loginctl shim lists it)."""
+        self.state("loginctl-session").write_text(session + "\n")
+
     def env(self, env=None, tty_answers=None):
         e = {k: v for k, v in os.environ.items() if not k.startswith("CM_")}
+        idbin = self.work / "idbin"
         e.update(
-            PATH=str(self.SHIMS) + os.pathsep + os.environ["PATH"],
+            PATH=(str(idbin) + os.pathsep if idbin.is_dir() else "") + str(self.SHIMS) + os.pathsep + os.environ["PATH"],
             CM_ROOT=str(self.root),
             CM_BASE_URL=self.base_url,
             CM_TTY=str(self.work / "no-tty"),
