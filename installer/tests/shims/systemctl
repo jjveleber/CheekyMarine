@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # A unit is known when its file is in $CM_ROOT/{etc,usr/lib,lib}/systemd/system or its name is in
-# $STATE/systemctl-known. Active units: $STATE/systemctl-active; enabled: $STATE/systemctl-enabled.
+# $STATE/systemctl-known. Active units: $STATE/systemctl-active; enabled: $STATE/systemctl-enabled;
+# `show` prints MainPID from $STATE/systemctl-mainpid.
 # Exit codes follow systemd: start/stop/restart of an unknown unit 5, is-active inactive 3,
 # is-enabled disabled 1, enable/disable of an unknown unit 1.
 . "$(dirname "$0")/_shim.sh"
@@ -33,6 +34,9 @@ case "$verb" in
       if ! known "$u"; then echo "Failed to $verb $u: Unit $u not found." >&2; rc=5; continue; fi
       if [ "$verb" = stop ]; then del systemctl-active "$u"; else add systemctl-active "$u"; fi
     done ;;
+  show)
+    # only MainPID, from $STATE/systemctl-mainpid (0, as systemd says for a unit that is not running)
+    for u in "${units[@]}"; do echo "MainPID=$(cat "$STATE/systemctl-mainpid" 2>/dev/null || echo 0)"; done ;;
   is-active)
     for u in "${units[@]}"; do
       u=$(norm "$u")

@@ -152,6 +152,25 @@ class TestSystem(unittest.TestCase):
                                % self.rig.user])
         self.assertNotIn("Log out and back in", r.stdout)
 
+    def test_user_manager_without_group_says_relogin(self):
+        # a rerun after the first install but before a new login: the user is in the group, but
+        # the user manager that systemd-run --user starts the plotter from is not
+        self.rig.login()
+        self.rig.add_to_group()
+        self.rig.user_manager(has_group=False)
+        r = self.install(self.rig.make_set("0.1.0", "0.1.0"))
+        self.assertIn("systemctl show --property=MainPID user@%d.service" % os.getuid(), self.rig.calls())
+        self.assertFalse([c for c in self.rig.calls() if c.startswith("systemd-run")])
+        self.assertIn("Log out and back in (or reboot) to start the plotter.", r.stdout)
+
+    def test_user_manager_with_group_starts_plotter(self):
+        self.rig.login()
+        self.rig.add_to_group()
+        self.rig.user_manager(has_group=True)
+        r = self.install(self.rig.make_set("0.1.0", "0.1.0"))
+        self.assertTrue([c for c in self.rig.calls() if c.startswith("systemd-run")])
+        self.assertNotIn("Log out and back in", r.stdout)
+
     def test_no_session_or_wrong_session_says_relogin(self):
         self.rig.add_to_group()
         self.rig.state("loginctl-session").unlink(missing_ok=True)

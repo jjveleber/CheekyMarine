@@ -127,15 +127,27 @@ class Rig:
             link.symlink_to("sets/" + d.name)
         return d
 
+    # The gid `id -G` reports for the group add_to_group adds.
+    GROUP_GID = 64999
+
     def add_to_group(self, group="cheekymarine"):
-        """Make `id -nG` report GROUP for the desktop user, through a per-rig `id` wrapper that
-        goes first on PATH (the real id is never in the shim dir)."""
+        """Make `id -nG` report GROUP (and `id -G` its gid GROUP_GID, at the same place) for the
+        desktop user, through a per-rig `id` wrapper that goes first on PATH (the real id is never
+        in the shim dir)."""
         d = self.work / "idbin"
         d.mkdir(exist_ok=True)
         f = d / "id"
-        f.write_text('#!/bin/bash\nout=$(/usr/bin/id "$@")\ncase " $* " in *" -nG "*) out="$out %s" ;; esac\n'
-                     'printf \'%%s\\n\' "$out"\n' % group)
+        f.write_text('#!/bin/bash\nout=$(/usr/bin/id "$@")\n'
+                     'case " $* " in *" -nG "*) out="$out %s" ;; *" -G "*) out="$out %d" ;; esac\n'
+                     'printf \'%%s\\n\' "$out"\n' % (group, self.GROUP_GID))
         f.chmod(0o755)
+
+    def user_manager(self, has_group, pid=4242):
+        """The desktop user's systemd --user manager runs as PID (systemctl show reports it as the
+        MainPID of user@<uid>.service), with GROUP_GID among its groups when HAS_GROUP."""
+        self.state("systemctl-mainpid").write_text("%d\n" % pid)
+        gids = "4 24 27" + (" %d" % self.GROUP_GID if has_group else "")
+        self.write("/proc/%d/status" % pid, "Name:\tsystemd\nUid:\t1000\t1000\t1000\t1000\nGroups:\t%s \n" % gids)
 
     def login(self, session="c1"):
         """The desktop user has an active graphical session (the loginctl shim lists it)."""

@@ -422,10 +422,29 @@ graphical_session() {
   return 1
 }
 
+# manager_lacks_group: true when the desktop user is in group cheekymarine but the user's systemd
+# --user manager (which systemd-run --user starts the plotter from) runs without it: the user
+# joined after this login, for example a rerun before logging out after the first install. False
+# when it cannot tell. The group's gid sits at the same place in `id -G` as its name in `id -nG`.
+manager_lacks_group() {
+  local names gids i gid= pid status
+  read -ra names <<< "$(id -nG "$CM_USER")"
+  read -ra gids <<< "$(id -G "$CM_USER")"
+  for i in "${!names[@]}"; do
+    [ "${names[$i]}" != cheekymarine ] || gid=${gids[$i]:-}
+  done
+  [ -n "$gid" ] || return 1
+  pid=$(systemctl show --property=MainPID "user@$(id -u "$CM_USER").service" | sed -n 's/^MainPID=//p') || return 1
+  status=$(p "/proc/$pid/status")
+  [ -n "$pid" ] && [ "$pid" != 0 ] && [ -r "$status" ] || return 1
+  ! awk -v g="$gid" '$1 == "Groups:" { for (i = 2; i <= NF; i++) if ($i == g) found = 1 } END { exit !found }' "$status"
+}
+
 # start_plotter: start the plotter in the desktop user's session, unless this run added a group
-# (a new group needs a new login) or the user has no graphical session.
+# or the user's manager predates the group (a new group needs a new login), or the user has no
+# graphical session.
 start_plotter() {
-  if [ -z "${NEED_RELOGIN:-}" ] && graphical_session; then
+  if [ -z "${NEED_RELOGIN:-}" ] && graphical_session && ! manager_lacks_group; then
     systemd-run --user --machine="$CM_USER@" --collect /opt/cheekymarine/bin/cheekyplotter \
       || echo "Log out and back in (or reboot) to start the plotter."
   else
