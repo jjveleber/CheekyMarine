@@ -1,6 +1,6 @@
 name = "puget-north"
-charts_version = "1.0.0"
-bathy_version = "1.0.0"
+charts_version = "1.1.0"
+bathy_version = "1.1.0"
 bbox = [-122.9, 47.5, -122.1, 48.3]
 clip = "clip/canada-wa.geojson"
 
