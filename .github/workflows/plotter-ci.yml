@@ -2,6 +2,7 @@ name: plotter-ci
 
 # Separate from ci.yml on purpose: release.yml calls ci.yml, and an n2kd release must not build maplibre.
 on:
+  workflow_call:
   push:
     paths:
       - "plotter/**"
