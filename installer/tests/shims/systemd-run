@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Logs and succeeds; the basename of the first argument with a `/` (the command it starts) is
+# added to $STATE/procs, so pgrep then sees it running.
+. "$(dirname "$0")/_shim.sh"
+for a in "$@"; do
+  case "$a" in -*) ;; */*) echo "$(basename "$a")" >> "$STATE/procs"; break ;; esac
+done
+exit 0

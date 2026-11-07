@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# uname -m reports $STATE/uname-m (default x86_64); anything else runs the real uname.
+. "$(dirname "$0")/_shim.sh"
+if [ "$*" = "-m" ]; then
+  if [ -f "$STATE/uname-m" ]; then cat "$STATE/uname-m"; else echo x86_64; fi
+  exit 0
+fi
+PATH=$(real_path) exec uname "$@"

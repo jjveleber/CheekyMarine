@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# Reads the given files, or $CM_ROOT/etc/sysusers.d/*.conf, and adds each `u NAME` or `g NAME`
+# group to $STATE/sysgroups.
+. "$(dirname "$0")/_shim.sh"
+files=()
+for a in "$@"; do case "$a" in -*) ;; *) files+=("$a") ;; esac; done
+[ ${#files[@]} -gt 0 ] || files=("$CM_ROOT"/etc/sysusers.d/*.conf)
+touch "$STATE/sysgroups"
+for f in "${files[@]}"; do
+  [ -f "$f" ] || continue
+  while read -r type name _; do
+    case "$type" in u|g) grep -qxF "$name" "$STATE/sysgroups" || echo "$name" >> "$STATE/sysgroups" ;; esac
+  done < "$f"
+done
+exit 0

@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# Matches the pattern (last argument) against $STATE/procs; a match is removed (the process exits)
+# and pkill exits 0; no match exits 1, as real pkill does.
+. "$(dirname "$0")/_shim.sh"
+name=${!#}
+if [ -f "$STATE/procs" ] && grep -qxF "$name" "$STATE/procs"; then
+  grep -vxF "$name" "$STATE/procs" > "$STATE/procs.tmp" || true
+  mv "$STATE/procs.tmp" "$STATE/procs"
+  exit 0
+fi
+exit 1

@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Logs, records every URL in $CM_ROOT/downloads, then runs the real curl.
+. "$(dirname "$0")/_shim.sh"
+for a in "$@"; do
+  case "$a" in *://*) printf '%s\n' "$a" >> "$CM_ROOT/downloads" ;; esac
+done
+PATH=$(real_path) exec curl "$@"

@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Runs the command after `--` (or the first non-option argument), shims still on PATH.
+. "$(dirname "$0")/_shim.sh"
+while [ $# -gt 0 ]; do
+  case "$1" in --) shift; break ;; -*) shift ;; *) break ;; esac
+done
+exec "$@"
