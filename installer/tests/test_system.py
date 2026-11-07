@@ -123,6 +123,19 @@ class TestSystem(unittest.TestCase):
         self.assertIn("installed: 0.1.0", r.stdout)
         self.assertIn("systemctl start n2kd", self.rig.calls())
 
+    def test_n2kd_stopped_even_when_not_active(self):
+        # `activating` (a crash restart loop), `failed` or `deactivating` are not `active`; the
+        # switch must stop n2kd in every state
+        a = self.rig.make_set("0.1.0", "0.1.0")
+        b = self.rig.make_set("0.2.0", "0.2.0")
+        self.install(a)
+        self.rig.state("systemctl-active").write_text("")
+        (self.rig.root / "calls").unlink()
+        self.install(b)
+        calls = self.rig.calls()
+        self.assertIn("systemctl stop n2kd", calls)
+        self.assertLess(calls.index("systemctl stop n2kd"), self.index("systemctl start n2kd"))
+
     def test_group_add_skips_plotter_start_and_says_relogin(self):
         self.rig.login()
         r = self.install(self.rig.make_set("0.1.0", "0.1.0"))

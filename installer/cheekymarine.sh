@@ -385,8 +385,10 @@ install_n2kd_unit() {
   systemctl enable n2kd
 }
 
+# stop_n2kd: stop n2kd in any state (active, activating in a restart loop, failed); an unknown
+# unit on a first install makes systemctl exit 5.
 stop_n2kd() {
-  if systemctl is-active --quiet n2kd; then systemctl stop n2kd; fi
+  systemctl stop n2kd 2> /dev/null || true
 }
 
 start_n2kd() {
