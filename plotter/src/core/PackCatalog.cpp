@@ -9,6 +9,7 @@
 #include <QSqlDatabase>
 #include <QSqlQuery>
 #include <algorithm>
+#include <cmath>
 
 namespace {
 
@@ -123,8 +124,10 @@ QList<PackInfo> PackCatalog::scan(const QString& dir) {
             p.refused = QStringLiteral("schema missing");
         } else if (!schema.isDouble()) {
             p.refused = QStringLiteral("schema is not a number");
-        } else if (schema.toDouble() < PLOTTER_PACK_SCHEMA_MIN || schema.toDouble() > PLOTTER_PACK_SCHEMA_MAX) {
-            p.refused = QStringLiteral("schema %1 not supported").arg(schema.toDouble());
+        } else if (const double v = schema.toDouble();
+                   v != std::floor(v) || v < PLOTTER_PACK_SCHEMA_MIN || v > PLOTTER_PACK_SCHEMA_MAX) {
+            // a whole number in the range: 1.5 is not a schema, even inside it
+            p.refused = QStringLiteral("schema %1 not supported").arg(v);
         } else if (mo.value(QStringLiteral("pack")).toString() != p.kind
                    || mo.value(QStringLiteral("region")).toString() != p.region
                    || mo.value(QStringLiteral("version")).toString() != m.captured(3)) {

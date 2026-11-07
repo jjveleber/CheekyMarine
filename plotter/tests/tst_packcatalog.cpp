@@ -215,6 +215,15 @@ private slots:
         makePack(t.path(), "charts", "puget-north", "1.0.0", o);
         QVERIFY(PackCatalog::scan(t.path())[0].refused.isEmpty());
     }
+    void schemaFractionRefused() {
+        // 1.5 for the range [1, 1]; for a wider range a value strictly inside it
+        const double v = PLOTTER_PACK_SCHEMA_MIN + 0.5;
+        QTemporaryDir t;
+        Opts o;
+        o.schemaValue = QJsonValue(v);
+        makePack(t.path(), "charts", "puget-north", "1.0.0", o);
+        QCOMPARE(PackCatalog::scan(t.path())[0].refused, QString("schema %1 not supported").arg(v));
+    }
     void dirNameDisagreesWithManifest() {
         QTemporaryDir t;
         Opts o;
