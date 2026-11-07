@@ -290,7 +290,7 @@ then a table of the four parts and versions from the lock, and the pack schema r
 - [ ] **Step 2: Commit** `ci: set release workflow; n2kd releases stop taking Latest`.
 - [ ] **Step 3: Whole-branch adversarial review**, fixes, owner merges the PR.
 - [ ] **Step 4 (controller, owner says yes to the tag):** tag `plotter-v0.1.0` on main; wait for its release; check `v0.1.0` is still Latest. (Charts and bathy 1.1.0 are already released.)
-- [ ] **Step 5:** `installer/lock-tool.sh fill installer/cheekymarine.lock`, then `check`; small PR, owner merges.
+- [ ] **Step 5:** `installer/lock-tool.sh fill installer/cheekymarine.lock`, then `check`, then embed the filled lock into the committed script (`installer/lock-tool.sh embed installer/cheekymarine.lock installer/cheekymarine.sh <tmp> && cat <tmp> > installer/cheekymarine.sh`, which keeps the file mode; `fill` does not embed, and `test_committed_script_embeds_committed_lock` fails without it); small PR, owner merges.
 - [ ] **Step 6 (owner says yes):** tag `cheekymarine-v0.1.0`; check it is a pre-release and `v0.1.0` is still Latest.
 
 ### Task 13: ThinkPad run, then CapnButts (controller and owner)

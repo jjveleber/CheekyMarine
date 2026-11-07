@@ -141,6 +141,14 @@ Rules for readers:
 
 `<base>` is `${CM_BASE_URL:-https://github.com/jjveleber/CheekyMarine/releases/download}`.
 
+`fill` does not embed. After a `fill` of `installer/cheekymarine.lock`, embed it into the committed
+script before you commit, or `test_committed_script_embeds_committed_lock` fails:
+
+```
+installer/lock-tool.sh embed installer/cheekymarine.lock installer/cheekymarine.sh /tmp/cm.sh
+cat /tmp/cm.sh > installer/cheekymarine.sh && rm /tmp/cm.sh
+```
+
 ## Tests
 
 From the repo root: `python3 -m unittest discover -s installer/tests -v`
