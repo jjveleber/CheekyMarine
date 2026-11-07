@@ -8,6 +8,7 @@
 #   CM_LOCK_FILE    replaces the embedded lock
 #   CM_TTY          replaces /dev/tty; a path that does not exist means "no terminal"
 #   CM_SOURCE_ONLY  when set, sourcing defines the functions without running main
+#   CM_TEST_DIE_AT  before_flip or after_flip: the script kills itself (kill -9) at that point
 set -euo pipefail
 umask 022
 
@@ -146,6 +147,242 @@ fetch_parts() {
   check_sum "$stage/install-cheekymarine.sh" "$want" set install-cheekymarine.sh
 }
 
+# lock_text: the lock this script installs ($CM_LOCK_FILE or the embedded one).
+lock_text() {
+  if [ -n "${CM_LOCK_FILE:-}" ]; then cat "$CM_LOCK_FILE"; else printf '%s\n' "$CM_LOCK"; fi
+}
+
+# utc_stamp: the current time as yyyymmddThhmmssZ (UTC).
+utc_stamp() {
+  date -u +%Y%m%dT%H%M%SZ
+}
+
+# unique_name DIR PREFIX SUFFIX: print PREFIX<stamp>SUFFIX for a name not yet in DIR. When the
+# name of this second is taken (a rerun within one second), wait for the next second, so names
+# stay plain and sort by time.
+unique_name() {
+  local n
+  n="$2$(utc_stamp)$3"
+  while [ -e "$1/$n" ] || [ -L "$1/$n" ]; do
+    sleep 1
+    n="$2$(utc_stamp)$3"
+  done
+  printf '%s\n' "$n"
+}
+
+# pack_name PART: the store name of a pack part (its asset without .tar).
+pack_name() {
+  local asset
+  asset=$(lock_get "$1.asset")
+  printf '%s\n' "${asset%.tar}"
+}
+
+# pack_in_store NAME WANT: true when the store holds pack NAME with a sidecar equal to WANT.
+pack_in_store() {
+  local store
+  store=$(p /opt/cheekymarine/packs)
+  [ -d "$store/$1" ] && [ "$(cat "$store/$1.sha256" 2>/dev/null || true)" = "$2" ]
+}
+
+# unpack_set STAGE_DIR SET: unpack the set into a fresh sets/<SET>.<stamp> and set CM_SET_DIR to
+# it. n2kd and the plotter go into the set dir; a downloaded pack goes into the store through a
+# .tmp- dir and one rename, then gets its sidecar. The set dir links each pack from the store.
+unpack_set() {
+  local stage=$1 setver=$2 sets store d part name want
+  sets=$(p /opt/cheekymarine/sets)
+  store=$(p /opt/cheekymarine/packs)
+  mkdir -p "$sets" "$store"
+  d="$sets/$(unique_name "$sets" "$setver." "")"
+  mkdir "$d" "$d/n2kd" "$d/plotter" "$d/packs"
+  tar -xzf "$stage/$(lock_get n2kd.asset)" -C "$d/n2kd" --strip-components=1
+  tar -xzf "$stage/$(lock_get plotter.asset)" -C "$d/plotter" --strip-components=1
+  rm -rf "$store"/.tmp-*
+  for part in charts bathy; do
+    name=$(pack_name "$part")
+    want=$(lock_get "$part.sha256")
+    if ! pack_in_store "$name" "$want"; then
+      rm -rf "${store:?}/$name" "$store/$name.sha256"
+      mkdir "$store/.tmp-$name"
+      tar -xf "$stage/$(lock_get "$part.asset")" -C "$store/.tmp-$name" --strip-components=1
+      mv -T "$store/.tmp-$name" "$store/$name"
+      printf '%s\n' "$want" > "$store/$name.sha256"
+    fi
+    ln -s "../../../packs/$name" "$d/packs/$name"
+  done
+  lock_text > "$d/cheekymarine.lock"
+  cp "$stage/install-cheekymarine.sh" "$d/cheekymarine.sh"
+  chmod 755 "$d/cheekymarine.sh"
+  CM_SET_DIR=$d
+}
+
+# check_pack_schema DIR: each pack's manifest schema and the plotter's PACK_SCHEMA range in set
+# DIR must equal the lock, else die `pack schema mismatch: <detail>`.
+check_pack_schema() {
+  local d=$1 part name want got key
+  for part in charts bathy; do
+    name=$(pack_name "$part")
+    want=$(lock_get "$part.schema")
+    got=$(python3 -I -c 'import json, sys; print(json.load(open(sys.argv[1]))["schema"])' \
+      "$d/packs/$name/manifest.json" 2>/dev/null) || got=
+    [ "$got" = "$want" ] \
+      || die "pack schema mismatch: $name manifest.json schema is ${got:-unreadable}, the lock says $want"
+  done
+  for key in min max; do
+    want=$(lock_get "plotter.pack_schema_$key")
+    got=$(lock_file_get "$d/plotter/PACK_SCHEMA" "$key" 2>/dev/null) || got=
+    [ "$got" = "$want" ] \
+      || die "pack schema mismatch: plotter PACK_SCHEMA $key is ${got:-unreadable}, the lock says $want"
+  done
+}
+
+# install_sysusers DIR: install set DIR's sysusers file (Task 5).
+install_sysusers() {
+  :
+}
+
+# install_n2kd_unit DIR: install set DIR's n2kd unit to /etc/systemd/system, daemon-reload when
+# it changed. Minimal for now: Task 5 rewrites ExecStart to run through `current`.
+install_n2kd_unit() {
+  local src=$1/n2kd/usr/lib/systemd/system/n2kd.service dst
+  dst=$(p /etc/systemd/system/n2kd.service)
+  if ! cmp -s "$src" "$dst"; then
+    mkdir -p "$(dirname "$dst")"
+    cp "$src" "$dst.tmp"
+    mv -T "$dst.tmp" "$dst"
+    systemctl daemon-reload
+  fi
+}
+
+stop_n2kd() {
+  if systemctl is-active --quiet n2kd; then systemctl stop n2kd; fi
+}
+
+start_n2kd() {
+  systemctl start n2kd
+}
+
+# stop_plotter: SIGTERM the desktop user's plotter, wait up to 10 s for it to exit, then SIGKILL.
+stop_plotter() {
+  local i=0
+  pkill -TERM -u "$CM_USER" -x cheekyplotter || true
+  while [ "$i" -lt 20 ] && pgrep -u "$CM_USER" -x cheekyplotter > /dev/null; do
+    sleep 0.5
+    i=$((i + 1))
+  done
+  pkill -KILL -u "$CM_USER" -x cheekyplotter || true
+}
+
+# start_plotter: start the plotter in the desktop user's session (Task 5 completes this).
+start_plotter() {
+  systemd-run --user --machine="$CM_USER@" --collect /opt/cheekymarine/bin/cheekyplotter
+}
+
+# label_get KEY: KEY (set or plotter) from db-label, empty when there is no label.
+label_get() {
+  local f
+  f=$(p /var/lib/cheekymarine/db-label)
+  [ -f "$f" ] || return 0
+  lock_file_get "$f" "$1"
+}
+
+# data_rule FROM_PLOTTER_VER TO_PLOTTER_VER TO_SET: with the plotter stopped, copy the live
+# plotter.db (labeled with its set from db-label), keep it when TO's plotter is the same or newer,
+# else restore the newest copy labeled TO_SET or move it aside; then label it for TO_SET. A db
+# with no label counts as unknown and newer.
+data_rule() {
+  local from=$1 to=$2 toset=$3 db label copies fromset base sfx newest f n
+  db=$(p "$CM_HOME/.local/share/cheekyplotter/plotter.db")
+  label=$(p /var/lib/cheekymarine/db-label)
+  copies=$(p /var/lib/cheekymarine/db-copies)
+  mkdir -p "$copies"
+  if [ -f "$db" ]; then
+    if [ -f "$label" ]; then fromset=$(label_get set); else fromset=unknown from=; fi
+    base="$copies/$(unique_name "$copies" "plotter-$fromset-" .db)"
+    for sfx in "" -wal -shm; do
+      [ ! -f "$db$sfx" ] || cp -p "$db$sfx" "$base$sfx"
+    done
+    if [ -z "$from" ] || [ "$(printf '%s\n' "$from" "$to" | sort -V | tail -n 1)" != "$to" ]; then
+      rm -f "$db" "$db-wal" "$db-shm"
+      if [ "$fromset" != unknown ]; then
+        newest=
+        for f in "$copies/plotter-$toset-"*.db; do
+          n=${f##*/}
+          n=${n#"plotter-$toset-"}
+          # the glob sorts, and stamps sort by time; skip names of other sets like <toset>-rc1
+          if [[ $n =~ ^[0-9]{8}T[0-9]{6}Z\.db$ ]]; then newest=${f##*/}; fi
+        done
+        if [ -n "$newest" ]; then
+          for sfx in "" -wal -shm; do
+            if [ -f "$copies/$newest$sfx" ]; then
+              cp -p "$copies/$newest$sfx" "$db$sfx"
+              chown "$CM_USER:" "$db$sfx"
+            fi
+          done
+        fi
+      fi
+    fi
+  fi
+  printf 'set=%s\nplotter=%s\n' "$toset" "$to" > "$label.tmp"
+  mv -T "$label.tmp" "$label"
+}
+
+# switch_to DIR: the switch to set DIR (design "The switch"). Stop, data rule, `previous` (only
+# when the set version changes), the atomic `current` flip, bin/cheekymarine, then the starts.
+switch_to() {
+  local dir=$1 root name toset
+  root=$(p /opt/cheekymarine)
+  name=$(basename "$dir")
+  toset=$(lock_file_get "$dir/cheekymarine.lock" set)
+  stop_plotter
+  stop_n2kd
+  data_rule "$(label_get plotter)" "$(lock_file_get "$dir/cheekymarine.lock" plotter.version)" "$toset"
+  if [ -f "$root/current/cheekymarine.lock" ] \
+    && [ "$(lock_file_get "$root/current/cheekymarine.lock" set)" != "$toset" ]; then
+    ln -sfn "$(readlink "$root/current")" "$root/previous.tmp"
+    mv -T "$root/previous.tmp" "$root/previous"
+  fi
+  [ "${CM_TEST_DIE_AT:-}" != before_flip ] || kill -9 $$
+  (cd "$root" && ln -sfn "sets/$name" current.tmp && mv -T current.tmp current)
+  [ "${CM_TEST_DIE_AT:-}" != after_flip ] || kill -9 $$
+  mkdir -p "$root/bin"
+  cp "$root/current/cheekymarine.sh" "$root/bin/cheekymarine.tmp"
+  chmod 755 "$root/bin/cheekymarine.tmp"
+  mv -T "$root/bin/cheekymarine.tmp" "$root/bin/cheekymarine"
+  install_n2kd_unit "$root/current"
+  start_n2kd
+  start_plotter
+}
+
+# in_list WORD LIST: true when WORD is a line of LIST.
+in_list() {
+  printf '%s\n' "$2" | grep -qxF -- "$1"
+}
+
+# prune_sets: delete set dirs other than the targets of `current` and `previous`, then store
+# packs (with their sidecars) that neither of those two sets links to.
+prune_sets() {
+  local root keep= links= l f n
+  root=$(p /opt/cheekymarine)
+  for l in current previous; do
+    [ -L "$root/$l" ] || continue
+    n=$(basename "$(readlink "$root/$l")")
+    keep="$keep$n"$'\n'
+    for f in "$root/sets/$n/packs"/*; do
+      [ -L "$f" ] || continue
+      links="$links$(basename "$(readlink "$f")")"$'\n'
+    done
+  done
+  for f in "$root/sets"/*; do
+    [ -e "$f" ] || [ -L "$f" ] || continue
+    in_list "$(basename "$f")" "$keep" || rm -rf "$f"
+  done
+  for f in "$root/packs"/*; do
+    [ -e "$f" ] || [ -L "$f" ] || continue
+    n=$(basename "$f")
+    in_list "${n%.sha256}" "$links" || rm -rf "$f"
+  done
+}
+
 cmd_install() {
   preflight
   take_lock
@@ -154,6 +391,13 @@ cmd_install() {
   mkdir -p "$CM_STAGE"
   trap 'rm -rf "$CM_STAGE"' EXIT
   fetch_parts "$CM_STAGE"
+  unpack_set "$CM_STAGE" "$(lock_get set)"
+  rm -rf "$CM_STAGE"
+  check_pack_schema "$CM_SET_DIR"
+  install_sysusers "$CM_SET_DIR"
+  switch_to "$CM_SET_DIR"
+  prune_sets
+  cmd_version
 }
 
 cmd_rollback() {

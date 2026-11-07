@@ -1,6 +1,7 @@
 import hashlib
 import os
 import re
+import tarfile
 import unittest
 
 from installer.tests.harness import Rig
@@ -65,9 +66,13 @@ class TestDownload(unittest.TestCase):
         self.assertNotIn("aarch64", "".join(urls))
 
     def plant_pack(self, rel, pack, sidecar):
+        """Plant the unpacked pack in the store (as an earlier run left it) with SIDECAR."""
         name = self.lockval(rel, pack + ".asset")[:-len(".tar")]
         store = self.rig.path("/opt/cheekymarine/packs")
-        (store / name).mkdir(parents=True)
+        store.mkdir(parents=True)
+        tar = self.rig.base / self.lockval(rel, pack + ".tag") / (name + ".tar")
+        with tarfile.open(tar) as t:
+            t.extractall(store, filter="data")
         (store / (name + ".sha256")).write_text(sidecar + "\n")
         return name
 
@@ -95,6 +100,8 @@ class TestDownload(unittest.TestCase):
         self.assertIn("%s/plotter-v0.3.0/cheekyplotter-0.3.0-x86_64.tar.gz" % self.rig.base_url, urls)
         self.assertIn("%s/cheekymarine-v0.2.0/SHA256SUMS" % self.rig.base_url, urls)
         self.assertIn("%s/cheekymarine-v0.2.0/install-cheekymarine.sh" % self.rig.base_url, urls)
+        self.assertEqual(self.rig.path("/opt/cheekymarine/bin/cheekymarine").read_bytes(),
+                         (rel / "install-cheekymarine.sh").read_bytes())
 
 
 if __name__ == "__main__":
