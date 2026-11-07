@@ -735,7 +735,7 @@ cmd_version() {
 main() {
   local cmd=${1:-}
   if [ -z "$cmd" ]; then
-    [ "$(basename -- "$0")" != cheekymarine ] || die "usage: cheekymarine install|rollback|version"
+    [ "$(basename -- "$0")" != cheekymarine ] || die "usage: /opt/cheekymarine/bin/cheekymarine install|rollback|version"
     cmd=install
   else
     shift

@@ -29,7 +29,7 @@ group, and a new group only applies to a new login, so the plotter starts after 
   a set reuses packs already downloaded by an earlier set. Packs that neither kept set uses are
   deleted.
 - `/opt/cheekymarine/current` and `/opt/cheekymarine/previous`: links to the active set and to the
-  one `cheekymarine rollback` returns to.
+  one `/opt/cheekymarine/bin/cheekymarine rollback` returns to.
 - `/opt/cheekymarine/bin/cheekymarine` (the command below) and `/opt/cheekymarine/bin/cheekyplotter`
   (starts the active set's plotter, full screen).
 - `/etc/systemd/system/n2kd.service` (enabled), `/etc/sysusers.d/cheekymarine.conf` (the
@@ -63,15 +63,17 @@ set is kept as `previous`.
 
 ## Commands
 
-- `cheekymarine version`: the installed set and the version of each part.
-- `sudo cheekymarine rollback`: go back to the previous set (the one active before the last
-  upgrade or downgrade), with no network. The newer set is deleted, with the packs only it used. A second rollback is refused
-  (`cheekymarine: nothing to roll back to`). To go forward again, run the newer set's install
-  one-liner; it downloads only what is missing.
-- `sudo cheekymarine install`: reinstall the active set (downloads what is missing).
+The command is `/opt/cheekymarine/bin/cheekymarine`. Type the full path: it is not on your `PATH`,
+and `sudo` ignores your `PATH` anyway.
 
-The command lives in `/opt/cheekymarine/bin`; run it by that path, or add the directory to your
-`PATH`.
+- `/opt/cheekymarine/bin/cheekymarine version`: the installed set and the version of each part
+  (no sudo needed).
+- `sudo /opt/cheekymarine/bin/cheekymarine rollback`: go back to the previous set (the one active
+  before the last upgrade or downgrade), with no network. The newer set is deleted, with the packs
+  only it used. A second rollback is refused (`cheekymarine: nothing to roll back to`). To go
+  forward again, run the newer set's install one-liner; it downloads only what is missing.
+- `sudo /opt/cheekymarine/bin/cheekymarine install`: reinstall the active set (downloads what is
+  missing).
 
 ## Your data
 
