@@ -46,11 +46,12 @@ cm() {
   printf '%s\n' "$OUT"
 }
 
-# cm_tty LOCKNAME ANSWERS: the same under a pty, with the answers typed in. Sets OUT and RC.
+# cm_tty LOCKNAME ANSWERS: the same on a pty, typing one answer per [y/N] prompt (pty-answer.py). Sets OUT and RC.
 cm_tty() {
   local lock=${LOCK[$1]}
   RC=0
-  OUT=$(printf '%b' "$2" | timeout 300 script -qec "sudo env SUDO_USER=helm CM_BASE_URL=${BASE_URL:-file://$REL} CM_LOCK_FILE=$lock $INSTALLER" /dev/null 2>&1) || RC=$?
+  # shellcheck disable=SC2086
+  OUT=$(python3 -I "$REPO/installer/tests/pty-answer.py" $2 -- sudo env SUDO_USER=helm "CM_BASE_URL=${BASE_URL:-file://$REL}" "CM_LOCK_FILE=$lock" "$INSTALLER" 2>&1 < /dev/null) || RC=$?
   printf '%s\n' "$OUT"
 }
 
@@ -94,7 +95,7 @@ rerun() {
 }
 
 prompts_yes() {
-  cm_tty first 'y\ny\n'
+  cm_tty first 'y y'
   want_rc 0
   grep -Eq '^AutomaticLoginEnable *= *true' /etc/gdm3/custom.conf || fail "AutomaticLoginEnable not set"
   grep -Eq '^AutomaticLogin *= *helm' /etc/gdm3/custom.conf || fail "AutomaticLogin not set"
@@ -133,7 +134,7 @@ cm_rollback() {
 downgrade() {
   cm second install
   want_rc 0
-  cm_tty first 'y\n'
+  cm_tty first 'y'
   want_rc 0
   printf '%s\n' "$OUT" | grep -q "downgrade" || fail "no downgrade prompt"
   case "$(cur)" in 0.2.0*) ;; *) fail "current is $(readlink "$ROOT/current")" ;; esac
