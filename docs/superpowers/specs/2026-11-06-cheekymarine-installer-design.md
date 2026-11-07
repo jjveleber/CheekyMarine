@@ -55,8 +55,9 @@ particular, the machine is never left running parts of two different sets.
    recorded since the upgrade may be lost on rollback; the owner accepts that.
 7. **Visible versions.** The script ends by printing the set version and each part's version, and a
    `cheekymarine version` command prints the same at any time. The plotter's About page shows the
-   set version read from `/opt/cheekymarine/current/cheekymarine.lock` (my call), so a set that did
-   not land is obvious at the helm.
+   set version read from the lock of the set its own binary belongs to (`sets/<ver>/cheekymarine.lock`,
+   my call), so a set that did not land is obvious at the helm and a half-done switch cannot show a
+   set that is not running.
 8. **Every set is a pre-release** until the prod gates exist (see Non-goals). No workflow marks a
    set as prod, and no CheekyMarine release becomes GitHub "Latest" in this project.
 
