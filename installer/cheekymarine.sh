@@ -740,22 +740,30 @@ cmd_rollback() {
   fi
   switch_to "$prev" rollback
   prune_sets
-  cmd_version
+  # Not cmd_version: this script is the set just left, so "this script installs" would mislead.
+  print_installed
 }
 
-# cmd_version: the installed set and its parts, and this script's set when it differs.
-cmd_version() {
-  local lock installed=none part
+# print_installed: the installed set and its parts.
+print_installed() {
+  local lock part
   lock="$(p /opt/cheekymarine/current)/cheekymarine.lock"
   if [ -f "$lock" ]; then
-    installed=$(lock_file_get "$lock" set)
-    echo "installed: $installed"
+    echo "installed: $(lock_file_get "$lock" set)"
     for part in n2kd charts bathy plotter; do
       echo "  $part: $(lock_file_get "$lock" "$part.version")"
     done
   else
     echo "installed: none"
   fi
+}
+
+# cmd_version: the installed set and its parts, and this script's set when it differs.
+cmd_version() {
+  local lock installed=none
+  lock="$(p /opt/cheekymarine/current)/cheekymarine.lock"
+  [ ! -f "$lock" ] || installed=$(lock_file_get "$lock" set)
+  print_installed
   if [ "$(lock_get set)" != "$installed" ]; then
     echo "this script installs: $(lock_get set)"
   fi

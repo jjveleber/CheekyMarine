@@ -118,6 +118,7 @@ class TestRollback(unittest.TestCase):
             "charts-puget-north-1.0.0", "charts-puget-north-1.0.0.sha256"])
         self.assertEqual((self.opt / "bin/cheekymarine").read_bytes(), (a / "install-cheekymarine.sh").read_bytes())
         self.assertIn("installed: 0.1.0", r.stdout)
+        self.assertNotIn("this script installs", r.stdout)
 
     def test_second_rollback_refused(self):
         a = self.rig.make_set("0.1.0", "0.1.0")
