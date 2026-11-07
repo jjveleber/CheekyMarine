@@ -273,8 +273,16 @@ check_pack_schema() {
 }
 
 # install_apt: refresh the package lists and install the run-time packages; either failing stops
-# the install (the set is still untouched at this point).
+# the install (the set is still untouched at this point). Skipped when dpkg-query reports every
+# package installed, so a dead apt source cannot block a repair or an upgrade.
 install_apt() {
+  local st
+  # shellcheck disable=SC2016,SC2086
+  if st=$(dpkg-query -W -f='${Status}\n' $CM_APT_PACKAGES 2>/dev/null) \
+    && ! printf '%s\n' "$st" | grep -vqxF 'install ok installed'; then
+    printf 'The run-time packages are already installed.\n'
+    return 0
+  fi
   DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=600 update
   # shellcheck disable=SC2086
   DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=600 install -y --no-install-recommends \

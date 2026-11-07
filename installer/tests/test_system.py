@@ -69,6 +69,23 @@ class TestSystem(unittest.TestCase):
             "apt-get -o DPkg::Lock::Timeout=600 install -y --no-install-recommends iproute2 libxkbcommon0"), apt[1])
         self.assertTrue(apt[1].endswith("libxcb-xfixes0 libxcb-xkb1"), apt[1])
 
+    def apt_packages(self):
+        return re.search(r'(?m)^CM_APT_PACKAGES="(.*)"$', Rig.SCRIPT.read_text()).group(1).split()
+
+    def test_apt_skipped_when_every_package_installed(self):
+        self.rig.state("dpkg-installed").write_text("".join(p + "\n" for p in self.apt_packages()))
+        r = self.install(self.rig.make_set("0.1.0", "0.1.0"))
+        self.assertFalse([c for c in self.rig.calls() if c.startswith("apt-get")], self.rig.calls())
+        self.assertIn("dpkg-query -W", "\n".join(self.rig.calls()))
+        self.assertIn("packages are already installed", r.stdout)
+
+    def test_apt_runs_when_a_package_is_missing(self):
+        self.rig.state("dpkg-installed").write_text("".join(p + "\n" for p in self.apt_packages()[1:]))
+        self.install(self.rig.make_set("0.1.0", "0.1.0"))
+        apt = [c for c in self.rig.calls() if c.startswith("apt-get")]
+        self.assertEqual(len(apt), 2, apt)
+        self.assertTrue(apt[0].endswith(" update"), apt[0])
+
     def test_apt_failure_leaves_current_untouched(self):
         a = self.rig.make_set("0.1.0", "0.1.0")
         b = self.rig.make_set("0.2.0", "0.2.0")

@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# `dpkg-query -W -f=FORMAT PKG...`: prints `install ok installed` for each PKG listed in
+# $STATE/dpkg-installed (one name per line); for any other PKG it prints the real "no packages
+# found" error and exits 1 at the end, as the real dpkg-query does.
+. "$(dirname "$0")/_shim.sh"
+rc=0
+for a in "$@"; do
+  case "$a" in -*) continue ;; esac
+  if [ -f "$STATE/dpkg-installed" ] && grep -qxF -- "$a" "$STATE/dpkg-installed"; then
+    echo "install ok installed"
+  else
+    echo "dpkg-query: no packages found matching $a" >&2
+    rc=1
+  fi
+done
+exit "$rc"

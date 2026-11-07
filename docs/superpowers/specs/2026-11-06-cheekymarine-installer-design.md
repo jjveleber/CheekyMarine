@@ -246,7 +246,8 @@ Either way no mix of sets runs.
    mismatch or failed download stops the script with the active set untouched.
 4. It installs the run-time apt packages (waiting up to 10 minutes for the apt lock, so a running
    unattended-upgrade does not fail the run). Failure stops the script with the active set
-   untouched.
+   untouched. When `dpkg-query` reports every package installed, it skips apt entirely, so a
+   failing apt source cannot block a repair or an upgrade.
 5. It unpacks n2kd and the plotter into a fresh `sets/<version>.<stamp>` (never over the running
    dir, so a repair of the running set is as safe as an upgrade). A downloaded pack unpacks into a
    temporary dir in the store, moves into place with one rename, and only then gets its `.sha256`
