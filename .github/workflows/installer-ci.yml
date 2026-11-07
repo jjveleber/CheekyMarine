@@ -4,10 +4,12 @@ on:
   push:
     paths:
       - "installer/**"
+      - "scripts/**"
       - ".github/workflows/installer-ci.yml"
   pull_request:
     paths:
       - "installer/**"
+      - "scripts/**"
       - ".github/workflows/installer-ci.yml"
 
 permissions:
@@ -21,7 +23,11 @@ jobs:
       - name: Unit tests
         run: python3 -m unittest discover -s installer/tests -v
       - name: Syntax check
-        run: bash -n installer/*.sh
+        # one file per bash -n: with several, bash checks the first and takes the rest as arguments
+        run: |
+          for f in installer/*.sh installer/tests/*.sh installer/tests/shims/* scripts/*.sh scripts/tests/*.sh; do
+            bash -n "$f"
+          done
 
   e2e:
     runs-on: ubuntu-24.04
