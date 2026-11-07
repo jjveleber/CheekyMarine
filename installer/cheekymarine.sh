@@ -320,7 +320,8 @@ install_autostart() {
   d=$(p "$CM_HOME/.config/autostart")
   f=$d/cheekyplotter.desktop
   if [ ! -d "$(p "$CM_HOME/.config")" ]; then
-    mkdir -p "$(p "$CM_HOME/.config")"
+    # 700, as GNOME creates it
+    mkdir -p -m 700 "$(p "$CM_HOME/.config")"
     chown "$CM_USER:" "$(p "$CM_HOME/.config")"
   fi
   if [ ! -d "$d" ]; then

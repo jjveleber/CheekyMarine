@@ -189,6 +189,20 @@ class TestSystem(unittest.TestCase):
         self.assertEqual(f.stat().st_uid, uid)
         self.assertEqual(d.stat().st_uid, uid)
 
+    def test_new_config_dir_is_private(self):
+        cfg = self.rig.path(self.rig.home / ".config")
+        self.assertFalse(cfg.exists())
+        self.install(self.rig.make_set("0.1.0", "0.1.0"))
+        self.assertEqual(cfg.stat().st_mode & 0o777, 0o700)
+        self.assertEqual((cfg / "autostart").stat().st_mode & 0o777, 0o755)
+
+    def test_existing_config_dir_mode_kept(self):
+        cfg = self.rig.path(self.rig.home / ".config")
+        cfg.mkdir()
+        cfg.chmod(0o750)
+        self.install(self.rig.make_set("0.1.0", "0.1.0"))
+        self.assertEqual(cfg.stat().st_mode & 0o777, 0o750)
+
     def test_installed_command_carries_set_lock(self):
         a = self.rig.make_set("0.1.0", "0.1.0")
         b = self.rig.make_set("0.2.0", "0.2.0")
