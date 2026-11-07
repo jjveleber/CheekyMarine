@@ -57,7 +57,7 @@ cm_tty() {
 want_rc() { [ "$RC" = "$1" ] || fail "exit status $RC, wanted $1"; }
 cur() { basename "$(readlink "$ROOT/current")"; }
 prev() { basename "$(readlink "$ROOT/previous")"; }
-gs() { sudo -u helm dbus-run-session -- gsettings get "$1" "$2"; }
+gs() { sudo -u helm -H env -u XDG_RUNTIME_DIR -u XDG_CONFIG_HOME -u XDG_DATA_HOME -u XDG_CACHE_HOME dbus-run-session -- gsettings get "$1" "$2"; }
 
 n2kd_active() {
   local i
