@@ -91,12 +91,15 @@ with an empty database. Data recorded on the newer set stays in `db-copies`.
 
 To put a copy back by hand, pick one whose `.label` names a plotter the same as or older than the
 installed one (`/opt/cheekymarine/bin/cheekymarine version`), then run these lines as yourself,
-with your copy's name in `c=` (the first line closes the plotter):
+with your copy's name in `c=` (the first two lines close the plotter and wait for it to exit; the
+fourth moves your live database aside as `plotter.db.before-restore`, replacing any earlier one):
 
 ```
 pkill -x cheekyplotter
+while pgrep -x cheekyplotter >/dev/null; do sleep 1; done
 c=/var/lib/cheekymarine/db-copies/plotter-<set>-<time>.db
-cd ~/.local/share/cheekyplotter && rm -f plotter.db-wal plotter.db-shm
+cd ~/.local/share/cheekyplotter
+for s in "" -wal -shm; do [ ! -f "plotter.db$s" ] || mv "plotter.db$s" "plotter.db.before-restore$s"; done
 for s in "" -wal -shm; do [ ! -f "$c$s" ] || sudo cp "$c$s" "plotter.db$s"; done
 sudo chown "$USER:" plotter.db*
 ```
