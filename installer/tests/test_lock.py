@@ -112,6 +112,19 @@ class TestLock(LockCase):
         self.assertIn("charts", r.stderr)
         self.assertIn("schema", r.stderr)
 
+    def test_check_fails_naming_missing_or_non_numeric_schema_key(self):
+        base = self.lock.read_text()
+        for key in ("charts.schema", "bathy.schema", "plotter.pack_schema_min", "plotter.pack_schema_max"):
+            for val in (None, "", "x", "1.5"):
+                if val is None:
+                    self.lock.write_text(re.sub(r"(?m)^%s=.*\n" % re.escape(key), "", base))
+                else:
+                    self.lock.write_text(base)
+                    self.set_key(key, val)
+                r = self.tool("check", str(self.lock))
+                self.assertEqual(r.returncode, 1, (key, val, r.stderr))
+                self.assertIn("lock-tool: %s is missing or not a whole number" % key, r.stderr, (key, val))
+
     def test_embed_replaces_block_and_bash_parses(self):
         out = self.dir / "out.sh"
         r = self.tool("embed", str(self.lock), str(SCRIPT), str(out))

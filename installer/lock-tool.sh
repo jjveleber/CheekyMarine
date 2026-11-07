@@ -16,7 +16,14 @@ sums_line() { # PART TAG ASSET -> sha256 on stdout
 }
 
 cmd_check() {
-  local lock=$1 part rc=0 min max sch want have
+  local lock=$1 part rc=0 min max sch want have key
+  for key in charts.schema bathy.schema plotter.pack_schema_min plotter.pack_schema_max; do
+    if ! [[ $(get "$lock" "$key") =~ ^[0-9]+$ ]]; then
+      echo "lock-tool: $key is missing or not a whole number" >&2
+      rc=1
+    fi
+  done
+  [ "$rc" -eq 0 ] || return 1
   min=$(get "$lock" plotter.pack_schema_min); max=$(get "$lock" plotter.pack_schema_max)
   for part in charts bathy; do
     sch=$(get "$lock" "$part.schema")

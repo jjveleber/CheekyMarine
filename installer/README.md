@@ -118,8 +118,8 @@ Rules for readers:
 ## lock-tool.sh
 
 - `lock-tool.sh check LOCK`: exit 0 when every part's `sha256` equals the line for its `asset` in
-  `<base>/<tag>/SHA256SUMS` and each pack's `schema` is inside the plotter range. Otherwise exit 1,
-  naming the part.
+  `<base>/<tag>/SHA256SUMS`, the four schema keys are whole numbers, and each pack's `schema` is
+  inside the plotter range. Otherwise exit 1, naming the part or key.
 - `lock-tool.sh fill LOCK`: rewrite each `sha256` from those files.
 - `lock-tool.sh embed LOCK SCRIPT OUT`: write OUT as SCRIPT with the lines between
   `CM_LOCK=$(cat <<'LOCK'` and `LOCK` replaced by the lines of LOCK.
