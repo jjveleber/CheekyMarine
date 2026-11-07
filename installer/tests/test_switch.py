@@ -135,6 +135,58 @@ class TestSwitch(unittest.TestCase):
                          self.lockval(rel, "bathy.sha256"))
         self.assertFalse([n for n in os.listdir(self.store) if n.startswith(".tmp-")])
 
+    def changed_pack_message(self, name):
+        return ("cheekymarine: pack %s in the store does not match this set's lock, and the active or "
+                "previous set uses it; pack releases must not change under the same version. To recover, "
+                "remove /opt/cheekymarine/packs/%s and /opt/cheekymarine/packs/%s.sha256 by hand, then "
+                "run this again." % (name, name, name))
+
+    def test_changed_pack_linked_by_current_or_previous_stops(self):
+        a = self.rig.make_set("0.1.0", "0.1.0", charts_ver="1.0.0")
+        b = self.rig.make_set("0.2.0", "0.2.0")
+        c = self.rig.make_set("0.3.0", "0.3.0", charts_ver="1.0.0")
+        d = self.rig.make_set("0.4.0", "0.4.0")
+        self.install(a)
+        self.install(b)
+        cur, prev = self.link("current"), self.link("previous")
+        # previous (A) links charts 1.0.0; current (B) links bathy 1.1.0
+        cases = [
+            (c, "charts-puget-north-1.0.0", lambda f: f.write_text("f" * 64 + "\n")),
+            (d, "bathy-puget-north-1.1.0", lambda f: f.write_text("f" * 64 + "\n")),
+            (d, "bathy-puget-north-1.1.0", lambda f: f.unlink()),
+        ]
+        for rel, name, change in cases:
+            sidecar = self.store / (name + ".sha256")
+            good = sidecar.read_text()
+            change(sidecar)
+            before = sidecar.read_text() if sidecar.exists() else None
+            for n in ("calls", "downloads"):
+                (self.rig.root / n).unlink(missing_ok=True)
+            r = self.install(rel, ok=False)
+            self.assertEqual(r.returncode, 1, r.stderr)
+            self.assertIn(self.changed_pack_message(name), r.stderr)
+            self.assertEqual((self.link("current"), self.link("previous")), (cur, prev))
+            self.assertTrue((self.store / name / "manifest.json").is_file())
+            self.assertEqual(sidecar.read_text() if sidecar.exists() else None, before)
+            self.assertEqual(self.rig.downloads(), [])
+            self.assertFalse([c for c in self.rig.calls() if c.startswith(("apt-get", "pkill", "systemctl"))])
+            sidecar.write_text(good)
+
+    def test_changed_pack_not_linked_is_refetched(self):
+        a = self.rig.make_set("0.1.0", "0.1.0", charts_ver="1.0.0")
+        b = self.rig.make_set("0.2.0", "0.2.0")
+        self.install(a)
+        # charts 1.1.0 in the store with a stale sidecar, linked by no kept set
+        name = "charts-puget-north-1.1.0"
+        (self.store / name).mkdir()
+        (self.store / name / "junk").write_text("x")
+        (self.store / (name + ".sha256")).write_text("f" * 64 + "\n")
+        self.install(b)
+        self.assertTrue([u for u in self.rig.downloads() if u.endswith(name + ".tar")])
+        self.assertFalse((self.store / name / "junk").exists())
+        self.assertTrue((self.store / name / "manifest.json").is_file())
+        self.assertEqual((self.store / (name + ".sha256")).read_text().strip(), self.lockval(b, "charts.sha256"))
+
     def test_pack_schema_mismatch_leaves_current_untouched(self):
         a = self.rig.make_set("0.1.0", "0.1.0")
         self.install(a)

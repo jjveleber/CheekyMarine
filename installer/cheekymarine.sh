@@ -128,10 +128,30 @@ check_sum() {
   [ "$got" = "$2" ] || die "checksum mismatch: $3 $4"
 }
 
+# check_linked_packs: die when a store pack that `current` or `previous` links has a missing
+# sidecar or one that differs from the lock's sha256 for that pack: replacing it in place would
+# break the installed set (and rollback) if the run then stopped. Unlinked store packs are fine.
+check_linked_packs() {
+  local root part name want l
+  root=$(p /opt/cheekymarine)
+  for part in charts bathy; do
+    name=$(pack_name "$part")
+    want=$(lock_get "$part.sha256")
+    [ -d "$root/packs/$name" ] || continue
+    pack_in_store "$name" "$want" && continue
+    for l in current previous; do
+      if [ -L "$root/$l/packs/$name" ]; then
+        die "pack $name in the store does not match this set's lock, and the active or previous set uses it; pack releases must not change under the same version. To recover, remove /opt/cheekymarine/packs/$name and /opt/cheekymarine/packs/$name.sha256 by hand, then run this again."
+      fi
+    done
+  done
+}
+
 # fetch_parts STAGE_DIR: download and verify every part of the set, and the set's own script.
 # A pack already in the store (dir plus a sidecar equal to the lock's sha256) is skipped.
 fetch_parts() {
   local stage=$1 base part asset want name set
+  check_linked_packs
   base=$(base_url)
   set=$(lock_get set)
   for part in n2kd charts bathy plotter; do

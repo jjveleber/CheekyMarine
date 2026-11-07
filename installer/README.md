@@ -112,6 +112,8 @@ Rules for readers:
 - Ignore keys you do not know. New keys may appear without a `schema` bump.
 - `schema` bumps only on an incompatible change (a key removed or its meaning changed).
 - A `sha256` of 64 zeros means the part is not released yet.
+- Part and pack releases are immutable: a new build gets a new version, never new bytes under an
+  old tag and asset name.
 
 ## lock-tool.sh
 
