@@ -201,7 +201,8 @@ private slots:
                 "bathy.version=1.1.0\nbathy.tag=bathy-puget-north-v1.1.0\n"
                 "bathy.asset=bathy-puget-north-1.1.0.tar\nbathy.sha256=00\nbathy.schema=1\n"
                 "plotter.version=0.1.0\nplotter.tag=plotter-v0.1.0\n"
-                "plotter.asset=cheekyplotter-0.1.0-x86_64.tar.gz\n");
+                "plotter.asset=cheekyplotter-0.1.0-x86_64.tar.gz\nplotter.sha256=00\n"
+                "plotter.pack_schema_min=1\nplotter.pack_schema_max=1\n");
         f.close();
         QCOMPARE(readSetVersion(lock), QString("0.1.0"));
     }
