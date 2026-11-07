@@ -285,10 +285,24 @@ label_get() {
   lock_file_get "$f" "$1"
 }
 
+# write_label SET PLOTTER_VER: db-label says the live plotter.db belongs to SET's plotter.
+write_label() {
+  local label
+  label=$(p /var/lib/cheekymarine/db-label)
+  mkdir -p "$(dirname "$label")"
+  printf 'set=%s\nplotter=%s\n' "$1" "$2" > "$label.tmp"
+  mv -T "$label.tmp" "$label"
+}
+
+# newer_than A B: true when plotter version A is strictly newer than B (sort -V).
+newer_than() {
+  [ "$1" != "$2" ] && [ "$(printf '%s\n' "$1" "$2" | sort -V | tail -n 1)" = "$1" ]
+}
+
 # data_rule FROM_PLOTTER_VER TO_PLOTTER_VER TO_SET: with the plotter stopped, copy the live
 # plotter.db (labeled with its set from db-label), keep it when TO's plotter is the same or newer,
-# else restore the newest copy labeled TO_SET or move it aside; then label it for TO_SET. A db
-# with no label counts as unknown and newer.
+# else restore the newest copy labeled TO_SET or move it aside. A db with no label counts as
+# unknown and newer. The label itself is written by switch_to, around the flip.
 data_rule() {
   local from=$1 to=$2 toset=$3 db label copies fromset base sfx newest f n
   db=$(p "$CM_HOME/.local/share/cheekyplotter/plotter.db")
@@ -322,20 +336,33 @@ data_rule() {
       fi
     fi
   fi
-  printf 'set=%s\nplotter=%s\n' "$toset" "$to" > "$label.tmp"
-  mv -T "$label.tmp" "$label"
 }
 
 # switch_to DIR: the switch to set DIR (design "The switch"). Stop, data rule, `previous` (only
 # when the set version changes), the atomic `current` flip, bin/cheekymarine, then the starts.
+# Until the flip, db-label names the newest plotter that could open the db after a kill (the
+# label's, the running set's or the target's); right after the flip it names the target exactly.
+# A kill in either window so errs toward "newer": a later run restores or moves the db aside,
+# and an older plotter never keeps a db a newer one may have migrated.
 switch_to() {
-  local dir=$1 root name toset
+  local dir=$1 root name toset tover lset lver cset cver bset bver
   root=$(p /opt/cheekymarine)
   name=$(basename "$dir")
   toset=$(lock_file_get "$dir/cheekymarine.lock" set)
+  tover=$(lock_file_get "$dir/cheekymarine.lock" plotter.version)
+  lset=$(label_get set)
+  lver=$(label_get plotter)
   stop_plotter
   stop_n2kd
-  data_rule "$(label_get plotter)" "$(lock_file_get "$dir/cheekymarine.lock" plotter.version)" "$toset"
+  data_rule "$lver" "$tover" "$toset"
+  bset=$toset bver=$tover
+  if [ -n "$lver" ] && newer_than "$lver" "$bver"; then bset=$lset bver=$lver; fi
+  if [ -f "$root/current/cheekymarine.lock" ]; then
+    cset=$(lock_file_get "$root/current/cheekymarine.lock" set)
+    cver=$(lock_file_get "$root/current/cheekymarine.lock" plotter.version)
+    if newer_than "$cver" "$bver"; then bset=$cset bver=$cver; fi
+  fi
+  write_label "$bset" "$bver"
   if [ -f "$root/current/cheekymarine.lock" ] \
     && [ "$(lock_file_get "$root/current/cheekymarine.lock" set)" != "$toset" ]; then
     ln -sfn "$(readlink "$root/current")" "$root/previous.tmp"
@@ -343,6 +370,7 @@ switch_to() {
   fi
   [ "${CM_TEST_DIE_AT:-}" != before_flip ] || kill -9 $$
   (cd "$root" && ln -sfn "sets/$name" current.tmp && mv -T current.tmp current)
+  write_label "$toset" "$tover"
   [ "${CM_TEST_DIE_AT:-}" != after_flip ] || kill -9 $$
   mkdir -p "$root/bin"
   cp "$root/current/cheekymarine.sh" "$root/bin/cheekymarine.tmp"

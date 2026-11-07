@@ -296,6 +296,47 @@ class TestSwitch(unittest.TestCase):
         self.assertFalse(self.db.exists())
         self.assertTrue([n for n in self.copies() if re.match(r"^plotter-0\.2\.0-%s\.db$" % STAMP, n)])
 
+    def test_downgrade_kill_before_flip_label_errs_newer(self):
+        a = self.rig.make_set("0.1.0", "0.1.0")
+        b = self.rig.make_set("0.2.0", "0.2.0")
+        self.install(a)
+        self.plant_db("data from A")
+        self.install(b)
+        self.plant_db("data from B")
+        r = self.install(a, env={"CM_TEST_DIE_AT": "before_flip"}, ok=False)
+        self.assertEqual(r.returncode, -9)
+        self.assertRegex(self.link("current"), r"^sets/0\.2\.0\.")
+        self.assertEqual(self.label.read_text(), "set=0.2.0\nplotter=0.2.0\n")
+        self.plant_db("migrated by B")  # on reboot, B's plotter runs on the restored db
+        self.install(a)
+        self.assertNotEqual(self.db.read_text(), "migrated by B\n")
+        self.assertEqual(self.db.read_text(), "data from A\n")
+        saved = [n for n in self.copies() if re.match(r"^plotter-0\.2\.0-%s\.db$" % STAMP, n)]
+        self.assertIn("migrated by B\n", [(self.copies_dir / n).read_text() for n in saved])
+        self.assertEqual(self.label.read_text(), "set=0.1.0\nplotter=0.1.0\n")
+
+    def test_forward_kill_before_flip_keeps_db(self):
+        a = self.rig.make_set("0.1.0", "0.1.0")
+        b = self.rig.make_set("0.2.0", "0.2.0")
+        self.install(a)
+        self.plant_db("data from A")
+        r = self.install(b, env={"CM_TEST_DIE_AT": "before_flip"}, ok=False)
+        self.assertEqual(r.returncode, -9)
+        self.assertEqual(self.label.read_text(), "set=0.2.0\nplotter=0.2.0\n")
+        self.plant_db("more from A")  # on reboot, A's plotter runs on the db
+        self.install(b)
+        self.assertEqual(self.db.read_text(), "more from A\n")
+        self.assertEqual(self.label.read_text(), "set=0.2.0\nplotter=0.2.0\n")
+
+    def test_downgrade_kill_after_flip_label_is_exact(self):
+        a = self.rig.make_set("0.1.0", "0.1.0")
+        b = self.rig.make_set("0.2.0", "0.2.0")
+        self.install(b)
+        r = self.install(a, env={"CM_TEST_DIE_AT": "after_flip"}, ok=False)
+        self.assertEqual(r.returncode, -9)
+        self.assertRegex(self.link("current"), r"^sets/0\.1\.0\.")
+        self.assertEqual(self.label.read_text(), "set=0.1.0\nplotter=0.1.0\n")
+
     def test_unique_name_never_reuses_a_dir(self):
         sets = self.opt / "sets"
         sets.mkdir(parents=True)
