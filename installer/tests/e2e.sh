@@ -86,11 +86,10 @@ fresh_install() {
 }
 
 rerun() {
-  local before
-  before=$(readlink "$ROOT/current")
   cm first install
   want_rc 0
-  [ "$(readlink "$ROOT/current")" = "$before" ] || fail "current moved"
+  case "$(cur)" in 0.2.0*) ;; *) fail "current is $(readlink "$ROOT/current")" ;; esac
+  [ ! -e "$ROOT/previous" ] || fail "a rerun made a previous"
   n2kd_active
 }
 
