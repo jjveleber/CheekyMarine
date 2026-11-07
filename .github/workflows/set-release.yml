@@ -1,0 +1,84 @@
+name: set-release
+
+# Tag cheekymarine-vX.Y.Z (must equal set= in installer/cheekymarine.lock) checks the lock against the
+# part releases, embeds it in the installer and publishes the script, the lock and SHA256SUMS as a
+# pre-release that never takes Latest.
+on:
+  push:
+    tags: ['cheekymarine-v*']
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check tag matches the lock
+        run: |
+          tag_version="${GITHUB_REF_NAME#cheekymarine-v}"
+          lock_version="$(sed -n 's/^set=//p' installer/cheekymarine.lock | head -n1)"
+          if [ "$tag_version" != "$lock_version" ]; then
+            echo "tag version $tag_version does not match set= $lock_version in installer/cheekymarine.lock" >&2
+            exit 1
+          fi
+
+      - name: Check the lock against the part releases
+        run: installer/lock-tool.sh check installer/cheekymarine.lock
+
+      - name: Build the installer
+        run: |
+          mkdir release
+          installer/lock-tool.sh embed installer/cheekymarine.lock installer/cheekymarine.sh release/install-cheekymarine.sh
+          bash -n release/install-cheekymarine.sh
+          cp installer/cheekymarine.lock release/cheekymarine.lock
+          chmod 755 release/install-cheekymarine.sh
+          (cd release && sha256sum install-cheekymarine.sh cheekymarine.lock > SHA256SUMS && cat SHA256SUMS)
+
+      - name: Write the release notes
+        run: |
+          lock=installer/cheekymarine.lock
+          get() { sed -n "s/^$1=//p" "$lock" | head -n1; }
+          version="${GITHUB_REF_NAME#cheekymarine-v}"
+          {
+            echo "Install or upgrade (Ubuntu 24.04 or newer, x86_64):"
+            echo
+            echo "    curl -fsSL https://github.com/jjveleber/CheekyMarine/releases/download/cheekymarine-v${version}/install-cheekymarine.sh | sudo bash"
+            echo
+            echo "| Part | Version | Tag |"
+            echo "| --- | --- | --- |"
+            for part in n2kd charts bathy plotter; do
+              echo "| ${part} | $(get "${part}.version") | $(get "${part}.tag") |"
+            done
+            echo
+            echo "Plotter pack schema range: $(get plotter.pack_schema_min) to $(get plotter.pack_schema_max)."
+          } > release/NOTES.md
+          cat release/NOTES.md
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: set-release
+          path: release
+
+  publish:
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: set-release
+          path: release
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            release/install-cheekymarine.sh
+            release/cheekymarine.lock
+            release/SHA256SUMS
+          body_path: release/NOTES.md
+          prerelease: true
+          make_latest: false
