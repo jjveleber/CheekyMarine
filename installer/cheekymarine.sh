@@ -577,14 +577,16 @@ data_rule() {
   fi
 }
 
-# switch_to DIR: the switch to set DIR (design "The switch"). Stop, data rule, `previous` (only
-# when the set version changes), the atomic `current` flip, bin/cheekymarine, then the starts.
+# switch_to DIR [rollback]: the switch to set DIR (design "The switch"). Stop, data rule,
+# `previous` (only when the set version changes), the atomic `current` flip, bin/cheekymarine, then
+# the starts. With `rollback`, DIR is the target of `previous`: `previous` is not moved to the set
+# being left, and it is removed right after the flip (a rollback records no history).
 # Until the flip, db-label names the newest plotter that could open the db after a kill (the
 # label's, the running set's or the target's); right after the flip it names the target exactly.
 # A kill in either window so errs toward "newer": a later run restores or moves the db aside,
 # and an older plotter never keeps a db a newer one may have migrated.
 switch_to() {
-  local dir=$1 root name toset tover lset lver cset cver bset bver
+  local dir=$1 mode=${2:-} root name toset tover lset lver cset cver bset bver
   root=$(p /opt/cheekymarine)
   name=$(basename "$dir")
   toset=$(lock_file_get "$dir/cheekymarine.lock" set)
@@ -602,7 +604,7 @@ switch_to() {
     if newer_than "$cver" "$bver"; then bset=$cset bver=$cver; fi
   fi
   write_label "$bset" "$bver"
-  if [ -f "$root/current/cheekymarine.lock" ] \
+  if [ "$mode" != rollback ] && [ -f "$root/current/cheekymarine.lock" ] \
     && [ "$(lock_file_get "$root/current/cheekymarine.lock" set)" != "$toset" ]; then
     ln -sfn "$(readlink "$root/current")" "$root/previous.tmp"
     mv -T "$root/previous.tmp" "$root/previous"
@@ -610,6 +612,7 @@ switch_to() {
   [ "${CM_TEST_DIE_AT:-}" != before_flip ] || kill -9 $$
   (cd "$root" && ln -sfn "sets/$name" current.tmp && mv -T current.tmp current)
   write_label "$toset" "$tover"
+  [ "$mode" != rollback ] || rm -f "$root/previous"
   [ "${CM_TEST_DIE_AT:-}" != after_flip ] || kill -9 $$
   mkdir -p "$root/bin"
   cp "$root/current/cheekymarine.sh" "$root/bin/cheekymarine.tmp"
@@ -650,14 +653,31 @@ prune_sets() {
   done
 }
 
+# confirm_downgrade: when this script's set is older than the installed one (sort -V), ask on
+# the terminal; anything but yes stops the install before anything is changed. Equal is a rerun.
+confirm_downgrade() {
+  local lock cur new rc=0
+  lock="$(p /opt/cheekymarine/current)/cheekymarine.lock"
+  [ -f "$lock" ] || return 0
+  cur=$(lock_file_get "$lock" set)
+  new=$(lock_get set)
+  newer_than "$cur" "$new" || return 0
+  ask "Install $new over $cur? This is a downgrade. [y/N]" || rc=$?
+  case "$rc" in
+    0) ;;
+    2) die "$new is older than the installed $cur (a downgrade), and there is no terminal to confirm it; nothing was changed" ;;
+    *) die "downgrade from $cur to $new not confirmed; nothing was changed" ;;
+  esac
+}
+
 cmd_install() {
   preflight
   take_lock
+  confirm_downgrade
   CM_STAGE=$(p "/opt/cheekymarine/.stage-$(lock_get set)")
   rm -rf "$CM_STAGE"
   mkdir -p "$CM_STAGE"
   trap 'rm -rf "$CM_STAGE"' EXIT
-  # Task 7: the downgrade confirmation goes here, before the fetch.
   fetch_parts "$CM_STAGE"
   install_apt
   unpack_set "$CM_STAGE" "$(lock_get set)"
@@ -674,10 +694,22 @@ cmd_install() {
   cmd_version
 }
 
+# cmd_rollback: switch to `previous` with no network, then clear `previous` and prune the newer
+# set and the store packs only it used. Refused when `previous` is missing, dangling, or the same
+# dir as `current`.
 cmd_rollback() {
+  local root prev cur
   preflight
   take_lock
-  echo "cheekymarine: rollback is not implemented yet"
+  root=$(p /opt/cheekymarine)
+  prev=$(readlink -e "$root/previous") || prev=
+  cur=$(readlink -e "$root/current") || cur=
+  if [ -z "$prev" ] || [ ! -f "$prev/cheekymarine.lock" ] || [ "$prev" = "$cur" ]; then
+    die "nothing to roll back to"
+  fi
+  switch_to "$prev" rollback
+  prune_sets
+  cmd_version
 }
 
 # cmd_version: the installed set and its parts, and this script's set when it differs.

@@ -21,8 +21,8 @@ class TestSwitch(unittest.TestCase):
 
     # ---- helpers -----------------------------------------------------------------------------
 
-    def install(self, rel, env=None, ok=True):
-        r = self.rig.run("install", script=rel / "install-cheekymarine.sh", env=env)
+    def install(self, rel, env=None, ok=True, tty_answers=None):
+        r = self.rig.run("install", script=rel / "install-cheekymarine.sh", env=env, tty_answers=tty_answers)
         if ok:
             self.assertEqual(r.returncode, 0, r.stderr)
         return r
@@ -283,7 +283,7 @@ class TestSwitch(unittest.TestCase):
         self.plant_db("data from A")
         self.install(b)
         self.plant_db("data from B")
-        self.install(a)
+        self.install(a, tty_answers=["y"])  # a downgrade: confirm it
         self.assertEqual(self.db.read_text(), "data from A\n")
         self.assertEqual(self.db.with_name("plotter.db-wal").read_text(), "data from A-wal\n")
         self.assertTrue([n for n in self.copies() if re.match(r"^plotter-0\.2\.0-%s\.db$" % STAMP, n)])
@@ -294,7 +294,7 @@ class TestSwitch(unittest.TestCase):
         b = self.rig.make_set("0.2.0", "0.2.0")
         self.install(b)
         self.plant_db("data from B")
-        self.install(a)
+        self.install(a, tty_answers=["y"])  # a downgrade: confirm it
         self.assertFalse(self.db.exists())
         self.assertTrue([n for n in self.copies() if re.match(r"^plotter-0\.2\.0-%s\.db$" % STAMP, n)])
 
@@ -305,12 +305,12 @@ class TestSwitch(unittest.TestCase):
         self.plant_db("data from A")
         self.install(b)
         self.plant_db("data from B")
-        r = self.install(a, env={"CM_TEST_DIE_AT": "before_flip"}, ok=False)
+        r = self.install(a, env={"CM_TEST_DIE_AT": "before_flip"}, ok=False, tty_answers=["y"])
         self.assertEqual(r.returncode, -9)
         self.assertRegex(self.link("current"), r"^sets/0\.2\.0\.")
         self.assertEqual(self.label.read_text(), "set=0.2.0\nplotter=0.2.0\n")
         self.plant_db("migrated by B")  # on reboot, B's plotter runs on the restored db
-        self.install(a)
+        self.install(a, tty_answers=["y"])
         self.assertNotEqual(self.db.read_text(), "migrated by B\n")
         self.assertEqual(self.db.read_text(), "data from A\n")
         saved = [n for n in self.copies() if re.match(r"^plotter-0\.2\.0-%s\.db$" % STAMP, n)]
@@ -334,7 +334,7 @@ class TestSwitch(unittest.TestCase):
         a = self.rig.make_set("0.1.0", "0.1.0")
         b = self.rig.make_set("0.2.0", "0.2.0")
         self.install(b)
-        r = self.install(a, env={"CM_TEST_DIE_AT": "after_flip"}, ok=False)
+        r = self.install(a, env={"CM_TEST_DIE_AT": "after_flip"}, ok=False, tty_answers=["y"])
         self.assertEqual(r.returncode, -9)
         self.assertRegex(self.link("current"), r"^sets/0\.1\.0\.")
         self.assertEqual(self.label.read_text(), "set=0.1.0\nplotter=0.1.0\n")
