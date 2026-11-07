@@ -67,7 +67,7 @@ class TestSystem(unittest.TestCase):
         self.assertTrue(apt[0].startswith("apt-get -o DPkg::Lock::Timeout=600 update"), apt[0])
         self.assertTrue(apt[1].startswith(
             "apt-get -o DPkg::Lock::Timeout=600 install -y --no-install-recommends iproute2 libxkbcommon0"), apt[1])
-        self.assertTrue(apt[1].endswith("libopengl0 libglx0"), apt[1])
+        self.assertTrue(apt[1].endswith("libxcb-xfixes0 libxcb-xkb1"), apt[1])
 
     def test_apt_failure_leaves_current_untouched(self):
         a = self.rig.make_set("0.1.0", "0.1.0")

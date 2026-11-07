@@ -129,6 +129,13 @@ set_target_properties(cheekyplotter PROPERTIES AUTOMOC ON)
 # The linker drops Qt6::Sql (nothing in the app uses it directly) and RUNPATH is not searched for the
 # dependencies of libQMapLibre.so, so emit a classic RPATH, which is.
 target_link_options(cheekyplotter PRIVATE -Wl,--disable-new-dtags)
+# The relocatable bundle (scripts/bundle-plotter.sh) puts Qt and libQMapLibre in lib/ next to bin/.
+# cmake --install rewrites the build RPATH in place, so it stays a classic RPATH; the build-tree
+# binary keeps its build RPATH for the tests.
+set_target_properties(cheekyplotter PROPERTIES
+    INSTALL_RPATH "\$ORIGIN/../lib"
+    INSTALL_RPATH_USE_LINK_PATH OFF)
+install(TARGETS cheekyplotter RUNTIME DESTINATION bin)
 
 if(CM_PLOTTER_TESTS)
     # QuickTest runner: runs every tests/qml/tst_*.qml against the CheekyMarine module, offscreen.

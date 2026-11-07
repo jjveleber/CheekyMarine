@@ -41,8 +41,10 @@ LOCK
 )
 # END LOCK
 
-# Run-time packages for the plotter bundle and the tools the installer drives (Task 10 refines).
-CM_APT_PACKAGES="iproute2 libxkbcommon0 libxcb-cursor0 libegl1 libgl1 libwayland-client0 libwayland-egl1 fontconfig libcurl4t64 libuv1t64 libopengl0 libglx0"
+# Run-time packages: iproute2 for can0, fontconfig, and one package per soname in the plotter
+# bundle's DEPS that a minimal Ubuntu 24.04 or 26.04 lacks (glibc, libstdc++, libgcc, zlib and
+# zstd are always there). Names hold on both releases.
+CM_APT_PACKAGES="iproute2 libxkbcommon0 libxkbcommon-x11-0 libegl1 libgl1 libglx0 libopengl0 libx11-6 libx11-xcb1 libdbus-1-3 fontconfig libfontconfig1 libfreetype6 libglib2.0-0t64 libgssapi-krb5-2 libwayland-client0 libwayland-cursor0 libwayland-egl1 libxcb1 libxcb-cursor0 libxcb-glx0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render0 libxcb-render-util0 libxcb-shape0 libxcb-shm0 libxcb-sync1 libxcb-xfixes0 libxcb-xkb1"
 
 # NEED_RELOGIN is set to 1 by ensure_group when it added the desktop user to a group.
 NEED_RELOGIN=
