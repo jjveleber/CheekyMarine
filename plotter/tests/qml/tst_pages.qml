@@ -717,6 +717,18 @@ TestCase {
         property var chartsPack: ({})
         property var bathyPack: ({})
         property var packs: []
+        property string daemonVersion: ""
+        property string setVersion: ""
+    }
+    function test_aboutShowsSetVersion() {
+        appInfoStub.setVersion = "0.1.0"
+        const about = createTemporaryObject(aboutPageComp, testCase, { width: 1024, height: 600, appInfo: appInfoStub })
+        compare(H.byName(about, "aboutSet").text, "Set: cheekymarine 0.1.0")
+    }
+    function test_aboutShowsNoSet() {
+        appInfoStub.setVersion = ""
+        const about = createTemporaryObject(aboutPageComp, testCase, { width: 1024, height: 600, appInfo: appInfoStub })
+        compare(H.byName(about, "aboutSet").text, "Set: none (not installed from a set)")
     }
     function test_splashChartsLine_data() {
         const ok = { kind: "charts", region: "puget-north", version: "1.0.0", notice: "", refused: "", inUse: true }

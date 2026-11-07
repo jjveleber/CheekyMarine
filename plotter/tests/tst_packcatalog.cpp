@@ -201,6 +201,29 @@ private slots:
         QCOMPARE(find(l, "charts", "1.2.0")->refused, QString("schema 2 not supported"));
         QCOMPARE(PackCatalog::best(l, u"charts")->version, QVersionNumber(1, 0, 0));
     }
+    void schemaBelowMinRefused() {
+        QTemporaryDir t;
+        Opts o;
+        o.schema = PLOTTER_PACK_SCHEMA_MIN - 1;
+        makePack(t.path(), "charts", "puget-north", "1.0.0", o);
+        QCOMPARE(PackCatalog::scan(t.path())[0].refused, QString("schema %1 not supported").arg(PLOTTER_PACK_SCHEMA_MIN - 1));
+    }
+    void schemaAtMaxAccepted() {
+        QTemporaryDir t;
+        Opts o;
+        o.schema = PLOTTER_PACK_SCHEMA_MAX;
+        makePack(t.path(), "charts", "puget-north", "1.0.0", o);
+        QVERIFY(PackCatalog::scan(t.path())[0].refused.isEmpty());
+    }
+    void schemaFractionRefused() {
+        // 1.5 for the range [1, 1]; for a wider range a value strictly inside it
+        const double v = PLOTTER_PACK_SCHEMA_MIN + 0.5;
+        QTemporaryDir t;
+        Opts o;
+        o.schemaValue = QJsonValue(v);
+        makePack(t.path(), "charts", "puget-north", "1.0.0", o);
+        QCOMPARE(PackCatalog::scan(t.path())[0].refused, QString("schema %1 not supported").arg(v));
+    }
     void dirNameDisagreesWithManifest() {
         QTemporaryDir t;
         Opts o;

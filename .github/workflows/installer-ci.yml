@@ -1,0 +1,44 @@
+name: installer-ci
+
+on:
+  push:
+    paths:
+      - "installer/**"
+      - "scripts/**"
+      - ".github/workflows/installer-ci.yml"
+  pull_request:
+    paths:
+      - "installer/**"
+      - "scripts/**"
+      - ".github/workflows/installer-ci.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  unit:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Unit tests
+        run: python3 -m unittest discover -s installer/tests -v
+      - name: Syntax check
+        # one file per bash -n: with several, bash checks the first and takes the rest as arguments
+        run: |
+          for f in installer/*.sh installer/tests/*.sh installer/tests/shims/* scripts/*.sh scripts/tests/*.sh; do
+            bash -n "$f"
+          done
+
+  e2e:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Desktop user and packages
+        run: |
+          sudo useradd -m -s /bin/bash helm
+          sudo apt-get update
+          sudo apt-get install -y dbus libglib2.0-bin gsettings-desktop-schemas \
+            gnome-settings-daemon-common dconf-gsettings-backend
+      - name: Real-systemd scenarios
+        run: installer/tests/e2e.sh

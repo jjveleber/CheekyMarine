@@ -112,7 +112,15 @@ Platforms: the aarch64 tarball is built on Debian bookworm and needs glibc 2.36 
 
 ## Installing a release
 
-Verify the download against the release's `SHA256SUMS`, then extract only the `usr` tree onto `/` (the licenses and the inner checksums stay out of `/`):
+The usual way is the set installer, which installs n2kd, the chart packs and the plotter together (Ubuntu 24.04 or newer, x86_64). Replace `cheekymarine-vX.Y.Z` with the newest pre-release on the [Releases page](https://github.com/jjveleber/CheekyMarine/releases):
+
+```bash
+curl -fsSL https://github.com/jjveleber/CheekyMarine/releases/download/cheekymarine-vX.Y.Z/install-cheekymarine.sh | sudo bash
+```
+
+What it does, its prompts, upgrades and rollback: see [installer/README.md](installer/README.md).
+
+To install only n2kd by hand (for example on a Raspberry Pi), use the n2kd release tarball. Verify the download against the release's `SHA256SUMS`, then extract only the `usr` tree onto `/` (the licenses and the inner checksums stay out of `/`):
 
 ```bash
 sha256sum -c --ignore-missing SHA256SUMS

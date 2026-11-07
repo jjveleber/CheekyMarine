@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# usermod -aG GROUP[,GROUP] USER (or -a -G): records `USER GROUP` lines in $STATE/groups.
+# A group not in $STATE/sysgroups (made by the systemd-sysusers shim) exits 6, as real usermod.
+. "$(dirname "$0")/_shim.sh"
+groups= user= prev=
+for a in "$@"; do
+  case "$prev" in -aG|-G) groups=$a; prev=; continue ;; esac
+  case "$a" in -aG|-G) prev=$a ;; -a) ;; -*) ;; *) user=$a ;; esac
+done
+touch "$STATE/groups" "$STATE/sysgroups"
+IFS=, read -ra gs <<< "$groups"
+for g in "${gs[@]}"; do
+  grep -qxF "$g" "$STATE/sysgroups" || { echo "usermod: group '$g' does not exist" >&2; exit 6; }
+done
+for g in "${gs[@]}"; do grep -qxF "$user $g" "$STATE/groups" || echo "$user $g" >> "$STATE/groups"; done
+exit 0

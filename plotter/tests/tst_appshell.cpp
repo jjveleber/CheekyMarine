@@ -188,6 +188,38 @@ private slots:
         QCOMPARE(writeStatsLine({}), QStringLiteral("track-writes: writes 0 max 0.00 ms p99 0.00 ms over50 0"));
     }
 
+    void readSetVersionReadsSet() {
+        QTemporaryDir t;
+        const QString lock = t.filePath("cheekymarine.lock");
+        QFile f(lock);
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write("# CheekyMarine set lock. Format: see installer/README.md.\n"
+                "schema=1\nset=0.1.0\nn2kd.version=0.1.0\nn2kd.tag=v0.1.0\n"
+                "n2kd.asset=n2kd-0.1.0-x86_64.tar.gz\nn2kd.sha256=00\n"
+                "charts.version=1.1.0\ncharts.tag=charts-puget-north-v1.1.0\n"
+                "charts.asset=charts-puget-north-1.1.0.tar\ncharts.sha256=00\ncharts.schema=1\n"
+                "bathy.version=1.1.0\nbathy.tag=bathy-puget-north-v1.1.0\n"
+                "bathy.asset=bathy-puget-north-1.1.0.tar\nbathy.sha256=00\nbathy.schema=1\n"
+                "plotter.version=0.1.0\nplotter.tag=plotter-v0.1.0\n"
+                "plotter.asset=cheekyplotter-0.1.0-x86_64.tar.gz\nplotter.sha256=00\n"
+                "plotter.pack_schema_min=1\nplotter.pack_schema_max=1\n");
+        f.close();
+        QCOMPARE(readSetVersion(lock), QString("0.1.0"));
+    }
+    void readSetVersionEmptyWhenMissing() {
+        QTemporaryDir t;
+        QVERIFY(readSetVersion(t.filePath("nope.lock")).isEmpty());
+    }
+    void readSetVersionEmptyOnOtherSchema() {
+        QTemporaryDir t;
+        const QString lock = t.filePath("cheekymarine.lock");
+        QFile f(lock);
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write("# comment\nschema=2\nset=0.1.0\n");
+        f.close();
+        QVERIFY(readSetVersion(lock).isEmpty());
+    }
+
     void reasons() {
         QVERIFY(storeErrorReason(StoreError::NewerMajor).contains("newer version"));
         QVERIFY(storeErrorReason(StoreError::Corrupt).contains("damaged"));

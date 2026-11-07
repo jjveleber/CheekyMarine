@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+# A unit is known when its file is in $CM_ROOT/{etc,usr/lib,lib}/systemd/system or its name is in
+# $STATE/systemctl-known. Active units: $STATE/systemctl-active; enabled: $STATE/systemctl-enabled;
+# `show` prints MainPID from $STATE/systemctl-mainpid.
+# Exit codes follow systemd: start/stop/restart of an unknown unit 5, is-active inactive 3,
+# is-enabled disabled 1, enable/disable of an unknown unit 1.
+. "$(dirname "$0")/_shim.sh"
+quiet=0 now=0 verb= units=()
+for a in "$@"; do
+  case "$a" in
+    -q|--quiet) quiet=1 ;;
+    --now) now=1 ;;
+    -*) ;;
+    *) if [ -z "$verb" ]; then verb=$a; else units+=("$a"); fi ;;
+  esac
+done
+touch "$STATE/systemctl-active" "$STATE/systemctl-enabled" "$STATE/systemctl-known"
+norm() { case "$1" in *.*) echo "$1" ;; *) echo "$1.service" ;; esac; }
+known() {
+  local d
+  for d in etc/systemd/system usr/lib/systemd/system lib/systemd/system; do
+    [ -e "$CM_ROOT/$d/$1" ] && return 0
+  done
+  grep -qxF "$1" "$STATE/systemctl-known"
+}
+add() { grep -qxF "$2" "$STATE/$1" || echo "$2" >> "$STATE/$1"; }
+del() { grep -vxF "$2" "$STATE/$1" > "$STATE/$1.tmp" || true; mv "$STATE/$1.tmp" "$STATE/$1"; }
+rc=0
+case "$verb" in
+  daemon-reload) exit 0 ;;
+  start|restart|stop)
+    for u in "${units[@]}"; do
+      u=$(norm "$u")
+      if ! known "$u"; then echo "Failed to $verb $u: Unit $u not found." >&2; rc=5; continue; fi
+      if [ "$verb" = stop ]; then del systemctl-active "$u"; else add systemctl-active "$u"; fi
+    done ;;
+  show)
+    # only MainPID, from $STATE/systemctl-mainpid (0, as systemd says for a unit that is not running)
+    for u in "${units[@]}"; do echo "MainPID=$(cat "$STATE/systemctl-mainpid" 2>/dev/null || echo 0)"; done ;;
+  is-active)
+    for u in "${units[@]}"; do
+      u=$(norm "$u")
+      if grep -qxF "$u" "$STATE/systemctl-active"; then [ "$quiet" = 1 ] || echo active
+      else [ "$quiet" = 1 ] || echo inactive; rc=3; fi
+    done ;;
+  enable|disable)
+    for u in "${units[@]}"; do
+      u=$(norm "$u")
+      if ! known "$u"; then echo "Failed to $verb unit: Unit file $u does not exist." >&2; rc=1; continue; fi
+      if [ "$verb" = enable ]; then add systemctl-enabled "$u"; [ "$now" = 0 ] || add systemctl-active "$u"
+      else del systemctl-enabled "$u"; [ "$now" = 0 ] || del systemctl-active "$u"; fi
+    done ;;
+  is-enabled)
+    for u in "${units[@]}"; do
+      u=$(norm "$u")
+      if grep -qxF "$u" "$STATE/systemctl-enabled"; then [ "$quiet" = 1 ] || echo enabled
+      else [ "$quiet" = 1 ] || echo disabled; rc=1; fi
+    done ;;
+  *) ;;
+esac
+exit "$rc"

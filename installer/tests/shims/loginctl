@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# The desktop user is logged in when $STATE/loginctl-session exists (its content is the session id).
+# show-user without a session exits 1, as real loginctl does for a user who is not logged in.
+. "$(dirname "$0")/_shim.sh"
+case "${1:-}" in
+  show-user)
+    if [ -f "$STATE/loginctl-session" ]; then echo "State=active"; exit 0; fi
+    echo "Failed to get user: User ${2:-} is not logged in or lingering" >&2; exit 1 ;;
+  list-sessions)
+    [ -f "$STATE/loginctl-session" ] && echo "$(cat "$STATE/loginctl-session") $(id -u) ${SUDO_USER:-} seat0"
+    exit 0 ;;
+  show-session)
+    # Type and State come from $STATE/loginctl-type and loginctl-state (default wayland, active).
+    echo "Type=$(cat "$STATE/loginctl-type" 2>/dev/null || echo wayland)"
+    echo "State=$(cat "$STATE/loginctl-state" 2>/dev/null || echo active)"
+    exit 0 ;;
+esac
+exit 0

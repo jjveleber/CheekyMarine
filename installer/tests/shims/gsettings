@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# Key store in $STATE/gsettings, lines `SCHEMA<TAB>KEY<TAB>VALUE`, seeded by the harness with GNOME
+# defaults. get prints the value; set of a known key stores it, typed like the default (uint32 N,
+# 'string'). An unknown key exits 1, as real gsettings does.
+. "$(dirname "$0")/_shim.sh"
+verb=$1 schema=$2 key=$3
+# Record the session bus address a call ran with (empty when none) for tests.
+printf '%s\n' "${DBUS_SESSION_BUS_ADDRESS:-}" >> "$STATE/gsettings-bus"
+cur=$(awk -F'\t' -v s="$schema" -v k="$key" '$1==s && $2==k {print $3; f=1} END {exit !f}' "$STATE/gsettings") ||
+  { echo "No such key \"$key\"" >&2; exit 1; }
+case "$verb" in
+  get) printf '%s\n' "$cur" ;;
+  set)
+    val=$4
+    case "$cur" in
+      "uint32 "*) case "$val" in "uint32 "*) ;; *) val="uint32 $val" ;; esac ;;
+      "'"*) case "$val" in "'"*) ;; *) val="'$val'" ;; esac ;;
+    esac
+    awk -F'\t' -v OFS='\t' -v s="$schema" -v k="$key" -v v="$val" '$1==s && $2==k {$3=v} {print}' \
+      "$STATE/gsettings" > "$STATE/gsettings.tmp"
+    mv "$STATE/gsettings.tmp" "$STATE/gsettings" ;;
+esac
+exit 0

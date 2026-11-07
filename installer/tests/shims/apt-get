@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Succeeds, or exits with the code in $STATE/apt-get-fail (real apt-get fails with 100).
+. "$(dirname "$0")/_shim.sh"
+if [ -f "$STATE/apt-get-fail" ]; then
+  echo "E: shim apt-get failure" >&2
+  exit "$(cat "$STATE/apt-get-fail")"
+fi
+exit 0

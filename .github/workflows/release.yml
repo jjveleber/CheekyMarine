@@ -36,4 +36,6 @@ jobs:
           files: |
             n2kd-*.tar.gz
             SHA256SUMS
+          # Latest stays on v0.1.0 until the first prod set (prod gates project).
+          make_latest: false
           generate_release_notes: true

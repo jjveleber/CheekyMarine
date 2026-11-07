@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# Drops sudo options (-u USER, -E, -H, -n, --preserve-env=..., --) and runs the command as the
+# current user, shims still on PATH.
+. "$(dirname "$0")/_shim.sh"
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -u|-g) shift 2 ;;
+    --) shift; break ;;
+    -*) shift ;;
+    *) break ;;
+  esac
+done
+exec "$@"

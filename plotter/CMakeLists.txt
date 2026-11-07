@@ -2,6 +2,9 @@ cmake_minimum_required(VERSION 3.25)
 
 # The app's semver, independent of the root project's (n2kd) version.
 set(PLOTTER_VERSION 0.1.0)
+# The pack manifest schemas this app accepts, inclusive.
+set(PLOTTER_PACK_SCHEMA_MIN 1)
+set(PLOTTER_PACK_SCHEMA_MAX 1)
 
 find_package(Qt6 6.5 REQUIRED COMPONENTS Core Gui Network Sql Quick QuickControls2 Svg)
 option(CM_PLOTTER_TESTS "Build the plotter tests (needs Qt Test and QuickTest)" ON)
@@ -50,6 +53,9 @@ target_include_directories(plottercore PUBLIC
     ${CMAKE_CURRENT_BINARY_DIR}/generated
     ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(plottercore PUBLIC Qt6::Core Qt6::Gui Qt6::Network Qt6::Sql)
+target_compile_definitions(plottercore PRIVATE
+    PLOTTER_PACK_SCHEMA_MIN=${PLOTTER_PACK_SCHEMA_MIN}
+    PLOTTER_PACK_SCHEMA_MAX=${PLOTTER_PACK_SCHEMA_MAX})
 
 if(CM_PLOTTER_TESTS)
     # plotter_add_test(NAME SOURCES...): Qt Test executable linked to plottercore, run by ctest.
@@ -58,7 +64,9 @@ if(CM_PLOTTER_TESTS)
         target_link_libraries(${name} PRIVATE plottercore Qt6::Test)
         target_compile_definitions(${name} PRIVATE
             PLOTTER_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures"
-            PLOTTER_EXPECTED_VERSION="${PLOTTER_VERSION}")
+            PLOTTER_EXPECTED_VERSION="${PLOTTER_VERSION}"
+            PLOTTER_PACK_SCHEMA_MIN=${PLOTTER_PACK_SCHEMA_MIN}
+            PLOTTER_PACK_SCHEMA_MAX=${PLOTTER_PACK_SCHEMA_MAX})
         set_target_properties(${name} PROPERTIES AUTOMOC ON)
         add_test(NAME ${name} COMMAND ${name})
         set_tests_properties(${name} PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
@@ -121,6 +129,13 @@ set_target_properties(cheekyplotter PROPERTIES AUTOMOC ON)
 # The linker drops Qt6::Sql (nothing in the app uses it directly) and RUNPATH is not searched for the
 # dependencies of libQMapLibre.so, so emit a classic RPATH, which is.
 target_link_options(cheekyplotter PRIVATE -Wl,--disable-new-dtags)
+# The relocatable bundle (scripts/bundle-plotter.sh) puts Qt and libQMapLibre in lib/ next to bin/.
+# cmake --install rewrites the build RPATH in place, so it stays a classic RPATH; the build-tree
+# binary keeps its build RPATH for the tests.
+set_target_properties(cheekyplotter PROPERTIES
+    INSTALL_RPATH "\$ORIGIN/../lib"
+    INSTALL_RPATH_USE_LINK_PATH OFF)
+install(TARGETS cheekyplotter RUNTIME DESTINATION bin)
 
 if(CM_PLOTTER_TESTS)
     # QuickTest runner: runs every tests/qml/tst_*.qml against the CheekyMarine module, offscreen.
