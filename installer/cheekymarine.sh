@@ -407,7 +407,9 @@ as_user() {
   if [ -S "$bus" ]; then
     sudo -u "$CM_USER" -H env "DBUS_SESSION_BUS_ADDRESS=unix:path=$bus" "$@"
   else
-    sudo -u "$CM_USER" -H dbus-run-session -- "$@"
+    # The caller's XDG dirs (kept by some sudo setups) belong to another user: drop them.
+    sudo -u "$CM_USER" -H env -u XDG_RUNTIME_DIR -u XDG_CONFIG_HOME -u XDG_DATA_HOME -u XDG_CACHE_HOME \
+      dbus-run-session -- "$@"
   fi
 }
 
