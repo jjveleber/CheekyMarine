@@ -123,7 +123,7 @@ QList<PackInfo> PackCatalog::scan(const QString& dir) {
             p.refused = QStringLiteral("schema missing");
         } else if (!schema.isDouble()) {
             p.refused = QStringLiteral("schema is not a number");
-        } else if (schema.toDouble() != 1) {
+        } else if (schema.toDouble() < PLOTTER_PACK_SCHEMA_MIN || schema.toDouble() > PLOTTER_PACK_SCHEMA_MAX) {
             p.refused = QStringLiteral("schema %1 not supported").arg(schema.toDouble());
         } else if (mo.value(QStringLiteral("pack")).toString() != p.kind
                    || mo.value(QStringLiteral("region")).toString() != p.region

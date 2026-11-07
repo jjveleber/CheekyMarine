@@ -48,6 +48,11 @@ Item {
             }
 
             Heading { text: "CheekyMarine plotter " + page.appInfo.appVersion }
+            Line {
+                objectName: "aboutSet"
+                text: page.appInfo.setVersion !== "" ? "Set: cheekymarine " + page.appInfo.setVersion
+                                                     : "Set: none (not installed from a set)"
+            }
             Line { text: "n2kd: " + (page.appInfo.daemonVersion !== "" ? page.appInfo.daemonVersion : "not connected") }
 
             Heading { text: "Packs in use" }

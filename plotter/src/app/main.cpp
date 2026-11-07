@@ -256,7 +256,8 @@ int main(int argc, char* argv[]) {
     // The controller adds its own refusals (a style it cannot use) to the scan's.
     for (const PackInfo& p : chart.packs())
         if (!p.refused.isEmpty()) qWarning() << "pack refused:" << p.dir << p.refused;
-    AppInfo appInfo(chart.packs());
+    // sets/<v>/plotter/bin/ up two: the lock of the set this binary belongs to.
+    AppInfo appInfo(chart.packs(), readSetVersion(QCoreApplication::applicationDirPath() + "/../../cheekymarine.lock"));
     connectAppInfo(client, appInfo);
     // The active track always draws, the finished ones when shown.
     if (cli.isSet(seedTrackOpt)) chart.setSeedTrack(syntheticTrack(seedN));

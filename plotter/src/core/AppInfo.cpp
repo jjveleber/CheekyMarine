@@ -1,6 +1,8 @@
 #include "AppInfo.h"
 #include "N2kClient.h"
 #include "plotter/Version.h"
+#include <QFile>
+#include <QSettings>
 
 namespace {
 QVariantMap summary(const PackInfo& p) {
@@ -8,7 +10,8 @@ QVariantMap summary(const PackInfo& p) {
 }
 } // namespace
 
-AppInfo::AppInfo(const QList<PackInfo>& packs, QObject* parent) : QObject(parent) {
+AppInfo::AppInfo(const QList<PackInfo>& packs, const QString& setVersion, QObject* parent)
+    : QObject(parent), m_setVersion(setVersion) {
     // The same choice as ChartController: the best charts pack, and the best bathy pack of its region.
     const auto charts = PackCatalog::best(packs, u"charts");
     const auto bathy = charts ? PackCatalog::best(packs, u"bathy", charts->region) : std::nullopt;
@@ -20,6 +23,13 @@ AppInfo::AppInfo(const QList<PackInfo>& packs, QObject* parent) : QObject(parent
         m.insert("inUse", (charts && p.dir == charts->dir) || (bathy && p.dir == bathy->dir));
         m_packs.append(m);
     }
+}
+
+QString readSetVersion(const QString& lockPath) {
+    if (!QFile::exists(lockPath)) return {};
+    const QSettings lock(lockPath, QSettings::IniFormat);
+    return lock.value(QStringLiteral("schema")).toString() == QLatin1String("1")
+               ? lock.value(QStringLiteral("set")).toString() : QString();
 }
 
 QString AppInfo::appVersion() const { return QString::fromLatin1(kPlotterVersion); }
