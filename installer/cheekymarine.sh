@@ -399,6 +399,122 @@ start_plotter() {
   fi
 }
 
+# as_user CMD...: run CMD as the desktop user, on that user's session bus when its socket exists,
+# else inside a throwaway session bus (dbus-run-session).
+as_user() {
+  local bus
+  bus=$(p "/run/user/$(id -u "$CM_USER")/bus")
+  if [ -S "$bus" ]; then
+    sudo -u "$CM_USER" -H env "DBUS_SESSION_BUS_ADDRESS=unix:path=$bus" "$@"
+  else
+    sudo -u "$CM_USER" -H dbus-run-session -- "$@"
+  fi
+}
+
+# gset SCHEMA KEY VALUE: set a desktop setting as the user and read it back; die on a mismatch.
+# VALUE is the literal form `gsettings get` prints (uint32 0, false, 'nothing').
+gset() {
+  local got
+  as_user gsettings set "$1" "$2" "$3"
+  got=$(as_user gsettings get "$1" "$2")
+  [ "$got" = "$3" ] || die "could not set $1 $2 to $3 (it reads $got)"
+}
+
+# ask QUESTION: ask on the terminal (fd 3, opened once per run). Returns 0 for y or yes (any case),
+# 1 for anything else, 2 when there is no terminal (the open failed; stays failed for the run).
+CM_TTY_STATE=
+ask() {
+  local ans
+  if [ -z "$CM_TTY_STATE" ]; then
+    if { exec 3< "${CM_TTY:-/dev/tty}"; } 2> /dev/null; then CM_TTY_STATE=open; else CM_TTY_STATE=failed; fi
+  fi
+  [ "$CM_TTY_STATE" = open ] || return 2
+  printf '%s ' "$1"
+  ans=
+  read -r ans <&3 || true
+  case "${ans,,}" in y | yes) return 0 ;; *) return 1 ;; esac
+}
+
+# ini_get FILE SECTION KEY: the value of KEY in [SECTION] (commented lines ignored, spaces around
+# = ignored); prints nothing when absent.
+ini_get() {
+  awk -v sec="$2" -v key="$3" '
+    /^[ \t]*[#;]/ { next }
+    /^[ \t]*\[/ { s = $0; gsub(/^[ \t]*\[|\][ \t]*$/, "", s); in_s = (s == sec); next }
+    in_s {
+      i = index($0, "=")
+      if (i == 0) next
+      k = substr($0, 1, i - 1); v = substr($0, i + 1)
+      gsub(/^[ \t]+|[ \t]+$/, "", k); gsub(/^[ \t]+|[ \t]+$/, "", v)
+      if (k == key) { print v; exit }
+    }' "$1"
+}
+
+# ini_set FILE SECTION KEY VALUE: set KEY=VALUE in [SECTION]: replace the key in place when present,
+# else add it just after the section header, else add the section at the end. Other lines stay as
+# they are. Two passes: the first finds out whether the key is already there.
+ini_set() {
+  local f=$1 tmp
+  tmp=$f.tmp.$$
+  awk -v sec="$2" -v key="$3" -v val="$4" '
+    function parse(line) {
+      if (line ~ /^[ \t]*[#;]/) return 0
+      if (line ~ /^[ \t]*\[/) { s = line; gsub(/^[ \t]*\[|\][ \t]*$/, "", s); in_s = (s == sec); hdr = 1; return 1 }
+      hdr = 0
+      return 1
+    }
+    function is_key(line,   i, k) {
+      i = index(line, "=")
+      if (i == 0) return 0
+      k = substr(line, 1, i - 1); gsub(/^[ \t]+|[ \t]+$/, "", k)
+      return k == key
+    }
+    NR == FNR { if (parse($0)) { if (hdr) seen = seen || in_s; else if (in_s && is_key($0)) found = 1 } next }
+    FNR == 1 { in_s = 0 }
+    {
+      if (!parse($0)) { print; next }
+      if (hdr) { print; if (in_s && !found) print key "=" val; next }
+      if (in_s && is_key($0)) { print key "=" val; next }
+      print
+    }
+    END { if (!seen) { if (NR > 0) print ""; print "[" sec "]"; print key "=" val } }
+  ' "$f" "$f" > "$tmp"
+  chmod --reference="$f" "$tmp"
+  mv -T "$tmp" "$f"
+}
+
+# desktop_settings: blanking, dimming and sleep off always; auto-login and the lock screen only
+# after a yes at the terminal (no terminal or "no": leave it and print the command).
+desktop_settings() {
+  local conf cmd
+  gset org.gnome.desktop.session idle-delay 'uint32 0'
+  gset org.gnome.settings-daemon.plugins.power idle-dim false
+  gset org.gnome.settings-daemon.plugins.power sleep-inactive-ac-type "'nothing'"
+  gset org.gnome.settings-daemon.plugins.power sleep-inactive-battery-type "'nothing'"
+
+  conf=$(p /etc/gdm3/custom.conf)
+  if [ -f "$conf" ] && [ "$(ini_get "$conf" daemon AutomaticLoginEnable)" = true ] \
+    && [ "$(ini_get "$conf" daemon AutomaticLogin)" = "$CM_USER" ]; then
+    :
+  elif ask "Turn on automatic login for $CM_USER? Anyone who opens this tablet gets your desktop with no password. [y/N]"; then
+    [ -f "$conf" ] || { mkdir -p "$(dirname "$conf")"; : > "$conf"; }
+    ini_set "$conf" daemon AutomaticLoginEnable true
+    ini_set "$conf" daemon AutomaticLogin "$CM_USER"
+  else
+    cmd="sudo sed -i '/^\\[daemon\\]/a AutomaticLoginEnable=true\\nAutomaticLogin=$CM_USER' /etc/gdm3/custom.conf"
+    printf 'Left as it is. To change it later: %s\n' "$cmd"
+  fi
+
+  if [ "$(as_user gsettings get org.gnome.desktop.screensaver lock-enabled)" = false ]; then
+    :
+  elif ask "Turn off the lock screen? The screen will not ask for your password after it wakes. [y/N]"; then
+    gset org.gnome.desktop.screensaver lock-enabled false
+    gset org.gnome.desktop.screensaver ubuntu-lock-on-suspend false
+  else
+    printf 'Left as it is. To change it later: sudo -u %s gsettings set org.gnome.desktop.screensaver lock-enabled false && sudo -u %s gsettings set org.gnome.desktop.screensaver ubuntu-lock-on-suspend false\n' "$CM_USER" "$CM_USER"
+  fi
+}
+
 # label_get KEY: KEY (set or plotter) from db-label, empty when there is no label.
 label_get() {
   local f
@@ -551,7 +667,7 @@ cmd_install() {
   install_launcher
   install_autostart
   install_can0
-  # Task 6: the desktop settings (auto-login, lock screen, blanking) go here, before the switch.
+  desktop_settings
   switch_to "$CM_SET_DIR"
   prune_sets
   cmd_version

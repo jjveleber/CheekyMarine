@@ -34,6 +34,7 @@ GSETTINGS_DEFAULTS = {
     ("org.gnome.settings-daemon.plugins.power", "sleep-inactive-ac-type"): "'suspend'",
     ("org.gnome.settings-daemon.plugins.power", "sleep-inactive-battery-type"): "'suspend'",
     ("org.gnome.desktop.screensaver", "lock-enabled"): "true",
+    ("org.gnome.desktop.screensaver", "ubuntu-lock-on-suspend"): "true",
 }
 
 

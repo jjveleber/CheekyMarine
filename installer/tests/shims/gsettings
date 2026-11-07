@@ -4,6 +4,8 @@
 # 'string'). An unknown key exits 1, as real gsettings does.
 . "$(dirname "$0")/_shim.sh"
 verb=$1 schema=$2 key=$3
+# Record the session bus address a call ran with (empty when none) for tests.
+printf '%s\n' "${DBUS_SESSION_BUS_ADDRESS:-}" >> "$STATE/gsettings-bus"
 cur=$(awk -F'\t' -v s="$schema" -v k="$key" '$1==s && $2==k {print $3; f=1} END {exit !f}' "$STATE/gsettings") ||
   { echo "No such key \"$key\"" >&2; exit 1; }
 case "$verb" in
