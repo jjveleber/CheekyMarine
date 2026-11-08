@@ -11,6 +11,7 @@
 #include <optional>
 
 struct Depths;
+struct OwnShipOptions;
 class Settings;
 class VesselModel;
 class AisModel;
@@ -59,6 +60,9 @@ public:
     // or a style that cannot be read or rewritten). The About page lists this, not the scan.
     QList<PackInfo> packs() const { return m_packs; }
 
+    // The own-ship line switches and COG line length from the settings.
+    OwnShipOptions ownShipOptions() const;
+
     // Runtime images by id (OverlayIds), added now if a style is loaded and after every load.
     void setImages(const QHash<QString, QImage>& images);
     // The finished visible tracks (cm-tracks) and the track being recorded (cm-track-active): a
@@ -106,6 +110,8 @@ private:
     Depths currentDepths() const;
     void onVessel();
     void pushAis();
+    void pushOwnShip();
+    void applyTrackStyle();
     void refreshSelection();
     void applyCamera();
 

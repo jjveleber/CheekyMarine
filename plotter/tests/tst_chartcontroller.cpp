@@ -72,6 +72,14 @@ public:
         calls << "filter:" + layer;
         filters[layer] = filter;
     }
+    void setPaintProperty(const QString& layer, const QString& property, const QJsonValue& value) override {
+        calls << "paint:" + layer + ":" + property;
+        patch(layer, "paint", property, value);
+    }
+    void setLayoutProperty(const QString& layer, const QString& property, const QJsonValue& value) override {
+        calls << "layout:" + layer + ":" + property;
+        patch(layer, "layout", property, value);
+    }
     void setGeoJson(const QString& source, const QJsonObject& fc) override {
         calls << "geojson:" + source;
         sources[source] = fc;
@@ -103,6 +111,17 @@ public:
     double viewportHeight() const override { return height; }
     QPointF toScreen(double lat, double lon) const override {
         return {(lon + 122.23) * 10000.0 + 512, (47.98 - lat) * 10000.0 + 300};
+    }
+
+    // A null value resets the property to the style default (removes it).
+    void patch(const QString& layer, const QString& group, const QString& property, const QJsonValue& value) {
+        if (!layers.contains(layer)) return;
+        QJsonObject l = layers[layer];
+        QJsonObject g = l[group].toObject();
+        if (value.isNull()) g.remove(property);
+        else g[property] = value;
+        l[group] = g;
+        layers[layer] = l;
     }
 
     void loaded() { emit styleLoaded(); }
@@ -223,7 +242,7 @@ void checkOverlays(const FakeChartMap& map) {
     const int nStyle = styleLayerCount(map.styles.last());
     QCOMPARE(map.layerIds.mid(nStyle),
              QStringList({"cm-tracks-line", "cm-track-active-line", "cm-ais-vector", "cm-ais-icon", "cm-own-heading",
-                          "cm-own-cog", "cm-own-boat"}));
+                          "cm-own-cog", "cm-own-cog-tip", "cm-own-boat"}));
     for (int i = nStyle; i < map.layerIds.size(); ++i)
         QVERIFY2(kSources.contains(map.layerSrc.value(map.layerIds[i])), qPrintable(map.layerIds[i]));
     QCOMPARE(map.layerIds.size() - nStyle, map.layerSrc.size()); // no runtime layer below a style layer
@@ -471,6 +490,157 @@ private slots:
         QCOMPARE(r.map.calls.filter(QRegularExpression("^layer:")).size(), layersPerLoad);
         for (const QString& id : kImageIds) QCOMPARE(r.map.count("image:" + id), 1);
         QCOMPARE(r.map.toScreen(47.98, -122.23), QPointF(512, 300));
+    }
+
+    void cogTipLayerAboveCog() {
+        Rig r(true, true);
+        QVERIFY(r.settings);
+        r.make();
+        const int cog = r.map.layerIds.indexOf("cm-own-cog");
+        QVERIFY(cog >= 0);
+        QCOMPARE(r.map.layerIds.at(cog + 1), QStringLiteral("cm-own-cog-tip"));
+        QCOMPARE(r.map.layerIds.at(cog + 2), QStringLiteral("cm-own-boat"));
+        const QJsonObject tip = r.map.layers.value("cm-own-cog-tip");
+        QCOMPARE(tip["type"].toString(), QStringLiteral("symbol"));
+        QCOMPARE(tip["source"].toString(), OverlayIds::kOwnSource);
+        QCOMPARE(tip["layout"].toObject()["icon-image"].toString(), OverlayIds::kCogTipImage);
+        QCOMPARE(tip["layout"].toObject()["icon-rotation-alignment"].toString(), QStringLiteral("map"));
+    }
+
+    void headingAndCogSettingsRepushOwnShip() {
+        Rig r;
+        QVERIFY(r.settings);
+        r.make();
+        r.map.loaded();
+        VesselState v = boat();
+        v.hdgRad = 0.5;
+        v.hdgRef = "True";
+        v.cogRad = 0.5;
+        v.sogMs = 5.0;
+        r.vessel.setState(v);
+        const auto kinds = [&] {
+            QStringList k;
+            for (const auto& f : r.map.sources.value(OverlayIds::kOwnSource)["features"].toArray())
+                k << f.toObject()["properties"].toObject()["kind"].toString();
+            return k;
+        };
+        const auto cogLenM = [&] {
+            for (const auto& f : r.map.sources.value(OverlayIds::kOwnSource)["features"].toArray()) {
+                const QJsonObject o = f.toObject();
+                if (o["properties"].toObject()["kind"].toString() != "cog") continue;
+                const QJsonArray c = o["geometry"].toObject()["coordinates"].toArray();
+                const auto at = [&](int i) {
+                    return LatLon{c.at(i).toArray().at(1).toDouble(), c.at(i).toArray().at(0).toDouble()};
+                };
+                return distanceM(at(0), at(1));
+            }
+            return -1.0;
+        };
+        QVERIFY(kinds().contains("heading"));
+        QVERIFY(kinds().contains("cog"));
+        QVERIFY(kinds().contains("cogtip"));
+        QVERIFY(std::abs(cogLenM() - 300.0) < 3.0); // 1 min default
+        r.map.calls.clear();
+        r.settings->setShowHeadingLine(false);
+        QVERIFY(!kinds().contains("heading"));
+        QVERIFY(kinds().contains("cog"));
+        r.settings->setCogLineMin(5);
+        QVERIFY(std::abs(cogLenM() - 1500.0) < 15.0); // SOG x 300 s
+        r.settings->setShowCogLine(false);
+        QVERIFY(!kinds().contains("cog"));
+        QVERIFY(!kinds().contains("cogtip"));
+        QCOMPARE(r.map.count("style"), 0);
+    }
+
+    void trackStyleFromSettings_data() {
+        QTest::addColumn<QString>("type");
+        QTest::addColumn<QString>("dash");
+        QTest::addColumn<QString>("cap");
+        QTest::newRow("solid") << "solid" << "" << "butt";
+        QTest::newRow("dashed") << "dashed" << "[4,2]" << "butt";
+        QTest::newRow("dotted") << "dotted" << "[0.1,2]" << "round";
+        QTest::newRow("dashdot") << "dashdot" << "[4,2,0.1,2]" << "round";
+    }
+    void trackStyleFromSettings() {
+        QFETCH(QString, type);
+        QFETCH(QString, dash);
+        QFETCH(QString, cap);
+        const QStringList ids{"cm-tracks-line", "cm-track-active-line"};
+        const auto check = [&](Rig& r, const QString& t, const QString& d, const QString& c, const QString& colour) {
+            for (const QString& id : ids) {
+                const QJsonObject paint = r.map.layers.value(id)["paint"].toObject();
+                QCOMPARE(paint["line-color"].toString(), colour);
+                if (d.isEmpty()) QVERIFY2(!paint.contains("line-dasharray"), qPrintable(id + " " + t));
+                else QCOMPARE(paint["line-dasharray"], json(d.toUtf8()));
+                QCOMPARE(r.map.layers.value(id)["layout"].toObject()["line-cap"].toString(), c);
+            }
+        };
+        // At load.
+        {
+            Rig r;
+            QVERIFY(r.settings);
+            r.settings->setTrackLineType(type);
+            r.settings->setTrackColor("#123456");
+            r.make();
+            r.map.loaded();
+            check(r, type, dash, cap, "#123456");
+        }
+        // At runtime, then kept over a palette reload.
+        Rig r;
+        QVERIFY(r.settings);
+        r.make();
+        r.map.loaded();
+        r.map.calls.clear();
+        r.settings->setTrackLineType(type);
+        r.settings->setTrackColor("#654321");
+        QCOMPARE(r.map.count("style"), 0);
+        for (const QString& id : ids) {
+            QVERIFY(r.map.calls.contains("paint:" + id + ":line-color"));
+            QVERIFY(r.map.calls.contains("paint:" + id + ":line-dasharray") || type == "dashed");
+            QVERIFY(r.map.calls.contains("layout:" + id + ":line-cap") || type == "dashed");
+        }
+        check(r, type, dash, cap, "#654321");
+        r.ctrl->setPalette("dusk");
+        r.map.loaded();
+        check(r, type, dash, cap, trackColour(QColor("#654321"), "dusk").name());
+    }
+
+    void trackNightIsAmberWhateverChosen() {
+        Rig r;
+        QVERIFY(r.settings);
+        r.settings->setTrackColor("#00ff00");
+        r.make();
+        r.ctrl->setPalette("night");
+        r.map.loaded();
+        for (const char* id : {"cm-tracks-line", "cm-track-active-line"})
+            QCOMPARE(r.map.layers.value(id)["paint"].toObject()["line-color"].toString(),
+                     overlayColours("night").track.name());
+    }
+
+    void displaySettingsBeforeReadyApplyOnLoad() {
+        Rig r; // styleLoaded not yet emitted
+        QVERIFY(r.settings);
+        r.make();
+        r.settings->setShowHeadingLine(false);
+        r.settings->setShowCogLine(false);
+        r.settings->setCogLineMin(5);
+        r.settings->setTrackLineType("dotted");
+        r.settings->setTrackColor("#00ff00");
+        VesselState v = boat();
+        v.hdgRad = 0.5;
+        v.hdgRef = "True";
+        v.cogRad = 0.5;
+        v.sogMs = 5.0;
+        r.vessel.setState(v);
+        QCOMPARE(r.map.count("paint:cm-tracks-line:line-color"), 0);
+        r.map.loaded();
+        for (const char* id : {"cm-tracks-line", "cm-track-active-line"}) {
+            const QJsonObject l = r.map.layers.value(id);
+            QCOMPARE(l["paint"].toObject()["line-color"].toString(), QStringLiteral("#00ff00"));
+            QCOMPARE(l["paint"].toObject()["line-dasharray"], json("[0.1,2]"));
+            QCOMPARE(l["layout"].toObject()["line-cap"].toString(), QStringLiteral("round"));
+        }
+        QCOMPARE(r.map.sources.value(OverlayIds::kOwnSource)["features"].toArray().size(), 1); // boat only
     }
 
     void northUpCentresOnBoat() {

@@ -18,6 +18,8 @@ public:
 
     void setStyleJson(const QByteArray& style) override;
     void setLayerFilter(const QString& layer, const QJsonValue& filter) override;
+    void setPaintProperty(const QString& layer, const QString& property, const QJsonValue& value) override;
+    void setLayoutProperty(const QString& layer, const QString& property, const QJsonValue& value) override;
     void setGeoJson(const QString& source, const QJsonObject& featureCollection) override;
     void addImage(const QString& id, const QImage& image) override;
     void addLayer(const QJsonObject& layer) override;
