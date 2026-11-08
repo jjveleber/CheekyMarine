@@ -25,6 +25,9 @@ TestCase {
                                            { abbr: "Sh", meaning: "shells", kind: "type" },
                                            { abbr: "bk", meaning: "broken", kind: "qualifier" }]
         property var legend: fullLegend
+        property string palette: "day"
+        property string spriteBase: ""
+        property var legendCategories: [] // set in init()
         property var aisSelection: ({})
         property var selected: [] // selectAt calls: {x, y, r}
         property var targetPoint: null // targetAt resolves a target within r of this point only
@@ -68,6 +71,33 @@ TestCase {
     Component { id: spyComp; SignalSpy {} }
     Component { id: aisSheetComp; AisSheet {} }
 
+    // A legend row as ChartController.legendCategories gives it, with `extra` over the blank fields.
+    function legendRow(kind, label, extra) {
+        return Object.assign({ label: label, note: "", kind: kind, color: "", sprite: "", tint: "", iconSize: 1,
+                               dash: [], width: 0, text: "", depthFrom: "", depthTo: "", layers: [] }, extra || {})
+    }
+    function fullCategories() {
+        return [
+            { id: "ais", title: "AIS targets", needsPack: false, rows: [
+                legendRow("overlay", "Class A", { sprite: "cm-ais-a" }),
+                legendRow("line", "Course vector", { color: "#000000", width: 1.5 }) ] },
+            { id: "lights", title: "Lights", needsPack: true, rows: [] },
+            { id: "hazards", title: "Hazards", needsPack: false, rows: [
+                legendRow("sprite", "Rock", { note: "Underwater or awash rock.", sprite: "hazard-rock-day" }),
+                legendRow("sprite", "Restricted area ticks", { sprite: "resare-tick", tint: "#C040C0", iconSize: 0.8 }),
+                legendRow("line", "Hazard area edge", { color: "#444444", width: 1, dash: [1, 2] }) ] },
+            { id: "depths", title: "Depths, areas and lines", needsPack: false, rows: [
+                legendRow("swatch", "Very shallow", { color: "#73B6E6", depthFrom: "0", depthTo: "shallow" }),
+                legendRow("swatch", "Shallow", { color: "#98C5F2", depthFrom: "shallow", depthTo: "safety" }),
+                legendRow("swatch", "Medium", { color: "#BAD5E1", depthFrom: "safety", depthTo: "deep" }),
+                legendRow("swatch", "Deep", { color: "#FFFFFF", depthFrom: "deep", depthTo: "" }),
+                legendRow("swatch", "Land", { color: "#E0D0A0" }),
+                legendRow("text", "Sounding, shallow", { color: "#000000", text: "8" }) ] },
+            { id: "seabed", title: "Seabed", needsPack: false,
+              rows: chartStub.fullLegend.map(e => legendRow("seabed", e.meaning, { text: e.abbr })) }
+        ]
+    }
+
     readonly property string twoColumns: "2x2:0,0,1,2;1,0,1,2"
     readonly property string quad: "2x2:0,0,1,1;1,0,1,1;0,1,1,1;1,1,1,1"
     readonly property string tallLeft: "2x3:0,0,1,3;1,0,1,1;1,1,1,1;1,2,1,1"
@@ -76,6 +106,7 @@ TestCase {
         failOnWarning(/.*/)
         fixture.reset()
         chartStub.legend = chartStub.fullLegend
+        chartStub.legendCategories = fullCategories()
         chartStub.follow = true
         chartStub.noPosition = false
         chartStub.fishAvailable = true
@@ -92,8 +123,11 @@ TestCase {
     function makeChart(props) {
         const chart = createTemporaryObject(chartPageComp, testCase, Object.assign({
             width: 1280 - Units.mm(17), height: 800,
-            chart: chartStub, chartMap: createTemporaryObject(mapStub, testCase), draft: fixture.draft }, props || {}))
+            chart: chartStub, chartMap: createTemporaryObject(mapStub, testCase), draft: fixture.draft,
+            settings: fixture.settings }, props || {}))
         verify(chart, "ChartPage")
+        // No legend images: the stub provider's empty image is the only one the tests ask for.
+        H.byName(chart, "legendSheet").imageBase = ""
         return chart
     }
     function makeCells(props) {
@@ -164,6 +198,25 @@ TestCase {
         verify(!sheet.visible)
     }
 
+    // The shown legend rows, top to bottom.
+    function shownRows(sheet) {
+        waitForRendering(sheet)
+        return H.findAll(sheet, it => it.objectName === "legendRow" && it.visible)
+            .sort((a, b) => H.box(a, sheet).y - H.box(b, sheet).y)
+    }
+    function openLegend(chart) {
+        H.byName(chart, "legendButton").clicked()
+        const sheet = H.byName(chart, "legendSheet")
+        verify(sheet.visible)
+        return sheet
+    }
+    function tapHeader(sheet, id) {
+        const h = H.byName(sheet, "legendHeader-" + id)
+        verify(h, "legendHeader-" + id)
+        waitForRendering(h)
+        mouseClick(h)
+    }
+
     function test_legendSheet() {
         const chart = makeChart()
         const sheet = H.byName(chart, "legendSheet")
@@ -173,18 +226,83 @@ TestCase {
         verify(open && open.isBigButton)
         open.clicked()
         verify(sheet.visible)
-        const rows = H.findAll(sheet, it => it.objectName === "legendRow")
+        compare(H.byName(sheet, "legendTitle").text, "Legend")
+        // One header per category, in order, with its row count; each a 12 mm touch target.
+        const headers = ["ais", "lights", "hazards", "depths", "seabed"].map(id => H.byName(sheet, "legendHeader-" + id))
+        waitForRendering(sheet)
+        compare(headers.map(h => h.text), ["AIS targets (2)", "Lights (0)", "Hazards (3)",
+                                           "Depths, areas and lines (6)", "Seabed (4)"])
+        for (let i = 0; i < headers.length; ++i) {
+            verify(headers[i].height >= Units.mm(12) - 0.5, "header height")
+            if (i > 0) verify(H.box(headers[i], sheet).y > H.box(headers[i - 1], sheet).y, "header order")
+        }
+        fixture.settings.legendOpenIds = ["seabed"]
+        const rows = shownRows(sheet)
         compare(rows.length, chartStub.legend.length)
         for (const r of rows)
             verify(r.height >= Units.mm(12), "row height")
-        // The kind reads as a word, not the legend.json key.
-        compare(H.findAll(sheet, it => it.objectName === "legendKind").map(it => it.text).sort(),
-                ["Qualifier", "Type", "Type", "Type"])
+        compare(rows.map(r => r.sampleText).sort(), ["Blds", "Cb", "Sh", "bk"])
         H.checkBigButtons(testCase, Units, sheet)
         const close = H.byName(sheet, "legendCloseButton")
         verify(close)
         close.clicked()
         verify(!sheet.visible)
+    }
+
+    // All start closed; a tap on a header opens it and stores its id, a second tap closes it.
+    function test_legendCollapsed() {
+        const chart = makeChart()
+        const sheet = openLegend(chart)
+        compare(shownRows(sheet).length, 0)
+        tapHeader(sheet, "hazards")
+        compare(shownRows(sheet).map(r => r.label), ["Rock", "Restricted area ticks", "Hazard area edge"])
+        compare(fixture.settings.legendOpenIds, ["hazards"])
+        tapHeader(sheet, "hazards")
+        compare(shownRows(sheet).length, 0)
+        compare(fixture.settings.legendOpenIds, [])
+    }
+
+    // Nav depth bands read in the user's depth unit, from the depth settings, and follow them.
+    function test_legendDepthNotes() {
+        fixture.settings.setDepths(1.8288, 3.048, 9.144)
+        fixture.settings.depthUnit = "ft"
+        fixture.settings.legendOpenIds = ["depths"]
+        const chart = makeChart()
+        const sheet = openLegend(chart)
+        const notes = () => shownRows(sheet).slice(0, 4).map(r => r.noteText)
+        compare(notes(), ["0 to 6 ft", "6 to 10 ft", "10 to 30 ft", "deeper than 30 ft"])
+        fixture.settings.depthUnit = "m"
+        compare(notes(), ["0.0 to 1.8 m", "1.8 to 3.0 m", "3.0 to 9.1 m", "deeper than 9.1 m"])
+        fixture.settings.setDepths(2, 4, 12)
+        compare(notes(), ["0.0 to 2.0 m", "2.0 to 4.0 m", "4.0 to 12.0 m", "deeper than 12.0 m"])
+    }
+
+    function test_legendNeedsPack() {
+        const chart = makeChart()
+        const sheet = openLegend(chart)
+        verify(!H.byName(sheet, "legendNeedsPack-lights").visible)
+        tapHeader(sheet, "lights")
+        const line = H.byName(sheet, "legendNeedsPack-lights")
+        verify(line.visible)
+        compare(line.text, "Needs a charts pack")
+    }
+
+    // A sprite whose image comes back empty (missing or unreadable sheet) keeps its row and label.
+    function test_legendRowWithoutImage() {
+        fixture.settings.legendOpenIds = ["hazards"]
+        const chart = makeChart()
+        const sheet = H.byName(chart, "legendSheet")
+        sheet.imageBase = "image://legend/"
+        openLegend(chart)
+        const rows = shownRows(sheet)
+        compare(rows.map(r => r.label), ["Rock", "Restricted area ticks", "Hazard area edge"])
+        const rock = rows[0]
+        const img = H.byName(rock, "legendImage")
+        verify(img, "the sprite row asks for its image")
+        compare(img.source.toString(), "image://legend/sprite/hazard-rock-day/none")
+        compare(H.byName(rows[1], "legendImage").source.toString(), "image://legend/sprite/resare-tick/C040C0")
+        verify(H.byName(rock, "legendLabel").visible)
+        compare(H.byName(rock, "legendLabel").text, "Rock")
     }
 
     // A tap on the chart (mouse, and touch as on the panel) reaches selectAt with the point in map
@@ -257,12 +375,16 @@ TestCase {
         verify(mapItem.moves > 0)
     }
 
-    // No legend (no pack, or no legend.json): no button that would open a blank sheet.
+    // A legend with no rows at all: no button that would open a blank sheet. Without a pack the
+    // AIS rows still show it.
     function test_legendButtonHiddenWhenLegendEmpty() {
         const chart = makeChart()
         const button = H.byName(chart, "legendButton")
         verify(button.visible)
         chartStub.legend = []
+        chartStub.legendCategories = [fullCategories()[0], { id: "lights", title: "Lights", needsPack: true, rows: [] }]
+        verify(button.visible, "AIS rows without a pack")
+        chartStub.legendCategories = [{ id: "lights", title: "Lights", needsPack: true, rows: [] }]
         verify(!button.visible)
     }
 

@@ -200,6 +200,7 @@ ApplicationWindow {
                     chart: root.chart
                     chartMap: root.chartMap
                     draft: root.draft
+                    settings: root.settings
                     rightInset: tabBar.width
                     barInset: root.width - tabBar.x
                     barShown: tabBar.shown

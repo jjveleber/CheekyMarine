@@ -22,6 +22,10 @@ TestCase {
         property string notice: "NOAA ENC data. Not certified for navigation."
         property bool noPosition: false
         property var legend: [{ abbr: "Blds", meaning: "boulders", kind: "type" }]
+        property string palette: "day"
+        property string spriteBase: ""
+        property var legendCategories: [{ id: "seabed", title: "Seabed", needsPack: false,
+                                          rows: [{ label: "boulders", note: "", kind: "seabed", text: "Blds" }] }]
         property var aisSelection: ({})
         property var zooms: [] // zoomBy calls: log2 deltas
         property var target: undefined // what targetAt resolves

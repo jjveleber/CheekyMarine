@@ -20,6 +20,7 @@ Item {
     required property QtObject chart   // ChartController
     required property Item chartMap    // MapLibreChartMap, created in main.cpp
     required property var draft        // ViewDraft
+    required property QtObject settings // Settings: the legend's open categories and depths
     property real rightInset: 0        // the tab bar strip over the page's right edge
     property real barInset: rightInset // the part of the strip the bar covers now (0 while hidden)
     property bool barShown: true
@@ -381,7 +382,8 @@ Item {
     BigButton {
         objectName: "legendButton"
         anchors { left: cornerArea.left; verticalCenter: cornerArea.verticalCenter }
-        visible: !page.editing && page.barShown && page.chart.legend.length > 0 // an empty legend would open a blank sheet
+        // A legend with no rows would open a blank sheet; AIS rows show even without a pack.
+        visible: !page.editing && page.barShown && page.chart.legendCategories.some(c => c.rows.length > 0)
         text: "Legend"
         onClicked: legendSheet.visible = true
     }
@@ -400,7 +402,14 @@ Item {
     LegendSheet {
         id: legendSheet
         anchors { fill: parent; rightMargin: page.barInset }
-        entries: page.chart.legend
+        categories: page.chart.legendCategories
+        openIds: page.settings.legendOpenIds
+        palette: page.chart.palette
+        depthUnit: page.settings.depthUnit
+        shallowM: page.settings.shallowM
+        safetyM: page.settings.safetyM
+        deepM: page.settings.deepM
+        onOpenIdsRequested: (ids) => page.settings.legendOpenIds = ids
         visible: false
         onClosed: visible = false
     }

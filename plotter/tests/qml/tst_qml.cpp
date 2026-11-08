@@ -13,6 +13,7 @@
 #include <QDateTime>
 #include <QQmlContext>
 #include <QQmlEngine>
+#include <QQuickImageProvider>
 #include <QSqlQuery>
 #include <QTemporaryDir>
 #include <QtQml/qqmlextensionplugin.h>
@@ -20,6 +21,19 @@
 #include <memory>
 
 Q_IMPORT_QML_PLUGIN(CheekyMarinePlugin)
+
+// Stands in for the app's legend provider: every id is an empty (fully transparent) image, as the
+// app's provider gives for a sprite it cannot find.
+class EmptyLegendImages : public QQuickImageProvider {
+public:
+    EmptyLegendImages() : QQuickImageProvider(QQuickImageProvider::Image) {}
+    QImage requestImage(const QString&, QSize* size, const QSize&) override {
+        QImage img(1, 1, QImage::Format_ARGB32);
+        img.fill(Qt::transparent);
+        if (size) *size = img.size();
+        return img;
+    }
+};
 
 class Fixture : public QObject {
     Q_OBJECT
@@ -139,7 +153,10 @@ public slots:
         m_recovery = std::make_unique<Recovery>(m_dir.filePath("broken"), StoreError::Io);
     }
 
-    void qmlEngineAvailable(QQmlEngine* engine) { engine->rootContext()->setContextProperty("fixture", this); }
+    void qmlEngineAvailable(QQmlEngine* engine) {
+        engine->rootContext()->setContextProperty("fixture", this);
+        engine->addImageProvider(QStringLiteral("legend"), new EmptyLegendImages); // the engine owns it
+    }
 
     // Before the application goes: the store needs it to close.
     void cleanupTestCase() {
