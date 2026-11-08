@@ -24,8 +24,20 @@ VesselState seattleAt(const QDateTime& t) {
     return v;
 }
 
-// Night vision rule shared with Theme.qml: nothing but red above 0x20.
-bool nightSafe(const QColor& c) { return c.green() <= 0x20 && c.blue() <= 0x20; }
+// Night vision rule (spec 4.1): amber on black.
+bool amberSafe(const QColor& c) { return c.blue() <= 0x20 && c.green() <= 0.75 * c.red(); }
+
+using ColourField = QColor OverlayColours::*;
+const QList<ColourField> kFields{&OverlayColours::hullFill, &OverlayColours::hullOutline, &OverlayColours::cabin,
+                           &OverlayColours::windshield, &OverlayColours::motor, &OverlayColours::motorOutline,
+                           &OverlayColours::portLight, &OverlayColours::stbdLight, &OverlayColours::aisFill,
+                           &OverlayColours::aisOutline, &OverlayColours::heading, &OverlayColours::cog,
+                           &OverlayColours::aisVector, &OverlayColours::track};
+
+bool near(const QColor& a, const QColor& b) {
+    return std::abs(a.red() - b.red()) <= 8 && std::abs(a.green() - b.green()) <= 8 &&
+           std::abs(a.blue() - b.blue()) <= 8;
+}
 
 struct Rig {
     QTemporaryDir tmp;
@@ -178,48 +190,116 @@ private slots:
         QVERIFY(!timers[0]->isSingleShot());
     }
 
-    void nightOverlayColoursAreRedOnly() {
+    void nightOverlayColoursAreAmber() {
         const OverlayColours c = overlayColours(QStringLiteral("night"));
-        for (const QColor& col : {c.boatFill, c.boatOutline, c.aisFill, c.aisOutline, c.heading, c.cog, c.aisVector,
-                                  c.track})
-            QVERIFY2(nightSafe(col), qPrintable(col.name(QColor::HexArgb)));
+        for (ColourField f : kFields) {
+            const QColor col = c.*f;
+            if (f == &OverlayColours::stbdLight) {
+                QCOMPARE(col, QColor("#20A040"));
+                continue;
+            }
+            QVERIFY2(amberSafe(col), qPrintable(col.name()));
+        }
+        QVERIFY(c.track.red() <= 0xC0 && c.track.green() <= 0x80);
+    }
+
+    void duskIsDayTowardBlack() {
+        const OverlayColours day = overlayColours("day"), dusk = overlayColours("dusk");
+        for (ColourField f : kFields) QCOMPARE(dusk.*f, towardBlack(day.*f, 0.45));
+        QCOMPARE(towardBlack(QColor("#6E99BE"), 0.45), QColor(0x3d, 0x54, 0x69));
+        QCOMPARE(towardBlack(QColor(10, 30, 255), 0.45), QColor(6, 16, 140)); // 5.5 -> 6, 16.5 -> 16 (half to even)
+    }
+
+    void trackColourPerPalette() {
+        const QColor chosen("#444444");
+        QCOMPARE(trackColour(chosen, "day"), chosen);
+        QCOMPARE(trackColour(chosen, "dusk"), towardBlack(chosen, 0.45));
+        QCOMPARE(trackColour(chosen, "night"), overlayColours("night").track);
+        QCOMPARE(trackColour(QColor("#ff0000"), "night"), overlayColours("night").track);
     }
 
     void overlayColoursDifferPerPalette() {
-        QVERIFY(overlayColours("day").boatFill != overlayColours("night").boatFill);
+        QVERIFY(overlayColours("day").hullFill != overlayColours("night").hullFill);
         QVERIFY(overlayColours("dusk").heading != overlayColours("night").heading);
     }
 
-    // Every pixel of every night icon obeys the rule; the boat is drawn in the palette's colours.
-    void nightIconsAreRedOnly() {
-        const auto icons = chartIcons(4.0, QStringLiteral("night"));
-        QCOMPARE(icons.size(), 4);
+    void iconSizes() {
+        const auto icons = chartIcons(4.0, QStringLiteral("day"));
+        QCOMPARE(icons.size(), 5);
+        QCOMPARE(icons.value(OverlayIds::kBoatImage).size(), QSize(36, 36));
+        QCOMPARE(icons.value(OverlayIds::kAisImageA).size(), QSize(24, 24));
+        QCOMPARE(icons.value(OverlayIds::kAisImageB).size(), QSize(18, 18));
+        QCOMPARE(icons.value(OverlayIds::kAisImageHollow).size(), QSize(24, 24));
+        QCOMPARE(icons.value(OverlayIds::kCogTipImage).width(), 16);
+    }
+
+    // Every opaque pixel of every night icon is amber, except blends with the starboard light inside
+    // its bounding box (box x 30..33.5, y 37.5..44.5 of the 40 x 100 boat box).
+    void nightIconsAreAmber() {
+        const double pxPerMm = 12.0;
+        const auto icons = chartIcons(pxPerMm, QStringLiteral("night"));
+        QCOMPARE(icons.size(), 5);
+        const QColor stbd("#20A040");
         for (auto it = icons.cbegin(); it != icons.cend(); ++it) {
             const QImage img = it.value().convertToFormat(QImage::Format_ARGB32);
-            int opaque = 0;
+            const double s = img.height() / 100.0, x0 = (img.width() - 40.0 * s) / 2.0;
+            int opaque = 0, stbdPixels = 0;
             for (int y = 0; y < img.height(); ++y)
                 for (int x = 0; x < img.width(); ++x) {
                     const QColor px = img.pixelColor(x, y);
-                    if (px.alpha() == 0) continue;
+                    if (px.alpha() < 16) continue; // unpremultiplying a faint edge pixel is mostly rounding noise
                     ++opaque;
-                    if (!nightSafe(px))
+                    const bool inLight = it.key() == QLatin1String(OverlayIds::kBoatImage) &&
+                                         x >= x0 + 30 * s - 1 && x <= x0 + 33.5 * s + 1 &&
+                                         y >= 37.5 * s - 1 && y <= 44.5 * s + 1;
+                    if (inLight) {
+                        if (near(px, stbd)) ++stbdPixels;
+                        continue;
+                    }
+                    if (!amberSafe(px))
                         QFAIL(qPrintable(QStringLiteral("%1 pixel %2,%3 is %4")
-                                             .arg(it.key())
-                                             .arg(x)
-                                             .arg(y)
-                                             .arg(px.name(QColor::HexArgb))));
+                                             .arg(it.key()).arg(x).arg(y).arg(px.name(QColor::HexArgb))));
                 }
             QVERIFY2(opaque > 0, qPrintable(it.key()));
+            if (it.key() == QLatin1String(OverlayIds::kBoatImage)) QVERIFY(stbdPixels > 0);
         }
-        const QImage boat = icons.value(OverlayIds::kBoatImage).convertToFormat(QImage::Format_ARGB32);
-        const QColor centre = boat.pixelColor(boat.width() / 2, boat.height() / 2);
-        QCOMPARE(centre.rgb(), overlayColours("night").boatFill.rgb());
     }
 
     void dayIconsUseDayColours() {
+        const auto icons = chartIcons(4.0, QStringLiteral("day"));
+        const QImage boat = icons.value(OverlayIds::kBoatImage).convertToFormat(QImage::Format_ARGB32);
+        QCOMPARE(boat.pixelColor(boat.width() / 2, boat.height() / 2).rgb(), overlayColours("day").cabin.rgb());
+        const QImage ais = icons.value(OverlayIds::kAisImageA).convertToFormat(QImage::Format_ARGB32);
+        QCOMPARE(ais.pixelColor(ais.width() / 2, ais.height() / 2 + 3).rgb(), overlayColours("day").aisFill.rgb());
+    }
+
+    void dayBoatHasHullAndLights() {
         const QImage boat =
-            chartIcons(4.0, QStringLiteral("day")).value(OverlayIds::kBoatImage).convertToFormat(QImage::Format_ARGB32);
-        QCOMPARE(boat.pixelColor(boat.width() / 2, boat.height() / 2).rgb(), overlayColours("day").boatFill.rgb());
+            chartIcons(12.0, QStringLiteral("day")).value(OverlayIds::kBoatImage).convertToFormat(QImage::Format_ARGB32);
+        const OverlayColours d = overlayColours("day");
+        int hull = 0, portL = 0, portR = 0, stbdL = 0, stbdR = 0;
+        const int mid = boat.width() / 2;
+        for (int y = 0; y < boat.height(); ++y)
+            for (int x = 0; x < boat.width(); ++x) {
+                const QColor px = boat.pixelColor(x, y);
+                if (px.alpha() != 255) continue;
+                if (near(px, d.hullFill)) ++hull;
+                if (near(px, d.portLight)) (x < mid ? portL : portR)++;
+                if (near(px, d.stbdLight)) (x < mid ? stbdL : stbdR)++;
+            }
+        QVERIFY(hull > 0);
+        QVERIFY(portL > 0 && portR == 0);
+        QVERIFY(stbdR > 0 && stbdL == 0);
+    }
+
+    void cogTipIsHorizontalBar() {
+        const QImage tip = chartIcons(12.0, QStringLiteral("day")).value(OverlayIds::kCogTipImage)
+                               .convertToFormat(QImage::Format_ARGB32);
+        QCOMPARE(tip.width(), tip.height());
+        const int mid = tip.height() / 2;
+        QCOMPARE(tip.pixelColor(0, mid).rgb(), overlayColours("day").cog.rgb());
+        QCOMPARE(tip.pixelColor(tip.width() - 1, mid).rgb(), overlayColours("day").cog.rgb());
+        QCOMPARE(tip.pixelColor(tip.width() / 2, 0).alpha(), 0);
     }
 };
 

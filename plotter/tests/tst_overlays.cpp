@@ -129,7 +129,7 @@ private slots:
         v.sogMs = 5.0;
         const auto c = byKind(ownShipGeoJson(v), "cog");
         QCOMPARE(c.size(), 1);
-        QVERIFY(std::fabs(distanceM(at(c[0], 0), at(c[0], 1)) - 600.0) < 0.1);
+        QVERIFY(std::fabs(distanceM(at(c[0], 0), at(c[0], 1)) - 300.0) < 0.1); // default 60 s
         QVERIFY(std::fabs(bearingDeg(at(c[0], 0), at(c[0], 1)) - 1.0 * 180 / kPi) < 0.01);
     }
     void slowSogNoCog()
@@ -142,6 +142,68 @@ private slots:
         QCOMPARE(byKind(ownShipGeoJson(v), "cog").size(), 0);
         v.sogMs = 0.2573;
         QCOMPARE(byKind(ownShipGeoJson(v), "cog").size(), 1);
+    }
+    void headingOffLeavesHeadingOut()
+    {
+        VesselState v = base();
+        v.hdgRad = kPi / 2;
+        v.hdgRef = "True";
+        v.cogRad = 1.0;
+        v.sogMs = 5.0;
+        OwnShipOptions o;
+        o.heading = false;
+        const QJsonObject fc = ownShipGeoJson(v, o);
+        QCOMPARE(byKind(fc, "heading").size(), 0);
+        QCOMPARE(byKind(fc, "cog").size(), 1);
+        QCOMPARE(byKind(ownShipGeoJson(v), "heading").size(), 1);
+    }
+    void cogOffLeavesCogAndTipOut()
+    {
+        VesselState v = base();
+        v.cogRad = 1.0;
+        v.sogMs = 5.0;
+        OwnShipOptions o;
+        o.cog = false;
+        const QJsonObject fc = ownShipGeoJson(v, o);
+        QCOMPARE(byKind(fc, "cog").size(), 0);
+        QCOMPARE(byKind(fc, "cogtip").size(), 0);
+    }
+    void cogLengthFollowsTime()
+    {
+        VesselState v = base();
+        v.cogRad = 1.0;
+        v.sogMs = 10.0;
+        OwnShipOptions o;
+        o.cogSecs = 600.0;
+        const auto c = byKind(ownShipGeoJson(v, o), "cog");
+        QCOMPARE(c.size(), 1);
+        QVERIFY(std::fabs(distanceM(at(c[0], 0), at(c[0], 1)) - 6000.0) < 1.0);
+    }
+    void cogTipAtLineEnd_data()
+    {
+        QTest::addColumn<double>("sog");
+        QTest::addColumn<double>("secs");
+        QTest::newRow("short") << 0.26 << 60.0;
+        QTest::newRow("long") << 13.4 << 3600.0;
+    }
+    void cogTipAtLineEnd()
+    {
+        QFETCH(double, sog);
+        QFETCH(double, secs);
+        VesselState v = base();
+        v.cogRad = 1.0;
+        v.sogMs = sog;
+        OwnShipOptions o;
+        o.cogSecs = secs;
+        const QJsonObject fc = ownShipGeoJson(v, o);
+        const auto c = byKind(fc, "cog");
+        const auto t = byKind(fc, "cogtip");
+        QCOMPARE(c.size(), 1);
+        QCOMPARE(t.size(), 1);
+        QCOMPARE(t[0]["geometry"].toObject()["type"].toString(), QString("Point"));
+        const QJsonArray last = c[0]["geometry"].toObject()["coordinates"].toArray()[1].toArray();
+        QCOMPARE(t[0]["geometry"].toObject()["coordinates"].toArray(), last);
+        QVERIFY(std::fabs(rotOf(t[0]) - 1.0 * 180 / kPi) < 1e-9);
     }
     void noPositionNoFeatures()
     {

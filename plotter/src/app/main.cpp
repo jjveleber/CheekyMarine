@@ -1,4 +1,5 @@
 #include "app/Icons.h"
+#include "app/LegendImageProvider.h"
 #include "app/MapLibreChartMap.h"
 #include "core/AisModel.h"
 #include "core/AppInfo.h"
@@ -320,6 +321,10 @@ int main(int argc, char* argv[]) {
                                  {"legendOpen", cli.value(sheetOpt) == "legend"},
                                  {"editorOpen", editorOpen},
                                  {"sheet", cli.value(sheetOpt)}});
+    // The legend's symbols: the shown style's sprite sheet and the chart icons. Both are read per
+    // request, and the palette is in each overlay id, so a palette change needs no refresh here.
+    engine.addImageProvider(QStringLiteral("legend"),
+                            new LegendImageProvider([&chart] { return chart.spriteBase(); }, iconPxPerMm)); // the engine owns it
     engine.loadFromModule("CheekyMarine", "Main");
     if (engine.rootObjects().isEmpty()) {
         qCritical() << "the main QML failed to load";

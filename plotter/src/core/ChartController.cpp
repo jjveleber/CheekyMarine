@@ -1,6 +1,7 @@
 #include "core/ChartController.h"
 #include "core/AisModel.h"
 #include "core/Fields.h"
+#include "core/Legend.h"
 #include "core/DepthFilters.h"
 #include "core/Overlays.h"
 #include "core/Settings.h"
@@ -30,17 +31,49 @@ QJsonObject line(QJsonObject layer, const QColor& colour) {
     return layer;
 }
 
-// Runtime layers, bottom first: tracks, active track, AIS, own ship (topmost), in the palette's overlay colours.
-QList<QJsonObject> runtimeLayers(const OverlayColours& c) {
+// Track line-dasharray for a line type; null (solid) means no dash.
+QJsonValue trackDash(const QString& type) {
+    if (type == QLatin1String("dashed")) return QJsonArray{4, 2};
+    if (type == QLatin1String("dotted")) return QJsonArray{0.1, 2};
+    if (type == QLatin1String("dashdot")) return QJsonArray{4, 2, 0.1, 2};
+    return QJsonValue::Null;
+}
+
+// Dots need round caps to show; dashes and solid lines keep butt caps.
+QString trackCap(const QString& type) {
+    return type == QLatin1String("dotted") || type == QLatin1String("dashdot") ? QStringLiteral("round")
+                                                                               : QStringLiteral("butt");
+}
+
+// A track line layer in `colour` with the dash and cap of `type`.
+QJsonObject trackLayer(const char* json, const QColor& colour, const QString& type) {
+    QJsonObject layer = line(parse(json), colour);
+    QJsonObject paint = layer[QStringLiteral("paint")].toObject();
+    if (const QJsonValue dash = trackDash(type); !dash.isNull()) paint[QStringLiteral("line-dasharray")] = dash;
+    // No dash transition: MapLibre holds the prior dash for the whole transition, builds the line
+    // from it, and does not rebuild when the transition ends (the old dash, or no line for solid).
+    // Delay too, so a root style transition delay cannot bring the stale window back.
+    paint[QStringLiteral("line-dasharray-transition")] =
+        QJsonObject{{QStringLiteral("duration"), 0}, {QStringLiteral("delay"), 0}};
+    layer[QStringLiteral("paint")] = paint;
+    QJsonObject layout = layer[QStringLiteral("layout")].toObject();
+    layout[QStringLiteral("line-cap")] = trackCap(type);
+    layer[QStringLiteral("layout")] = layout;
+    return layer;
+}
+
+// Runtime layers, bottom first: tracks, active track, AIS, own ship (topmost), in the palette's overlay
+// colours; the track layers take `trackColor` (night overrides it) and `trackType`.
+QList<QJsonObject> runtimeLayers(const OverlayColours& c, const QColor& trackColor, const QString& trackType) {
     return {
-        line(parse(R"({"id":"cm-tracks-line","type":"line","source":"cm-tracks",
+        trackLayer(R"({"id":"cm-tracks-line","type":"line","source":"cm-tracks",
             "filter":["==",["get","kind"],"track"],
-            "layout":{"line-join":"round","line-cap":"round"},
-            "paint":{"line-width":2.5}})"), c.track),
-        line(parse(R"({"id":"cm-track-active-line","type":"line","source":"cm-track-active",
+            "layout":{"line-join":"round"},
+            "paint":{"line-width":2.5}})", trackColor, trackType),
+        trackLayer(R"({"id":"cm-track-active-line","type":"line","source":"cm-track-active",
             "filter":["==",["get","kind"],"track"],
-            "layout":{"line-join":"round","line-cap":"round"},
-            "paint":{"line-width":2.5}})"), c.track),
+            "layout":{"line-join":"round"},
+            "paint":{"line-width":2.5}})", trackColor, trackType),
         line(parse(R"({"id":"cm-ais-vector","type":"line","source":"cm-ais",
             "filter":["==",["get","kind"],"aisvec"],
             "paint":{"line-width":1.5}})"), c.aisVector),
@@ -57,6 +90,11 @@ QList<QJsonObject> runtimeLayers(const OverlayColours& c) {
         line(parse(R"({"id":"cm-own-cog","type":"line","source":"cm-own",
             "filter":["==",["get","kind"],"cog"],
             "paint":{"line-width":3,"line-dasharray":[2,1]}})"), c.cog),
+        parse(R"({"id":"cm-own-cog-tip","type":"symbol","source":"cm-own",
+            "filter":["==",["get","kind"],"cogtip"],
+            "layout":{"icon-image":"cm-cog-tip","icon-rotate":["get","rot"],
+                      "icon-rotation-alignment":"map",
+                      "icon-allow-overlap":true,"icon-ignore-placement":true}})"),
         parse(R"({"id":"cm-own-boat","type":"symbol","source":"cm-own",
             "filter":["==",["get","kind"],"boat"],
             "layout":{"icon-image":"cm-boat","icon-rotate":["get","rot"],
@@ -155,10 +193,15 @@ ChartController::ChartController(ChartMap& map, Settings& settings, VesselModel&
         emit orientationChanged();
         applyCamera();
     });
+    for (auto signal : {&Settings::showHeadingLineChanged, &Settings::showCogLineChanged, &Settings::cogLineMinChanged})
+        connect(&m_settings, signal, this, &ChartController::pushOwnShip);
+    connect(&m_settings, &Settings::trackColorChanged, this, &ChartController::applyTrackStyle);
+    connect(&m_settings, &Settings::trackLineTypeChanged, this, &ChartController::applyTrackStyle);
     connect(&m_vessel, &VesselModel::changed, this, &ChartController::onVessel);
     connect(&m_ais, &QAbstractItemModel::modelReset, this, &ChartController::pushAis);
 
     m_map.setZoom(std::clamp(kStartZoom, m_minZoom, m_maxZoom));
+    rebuildLegend(); // AIS only: without a pack loadStyle returns early
     loadStyle();
 }
 
@@ -241,6 +284,13 @@ void ChartController::zoomBy(double log2Delta) {
     applyCamera(); // the lower-third offset depends on the zoom
 }
 
+void ChartController::rebuildLegend() {
+    m_legendCategories = ::legendCategories(m_mode, m_style, m_palette, m_legend);
+    m_spriteBase = m_style[QStringLiteral("sprite")].toString();
+    if (m_spriteBase.startsWith(QLatin1String("file://"))) m_spriteBase.remove(0, 7);
+    emit legendCategoriesChanged();
+}
+
 void ChartController::loadStyle() {
     if (!m_charts) return;
     // Parsed once at start: files that change afterwards are not read again.
@@ -250,6 +300,7 @@ void ChartController::loadStyle() {
         return;
     }
     m_style = m_styles.value(name);
+    rebuildLegend();
     const QString notice = m_style[QStringLiteral("metadata")][QStringLiteral("cheekymarine")]
                                [QStringLiteral("notice")].toString();
     if (notice != m_notice) {
@@ -269,8 +320,10 @@ void ChartController::onStyleLoaded() {
     m_map.setGeoJson(OverlayIds::kTracksSource, tracksGeoJson(m_tracks));
     m_map.setGeoJson(OverlayIds::kActiveTrackSource, tracksGeoJson({m_seedTrack + m_activeTrack}));
     m_map.setGeoJson(OverlayIds::kAisSource, aisGeoJson(m_ais.targets(), m_vessel.state()));
-    m_map.setGeoJson(OverlayIds::kOwnSource, ownShipGeoJson(m_vessel.state()));
-    for (const QJsonObject& layer : runtimeLayers(overlayColours(m_palette))) m_map.addLayer(layer);
+    m_map.setGeoJson(OverlayIds::kOwnSource, ownShipGeoJson(m_vessel.state(), ownShipOptions()));
+    for (const QJsonObject& layer : runtimeLayers(overlayColours(m_palette),
+                                                         trackColour(QColor(m_settings.trackColor()), m_palette),
+                                                         m_settings.trackLineType())) m_map.addLayer(layer);
     m_ready = true;
     applyDepthFilters();
     applyCamera();
@@ -303,9 +356,29 @@ void ChartController::onVessel() {
         m_noPosition = noPos;
         emit noPositionChanged();
     }
-    if (m_ready) m_map.setGeoJson(OverlayIds::kOwnSource, ownShipGeoJson(s));
+    pushOwnShip();
     refreshSelection(); // range and bearing are from the own ship
     applyCamera();
+}
+
+OwnShipOptions ChartController::ownShipOptions() const {
+    return {m_settings.showHeadingLine(), m_settings.showCogLine(), m_settings.cogLineMin() * 60.0};
+}
+
+void ChartController::pushOwnShip() {
+    if (m_ready) m_map.setGeoJson(OverlayIds::kOwnSource, ownShipGeoJson(m_vessel.state(), ownShipOptions()));
+}
+
+// Track color, dash and cap on the two track layers, now; a reload builds them from the settings.
+void ChartController::applyTrackStyle() {
+    if (!m_ready) return;
+    const QColor colour = trackColour(QColor(m_settings.trackColor()), m_palette);
+    const QString type = m_settings.trackLineType();
+    for (const QString& layer : {QStringLiteral("cm-tracks-line"), QStringLiteral("cm-track-active-line")}) {
+        m_map.setPaintProperty(layer, QStringLiteral("line-color"), colour.name());
+        m_map.setPaintProperty(layer, QStringLiteral("line-dasharray"), trackDash(type));
+        m_map.setLayoutProperty(layer, QStringLiteral("line-cap"), trackCap(type));
+    }
 }
 
 void ChartController::pushAis() {

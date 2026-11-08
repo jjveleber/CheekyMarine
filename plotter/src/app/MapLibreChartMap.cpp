@@ -74,6 +74,15 @@ void MapLibreChartPort::setLayerFilter(const QString& layer, const QJsonValue& f
     m_item.map().setFilter(layer, filter.toArray().toVariantList());
 }
 
+// An array goes over as a QVariantList; null as an invalid QVariant (reset to the style default).
+void MapLibreChartPort::setPaintProperty(const QString& layer, const QString& property, const QJsonValue& value) {
+    m_item.map().setPaintProperty(layer, property, value.isNull() ? QVariant() : value.toVariant());
+}
+
+void MapLibreChartPort::setLayoutProperty(const QString& layer, const QString& property, const QJsonValue& value) {
+    m_item.map().setLayoutProperty(layer, property, value.isNull() ? QVariant() : value.toVariant());
+}
+
 void MapLibreChartPort::setGeoJson(const QString& source, const QJsonObject& featureCollection) {
     // `data` must be GeoJSON text as a QByteArray; a QVariantMap is not accepted.
     const QByteArray bytes = QJsonDocument(featureCollection).toJson(QJsonDocument::Compact);

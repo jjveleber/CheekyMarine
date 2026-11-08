@@ -13,6 +13,7 @@
 #include <QDateTime>
 #include <QQmlContext>
 #include <QQmlEngine>
+#include <QQuickImageProvider>
 #include <QSqlQuery>
 #include <QTemporaryDir>
 #include <QtQml/qqmlextensionplugin.h>
@@ -20,6 +21,19 @@
 #include <memory>
 
 Q_IMPORT_QML_PLUGIN(CheekyMarinePlugin)
+
+// Stands in for the app's legend provider: every id is an empty (fully transparent) image, as the
+// app's provider gives for a sprite it cannot find.
+class EmptyLegendImages : public QQuickImageProvider {
+public:
+    EmptyLegendImages() : QQuickImageProvider(QQuickImageProvider::Image) {}
+    QImage requestImage(const QString&, QSize* size, const QSize&) override {
+        QImage img(1, 1, QImage::Format_ARGB32);
+        img.fill(Qt::transparent);
+        if (size) *size = img.size();
+        return img;
+    }
+};
 
 class Fixture : public QObject {
     Q_OBJECT
@@ -56,6 +70,12 @@ public:
         m_settings->setPanelDiagonalIn(10.1);
         m_settings->setOrientation("head");
         m_settings->setTrackRecording(false);
+        m_settings->setShowHeadingLine(true);
+        m_settings->setShowCogLine(true);
+        m_settings->setCogLineMin(1);
+        m_settings->setTrackLineType("dashed");
+        m_settings->setTrackColor("#444444");
+        m_settings->setLegendOpenIds(QStringList());
         for (const TrackInfo& t : m_trackStore->list()) m_trackStore->remove(t.id);
         m_tracksController->refresh();
         m_lock.holdEnd();
@@ -133,7 +153,10 @@ public slots:
         m_recovery = std::make_unique<Recovery>(m_dir.filePath("broken"), StoreError::Io);
     }
 
-    void qmlEngineAvailable(QQmlEngine* engine) { engine->rootContext()->setContextProperty("fixture", this); }
+    void qmlEngineAvailable(QQmlEngine* engine) {
+        engine->rootContext()->setContextProperty("fixture", this);
+        engine->addImageProvider(QStringLiteral("legend"), new EmptyLegendImages); // the engine owns it
+    }
 
     // Before the application goes: the store needs it to close.
     void cleanupTestCase() {

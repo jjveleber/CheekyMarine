@@ -25,6 +25,9 @@ TestCase {
                                            { abbr: "Sh", meaning: "shells", kind: "type" },
                                            { abbr: "bk", meaning: "broken", kind: "qualifier" }]
         property var legend: fullLegend
+        property string palette: "day"
+        property string spriteBase: ""
+        property var legendCategories: [] // set in init()
         property var aisSelection: ({})
         property var selected: [] // selectAt calls: {x, y, r}
         property var targetPoint: null // targetAt resolves a target within r of this point only
@@ -68,6 +71,33 @@ TestCase {
     Component { id: spyComp; SignalSpy {} }
     Component { id: aisSheetComp; AisSheet {} }
 
+    // A legend row as ChartController.legendCategories gives it, with `extra` over the blank fields.
+    function legendRow(kind, label, extra) {
+        return Object.assign({ label: label, note: "", kind: kind, color: "", sprite: "", tint: "", iconSize: 1,
+                               dash: [], width: 0, text: "", depthFrom: "", depthTo: "", layers: [] }, extra || {})
+    }
+    function fullCategories() {
+        return [
+            { id: "ais", title: "AIS targets", needsPack: false, rows: [
+                legendRow("overlay", "Class A", { sprite: "cm-ais-a" }),
+                legendRow("line", "Course vector", { color: "#000000", width: 1.5 }) ] },
+            { id: "lights", title: "Lights", needsPack: true, rows: [] },
+            { id: "hazards", title: "Hazards", needsPack: false, rows: [
+                legendRow("sprite", "Rock", { note: "Underwater or awash rock.", sprite: "hazard-rock-day" }),
+                legendRow("sprite", "Restricted area ticks", { sprite: "resare-tick", tint: "#C040C0", iconSize: 0.8 }),
+                legendRow("line", "Hazard area edge", { color: "#444444", width: 1, dash: [1, 2] }) ] },
+            { id: "depths", title: "Depths, areas and lines", needsPack: false, rows: [
+                legendRow("swatch", "Very shallow", { color: "#73B6E6", depthFrom: "0", depthTo: "shallow" }),
+                legendRow("swatch", "Shallow", { color: "#98C5F2", depthFrom: "shallow", depthTo: "safety" }),
+                legendRow("swatch", "Medium", { color: "#BAD5E1", depthFrom: "safety", depthTo: "deep" }),
+                legendRow("swatch", "Deep", { color: "#FFFFFF", depthFrom: "deep", depthTo: "" }),
+                legendRow("swatch", "Land", { color: "#E0D0A0" }),
+                legendRow("text", "Sounding, shallow", { color: "#000000", text: "8" }) ] },
+            { id: "seabed", title: "Seabed", needsPack: false,
+              rows: chartStub.fullLegend.map(e => legendRow("seabed", e.meaning, { text: e.abbr })) }
+        ]
+    }
+
     readonly property string twoColumns: "2x2:0,0,1,2;1,0,1,2"
     readonly property string quad: "2x2:0,0,1,1;1,0,1,1;0,1,1,1;1,1,1,1"
     readonly property string tallLeft: "2x3:0,0,1,3;1,0,1,1;1,1,1,1;1,2,1,1"
@@ -76,6 +106,7 @@ TestCase {
         failOnWarning(/.*/)
         fixture.reset()
         chartStub.legend = chartStub.fullLegend
+        chartStub.legendCategories = fullCategories()
         chartStub.follow = true
         chartStub.noPosition = false
         chartStub.fishAvailable = true
@@ -92,8 +123,11 @@ TestCase {
     function makeChart(props) {
         const chart = createTemporaryObject(chartPageComp, testCase, Object.assign({
             width: 1280 - Units.mm(17), height: 800,
-            chart: chartStub, chartMap: createTemporaryObject(mapStub, testCase), draft: fixture.draft }, props || {}))
+            chart: chartStub, chartMap: createTemporaryObject(mapStub, testCase), draft: fixture.draft,
+            settings: fixture.settings }, props || {}))
         verify(chart, "ChartPage")
+        // No legend images: the stub provider's empty image is the only one the tests ask for.
+        H.byName(chart, "legendSheet").imageBase = ""
         return chart
     }
     function makeCells(props) {
@@ -164,6 +198,25 @@ TestCase {
         verify(!sheet.visible)
     }
 
+    // The shown legend rows, top to bottom.
+    function shownRows(sheet) {
+        waitForRendering(sheet)
+        return H.findAll(sheet, it => it.objectName === "legendRow" && it.visible)
+            .sort((a, b) => H.box(a, sheet).y - H.box(b, sheet).y)
+    }
+    function openLegend(chart) {
+        H.byName(chart, "legendButton").clicked()
+        const sheet = H.byName(chart, "legendSheet")
+        verify(sheet.visible)
+        return sheet
+    }
+    function tapHeader(sheet, id) {
+        const h = H.byName(sheet, "legendHeader-" + id)
+        verify(h, "legendHeader-" + id)
+        waitForRendering(h)
+        mouseClick(h)
+    }
+
     function test_legendSheet() {
         const chart = makeChart()
         const sheet = H.byName(chart, "legendSheet")
@@ -173,18 +226,102 @@ TestCase {
         verify(open && open.isBigButton)
         open.clicked()
         verify(sheet.visible)
-        const rows = H.findAll(sheet, it => it.objectName === "legendRow")
+        compare(H.byName(sheet, "legendTitle").text, "Legend")
+        // One header per category, in order, with its row count; each a 12 mm touch target.
+        const headers = ["ais", "lights", "hazards", "depths", "seabed"].map(id => H.byName(sheet, "legendHeader-" + id))
+        waitForRendering(sheet)
+        compare(headers.map(h => h.text), ["AIS targets (2)", "Lights (0)", "Hazards (3)",
+                                           "Depths, areas and lines (6)", "Seabed (4)"])
+        for (let i = 0; i < headers.length; ++i) {
+            verify(headers[i].height >= Units.mm(12) - 0.5, "header height")
+            if (i > 0) verify(H.box(headers[i], sheet).y > H.box(headers[i - 1], sheet).y, "header order")
+        }
+        fixture.settings.legendOpenIds = ["seabed"]
+        const rows = shownRows(sheet)
         compare(rows.length, chartStub.legend.length)
         for (const r of rows)
             verify(r.height >= Units.mm(12), "row height")
-        // The kind reads as a word, not the legend.json key.
-        compare(H.findAll(sheet, it => it.objectName === "legendKind").map(it => it.text).sort(),
-                ["Qualifier", "Type", "Type", "Type"])
+        compare(rows.map(r => r.sampleText).sort(), ["Blds", "Cb", "Sh", "bk"])
         H.checkBigButtons(testCase, Units, sheet)
         const close = H.byName(sheet, "legendCloseButton")
         verify(close)
         close.clicked()
         verify(!sheet.visible)
+    }
+
+    // All start closed; a tap on a header opens it and stores its id, a second tap closes it.
+    function test_legendCollapsed() {
+        const chart = makeChart()
+        const sheet = openLegend(chart)
+        compare(shownRows(sheet).length, 0)
+        tapHeader(sheet, "hazards")
+        compare(shownRows(sheet).map(r => r.label), ["Rock", "Restricted area ticks", "Hazard area edge"])
+        compare(fixture.settings.legendOpenIds, ["hazards"])
+        tapHeader(sheet, "hazards")
+        compare(shownRows(sheet).length, 0)
+        compare(fixture.settings.legendOpenIds, [])
+    }
+
+    // Nav depth bands read in the user's depth unit, from the depth settings, and follow them.
+    function test_legendDepthNotes() {
+        fixture.settings.setDepths(1.8288, 3.048, 9.144)
+        fixture.settings.depthUnit = "ft"
+        fixture.settings.legendOpenIds = ["depths"]
+        const chart = makeChart()
+        const sheet = openLegend(chart)
+        const notes = () => shownRows(sheet).slice(0, 4).map(r => r.noteText)
+        compare(notes(), ["0 to 6 ft", "6 to 10 ft", "10 to 30 ft", "deeper than 30 ft"])
+        fixture.settings.depthUnit = "m"
+        compare(notes(), ["0 to 1.8 m", "1.8 to 3.0 m", "3.0 to 9.1 m", "deeper than 9.1 m"])
+        fixture.settings.setDepths(2, 4, 12)
+        compare(notes(), ["0 to 2.0 m", "2.0 to 4.0 m", "4.0 to 12.0 m", "deeper than 12.0 m"])
+    }
+
+    // Fish bands are survey depths: the label is the range in the user's unit, the note a fixed sentence.
+    function test_legendFishBands() {
+        chartStub.legendCategories = [
+            { id: "depths", title: "Depths", needsPack: false, rows: [
+                legendRow("swatch", "", { note: "Fish chart depth band, not a safety depth.", color: "#8EC3E6", depthFrom: "0", depthTo: "9.144" }),
+                legendRow("swatch", "", { note: "Fish chart depth band, not a safety depth.", color: "#F4EEE2", depthFrom: "54.864", depthTo: "" }) ] } ]
+        fixture.settings.depthUnit = "ft"
+        fixture.settings.legendOpenIds = ["depths"]
+        const chart = makeChart()
+        const sheet = openLegend(chart)
+        const rows = () => shownRows(sheet)
+        compare(rows().map(r => r.label), ["0 to 30 ft", "Deeper than 180 ft"])
+        compare(rows().map(r => r.noteText), ["Fish chart depth band, not a safety depth.", "Fish chart depth band, not a safety depth."])
+        fixture.settings.depthUnit = "m"
+        compare(rows().map(r => r.label), ["0 to 9.1 m", "Deeper than 54.9 m"])
+    }
+
+    function test_legendNeedsPack() {
+        const chart = makeChart()
+        const sheet = openLegend(chart)
+        verify(!H.byName(sheet, "legendNeedsPack-lights").visible)
+        tapHeader(sheet, "lights")
+        const line = H.byName(sheet, "legendNeedsPack-lights")
+        verify(line.visible)
+        compare(line.text, "Needs a charts pack")
+    }
+
+    // A sprite whose image comes back empty (missing or unreadable sheet) keeps its row and label.
+    function test_legendRowWithoutImage() {
+        fixture.settings.legendOpenIds = ["hazards"]
+        const chart = makeChart()
+        const sheet = H.byName(chart, "legendSheet")
+        sheet.imageBase = "image://legend/"
+        openLegend(chart)
+        const rows = shownRows(sheet)
+        compare(rows.map(r => r.label), ["Rock", "Restricted area ticks", "Hazard area edge"])
+        const rock = rows[0]
+        const img = H.byName(rock, "legendImage")
+        verify(img, "the sprite row asks for its image")
+        // Once loaded, the image pins its size so a HiDPI screen re-requests at full resolution.
+        tryVerify(() => img.sourceSize.width > 0, 3000)
+        compare(img.source.toString(), "image://legend/sprite/hazard-rock-day/none")
+        compare(H.byName(rows[1], "legendImage").source.toString(), "image://legend/sprite/resare-tick/C040C0")
+        verify(H.byName(rock, "legendLabel").visible)
+        compare(H.byName(rock, "legendLabel").text, "Rock")
     }
 
     // A tap on the chart (mouse, and touch as on the panel) reaches selectAt with the point in map
@@ -257,12 +394,16 @@ TestCase {
         verify(mapItem.moves > 0)
     }
 
-    // No legend (no pack, or no legend.json): no button that would open a blank sheet.
+    // A legend with no rows at all: no button that would open a blank sheet. Without a pack the
+    // AIS rows still show it.
     function test_legendButtonHiddenWhenLegendEmpty() {
         const chart = makeChart()
         const button = H.byName(chart, "legendButton")
         verify(button.visible)
         chartStub.legend = []
+        chartStub.legendCategories = [fullCategories()[0], { id: "lights", title: "Lights", needsPack: true, rows: [] }]
+        verify(button.visible, "AIS rows without a pack")
+        chartStub.legendCategories = [{ id: "lights", title: "Lights", needsPack: true, rows: [] }]
         verify(!button.visible)
     }
 
@@ -855,6 +996,98 @@ TestCase {
         verify(H.byName(page, "aboutButton"))
         compare(H.byName(page, "editOverlaysButton"), null)
         compare(H.byName(page, "row-touchLock"), null)
+    }
+
+    function test_lineToggles() {
+        const page = makeSettings()
+        const h = H.byName(page, "row-showHeadingLine")
+        const c = H.byName(page, "row-showCogLine")
+        compare(h.text, "Heading line: On")
+        tap(h)
+        compare(fixture.settings.showHeadingLine, false)
+        compare(h.text, "Heading line: Off")
+        compare(c.text, "COG line: On")
+        tap(c)
+        compare(fixture.settings.showCogLine, false)
+        compare(c.text, "COG line: Off")
+        tap(c)
+        compare(fixture.settings.showCogLine, true)
+    }
+
+    function test_cogLineMinStepper() {
+        const page = makeSettings()
+        compare(fixture.settings.cogLineMin, 1)
+        compare(H.byName(page, "row-cogLineMin").text, "COG line time: 1 min")
+        tap(H.byName(page, "cogLineMinMinus"))
+        compare(fixture.settings.cogLineMin, 1)
+        for (let i = 0; i < 3; ++i) tap(H.byName(page, "cogLineMinPlus"))
+        compare(fixture.settings.cogLineMin, 4)
+        fixture.settings.cogLineMin = 60
+        tap(H.byName(page, "cogLineMinPlus"))
+        compare(fixture.settings.cogLineMin, 60)
+        compare(H.byName(page, "row-cogLineMin").text, "COG line time: 60 min")
+    }
+
+    function test_cogLineMinHoldRepeats() {
+        const page = makeSettings()
+        const plus = H.byName(page, "cogLineMinPlus")
+        tap(plus) // scroll into view
+        compare(fixture.settings.cogLineMin, 2)
+        mousePress(plus)
+        tryVerify(() => fixture.settings.cogLineMin >= 4, 3000)
+        mouseRelease(plus)
+    }
+
+    function test_trackLineTypeList() {
+        const page = makeSettings()
+        compare(H.byName(page, "row-trackLineType").text, "Track line: Dashed")
+        pick(page, "row-trackLineType", "dotted")
+        compare(fixture.settings.trackLineType, "dotted")
+        compare(H.byName(page, "row-trackLineType").text, "Track line: Dotted")
+        pick(page, "row-trackLineType", "dashdot")
+        compare(H.byName(page, "row-trackLineType").text, "Track line: Dash-dot")
+    }
+
+    function test_trackColorSheet() {
+        fixture.settings.trackColor = "#FF0000"
+        const page = makeSettings()
+        const sheet = H.byName(page, "trackColorSheet")
+        verify(!sheet.visible)
+        tap(H.byName(page, "row-trackColor"))
+        verify(sheet.visible)
+        waitForRendering(sheet)
+        const hue = H.byName(page, "trackColorHue")
+        verify(hue.height >= Units.mm(12) || hue.width >= Units.mm(12))
+        // A drag previews live but writes the setting once, on release (each write is an fsync).
+        const spy = createTemporaryQmlObject('import QtTest; SignalSpy { target: fixture.settings; signalName: "trackColorChanged" }', testCase)
+        mousePress(hue, hue.width / 2, hue.height * 0.5)
+        for (let i = 1; i <= 6; ++i) mouseMove(hue, hue.width / 2, hue.height * (0.5 + 0.03 * i))
+        compare(spy.count, 0)
+        compare(H.byName(page, "trackColorPreview").lineColor.toString() !== "#ff0000", true)
+        mouseRelease(hue, hue.width / 2, hue.height * 0.7)
+        compare(spy.count, 1)
+        spy.destroy()
+        verify(/^#[0-9a-fA-F]{6}$/.test(fixture.settings.trackColor), fixture.settings.trackColor)
+        verify(fixture.settings.trackColor.toLowerCase() !== "#ff0000", "hue drag changed it")
+        // A cancelled drag (the touch grab is lost) writes the last preview too.
+        const area = H.byName(page, "trackColorHueArea")
+        const before = fixture.settings.trackColor
+        mousePress(hue, hue.width / 2, hue.height * 0.2)
+        mouseMove(hue, hue.width / 2, hue.height * 0.3)
+        area.visible = false // drops the grab: the area emits canceled
+        area.visible = true
+        compare(fixture.settings.trackColor.toLowerCase(), H.byName(page, "trackColorPreview").lineColor.toString())
+        verify(fixture.settings.trackColor !== before, "cancel wrote the preview")
+        mouseRelease(hue, hue.width / 2, hue.height * 0.3)
+        const sv = H.byName(page, "trackColorSv")
+        mousePress(sv, sv.width * 0.5, sv.height * 0.5)
+        mouseRelease(sv, sv.width * 0.5, sv.height * 0.5)
+        verify(/^#[0-9a-fA-F]{6}$/.test(fixture.settings.trackColor), fixture.settings.trackColor)
+        compare(H.byName(page, "trackColorPreview").lineColor.toString(), fixture.settings.trackColor.toLowerCase())
+        mouseClick(H.byName(page, "trackColorDefault"))
+        compare(fixture.settings.trackColor, "#444444")
+        mouseClick(H.byName(page, "trackColorDone"))
+        verify(!sheet.visible)
     }
 
     function test_settingsInvalidDepthShowsReasonAndIsNotSaved() {

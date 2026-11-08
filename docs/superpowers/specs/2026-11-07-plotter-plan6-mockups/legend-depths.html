@@ -1,0 +1,35 @@
+<h2>Legend: how "Depths and areas" would work</h2>
+<p class="subtitle">Same idea as the other categories: a small sample of what is on the chart, then what it means. Depth ranges come from your shallow, safety and deep settings and your units, so they always match the chart.</p>
+
+<style>
+  .lg { max-width:560px; background:#fff; color:#111; border-radius:10px; overflow:hidden; font-family:system-ui,sans-serif; border:1px solid #ccc }
+  .lg .hd { display:flex; justify-content:space-between; padding:14px 16px; border-top:1px solid #ddd; font-weight:700; font-size:17px }
+  .lg .hd span.n { color:#666; font-weight:400 }
+  .lg .row { display:flex; align-items:center; gap:14px; padding:8px 16px 8px 24px }
+  .lg .sw { width:64px; height:30px; flex:none; display:flex; align-items:center; justify-content:center }
+  .lg .t b { display:block } .lg .t small { color:#555 }
+</style>
+
+<div class="lg">
+  <div class="hd"><div>AIS targets <span class="n">(4)</span></div><div>&#9656;</div></div>
+  <div class="hd"><div>Buoys and beacons <span class="n">(8)</span></div><div>&#9656;</div></div>
+  <div class="hd"><div>Lights <span class="n">(1)</span></div><div>&#9656;</div></div>
+  <div class="hd"><div>Hazards <span class="n">(4)</span></div><div>&#9656;</div></div>
+  <div class="hd"><div>Depths and areas <span class="n">(12)</span></div><div>&#9662;</div></div>
+
+  <div class="row"><div class="sw" style="background:#8EC3E6;border:1px solid #999"></div><div class="t"><b>Very shallow</b><small>0 to 6 ft</small></div></div>
+  <div class="row"><div class="sw" style="background:#B8DCF2;border:1px solid #999"></div><div class="t"><b>Shallow</b><small>6 to 10 ft (your safety depth)</small></div></div>
+  <div class="row"><div class="sw" style="background:#DCEEF9;border:1px solid #999"></div><div class="t"><b>Medium</b><small>10 to 30 ft</small></div></div>
+  <div class="row"><div class="sw" style="background:#F4EEE2;border:1px solid #999"></div><div class="t"><b>Deep</b><small>deeper than 30 ft</small></div></div>
+  <div class="row"><div class="sw" style="background:#A8D5A2;border:1px solid #999"></div><div class="t"><b>Dries at low tide</b><small>intertidal</small></div></div>
+  <div class="row"><div class="sw" style="background:#EFD98A;border:1px solid #999"></div><div class="t"><b>Land</b></div></div>
+  <div class="row"><div class="sw" style="background:#C8C8C8;border:1px solid #999"></div><div class="t"><b>No chart data</b></div></div>
+  <div class="row"><div class="sw"><svg width="64" height="20"><path d="M2 12 C20 4 40 18 62 8" stroke="#6B7A82" stroke-width="1" fill="none"/></svg></div><div class="t"><b>Depth contour</b><small>line of equal depth</small></div></div>
+  <div class="row"><div class="sw"><svg width="64" height="20"><path d="M2 12 C20 4 40 18 62 8" stroke="#000" stroke-width="2.5" fill="none"/></svg></div><div class="t"><b>Safety contour</b><small>first contour deeper than your safety depth; stay outside it</small></div></div>
+  <div class="row"><div class="sw" style="font-size:15px"><b style="color:#000">8</b>&nbsp;&nbsp;<span style="color:#4A5560">42</span></div><div class="t"><b>Soundings</b><small>black: at or shallower than safety depth; gray: deeper</small></div></div>
+  <div class="row"><div class="sw"><svg width="64" height="24"><path d="M2 14 L62 14" stroke="#2D5BA8" stroke-width="1.5"/><path d="M12 14 l0 -6 M28 14 l0 -6 M44 14 l0 -6 M60 14 l0 -6" stroke="#2D5BA8" stroke-width="1.5"/></svg></div><div class="t"><b>Restricted area edge</b><small>ticks point into the area</small></div></div>
+  <div class="row"><div class="sw"><svg width="30" height="26" viewBox="0 0 30 26"><path d="M15 24 C10 16 20 12 14 2 M15 24 C20 18 9 12 18 4" stroke="#6B7A82" stroke-width="1.6" fill="none"/></svg></div><div class="t"><b>Kelp</b></div></div>
+
+  <div class="hd"><div>Seabed <span class="n">(38)</span></div><div>&#9656;</div></div>
+</div>
+<p class="subtitle" style="margin-top:12px">Day colors shown. Dusk and night use the same rows in their own colors. Counts and the kelp drawing are placeholders.</p>

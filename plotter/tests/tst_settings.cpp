@@ -90,6 +90,78 @@ private slots:
         QCOMPARE(p.temp, TempUnit::C);
         QVERIFY(!p.applyDepthOffset);
     }
+    void displayDefaults() {
+        QTemporaryDir t;
+        auto st = Store::open(t.path());
+        Settings s(**st);
+        QVERIFY(s.showHeadingLine());
+        QVERIFY(s.showCogLine());
+        QCOMPARE(s.cogLineMin(), 1);
+        QCOMPARE(s.trackLineType(), QStringLiteral("dashed"));
+        QCOMPARE(s.trackColor(), QStringLiteral("#444444"));
+        QVERIFY(s.legendOpenIds().isEmpty());
+    }
+    void cogLineMinRange() {
+        QTemporaryDir t;
+        auto st = Store::open(t.path());
+        Settings s(**st);
+        s.setCogLineMin(60);
+        QCOMPARE(s.cogLineMin(), 60);
+        QSignalSpy spy(&s, &Settings::cogLineMinChanged);
+        QTest::ignoreMessage(QtWarningMsg, QRegularExpression("cogLineMin"));
+        s.setCogLineMin(0);
+        QTest::ignoreMessage(QtWarningMsg, QRegularExpression("cogLineMin"));
+        s.setCogLineMin(61);
+        QCOMPARE(s.cogLineMin(), 60);
+        QCOMPARE(spy.count(), 0);
+    }
+    void trackLineTypeDomain() {
+        QTemporaryDir t;
+        auto st = Store::open(t.path());
+        Settings s(**st);
+        for (const char* v : {"solid", "dashed", "dotted", "dashdot"}) {
+            s.setTrackLineType(v);
+            QCOMPARE(s.trackLineType(), QString::fromLatin1(v));
+        }
+        QTest::ignoreMessage(QtWarningMsg, QRegularExpression("trackLineType"));
+        s.setTrackLineType("wavy");
+        QCOMPARE(s.trackLineType(), QStringLiteral("dashdot"));
+    }
+    void trackColorRejectsBadText() {
+        QTemporaryDir t;
+        {
+            auto st = Store::open(t.path());
+            Settings s(**st);
+            s.setTrackColor("#1a2B3c");
+            QCOMPARE(s.trackColor(), QStringLiteral("#1a2B3c"));
+            for (const char* bad : {"red", "#12345", "#1234567", "#444444\n"}) {
+                QTest::ignoreMessage(QtWarningMsg, QRegularExpression("trackColor"));
+                s.setTrackColor(bad);
+                QCOMPARE(s.trackColor(), QStringLiteral("#1a2B3c"));
+            }
+            rawSql(**st, "INSERT INTO settings(key, value) VALUES('trackColor', '\"blue\"') "
+                         "ON CONFLICT(key) DO UPDATE SET value=excluded.value");
+        }
+        auto st = Store::open(t.path());
+        QTest::ignoreMessage(QtWarningMsg, QRegularExpression("trackColor"));
+        Settings s(**st);
+        QCOMPARE(s.trackColor(), QStringLiteral("#444444"));
+    }
+    void legendOpenRoundTrip() {
+        QTemporaryDir t;
+        {
+            auto st = Store::open(t.path());
+            Settings s(**st);
+            QSignalSpy spy(&s, &Settings::legendOpenIdsChanged);
+            s.setLegendOpenIds({"ais", "hazards"});
+            QCOMPARE(spy.count(), 1);
+            s.setLegendOpenIds({"ais", "hazards"});
+            QCOMPARE(spy.count(), 1);
+        }
+        auto st = Store::open(t.path());
+        Settings s(**st);
+        QCOMPARE(s.legendOpenIds(), (QStringList{"ais", "hazards"}));
+    }
     void tabBarHideSRejectsOtherValues() {
         QTemporaryDir t;
         auto st = Store::open(t.path());

@@ -47,7 +47,9 @@ add_library(plottercore STATIC
     src/core/Recovery.cpp
     src/core/TouchLock.cpp
     src/core/Tracks.cpp
-    src/core/SignalBridge.cpp)
+    src/core/SignalBridge.cpp
+    src/core/SpriteSheet.cpp
+    src/core/Legend.cpp)
 set_target_properties(plottercore PROPERTIES AUTOMOC ON)
 target_include_directories(plottercore PUBLIC
     ${CMAKE_CURRENT_BINARY_DIR}/generated
@@ -94,8 +96,13 @@ if(CM_PLOTTER_TESTS)
     plotter_add_test(tst_touchlock tests/tst_touchlock.cpp)
     plotter_add_test(tst_tracks tests/tst_tracks.cpp)
     plotter_add_test(tst_signalbridge tests/tst_signalbridge.cpp)
+    plotter_add_test(tst_spritesheet tests/tst_spritesheet.cpp)
+    plotter_add_test(tst_legend tests/tst_legend.cpp)
     # Icons.cpp is app code with no MapLibre dependency; the night icon rule is checked on its pixels.
     plotter_add_test(tst_palette tests/tst_palette.cpp src/app/Icons.cpp)
+    # The legend image provider is app code too (Qt Quick, no MapLibre).
+    plotter_add_test(tst_legendimages tests/tst_legendimages.cpp src/app/LegendImageProvider.cpp src/app/Icons.cpp)
+    target_link_libraries(tst_legendimages PRIVATE Qt6::Quick)
 endif()
 
 # Linking Qt6::Sql and QMapLibre directly puts Qt's lib dir and the QMapLibre lib dir in the
@@ -108,7 +115,7 @@ qt_add_qml_module(plotterqml
     VERSION 1.0
     QML_FILES qml/Main.qml qml/ChartPage.qml qml/Theme.qml qml/Units.qml qml/BigButton.qml qml/Icon.qml qml/TabBar.qml
         qml/Splash.qml qml/SlotView.qml qml/CellPage.qml qml/AboutPage.qml
-        qml/NoDataBanner.qml qml/RecoveryScreen.qml qml/SettingsPage.qml qml/LockOverlay.qml qml/TracksPage.qml qml/LegendSheet.qml qml/AisSheet.qml
+        qml/NoDataBanner.qml qml/RecoveryScreen.qml qml/SettingsPage.qml qml/StepperRow.qml qml/TrackColorSheet.qml qml/LockOverlay.qml qml/TracksPage.qml qml/LegendSheet.qml qml/AisSheet.qml
         qml/HomePage.qml qml/ViewTile.qml qml/ViewThumb.qml qml/TileMenu.qml
         qml/ViewEditor.qml qml/SlotSheet.qml qml/CellSheet.qml qml/Keyboard.qml
         qml/SetupSheet.qml qml/LayoutGallery.qml qml/LayoutThumb.qml
@@ -122,7 +129,8 @@ target_link_libraries(plotterqml PRIVATE plottercore Qt6::Quick Qt6::QuickContro
 # The generated type registration includes PanelMath.h, IconsQml.h and LayoutsQml.h by their bare names.
 target_include_directories(plotterqml PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src/qml)
 
-qt_add_executable(cheekyplotter src/app/main.cpp src/app/MapLibreChartMap.cpp src/app/Icons.cpp)
+qt_add_executable(cheekyplotter src/app/main.cpp src/app/MapLibreChartMap.cpp src/app/Icons.cpp
+    src/app/LegendImageProvider.cpp)
 target_link_libraries(cheekyplotter PRIVATE plottercore plotterqmlplugin Qt6::Quick Qt6::QuickControls2 Qt6::Sql Qt6::Svg
     QMapLibre::Core)
 set_target_properties(cheekyplotter PROPERTIES AUTOMOC ON)

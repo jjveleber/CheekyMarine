@@ -28,6 +28,7 @@ Item {
     readonly property var paletteModes: [{ value: "auto", label: "Auto" }, { value: "day", label: "Day" }, { value: "dusk", label: "Dusk" }, { value: "night", label: "Night" }]
     readonly property var tabBarHides: [{ value: 0, label: "Off" }, { value: 5, label: "5 s" }, { value: 8, label: "8 s" }, { value: 15, label: "15 s" }, { value: 30, label: "30 s" }]
     readonly property var trackIntervals: [{ value: 1, label: "1 s" }, { value: 5, label: "5 s" }, { value: 10, label: "10 s" }, { value: 30, label: "30 s" }]
+    readonly property var lineTypes: [{ value: "solid", label: "Solid" }, { value: "dashed", label: "Dashed" }, { value: "dotted", label: "Dotted" }, { value: "dashdot", label: "Dash-dot" }]
     readonly property var trackDistances: [{ value: 5, label: "5 m" }, { value: 10, label: "10 m" }, { value: 25, label: "25 m" }]
 
     // Depth shown in the current depth unit.
@@ -235,6 +236,52 @@ Item {
                 onClicked: page.openList("Track minimum distance", page.trackDistances, page.settings.trackMinDistanceM, v => page.settings.trackMinDistanceM = v)
             }
             ChoiceRow {
+                objectName: "row-showHeadingLine"
+                text: "Heading line: " + (page.settings.showHeadingLine ? "On" : "Off")
+                onClicked: page.settings.showHeadingLine = !page.settings.showHeadingLine
+            }
+            ChoiceRow {
+                objectName: "row-showCogLine"
+                text: "COG line: " + (page.settings.showCogLine ? "On" : "Off")
+                onClicked: page.settings.showCogLine = !page.settings.showCogLine
+            }
+            StepperRow {
+                objectName: "row-cogLineMin"
+                width: column.width
+                title: "COG line time"
+                valueName: "cogLineMin"
+                value: page.settings.cogLineMin + " min"
+                onMinus: page.settings.cogLineMin = Math.max(1, page.settings.cogLineMin - 1)
+                onPlus: page.settings.cogLineMin = Math.min(60, page.settings.cogLineMin + 1)
+            }
+            ChoiceRow {
+                objectName: "row-trackLineType"
+                text: "Track line: " + page.choiceLabel(page.lineTypes, page.settings.trackLineType)
+                onClicked: page.openList("Track line", page.lineTypes, page.settings.trackLineType, v => page.settings.trackLineType = v)
+            }
+            ChoiceRow {
+                objectName: "row-trackColor"
+                text: "Track color"
+                onClicked: colorSheet.visible = true
+                contentItem: Item {
+                    Label {
+                        anchors { left: parent.left; verticalCenter: parent.verticalCenter }
+                        text: "Track color"
+                        color: Theme.buttonText
+                        font.pixelSize: Units.mm(4)
+                    }
+                    Rectangle {
+                        objectName: "trackColorSwatch"
+                        anchors { right: parent.right; verticalCenter: parent.verticalCenter }
+                        width: Units.mm(14)
+                        height: Units.mm(7)
+                        radius: Units.mm(1)
+                        color: page.settings.trackColor
+                        border.color: Theme.buttonBorder
+                    }
+                }
+            }
+            ChoiceRow {
                 objectName: "aboutButton"
                 text: "About"
                 onClicked: page.showAbout()
@@ -291,5 +338,12 @@ Item {
                 }
             }
         }
+    }
+
+    TrackColorSheet {
+        id: colorSheet
+        settings: page.settings
+        lineType: page.settings.trackLineType
+        anchors { fill: parent; rightMargin: page.rightInset }
     }
 }

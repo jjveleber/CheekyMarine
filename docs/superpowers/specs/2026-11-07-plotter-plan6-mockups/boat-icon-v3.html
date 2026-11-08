@@ -1,0 +1,135 @@
+<h2>Own-boat icon, v3</h2>
+<p class="subtitle">Changes: lights are now D shapes (port mirrored) on the cabin sides near the front; #6E99BE replaces navy (fill on C, outline on A and B); night views added.</p>
+
+<svg width="0" height="0" style="position:absolute">
+  <defs>
+    <path id="hull" d="M20 3 C29 14 34 28 34 40 L34 88 L6 88 L6 40 C6 28 11 14 20 3 Z"/>
+    <path id="screen" d="M11 40 Q20 34 29 40 L29 44 Q20 39 11 44 Z"/>
+    <g id="motors">
+      <rect x="15.5" y="88" width="9" height="9" rx="2" fill="#3a3f45" stroke="#111" stroke-width="1"/>
+      <rect x="27" y="88" width="4.5" height="6" rx="1.2" fill="#3a3f45" stroke="#111" stroke-width="0.8"/>
+    </g>
+    <g id="lights">
+      <path d="M10 37.5 A3.5 3.5 0 0 0 10 44.5 Z" fill="#b85450"/>
+      <path d="M30 37.5 A3.5 3.5 0 0 1 30 44.5 Z" fill="#4f9a64"/>
+    </g>
+
+    <g id="boatA">
+      <use href="#motors"/>
+      <use href="#hull" fill="#c4c8cc" stroke="#6E99BE" stroke-width="3.2"/>
+      <rect x="10" y="36" width="20" height="28" rx="3" fill="#aeb4ba" stroke="#5c636a" stroke-width="1"/>
+      <use href="#screen" fill="#22303f"/>
+      <use href="#lights"/>
+    </g>
+    <g id="boatB">
+      <use href="#motors"/>
+      <use href="#hull" fill="#c4c8cc" stroke="#6E99BE" stroke-width="4"/>
+      <use href="#lights"/>
+    </g>
+    <g id="boatC">
+      <use href="#motors"/>
+      <use href="#hull" fill="#6E99BE" stroke="#1e3448" stroke-width="2"/>
+      <rect x="10" y="36" width="20" height="28" rx="3" fill="#d4d8dc" stroke="#1e3448" stroke-width="1"/>
+      <use href="#screen" fill="#22303f"/>
+      <use href="#lights"/>
+    </g>
+    <g id="boatNow">
+      <path d="M20 3 Q32 30 29 97 L11 97 Q8 30 20 3 Z" fill="#ff8000" stroke="#000" stroke-width="3"/>
+    </g>
+
+    <!-- Night, amber style: amber outline on dark fill, dim red/green lights (like the amber night palette) -->
+    <g id="motorsN">
+      <rect x="15.5" y="88" width="9" height="9" rx="2" fill="#1a0e04" stroke="#C08000" stroke-width="1"/>
+      <rect x="27" y="88" width="4.5" height="6" rx="1.2" fill="#1a0e04" stroke="#C08000" stroke-width="0.8"/>
+    </g>
+    <g id="lightsN">
+      <path d="M10 37.5 A3.5 3.5 0 0 0 10 44.5 Z" fill="#a02018"/>
+      <path d="M30 37.5 A3.5 3.5 0 0 1 30 44.5 Z" fill="#20A040"/>
+    </g>
+    <g id="nightA">
+      <use href="#motorsN"/>
+      <use href="#hull" fill="#2a1a08" stroke="#E0A000" stroke-width="3.2"/>
+      <rect x="10" y="36" width="20" height="28" rx="3" fill="#40280c" stroke="#C08000" stroke-width="1"/>
+      <use href="#screen" fill="#0a0500"/>
+      <use href="#lightsN"/>
+    </g>
+    <g id="nightB">
+      <use href="#motorsN"/>
+      <use href="#hull" fill="#2a1a08" stroke="#E0A000" stroke-width="4"/>
+      <use href="#lightsN"/>
+    </g>
+    <g id="nightC">
+      <use href="#motorsN"/>
+      <use href="#hull" fill="#7a5000" stroke="#E0A000" stroke-width="2"/>
+      <rect x="10" y="36" width="20" height="28" rx="3" fill="#2a1a08" stroke="#E0A000" stroke-width="1"/>
+      <use href="#screen" fill="#0a0500"/>
+      <use href="#lightsN"/>
+    </g>
+  </defs>
+</svg>
+
+<div class="cards">
+  <div class="card" data-choice="a" onclick="toggleSelect(this)">
+    <div class="card-image" style="display:flex">
+      <div style="flex:1;background:#fff;display:flex;justify-content:center;padding:14px"><svg viewBox="0 0 40 100" height="190"><use href="#boatA"/></svg></div>
+      <div style="flex:1;background:#000;display:flex;justify-content:center;padding:14px"><svg viewBox="0 0 40 100" height="190"><use href="#nightA"/></svg></div>
+    </div>
+    <div class="card-body"><h3>A: Detailed</h3><p>Day (left), night (right).</p></div>
+  </div>
+  <div class="card" data-choice="b" onclick="toggleSelect(this)">
+    <div class="card-image" style="display:flex">
+      <div style="flex:1;background:#fff;display:flex;justify-content:center;padding:14px"><svg viewBox="0 0 40 100" height="190"><use href="#boatB"/></svg></div>
+      <div style="flex:1;background:#000;display:flex;justify-content:center;padding:14px"><svg viewBox="0 0 40 100" height="190"><use href="#nightB"/></svg></div>
+    </div>
+    <div class="card-body"><h3>B: Simple</h3><p>Day (left), night (right).</p></div>
+  </div>
+  <div class="card" data-choice="c" onclick="toggleSelect(this)">
+    <div class="card-image" style="display:flex">
+      <div style="flex:1;background:#fff;display:flex;justify-content:center;padding:14px"><svg viewBox="0 0 40 100" height="190"><use href="#boatC"/></svg></div>
+      <div style="flex:1;background:#000;display:flex;justify-content:center;padding:14px"><svg viewBox="0 0 40 100" height="190"><use href="#nightC"/></svg></div>
+    </div>
+    <div class="card-body"><h3>C: Blue hull</h3><p>Day (left), night (right).</p></div>
+  </div>
+</div>
+
+<h3 style="margin-top:28px">At chart size (about 9 mm; current is 12 mm)</h3>
+<p class="subtitle">Day strips: deep water, shallow water, land. Order: current, A, B, C.</p>
+<div style="display:flex;border-radius:8px;overflow:hidden">
+  <div style="flex:1;background:#F4EEE2;padding:18px 0;display:flex;justify-content:space-around;align-items:center">
+    <svg viewBox="0 0 40 100" style="height:12mm"><use href="#boatNow"/></svg>
+    <svg viewBox="0 0 40 100" style="height:9mm"><use href="#boatA"/></svg>
+    <svg viewBox="0 0 40 100" style="height:9mm"><use href="#boatB"/></svg>
+    <svg viewBox="0 0 40 100" style="height:9mm"><use href="#boatC"/></svg>
+  </div>
+  <div style="flex:1;background:#8EC3E6;padding:18px 0;display:flex;justify-content:space-around;align-items:center">
+    <svg viewBox="0 0 40 100" style="height:12mm"><use href="#boatNow"/></svg>
+    <svg viewBox="0 0 40 100" style="height:9mm"><use href="#boatA"/></svg>
+    <svg viewBox="0 0 40 100" style="height:9mm"><use href="#boatB"/></svg>
+    <svg viewBox="0 0 40 100" style="height:9mm"><use href="#boatC"/></svg>
+  </div>
+  <div style="flex:1;background:#EFD98A;padding:18px 0;display:flex;justify-content:space-around;align-items:center">
+    <svg viewBox="0 0 40 100" style="height:12mm"><use href="#boatNow"/></svg>
+    <svg viewBox="0 0 40 100" style="height:9mm"><use href="#boatA"/></svg>
+    <svg viewBox="0 0 40 100" style="height:9mm"><use href="#boatB"/></svg>
+    <svg viewBox="0 0 40 100" style="height:9mm"><use href="#boatC"/></svg>
+  </div>
+</div>
+<p class="subtitle" style="margin-top:14px">Night strips (amber night palette): deep water, shallow water, land. Order: A, B, C.</p>
+<div style="display:flex;border-radius:8px;overflow:hidden">
+  <div style="flex:1;background:#000000;padding:18px 0;display:flex;justify-content:space-around;align-items:center">
+    <svg viewBox="0 0 40 100" style="height:9mm"><use href="#nightA"/></svg>
+    <svg viewBox="0 0 40 100" style="height:9mm"><use href="#nightB"/></svg>
+    <svg viewBox="0 0 40 100" style="height:9mm"><use href="#nightC"/></svg>
+  </div>
+  <div style="flex:1;background:#5A0000;padding:18px 0;display:flex;justify-content:space-around;align-items:center">
+    <svg viewBox="0 0 40 100" style="height:9mm"><use href="#nightA"/></svg>
+    <svg viewBox="0 0 40 100" style="height:9mm"><use href="#nightB"/></svg>
+    <svg viewBox="0 0 40 100" style="height:9mm"><use href="#nightC"/></svg>
+  </div>
+  <div style="flex:1;background:#30200A;padding:18px 0;display:flex;justify-content:space-around;align-items:center">
+    <svg viewBox="0 0 40 100" style="height:9mm"><use href="#nightA"/></svg>
+    <svg viewBox="0 0 40 100" style="height:9mm"><use href="#nightB"/></svg>
+    <svg viewBox="0 0 40 100" style="height:9mm"><use href="#nightC"/></svg>
+  </div>
+</div>
+<p class="subtitle">Night uses the amber palette you picked on 2026-11-05: amber outline, dark fill, dim red and green lights (same idea as navaids keeping their colors).</p>
