@@ -16,7 +16,7 @@ umask 022
 CM_LOCK=$(cat <<'LOCK'
 # CheekyMarine set lock. Format: see installer/README.md.
 schema=1
-set=0.2.0
+set=0.2.1
 n2kd.version=0.1.0
 n2kd.tag=v0.1.0
 n2kd.asset=n2kd-0.1.0-x86_64.tar.gz
@@ -31,10 +31,10 @@ bathy.tag=bathy-puget-north-v1.1.0
 bathy.asset=bathy-puget-north-1.1.0.tar
 bathy.sha256=c12bc0deef6f43826a4f407f5430aa74f6aae2040266bd2c412bc7b2128a7599
 bathy.schema=1
-plotter.version=0.2.0
-plotter.tag=plotter-v0.2.0
-plotter.asset=cheekyplotter-0.2.0-x86_64.tar.gz
-plotter.sha256=72d385d751f22f1b4a024ad1483a3d91aa6f7d97a7656fbe847592d39fcfee30
+plotter.version=0.2.1
+plotter.tag=plotter-v0.2.1
+plotter.asset=cheekyplotter-0.2.1-x86_64.tar.gz
+plotter.sha256=aeff778f23f3412ac48c799bfcd6f40e566e40b3d05a1afd5314ba48701cac6a
 plotter.pack_schema_min=1
 plotter.pack_schema_max=1
 LOCK
