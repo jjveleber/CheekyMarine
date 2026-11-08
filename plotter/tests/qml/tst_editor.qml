@@ -658,6 +658,50 @@ TestCase {
         verify(!sheet.visible)
     }
 
+    // A hold on a corner shows its resize handle as the editor's tap does, and the handle resizes the
+    // slot; the sheet's Done saves and the handle goes (#69).
+    function test_liveHoldShowsTheHandle() {
+        const main = makeMain(1024, 600)
+        const page = m(main, "chartPage")
+        const sheet = find(m(main, "viewEditor"), "slotSheet")
+        hold(m(main, "slot-TL"), () => sheet.visible)
+        compare(main.editing, false)
+        waitForRendering(page)
+        const handle = find(page, "handle-TL")
+        verify(handle.visible, "the held slot's handle shows")
+        const start = draftSlot("TL").sizeMm
+        dragBy(main, handle, -Units.mm(20))
+        const shrunk = draftSlot("TL").sizeMm
+        verify(shrunk < start && shrunk >= 6, "the handle resizes: " + start + " to " + shrunk)
+        compare(sheet.sizeMm, shrunk, "the sheet shows it")
+        mouseClick(find(sheet, "sheetDone"))
+        verify(!sheet.visible)
+        verify(!find(page, "handle-TL").visible, "no handle once the sheet is done")
+        compare(slotOf(fixture.views.viewJson("shipped-nav"), "TL").sizeMm, shrunk, "Done saved the size")
+
+        // The chart's own buttons hide while a held slot's handle shows, as in the editor, so none
+        // lies over the handle; they come back with Done.
+        const buttons = ["zoomInButton", "zoomOutButton", "legendButton"]
+        for (const b of buttons) verify(find(page, b).visible, b + " shows on the live view")
+        hold(m(main, "slot-TR"), () => sheet.visible)
+        for (const b of buttons) verify(!find(page, b).visible, b + " hidden while the handle shows")
+        mouseClick(find(sheet, "sheetDone"))
+        for (const b of buttons) verify(find(page, b).visible, b + " back after Done")
+
+        // Left without Done (Home), a handle drag is dropped.
+        hold(m(main, "slot-TL"), () => sheet.visible)
+        waitForRendering(page)
+        dragBy(main, find(page, "handle-TL"), -Units.mm(10))
+        verify(draftSlot("TL").sizeMm < shrunk, "dragged")
+        main.page = "home" // as the Home tab does (the bar may have slid off by now)
+        verify(!sheet.visible)
+        compare(slotOf(fixture.views.viewJson("shipped-nav"), "TL").sizeMm, shrunk, "not saved")
+        main.showView("shipped-nav") // as its tab does
+        compare(main.page, "view")
+        compare(draftSlot("TL").sizeMm, shrunk, "the view shows the saved size")
+        verify(!find(page, "handle-TL").visible, "and no handle")
+    }
+
     // The hold is an established control: it leaves a hidden bar hidden, on a slot and on a cell.
     function test_liveHoldLeavesTheBarHidden() {
         const main = makeMain(1024, 600)

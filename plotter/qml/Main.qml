@@ -206,7 +206,8 @@ ApplicationWindow {
                     barShown: tabBar.shown
                     noticeShown: root.settings.showChartNotice
                     editing: root.editing
-                    selectedSlot: root.editing ? editor.selectedSlot : ""
+                    // The editor's selection, and a live hold's slot while its sheet is open.
+                    selectedSlot: root.editing || editor.sheet === "slot" ? editor.selectedSlot : ""
                     onPlainTap: root.showBar()
                     onSlotTapped: (id) => editor.openSlotSheet(id)
                     onSlotHeld: (id) => editor.openSlotSheet(id)
