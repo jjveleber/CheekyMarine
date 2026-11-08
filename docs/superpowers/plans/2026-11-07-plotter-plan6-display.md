@@ -39,6 +39,8 @@
 - [ ] **Step 1:** `git switch -c plan6-display plan6-display-design` (that branch is `main` plus the spec commit `2e2335a`).
 - [ ] **Step 2:** Create one issue per item, each with plain-language context and a link to the spec section: own-boat icon (4), night overlays amber (4.1), AIS sizes (5), heading and COG line settings with T end (6), track style (7), legend categories (8), and the three bugs from section 9 (corner slot resize stops early; slot edit dialog buttons overlap; long press on a corner slot shows no resize handle). Label `plan 6`. Record the numbers in this plan's tasks before dispatching.
 
+**Issues (filed 2026-11-07):** own-boat icon #61, night overlays amber #62, AIS sizes #63, heading and COG lines #64, track style #65, legend #66; bugs (not in this plan): corner slot resize stops early #67, slot edit dialog buttons overlap #68, long press shows no resize handle #69. Task 1: #64 #65 #66; Task 2: #64; Task 3: #61 #62 #63 #64; Task 4: #64 #65; Task 5: #64 #65; Tasks 6 to 8: #66; Task 9: all six.
+
 ### Task 1: Settings keys
 
 **Files:**
