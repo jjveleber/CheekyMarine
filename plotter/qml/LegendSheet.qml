@@ -34,15 +34,24 @@ Rectangle {
     function bandMeters(end) {
         return end === "shallow" ? shallowM : end === "safety" ? safetyM : end === "deep" ? deepM : Number(end)
     }
-    // The row's note, a depth band's range first: "6 to 10 ft", "deeper than 30 ft".
+    // A depth band's range: "6 to 10 ft", "deeper than 30 ft"; empty for any other row.
+    function rangeFor(row) {
+        if (row.depthFrom === undefined || row.depthFrom === "") return ""
+        const from = depthNumber(bandMeters(row.depthFrom))
+        return row.depthTo !== undefined && row.depthTo !== ""
+               ? from + " to " + depthNumber(bandMeters(row.depthTo)) + " " + depthUnit
+               : "deeper than " + from + " " + depthUnit
+    }
+    // A fish band has no name (it is a survey depth, not a safety depth): its range is the label.
+    function isFishBand(row) { return row.label === "" && row.depthFrom !== undefined && row.depthFrom !== "" }
+    function labelFor(row) {
+        if (!isFishBand(row)) return row.label
+        const r = rangeFor(row)
+        return r.charAt(0).toUpperCase() + r.slice(1)
+    }
+    // The row's note, a nav depth band's range first.
     function noteFor(row) {
-        let depth = ""
-        if (row.depthFrom !== undefined && row.depthFrom !== "") {
-            const from = depthNumber(bandMeters(row.depthFrom))
-            depth = row.depthTo !== undefined && row.depthTo !== ""
-                    ? from + " to " + depthNumber(bandMeters(row.depthTo)) + " " + depthUnit
-                    : "deeper than " + from + " " + depthUnit
-        }
+        const depth = isFishBand(row) ? "" : rangeFor(row)
         const note = row.note || ""
         return depth && note ? depth + ". " + note : depth || note
     }
@@ -149,7 +158,7 @@ Rectangle {
                             id: row
                             required property var modelData
                             objectName: "legendRow"
-                            readonly property string label: modelData.label
+                            readonly property string label: sheet.labelFor(modelData)
                             readonly property string noteText: sheet.noteFor(modelData)
                             readonly property string sampleText: modelData.kind === "seabed" || modelData.kind === "text" ? modelData.text : ""
                             width: category.width

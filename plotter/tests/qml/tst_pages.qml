@@ -277,6 +277,23 @@ TestCase {
         compare(notes(), ["0.0 to 2.0 m", "2.0 to 4.0 m", "4.0 to 12.0 m", "deeper than 12.0 m"])
     }
 
+    // Fish bands are survey depths: the label is the range in the user's unit, the note a fixed sentence.
+    function test_legendFishBands() {
+        chartStub.legendCategories = [
+            { id: "depths", title: "Depths", needsPack: false, rows: [
+                legendRow("swatch", "", { note: "Fish chart depth band, not a safety depth.", color: "#8EC3E6", depthFrom: "0", depthTo: "9.144" }),
+                legendRow("swatch", "", { note: "Fish chart depth band, not a safety depth.", color: "#F4EEE2", depthFrom: "54.864", depthTo: "" }) ] } ]
+        fixture.settings.depthUnit = "ft"
+        fixture.settings.legendOpenIds = ["depths"]
+        const chart = makeChart()
+        const sheet = openLegend(chart)
+        const rows = () => shownRows(sheet)
+        compare(rows().map(r => r.label), ["0 to 30 ft", "Deeper than 180 ft"])
+        compare(rows().map(r => r.noteText), ["Fish chart depth band, not a safety depth.", "Fish chart depth band, not a safety depth."])
+        fixture.settings.depthUnit = "m"
+        compare(rows().map(r => r.label), ["0.0 to 9.1 m", "Deeper than 54.9 m"])
+    }
+
     function test_legendNeedsPack() {
         const chart = makeChart()
         const sheet = openLegend(chart)

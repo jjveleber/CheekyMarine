@@ -231,7 +231,6 @@ public:
     // The fish depth bands: one swatch per band-fill step output, its depths in meters from the
     // step stops on depth_min_ft.
     QVariantList fishBands() const {
-        static const char* const kNames[] = {"Very shallow", "Shallow", "Medium", "Deep"};
         const QJsonArray e = findLayer(m_style, QStringLiteral("band-fill"))[QStringLiteral("paint")]
                                  .toObject()[QStringLiteral("fill-color")]
                                  .toArray();
@@ -241,8 +240,9 @@ public:
         QVariantList out;
         const qsizetype n = stops.size() + 1;
         for (qsizetype k = 0; k < n; ++k) {
-            const QString label = n == 4 ? QString::fromLatin1(kNames[k]) : QStringLiteral("Depth band %1").arg(k + 1);
-            QVariantMap r = blankRow(label, QStringLiteral("Survey depth."), QStringLiteral("swatch"));
+            // These are fishing survey bands, not safety depths: no name, the sheet shows the range.
+            QVariantMap r = blankRow(QString(), QStringLiteral("Fish chart depth band, not a safety depth."),
+                                     QStringLiteral("swatch"));
             r["color"] = colourText(styleColour(m_style, QStringLiteral("band-fill"), QStringLiteral("fill-color"),
                                                 static_cast<int>(k)));
             r["depthFrom"] = k == 0 ? QStringLiteral("0") : stops[k - 1];

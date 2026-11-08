@@ -144,6 +144,9 @@ private slots:
         QStringList from, to, colors;
         for (const QVariant& r : fish)
             if (r.toMap()["layers"].toList() == QVariantList{"band-fill"}) {
+                // Survey bands, not safety depths: no name (the sheet shows the range), a fixed note.
+                QCOMPARE(r.toMap()["label"].toString(), QString());
+                QCOMPARE(r.toMap()["note"].toString(), QStringLiteral("Fish chart depth band, not a safety depth."));
                 from << r.toMap()["depthFrom"].toString();
                 to << r.toMap()["depthTo"].toString();
                 colors << r.toMap()["color"].toString();

@@ -23,7 +23,8 @@ std::optional<QColor> styleColour(const QJsonObject& style, const QString& layer
 //   chartIcons id), "seabed" (`text` is the abbreviation, `label` its meaning).
 // - color and tint are "#RRGGBB" (or "#AARRGGBB" for a see-through fill) or empty.
 // - depthFrom and depthTo are empty unless the row is a depth band (and empty at an open end): the
-//   names "0", "shallow", "safety", "deep" on nav (resolved from the settings), meters on fish.
+//   names "0", "shallow", "safety", "deep" on nav (resolved from the settings), meters on fish
+//   (a fish band has an empty label: the sheet shows its range there).
 // - layers: the style layer ids the row explains. Rows whose layers are all missing from the style
 //   are left out, so the legend shows what the view draws.
 QVariantList legendCategories(const QString& mode, const QJsonObject& style, const QString& palette,
