@@ -619,6 +619,7 @@ private slots:
             const QJsonObject paint = r.map.layers.value(id)["paint"].toObject();
             QVERIFY2(paint.contains("line-dasharray-transition"), id);
             QCOMPARE(paint["line-dasharray-transition"].toObject()["duration"].toInt(-1), 0);
+            QCOMPARE(paint["line-dasharray-transition"].toObject()["delay"].toInt(-1), 0); // a root delay can't apply
         }
         r.map.calls.clear();
         r.settings->setTrackLineType("solid");
