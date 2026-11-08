@@ -161,6 +161,25 @@ private slots:
         QCOMPARE(to[3], QString());
     }
 
+    // Band stops are read as feet only when the step is on depth_min_ft.
+    void fishBandsNeedFeetInput() {
+        QJsonObject style = fixture("fish-day");
+        QJsonArray layers = style["layers"].toArray();
+        for (qsizetype i = 0; i < layers.size(); ++i) {
+            QJsonObject l = layers[i].toObject();
+            if (l["id"].toString() != QLatin1String("band-fill")) continue;
+            QJsonObject paint = l["paint"].toObject();
+            QJsonArray e = paint["fill-color"].toArray();
+            e[1] = QJsonArray{"get", "depth_min_m"};
+            paint["fill-color"] = e;
+            l["paint"] = paint;
+            layers[i] = l;
+        }
+        style["layers"] = layers;
+        const QVariantList rows = category(legendCategories("fish", style, "day", kSeabed), "depths")["rows"].toList();
+        for (const QVariant& r : rows) QVERIFY(r.toMap()["layers"].toList() != QVariantList{"band-fill"});
+    }
+
     void rowFieldsFromTheStyle() {
         const QVariantList rows = allRows(legendCategories("nav", fixture("nav-day"), "day", kSeabed));
         const QVariantMap tick = rowLabelled(rows, "Restricted area ticks");

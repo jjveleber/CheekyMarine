@@ -2,7 +2,8 @@ import QtQuick
 import QtQuick.Controls.Basic
 
 // Touch color picker for the track line: a saturation/value square and a hue strip, both dragged
-// by finger. Every change writes settings.trackColor as #RRGGBB. Covers its parent while visible.
+// by finger. The preview follows every move; settings.trackColor (#RRGGBB) is written on release,
+// on Default and Done, and every 150 ms of a long drag (each write is a synced DB commit). Covers its parent while visible.
 Rectangle {
     id: sheet
     required property QtObject settings // Settings
@@ -25,7 +26,12 @@ Rectangle {
         val = c.hsvValue
     }
     function write() { settings.trackColor = chosen.toString() }
+    // During a drag: write at most once per 150 ms.
+    function pickMoved() { if (!flushTimer.running) flushTimer.start() }
+    function released() { flushTimer.stop(); write() }
+    Timer { id: flushTimer; interval: 150; onTriggered: sheet.write() }
     function setDefault() {
+        flushTimer.stop()
         settings.trackColor = "#444444"
         const c = Qt.color("#444444")
         hue = 0; sat = c.hsvSaturation; val = c.hsvValue
@@ -46,7 +52,7 @@ Rectangle {
         anchors { right: parent.right; top: parent.top; margins: Units.mm(2) }
         width: Math.max(implicitWidth, Units.mm(25))
         text: "Done"
-        onClicked: sheet.visible = false
+        onClicked: { if (flushTimer.running) { flushTimer.stop(); sheet.write() } sheet.visible = false }
     }
     BigButton {
         objectName: "trackColorDefault"
@@ -116,10 +122,11 @@ Rectangle {
                 function pick(m) {
                     sheet.sat = Math.max(0, Math.min(1, m.x / width))
                     sheet.val = Math.max(0, Math.min(1, 1 - m.y / height))
-                    sheet.write()
+                    sheet.pickMoved()
                 }
                 onPressed: m => pick(m)
                 onPositionChanged: m => pick(m)
+                onReleased: sheet.released()
             }
         }
 
@@ -144,10 +151,11 @@ Rectangle {
                 anchors.fill: parent
                 function pick(m) {
                     sheet.hue = Math.max(0, Math.min(1, m.y / height))
-                    sheet.write()
+                    sheet.pickMoved()
                 }
                 onPressed: m => pick(m)
                 onPositionChanged: m => pick(m)
+                onReleased: sheet.released()
             }
         }
     }

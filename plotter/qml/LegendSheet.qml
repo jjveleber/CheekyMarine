@@ -28,6 +28,7 @@ Rectangle {
     // A depth as SettingsPage.depthText shows it, without the unit: whole feet, one decimal otherwise.
     function depthNumber(m) {
         const v = m / metresPerUnit
+        if (m === 0) return "0"
         return depthUnit === "ft" ? String(Math.round(v)) : v.toFixed(1)
     }
     // A band end ("0", "shallow", "safety", "deep" on nav, meters on fish) in meters.
@@ -190,6 +191,10 @@ Rectangle {
                                         height: implicitHeight * (row.modelData.iconSize || 1)
                                         cache: false // the sheet behind a sprite id changes with the view
                                         smooth: true
+                                        // Pin the logical size once loaded: Qt then re-requests the image at
+                                        // sourceSize x DPR, so the symbol is sharp on a HiDPI screen.
+                                        onStatusChanged: if (status === Image.Ready && sourceSize.width === 0)
+                                            sourceSize = Qt.size(implicitWidth, implicitHeight)
                                     }
                                 }
                                 Component {

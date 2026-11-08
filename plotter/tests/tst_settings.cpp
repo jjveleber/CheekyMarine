@@ -134,7 +134,7 @@ private slots:
             Settings s(**st);
             s.setTrackColor("#1a2B3c");
             QCOMPARE(s.trackColor(), QStringLiteral("#1a2B3c"));
-            for (const char* bad : {"red", "#12345", "#1234567"}) {
+            for (const char* bad : {"red", "#12345", "#1234567", "#444444\n"}) {
                 QTest::ignoreMessage(QtWarningMsg, QRegularExpression("trackColor"));
                 s.setTrackColor(bad);
                 QCOMPARE(s.trackColor(), QStringLiteral("#1a2B3c"));

@@ -17,11 +17,11 @@ public:
     // May emit styleLoaded() synchronously, inside the call.
     virtual void setStyleJson(const QByteArray& style) = 0;
     virtual void setLayerFilter(const QString& layer, const QJsonValue& filter) = 0;
-    // Creates the GeoJSON source on the first call after a style load, then updates its data.
     // Sets a layer's paint property; a null value resets it to the style default.
     virtual void setPaintProperty(const QString& layer, const QString& property, const QJsonValue& value) = 0;
     // Same for a layout property (line-cap is layout, so a paint call cannot change it).
     virtual void setLayoutProperty(const QString& layer, const QString& property, const QJsonValue& value) = 0;
+    // Creates the GeoJSON source on the first call after a style load, then updates its data.
     virtual void setGeoJson(const QString& source, const QJsonObject& featureCollection) = 0;
     virtual void addImage(const QString& id, const QImage& image) = 0;
     // `layer` is a style layer object including "id"; it goes above every existing layer.

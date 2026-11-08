@@ -76,7 +76,7 @@ const std::map<QString, Def>& defs() {
         {"showCogLine", {true, isBool()}},
         {"cogLineMin", {1, isInt(1, 60)}},
         {"trackLineType", {"dashed", oneOf({"solid", "dashed", "dotted", "dashdot"})}},
-        {"trackColor", {"#444444", matches("^#[0-9A-Fa-f]{6}$")}},
+        {"trackColor", {"#444444", matches("\\A#[0-9A-Fa-f]{6}\\z")}},
         {"legendOpenIds", {QJsonArray{}, isStringArray()}},
     };
     return d;

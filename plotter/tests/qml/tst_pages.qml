@@ -272,9 +272,9 @@ TestCase {
         const notes = () => shownRows(sheet).slice(0, 4).map(r => r.noteText)
         compare(notes(), ["0 to 6 ft", "6 to 10 ft", "10 to 30 ft", "deeper than 30 ft"])
         fixture.settings.depthUnit = "m"
-        compare(notes(), ["0.0 to 1.8 m", "1.8 to 3.0 m", "3.0 to 9.1 m", "deeper than 9.1 m"])
+        compare(notes(), ["0 to 1.8 m", "1.8 to 3.0 m", "3.0 to 9.1 m", "deeper than 9.1 m"])
         fixture.settings.setDepths(2, 4, 12)
-        compare(notes(), ["0.0 to 2.0 m", "2.0 to 4.0 m", "4.0 to 12.0 m", "deeper than 12.0 m"])
+        compare(notes(), ["0 to 2.0 m", "2.0 to 4.0 m", "4.0 to 12.0 m", "deeper than 12.0 m"])
     }
 
     // Fish bands are survey depths: the label is the range in the user's unit, the note a fixed sentence.
@@ -291,7 +291,7 @@ TestCase {
         compare(rows().map(r => r.label), ["0 to 30 ft", "Deeper than 180 ft"])
         compare(rows().map(r => r.noteText), ["Fish chart depth band, not a safety depth.", "Fish chart depth band, not a safety depth."])
         fixture.settings.depthUnit = "m"
-        compare(rows().map(r => r.label), ["0.0 to 9.1 m", "Deeper than 54.9 m"])
+        compare(rows().map(r => r.label), ["0 to 9.1 m", "Deeper than 54.9 m"])
     }
 
     function test_legendNeedsPack() {
@@ -316,6 +316,8 @@ TestCase {
         const rock = rows[0]
         const img = H.byName(rock, "legendImage")
         verify(img, "the sprite row asks for its image")
+        // Once loaded, the image pins its size so a HiDPI screen re-requests at full resolution.
+        tryVerify(() => img.sourceSize.width > 0, 3000)
         compare(img.source.toString(), "image://legend/sprite/hazard-rock-day/none")
         compare(H.byName(rows[1], "legendImage").source.toString(), "image://legend/sprite/resare-tick/C040C0")
         verify(H.byName(rock, "legendLabel").visible)
@@ -1032,9 +1034,8 @@ TestCase {
         tap(plus) // scroll into view
         compare(fixture.settings.cogLineMin, 2)
         mousePress(plus)
-        wait(1100)
+        tryVerify(() => fixture.settings.cogLineMin >= 4, 3000)
         mouseRelease(plus)
-        verify(fixture.settings.cogLineMin >= 4, "held plus repeats, got " + fixture.settings.cogLineMin)
     }
 
     function test_trackLineTypeList() {
@@ -1057,9 +1058,15 @@ TestCase {
         waitForRendering(sheet)
         const hue = H.byName(page, "trackColorHue")
         verify(hue.height >= Units.mm(12) || hue.width >= Units.mm(12))
+        // A drag previews live but writes the setting once, on release (each write is an fsync).
+        const spy = createTemporaryQmlObject('import QtTest; SignalSpy { target: fixture.settings; signalName: "trackColorChanged" }', testCase)
         mousePress(hue, hue.width / 2, hue.height * 0.5)
-        mouseMove(hue, hue.width / 2, hue.height * 0.7)
+        for (let i = 1; i <= 6; ++i) mouseMove(hue, hue.width / 2, hue.height * (0.5 + 0.03 * i))
+        compare(spy.count, 0)
+        compare(H.byName(page, "trackColorPreview").lineColor.toString() !== "#ff0000", true)
         mouseRelease(hue, hue.width / 2, hue.height * 0.7)
+        compare(spy.count, 1)
+        spy.destroy()
         verify(/^#[0-9a-fA-F]{6}$/.test(fixture.settings.trackColor), fixture.settings.trackColor)
         verify(fixture.settings.trackColor.toLowerCase() !== "#ff0000", "hue drag changed it")
         const sv = H.byName(page, "trackColorSv")

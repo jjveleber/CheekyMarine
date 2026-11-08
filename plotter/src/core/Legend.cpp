@@ -234,7 +234,9 @@ public:
         const QJsonArray e = findLayer(m_style, QStringLiteral("band-fill"))[QStringLiteral("paint")]
                                  .toObject()[QStringLiteral("fill-color")]
                                  .toArray();
-        if (e.isEmpty() || e[0].toString() != QLatin1String("step")) return {};
+        if (e.size() < 3 || e[0].toString() != QLatin1String("step")) return {};
+        // The stops are read as feet: refuse a step on anything but depth_min_ft.
+        if (e[1].toArray() != QJsonArray{QStringLiteral("get"), QStringLiteral("depth_min_ft")}) return {};
         QStringList stops; // meters
         for (qsizetype i = 3; i < e.size(); i += 2) stops << QString::number(e[i].toDouble() * kMetersPerFoot);
         QVariantList out;
