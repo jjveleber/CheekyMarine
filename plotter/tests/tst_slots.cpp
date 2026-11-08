@@ -145,9 +145,12 @@ private slots:
             QVERIFY2(!sample.isEmpty(), qPrintable(fieldName(f)));
             const QStringList want = sample.split('\n');
             const QStringList got = formatValue(f, s, UnitPrefs{}).split('\n');
-            QVERIFY2(got.size() <= want.size(), qPrintable(fieldName(f)));
+            // As wide as the formatter's widest text, not wider: the size clamp keeps room for the
+            // sample, so a wider one stops a slot's resize early (#67).
+            QVERIFY2(got.size() == want.size(), qPrintable(fieldName(f)));
             for (int i = 0; i < got.size(); ++i)
-                QVERIFY2(got.at(i).size() <= want.at(i).size(), qPrintable(fieldName(f)));
+                QVERIFY2(got.at(i).size() == want.at(i).size(),
+                         qPrintable(fieldName(f) + ": " + got.at(i) + " vs " + want.at(i)));
         }
     }
 };
