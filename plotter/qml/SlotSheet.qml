@@ -27,12 +27,15 @@ Rectangle {
     border.color: Theme.buttonBorder
     border.width: Math.max(2, Units.mm(0.5))
 
+    onVisibleChanged: scroller.contentY = 0
+
     function setSize(mm) { changed(on, field, Math.max(6, Math.min(maxMm, mm))) }
 
     // Swallows taps on the sheet, so nothing under it reacts.
     MouseArea { anchors.fill: parent }
 
     BigButton {
+        id: done
         objectName: "sheetDone"
         anchors { right: parent.right; top: parent.top; margins: Units.mm(2) }
         width: Math.max(implicitWidth, Units.mm(25))
@@ -40,73 +43,85 @@ Rectangle {
         onClicked: sheet.closed()
     }
 
-    Row {
-        anchors { top: parent.top; left: parent.left; margins: Units.mm(2) }
-        spacing: Units.mm(4)
+    // Left of Done, so nothing runs under it: the groups wrap when the sheet is narrow and scroll
+    // when it is short (the panel diagonal goes from 7 to 15 in).
+    Flickable {
+        id: scroller
+        objectName: "slotSheetScroller"
+        anchors { top: parent.top; left: parent.left; bottom: parent.bottom; right: done.left; margins: Units.mm(2) }
+        contentWidth: width
+        contentHeight: groups.implicitHeight
+        clip: true
 
-        component Heading: Label {
-            color: Theme.text
-            font.pixelSize: Units.mm(3.5)
-            height: Units.mm(5)
-        }
+        Flow {
+            id: groups
+            width: scroller.width
+            spacing: Units.mm(4)
 
-        Column {
-            spacing: Units.mm(1.5)
-            Heading { text: "Show" }
-            BigButton {
-                objectName: "choice-on"
-                width: Units.mm(18)
-                text: "On"
-                highlighted: sheet.on
-                onClicked: sheet.changed(true, sheet.field, sheet.sizeMm)
+            component Heading: Label {
+                color: Theme.text
+                font.pixelSize: Units.mm(3.5)
+                height: Units.mm(5)
             }
-            BigButton {
-                objectName: "choice-off"
-                width: Units.mm(18)
-                text: "Off"
-                highlighted: !sheet.on
-                onClicked: sheet.changed(false, sheet.field, sheet.sizeMm)
-            }
-        }
 
-        Column {
-            spacing: Units.mm(1.5)
-            Heading { text: "Field" }
-            Grid {
-                columns: 3
+            Column {
                 spacing: Units.mm(1.5)
-                Repeater {
-                    model: sheet.fieldChoices
-                    BigButton {
-                        required property var modelData
-                        objectName: "choice-field-" + modelData.name
-                        width: Units.mm(30)
-                        text: modelData.label
-                        highlighted: sheet.field === modelData.name
-                        onClicked: sheet.changed(sheet.on, modelData.name, sheet.sizeMm)
+                Heading { text: "Show" }
+                BigButton {
+                    objectName: "choice-on"
+                    width: Units.mm(18)
+                    text: "On"
+                    highlighted: sheet.on
+                    onClicked: sheet.changed(true, sheet.field, sheet.sizeMm)
+                }
+                BigButton {
+                    objectName: "choice-off"
+                    width: Units.mm(18)
+                    text: "Off"
+                    highlighted: !sheet.on
+                    onClicked: sheet.changed(false, sheet.field, sheet.sizeMm)
+                }
+            }
+
+            Column {
+                spacing: Units.mm(1.5)
+                Heading { text: "Field" }
+                Grid {
+                    columns: 3
+                    spacing: Units.mm(1.5)
+                    Repeater {
+                        model: sheet.fieldChoices
+                        BigButton {
+                            required property var modelData
+                            objectName: "choice-field-" + modelData.name
+                            width: Units.mm(30)
+                            text: modelData.label
+                            highlighted: sheet.field === modelData.name
+                            onClicked: sheet.changed(sheet.on, modelData.name, sheet.sizeMm)
+                        }
                     }
                 }
             }
-        }
 
-        Column {
-            spacing: Units.mm(1.5)
-            Heading { text: "Size" }
-            Row {
+            Column {
                 spacing: Units.mm(1.5)
-                SizeButton { objectName: "sizeMinus"; text: "−"; direction: -1 }
-                Label {
-                    objectName: "sizeValue"
-                    width: Units.mm(22)
-                    height: Units.mm(12)
-                    text: sheet.sizeMm.toFixed(1) + " mm"
-                    color: Theme.text
-                    font.pixelSize: Units.mm(5)
-                    font.bold: true
-                    horizontalAlignment: Text.AlignHCenter
-                    verticalAlignment: Text.AlignVCenter
+                Heading { text: "Size" }
+                Row {
+                    spacing: Units.mm(1.5)
+                    SizeButton { objectName: "sizeMinus"; text: "−"; direction: -1 }
+                    Label {
+                        objectName: "sizeValue"
+                        width: Units.mm(22)
+                        height: Units.mm(12)
+                        text: sheet.sizeMm.toFixed(1) + " mm"
+                        color: Theme.text
+                        font.pixelSize: Units.mm(5)
+                        font.bold: true
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                    }
+                    SizeButton { objectName: "sizePlus"; text: "+"; direction: 1 }
                 }
-                SizeButton { objectName: "sizePlus"; text: "+"; direction: 1 }
             }
         }
     }

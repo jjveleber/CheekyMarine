@@ -408,6 +408,52 @@ TestCase {
         verify(!main.editingNew)
     }
 
+    // No two controls of the slot sheet overlap, none runs under Done or out of the sheet's width,
+    // and each is inside the scrolled content, at every panel size, at its own diagonal and at the
+    // 10.1 in default, at the 7 and 15 in ends of the setting, in either half (#68).
+    function test_slotSheetControlsApart_data() {
+        let out = []
+        const cases = []
+        for (const s of H.sizes()) {
+            cases.push(s)
+            if (s.diagIn !== 10.1) cases.push(Object.assign({}, s, { tag: s.tag + " at 10.1 in", diagIn: 10.1 }))
+        }
+        for (const d of [7, 15]) cases.push({ tag: "1024x600 at " + d + " in", w: 1024, h: 600, diagIn: d })
+        for (const c of cases)
+            for (const id of ["TL", "BL"]) out.push(Object.assign({}, c, { tag: c.tag + " " + id, id: id }))
+        return out
+    }
+    function test_slotSheetControlsApart(data) {
+        fixture.settings.panelDiagonalIn = data.diagIn
+        const main = makeMain(data.w, data.h)
+        main.editView("shipped-nav")
+        mouseClick(m(main, "slot-" + data.id))
+        const sheet = find(m(main, "viewEditor"), "slotSheet")
+        verify(sheet.visible)
+        waitForRendering(sheet)
+        const items = H.findAll(sheet, it => it.isBigButton === true && it.visible)
+        items.push(find(sheet, "sizeValue"))
+        verify(items.length >= 14, "controls found: " + items.length)
+        for (let i = 0; i < items.length; ++i) {
+            const a = items[i], name = a.objectName || a.text
+            const b = H.box(a, sheet)
+            verify(b.x >= -0.5 && b.x + b.w <= sheet.width + 0.5, name + " inside the sheet's width: " + JSON.stringify(b))
+            for (let j = i + 1; j < items.length; ++j)
+                verify(!H.overlaps(a, items[j], sheet), name + " and " + (items[j].objectName || items[j].text)
+                       + " overlap: " + JSON.stringify(b) + " " + JSON.stringify(H.box(items[j], sheet)))
+        }
+        const scroller = find(sheet, "slotSheetScroller")
+        const content = { x: 0, y: 0, w: scroller.contentWidth, h: scroller.contentHeight }
+        for (const a of items)
+            if (a.objectName !== "sheetDone")
+                verify(inside(H.box(a, scroller.contentItem), content), (a.objectName || a.text) + " inside the scrolled content")
+        // The last control can be scrolled into view.
+        scroller.contentY = Math.max(0, scroller.contentHeight - scroller.height)
+        waitForRendering(sheet)
+        const plus = H.box(find(sheet, "sizePlus"), scroller)
+        verify(plus.y >= -0.5 && plus.y + plus.h <= scroller.height + 0.5, "+ scrolls into view: " + JSON.stringify(plus))
+    }
+
     function test_sizeClampsToTheRoomLeft() {
         const main = makeMain(1024, 600)
         main.editView("shipped-nav")
