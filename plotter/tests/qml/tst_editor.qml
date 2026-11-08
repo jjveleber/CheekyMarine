@@ -350,6 +350,26 @@ TestCase {
         compare(sheet.sizeMm, at)
     }
 
+    // A thumb that drifts while holding + keeps the repeat: the sheet does not scroll when it fits,
+    // so it takes no drag from the button (#68 review).
+    function test_holdWithDriftKeepsTheRepeat() {
+        const main = makeMain(1024, 600)
+        main.editView("shipped-nav")
+        mouseClick(m(main, "slot-BL"))
+        const sheet = find(m(main, "viewEditor"), "slotSheet")
+        const scroller = find(sheet, "slotSheetScroller")
+        const plus = find(sheet, "sizePlus")
+        const start = sheet.sizeMm
+        mousePress(plus)
+        tryVerify(() => sheet.sizeMm > start, 2000, "the repeat runs")
+        for (let i = 1; i <= 5; ++i) mouseMove(plus, plus.width / 2, plus.height / 2 + 3 * i, -1, Qt.LeftButton)
+        const at = sheet.sizeMm
+        wait(600) // the repeat moves it 1.2 mm in this time
+        verify(sheet.sizeMm > at, "still repeating after a 15 px drift: " + at + " to " + sheet.sizeMm)
+        compare(scroller.contentY, 0, "nothing scrolled")
+        mouseRelease(plus, plus.width / 2, plus.height / 2 + 15)
+    }
+
     function test_minusStepsAndFloorsAtSix() {
         const main = makeMain(1024, 600)
         main.editView("shipped-nav")
@@ -447,11 +467,19 @@ TestCase {
         for (const a of items)
             if (a.objectName !== "sheetDone")
                 verify(inside(H.box(a, scroller.contentItem), content), (a.objectName || a.text) + " inside the scrolled content")
-        // The last control can be scrolled into view.
+        // Above the 7 in end every size fits unscrolled: no row is cut at the sheet's bottom.
+        if (data.diagIn > 7)
+            verify(scroller.contentHeight <= scroller.height + 0.5, "fits unscrolled: " + scroller.contentHeight
+                   + " in " + scroller.height)
+        // The lowest control can be scrolled into view.
+        let lowest = null
+        for (const a of items)
+            if (a.objectName !== "sheetDone" && (!lowest || H.box(a, scroller.contentItem).y > H.box(lowest, scroller.contentItem).y))
+                lowest = a
         scroller.contentY = Math.max(0, scroller.contentHeight - scroller.height)
         waitForRendering(sheet)
-        const plus = H.box(find(sheet, "sizePlus"), scroller)
-        verify(plus.y >= -0.5 && plus.y + plus.h <= scroller.height + 0.5, "+ scrolls into view: " + JSON.stringify(plus))
+        const low = H.box(lowest, scroller)
+        verify(low.y >= -0.5 && low.y + low.h <= scroller.height + 0.5, lowest.objectName + " scrolls into view: " + JSON.stringify(low))
     }
 
     function test_sizeClampsToTheRoomLeft() {

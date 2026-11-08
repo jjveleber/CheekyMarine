@@ -43,14 +43,17 @@ Rectangle {
         onClicked: sheet.closed()
     }
 
-    // Left of Done, so nothing runs under it: the groups wrap when the sheet is narrow and scroll
-    // when it is short (the panel diagonal goes from 7 to 15 in).
+    // Left of Done, so nothing runs under it: Show over Size, then Field, which wraps under them when
+    // the sheet is narrow; the sheet scrolls only when it is short (the panel diagonal goes from 7 to
+    // 15 in), so a thumb that drifts on a held + is not a scroll.
     Flickable {
         id: scroller
         objectName: "slotSheetScroller"
         anchors { top: parent.top; left: parent.left; bottom: parent.bottom; right: done.left; margins: Units.mm(2) }
         contentWidth: width
         contentHeight: groups.implicitHeight
+        flickableDirection: Flickable.AutoFlickIfNeeded
+        boundsBehavior: Flickable.StopAtBounds
         clip: true
 
         Flow {
@@ -65,21 +68,47 @@ Rectangle {
             }
 
             Column {
-                spacing: Units.mm(1.5)
-                Heading { text: "Show" }
-                BigButton {
-                    objectName: "choice-on"
-                    width: Units.mm(18)
-                    text: "On"
-                    highlighted: sheet.on
-                    onClicked: sheet.changed(true, sheet.field, sheet.sizeMm)
+                spacing: Units.mm(4)
+                Column {
+                    spacing: Units.mm(1.5)
+                    Heading { text: "Show" }
+                    Row {
+                        spacing: Units.mm(1.5)
+                        BigButton {
+                            objectName: "choice-on"
+                            width: Units.mm(18)
+                            text: "On"
+                            highlighted: sheet.on
+                            onClicked: sheet.changed(true, sheet.field, sheet.sizeMm)
+                        }
+                        BigButton {
+                            objectName: "choice-off"
+                            width: Units.mm(18)
+                            text: "Off"
+                            highlighted: !sheet.on
+                            onClicked: sheet.changed(false, sheet.field, sheet.sizeMm)
+                        }
+                    }
                 }
-                BigButton {
-                    objectName: "choice-off"
-                    width: Units.mm(18)
-                    text: "Off"
-                    highlighted: !sheet.on
-                    onClicked: sheet.changed(false, sheet.field, sheet.sizeMm)
+                Column {
+                    spacing: Units.mm(1.5)
+                    Heading { text: "Size" }
+                    Row {
+                        spacing: Units.mm(1.5)
+                        SizeButton { objectName: "sizeMinus"; text: "−"; direction: -1 }
+                        Label {
+                            objectName: "sizeValue"
+                            width: Units.mm(22)
+                            height: Units.mm(12)
+                            text: sheet.sizeMm.toFixed(1) + " mm"
+                            color: Theme.text
+                            font.pixelSize: Units.mm(5)
+                            font.bold: true
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
+                        }
+                        SizeButton { objectName: "sizePlus"; text: "+"; direction: 1 }
+                    }
                 }
             }
 
@@ -100,27 +129,6 @@ Rectangle {
                             onClicked: sheet.changed(sheet.on, modelData.name, sheet.sizeMm)
                         }
                     }
-                }
-            }
-
-            Column {
-                spacing: Units.mm(1.5)
-                Heading { text: "Size" }
-                Row {
-                    spacing: Units.mm(1.5)
-                    SizeButton { objectName: "sizeMinus"; text: "−"; direction: -1 }
-                    Label {
-                        objectName: "sizeValue"
-                        width: Units.mm(22)
-                        height: Units.mm(12)
-                        text: sheet.sizeMm.toFixed(1) + " mm"
-                        color: Theme.text
-                        font.pixelSize: Units.mm(5)
-                        font.bold: true
-                        horizontalAlignment: Text.AlignHCenter
-                        verticalAlignment: Text.AlignVCenter
-                    }
-                    SizeButton { objectName: "sizePlus"; text: "+"; direction: 1 }
                 }
             }
         }
