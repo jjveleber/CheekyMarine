@@ -1,0 +1,71 @@
+<h2>AIS targets next to the new boat</h2>
+<p class="subtitle">Left: today (boat 12 mm, AIS A 8 mm, B 6 mm). Right: new (boat 9 mm, AIS A 6 mm, B 4.5 mm, lost 6 mm hollow). Same 3:4 ratio both sides. Browser mm are approximate.</p>
+
+<svg width="0" height="0" style="position:absolute">
+  <defs>
+    <path id="hull" d="M20 3 C29 14 34 28 34 40 L34 88 L6 88 L6 40 C6 28 11 14 20 3 Z"/>
+    <path id="screen" d="M11 40 Q20 34 29 40 L29 44 Q20 39 11 44 Z"/>
+    <g id="boatC">
+      <rect x="15.5" y="88" width="9" height="9" rx="2" fill="#3a3f45" stroke="#111" stroke-width="1"/>
+      <rect x="27" y="88" width="4.5" height="6" rx="1.2" fill="#3a3f45" stroke="#111" stroke-width="0.8"/>
+      <use href="#hull" fill="#6E99BE" stroke="#1e3448" stroke-width="2"/>
+      <rect x="10" y="36" width="20" height="28" rx="3" fill="#d4d8dc" stroke="#1e3448" stroke-width="1"/>
+      <use href="#screen" fill="#22303f"/>
+      <path d="M10 37.5 A3.5 3.5 0 0 0 10 44.5 Z" fill="#b85450"/>
+      <path d="M30 37.5 A3.5 3.5 0 0 1 30 44.5 Z" fill="#4f9a64"/>
+    </g>
+    <g id="boatNow"><path d="M20 3 Q32 30 29 97 L11 97 Q8 30 20 3 Z" fill="#ff8000" stroke="#000" stroke-width="3"/></g>
+    <!-- AIS triangle in a 100x100 box, like the app: apex top, base 60% wide -->
+    <path id="tri" d="M50 6 L80 94 L20 94 Z"/>
+    <g id="aisA"><use href="#tri" fill="#2e9e3e" stroke="#000" stroke-width="6"/></g>
+    <g id="aisLost"><use href="#tri" fill="none" stroke="#000" stroke-width="6"/></g>
+  </defs>
+</svg>
+
+<style>
+  .sc { position:relative; height:330px; background:#DCEEF9; overflow:hidden }
+  .sc .shoal { position:absolute; left:0; bottom:0; width:45%; height:40%; background:#8EC3E6; border-top-right-radius:60% }
+  .sc svg.ov { position:absolute; left:0; top:0; width:100%; height:100% }
+  .sc .pin { position:absolute; transform:translate(-50%,-50%) }
+  .lbl { position:absolute; font:11px system-ui; color:#333 }
+</style>
+
+<div class="split">
+  <div class="mockup"><div class="mockup-header">Today</div><div class="mockup-body" style="padding:0">
+    <div class="sc">
+      <div class="shoal"></div>
+      <svg class="ov">
+        <line x1="50%" y1="60%" x2="50%" y2="0" stroke="#000" stroke-width="1.5"/>
+        <line x1="50%" y1="60%" x2="50%" y2="38%" stroke="#000" stroke-width="3" stroke-dasharray="6 3"/>
+        <line x1="22%" y1="25%" x2="34%" y2="12%" stroke="#000" stroke-width="1.5"/>
+        <line x1="78%" y1="72%" x2="66%" y2="88%" stroke="#000" stroke-width="1.5"/>
+      </svg>
+      <svg class="pin" viewBox="0 0 40 100" style="left:50%;top:60%;height:12mm"><use href="#boatNow"/></svg>
+      <svg class="pin" viewBox="0 0 100 100" style="left:22%;top:25%;height:8mm;transform:translate(-50%,-50%) rotate(40deg)"><use href="#aisA"/></svg>
+      <svg class="pin" viewBox="0 0 100 100" style="left:78%;top:72%;height:6mm;transform:translate(-50%,-50%) rotate(215deg)"><use href="#aisA"/></svg>
+      <svg class="pin" viewBox="0 0 100 100" style="left:80%;top:22%;height:8mm;transform:translate(-50%,-50%) rotate(300deg)"><use href="#aisLost"/></svg>
+      <div class="lbl" style="left:14%;top:31%">Class A</div>
+      <div class="lbl" style="left:72%;top:78%">Class B</div>
+      <div class="lbl" style="left:74%;top:29%">Lost</div>
+    </div></div></div>
+
+  <div class="mockup"><div class="mockup-header">New</div><div class="mockup-body" style="padding:0">
+    <div class="sc">
+      <div class="shoal"></div>
+      <svg class="ov">
+        <line x1="50%" y1="60%" x2="50%" y2="0" stroke="#000" stroke-width="1.5"/>
+        <line x1="50%" y1="60%" x2="50%" y2="38%" stroke="#000" stroke-width="3" stroke-dasharray="6 3"/>
+        <line x1="46%" y1="38%" x2="54%" y2="38%" stroke="#000" stroke-width="3"/>
+        <line x1="22%" y1="25%" x2="34%" y2="12%" stroke="#000" stroke-width="1.5"/>
+        <line x1="78%" y1="72%" x2="66%" y2="88%" stroke="#000" stroke-width="1.5"/>
+      </svg>
+      <svg class="pin" viewBox="0 0 40 100" style="left:50%;top:60%;height:9mm"><use href="#boatC"/></svg>
+      <svg class="pin" viewBox="0 0 100 100" style="left:22%;top:25%;height:6mm;transform:translate(-50%,-50%) rotate(40deg)"><use href="#aisA"/></svg>
+      <svg class="pin" viewBox="0 0 100 100" style="left:78%;top:72%;height:4.5mm;transform:translate(-50%,-50%) rotate(215deg)"><use href="#aisA"/></svg>
+      <svg class="pin" viewBox="0 0 100 100" style="left:80%;top:22%;height:6mm;transform:translate(-50%,-50%) rotate(300deg)"><use href="#aisLost"/></svg>
+      <div class="lbl" style="left:14%;top:31%">Class A</div>
+      <div class="lbl" style="left:72%;top:78%">Class B</div>
+      <div class="lbl" style="left:74%;top:29%">Lost</div>
+    </div></div></div>
+</div>
+<p class="subtitle">New side also shows the T at the end of the COG line (dashed). The thin solid line is the heading line.</p>
