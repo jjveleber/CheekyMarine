@@ -350,6 +350,26 @@ TestCase {
         compare(sheet.sizeMm, at)
     }
 
+    // A thumb that drifts while holding + keeps the repeat: the sheet does not scroll when it fits,
+    // so it takes no drag from the button (#68 review).
+    function test_holdWithDriftKeepsTheRepeat() {
+        const main = makeMain(1024, 600)
+        main.editView("shipped-nav")
+        mouseClick(m(main, "slot-BL"))
+        const sheet = find(m(main, "viewEditor"), "slotSheet")
+        const scroller = find(sheet, "slotSheetScroller")
+        const plus = find(sheet, "sizePlus")
+        const start = sheet.sizeMm
+        mousePress(plus)
+        tryVerify(() => sheet.sizeMm > start, 2000, "the repeat runs")
+        for (let i = 1; i <= 5; ++i) mouseMove(plus, plus.width / 2, plus.height / 2 + 3 * i, -1, Qt.LeftButton)
+        const at = sheet.sizeMm
+        wait(600) // the repeat moves it 1.2 mm in this time
+        verify(sheet.sizeMm > at, "still repeating after a 15 px drift: " + at + " to " + sheet.sizeMm)
+        compare(scroller.contentY, 0, "nothing scrolled")
+        mouseRelease(plus, plus.width / 2, plus.height / 2 + 15)
+    }
+
     function test_minusStepsAndFloorsAtSix() {
         const main = makeMain(1024, 600)
         main.editView("shipped-nav")
@@ -406,6 +426,60 @@ TestCase {
         compare(main.page, "home")
         compare(main.editing, false)
         verify(!main.editingNew)
+    }
+
+    // No two controls of the slot sheet overlap, none runs under Done or out of the sheet's width,
+    // and each is inside the scrolled content, at every panel size, at its own diagonal and at the
+    // 10.1 in default, at the 7 and 15 in ends of the setting, in either half (#68).
+    function test_slotSheetControlsApart_data() {
+        let out = []
+        const cases = []
+        for (const s of H.sizes()) {
+            cases.push(s)
+            if (s.diagIn !== 10.1) cases.push(Object.assign({}, s, { tag: s.tag + " at 10.1 in", diagIn: 10.1 }))
+        }
+        for (const d of [7, 15]) cases.push({ tag: "1024x600 at " + d + " in", w: 1024, h: 600, diagIn: d })
+        for (const c of cases)
+            for (const id of ["TL", "BL"]) out.push(Object.assign({}, c, { tag: c.tag + " " + id, id: id }))
+        return out
+    }
+    function test_slotSheetControlsApart(data) {
+        fixture.settings.panelDiagonalIn = data.diagIn
+        const main = makeMain(data.w, data.h)
+        main.editView("shipped-nav")
+        mouseClick(m(main, "slot-" + data.id))
+        const sheet = find(m(main, "viewEditor"), "slotSheet")
+        verify(sheet.visible)
+        waitForRendering(sheet)
+        const items = H.findAll(sheet, it => it.isBigButton === true && it.visible)
+        items.push(find(sheet, "sizeValue"))
+        verify(items.length >= 14, "controls found: " + items.length)
+        for (let i = 0; i < items.length; ++i) {
+            const a = items[i], name = a.objectName || a.text
+            const b = H.box(a, sheet)
+            verify(b.x >= -0.5 && b.x + b.w <= sheet.width + 0.5, name + " inside the sheet's width: " + JSON.stringify(b))
+            for (let j = i + 1; j < items.length; ++j)
+                verify(!H.overlaps(a, items[j], sheet), name + " and " + (items[j].objectName || items[j].text)
+                       + " overlap: " + JSON.stringify(b) + " " + JSON.stringify(H.box(items[j], sheet)))
+        }
+        const scroller = find(sheet, "slotSheetScroller")
+        const content = { x: 0, y: 0, w: scroller.contentWidth, h: scroller.contentHeight }
+        for (const a of items)
+            if (a.objectName !== "sheetDone")
+                verify(inside(H.box(a, scroller.contentItem), content), (a.objectName || a.text) + " inside the scrolled content")
+        // Above the 7 in end every size fits unscrolled: no row is cut at the sheet's bottom.
+        if (data.diagIn > 7)
+            verify(scroller.contentHeight <= scroller.height + 0.5, "fits unscrolled: " + scroller.contentHeight
+                   + " in " + scroller.height)
+        // The lowest control can be scrolled into view.
+        let lowest = null
+        for (const a of items)
+            if (a.objectName !== "sheetDone" && (!lowest || H.box(a, scroller.contentItem).y > H.box(lowest, scroller.contentItem).y))
+                lowest = a
+        scroller.contentY = Math.max(0, scroller.contentHeight - scroller.height)
+        waitForRendering(sheet)
+        const low = H.box(lowest, scroller)
+        verify(low.y >= -0.5 && low.y + low.h <= scroller.height + 0.5, lowest.objectName + " scrolls into view: " + JSON.stringify(low))
     }
 
     function test_sizeClampsToTheRoomLeft() {
