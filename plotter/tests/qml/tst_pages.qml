@@ -1069,6 +1069,16 @@ TestCase {
         spy.destroy()
         verify(/^#[0-9a-fA-F]{6}$/.test(fixture.settings.trackColor), fixture.settings.trackColor)
         verify(fixture.settings.trackColor.toLowerCase() !== "#ff0000", "hue drag changed it")
+        // A cancelled drag (the touch grab is lost) writes the last preview too.
+        const area = H.byName(page, "trackColorHueArea")
+        const before = fixture.settings.trackColor
+        mousePress(hue, hue.width / 2, hue.height * 0.2)
+        mouseMove(hue, hue.width / 2, hue.height * 0.3)
+        area.visible = false // drops the grab: the area emits canceled
+        area.visible = true
+        compare(fixture.settings.trackColor.toLowerCase(), H.byName(page, "trackColorPreview").lineColor.toString())
+        verify(fixture.settings.trackColor !== before, "cancel wrote the preview")
+        mouseRelease(hue, hue.width / 2, hue.height * 0.3)
         const sv = H.byName(page, "trackColorSv")
         mousePress(sv, sv.width * 0.5, sv.height * 0.5)
         mouseRelease(sv, sv.width * 0.5, sv.height * 0.5)

@@ -127,6 +127,7 @@ Rectangle {
                 onPressed: m => pick(m)
                 onPositionChanged: m => pick(m)
                 onReleased: sheet.released()
+                onCanceled: sheet.released()
             }
         }
 
@@ -148,6 +149,7 @@ Rectangle {
             }
             Thumb { x: (hueStrip.width - width) / 2; y: sheet.hue * hueStrip.height - height / 2 }
             MouseArea {
+                objectName: "trackColorHueArea"
                 anchors.fill: parent
                 function pick(m) {
                     sheet.hue = Math.max(0, Math.min(1, m.y / height))
@@ -156,6 +158,7 @@ Rectangle {
                 onPressed: m => pick(m)
                 onPositionChanged: m => pick(m)
                 onReleased: sheet.released()
+                onCanceled: sheet.released()
             }
         }
     }
