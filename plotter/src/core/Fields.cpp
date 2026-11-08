@@ -52,7 +52,8 @@ QString formatValue(Field f, const VesselState& s, const UnitPrefs& p) {
         double v = m;
         if (p.depth == DepthUnit::Feet) v = m / 0.3048;
         else if (p.depth == DepthUnit::Fathoms) v = m / 1.8288;
-        return round1(v) >= 10.0 ? whole(v) : oneDecimal(v);
+        // Whole from 10 either way: a negative depth (an offset under a small sounding) too.
+        return std::fabs(round1(v)) >= 10.0 ? whole(v) : oneDecimal(v);
     }
     case Field::Sog:
     case Field::Stw: {

@@ -90,7 +90,7 @@ QString fieldLabel(Field field) {
 
 QString widestSample(Field field) {
     switch (field) {
-    case Field::Depth: return QStringLiteral("9999.9");
+    case Field::Depth: return QStringLiteral("9999"); // whole numbers from 10 up
     case Field::Sog:
     case Field::Stw: return QStringLiteral("99.9");
     case Field::Cog:
