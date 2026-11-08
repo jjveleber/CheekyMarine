@@ -14,7 +14,8 @@ import QtQuick.Controls.Basic
 // page or runs into another; the stored sizes are not changed. In edit mode every slot is shown
 // outlined (the layout stays the live one: an off slot is only a faint 12 mm outline, under the on
 // slots, and takes no room) and a tap on one emits slotTapped; the selected slot shows its resize
-// handle. On a live view a 0.6 s hold on a shown slot emits slotHeld.
+// handle. On a live view a 0.6 s hold on a shown slot emits slotHeld; while a slot is selected
+// (editing, or a hold's sheet open) zoom, Legend and Recenter hide, so none lies over its handle.
 Item {
     id: page
     required property QtObject chart   // ChartController
@@ -109,7 +110,8 @@ Item {
         return null
     }
     // The hold shortcut (spec 6.9). On the page, under everything: a live slot takes no touches, and
-    // the grab is passive, so a drag that starts on a slot still pans the map.
+    // the grab is passive, so a drag that starts on a slot still pans the map. The held slot is the
+    // exception while its sheet is open: it takes touches for its handle, so a pan starts beside it.
     TapHandler {
         enabled: !page.editing
         longPressThreshold: 0.6
@@ -144,7 +146,8 @@ Item {
 
         // Gestures are ours, not the map item's. Only a pan stops follow mode; while following, zoom
         // goes through the controller so the boat keeps its place, else it scales about the point.
-        // Neither takes over from an item (the map item takes no input, a live slot is disabled):
+        // Neither takes over from an item (the map item takes no input, a live slot is disabled but
+        // for a held one while its sheet is open):
         // a drag that starts on a tab or a chart button stays that button's.
         DragHandler {
             target: null
@@ -299,7 +302,7 @@ Item {
         id: recenterButton
         objectName: "recenterButton"
         anchors { horizontalCenter: shownCornerArea.horizontalCenter; bottom: cornerArea.bottom }
-        visible: !page.chart.follow && !page.editing
+        visible: !page.chart.follow && !page.editing && page.selectedSlot === ""
         width: Math.max(implicitWidth, Units.mm(30))
         text: "Recenter"
         onClicked: page.chart.recenter()
@@ -313,7 +316,7 @@ Item {
         x: fitsGap ? cornerArea.x + cornerArea.width - width : Math.min(page.trLeft, page.brLeft) - page.margin - width
         y: Math.max(cornerArea.y, Math.min(cornerArea.y + cornerArea.height - height,
                                            page.trBottom + (page.brTop - page.trBottom - height) / 2))
-        visible: !page.editing && page.barShown
+        visible: !page.editing && page.barShown && page.selectedSlot === ""
         spacing: Units.mm(1.5)
         BigButton {
             objectName: "zoomInButton"
@@ -383,7 +386,7 @@ Item {
         objectName: "legendButton"
         anchors { left: cornerArea.left; verticalCenter: cornerArea.verticalCenter }
         // A legend with no rows would open a blank sheet; AIS rows show even without a pack.
-        visible: !page.editing && page.barShown && page.chart.legendCategories.some(c => c.rows.length > 0)
+        visible: !page.editing && page.barShown && page.selectedSlot === "" && page.chart.legendCategories.some(c => c.rows.length > 0)
         text: "Legend"
         onClicked: legendSheet.visible = true
     }
