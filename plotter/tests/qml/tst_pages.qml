@@ -857,6 +857,83 @@ TestCase {
         compare(H.byName(page, "row-touchLock"), null)
     }
 
+    function test_lineToggles() {
+        const page = makeSettings()
+        const h = H.byName(page, "row-showHeadingLine")
+        const c = H.byName(page, "row-showCogLine")
+        compare(h.text, "Heading line: On")
+        tap(h)
+        compare(fixture.settings.showHeadingLine, false)
+        compare(h.text, "Heading line: Off")
+        compare(c.text, "COG line: On")
+        tap(c)
+        compare(fixture.settings.showCogLine, false)
+        compare(c.text, "COG line: Off")
+        tap(c)
+        compare(fixture.settings.showCogLine, true)
+    }
+
+    function test_cogLineMinStepper() {
+        const page = makeSettings()
+        compare(fixture.settings.cogLineMin, 1)
+        compare(H.byName(page, "row-cogLineMin").text, "COG line time: 1 min")
+        tap(H.byName(page, "cogLineMinMinus"))
+        compare(fixture.settings.cogLineMin, 1)
+        for (let i = 0; i < 3; ++i) tap(H.byName(page, "cogLineMinPlus"))
+        compare(fixture.settings.cogLineMin, 4)
+        fixture.settings.cogLineMin = 60
+        tap(H.byName(page, "cogLineMinPlus"))
+        compare(fixture.settings.cogLineMin, 60)
+        compare(H.byName(page, "row-cogLineMin").text, "COG line time: 60 min")
+    }
+
+    function test_cogLineMinHoldRepeats() {
+        const page = makeSettings()
+        const plus = H.byName(page, "cogLineMinPlus")
+        tap(plus) // scroll into view
+        compare(fixture.settings.cogLineMin, 2)
+        mousePress(plus)
+        wait(1100)
+        mouseRelease(plus)
+        verify(fixture.settings.cogLineMin >= 4, "held plus repeats, got " + fixture.settings.cogLineMin)
+    }
+
+    function test_trackLineTypeList() {
+        const page = makeSettings()
+        compare(H.byName(page, "row-trackLineType").text, "Track line: Dashed")
+        pick(page, "row-trackLineType", "dotted")
+        compare(fixture.settings.trackLineType, "dotted")
+        compare(H.byName(page, "row-trackLineType").text, "Track line: Dotted")
+        pick(page, "row-trackLineType", "dashdot")
+        compare(H.byName(page, "row-trackLineType").text, "Track line: Dash-dot")
+    }
+
+    function test_trackColorSheet() {
+        fixture.settings.trackColor = "#FF0000"
+        const page = makeSettings()
+        const sheet = H.byName(page, "trackColorSheet")
+        verify(!sheet.visible)
+        tap(H.byName(page, "row-trackColor"))
+        verify(sheet.visible)
+        waitForRendering(sheet)
+        const hue = H.byName(page, "trackColorHue")
+        verify(hue.height >= Units.mm(12) || hue.width >= Units.mm(12))
+        mousePress(hue, hue.width / 2, hue.height * 0.5)
+        mouseMove(hue, hue.width / 2, hue.height * 0.7)
+        mouseRelease(hue, hue.width / 2, hue.height * 0.7)
+        verify(/^#[0-9a-fA-F]{6}$/.test(fixture.settings.trackColor), fixture.settings.trackColor)
+        verify(fixture.settings.trackColor.toLowerCase() !== "#ff0000", "hue drag changed it")
+        const sv = H.byName(page, "trackColorSv")
+        mousePress(sv, sv.width * 0.5, sv.height * 0.5)
+        mouseRelease(sv, sv.width * 0.5, sv.height * 0.5)
+        verify(/^#[0-9a-fA-F]{6}$/.test(fixture.settings.trackColor), fixture.settings.trackColor)
+        compare(H.byName(page, "trackColorPreview").lineColor.toString(), fixture.settings.trackColor.toLowerCase())
+        mouseClick(H.byName(page, "trackColorDefault"))
+        compare(fixture.settings.trackColor, "#444444")
+        mouseClick(H.byName(page, "trackColorDone"))
+        verify(!sheet.visible)
+    }
+
     function test_settingsInvalidDepthShowsReasonAndIsNotSaved() {
         const page = makeSettings()
         const deep = fixture.settings.deepM

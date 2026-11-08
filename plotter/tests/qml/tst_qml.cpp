@@ -56,6 +56,12 @@ public:
         m_settings->setPanelDiagonalIn(10.1);
         m_settings->setOrientation("head");
         m_settings->setTrackRecording(false);
+        m_settings->setShowHeadingLine(true);
+        m_settings->setShowCogLine(true);
+        m_settings->setCogLineMin(1);
+        m_settings->setTrackLineType("dashed");
+        m_settings->setTrackColor("#444444");
+        m_settings->setLegendOpenIds(QStringList());
         for (const TrackInfo& t : m_trackStore->list()) m_trackStore->remove(t.id);
         m_tracksController->refresh();
         m_lock.holdEnd();
