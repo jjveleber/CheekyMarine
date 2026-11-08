@@ -22,7 +22,7 @@ namespace {
 constexpr double kPi = 3.14159265358979323846;
 const QList<double> kValdco{0, 0.9, 1.8, 3.6, 5, 5.4, 9.1, 10, 18.2, 20, 27.4, 30};
 const QStringList kImageIds{OverlayIds::kBoatImage, OverlayIds::kAisImageA, OverlayIds::kAisImageB,
-                            OverlayIds::kAisImageHollow};
+                            OverlayIds::kAisImageHollow, OverlayIds::kCogTipImage};
 const QSet<QString> kSources{OverlayIds::kTracksSource, OverlayIds::kActiveTrackSource, OverlayIds::kAisSource,
                              OverlayIds::kOwnSource};
 

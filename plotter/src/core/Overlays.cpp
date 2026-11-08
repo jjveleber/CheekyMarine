@@ -101,15 +101,34 @@ QJsonObject aisGeoJson(const QList<AisTarget>& targets, const VesselState&)
     return collection(fs);
 }
 
-// Own boat orange (reads on the pack's cream, blue and grey water), AIS green, lines dark. Night:
-// a dark red fill under a bright red outline, red lines.
-OverlayColours overlayColours(const QString& palette) {
+QColor towardBlack(const QColor& c, double t)
+{
+    const auto ch = [t](int v) { return int(std::nearbyint(v * (1.0 - t))); };
+    return QColor(ch(c.red()), ch(c.green()), ch(c.blue()));
+}
+
+// Day: a blue hull on the pack's cream, blue and grey water, AIS green, lines dark. Dusk: day toward
+// black. Night: amber on black. The COG line and AIS vector are redder or darker than the chart's
+// amber text (#E0A000, #C08000) so they stay apart from it.
+OverlayColours overlayColours(const QString& palette)
+{
+    const auto c = [](const char* hex) { return QColor(QLatin1String(hex)); };
     if (palette == QLatin1String("night"))
-        return {QColor(0x50, 0x00, 0x00), QColor(0xff, 0x00, 0x00), QColor(0x30, 0x00, 0x00), QColor(0xc0, 0x00, 0x00),
-                QColor(0xe0, 0x00, 0x00), QColor(0xe0, 0x00, 0x00), QColor(0xa0, 0x00, 0x00), QColor(0x90, 0x00, 0x00)};
-    if (palette == QLatin1String("dusk"))
-        return {QColor(0xe0, 0x70, 0x00), QColor(0x00, 0x00, 0x00), QColor(0x2a, 0x8a, 0x36), QColor(0x00, 0x00, 0x00),
-                QColor(0x10, 0x10, 0x10), QColor(0x10, 0x10, 0x10), QColor(0x10, 0x10, 0x10), QColor(0xd0, 0x40, 0xd0)};
-    return {QColor(0xff, 0x80, 0x00), QColor(0x00, 0x00, 0x00), QColor(0x2e, 0x9e, 0x3e), QColor(0x00, 0x00, 0x00),
-            QColor(0x00, 0x00, 0x00), QColor(0x00, 0x00, 0x00), QColor(0x00, 0x00, 0x00), QColor(0xb0, 0x00, 0xb0)};
+        return {c("#7a5000"), c("#E0A000"), c("#2a1a08"), c("#0a0500"), c("#1a0e04"), c("#C08000"), c("#a02018"),
+                c("#20A040"), c("#6a4400"), c("#C08000"), c("#D09000"), c("#D06000"), c("#A04800"), c("#A06800")};
+    const OverlayColours day{c("#6E99BE"), c("#1e3448"), c("#d4d8dc"), c("#22303f"), c("#3a3f45"), c("#111111"),
+                             c("#b85450"), c("#4f9a64"), c("#2e9e3e"), c("#000000"), c("#000000"), c("#000000"),
+                             c("#000000"), c("#b000b0")};
+    if (palette != QLatin1String("dusk")) return day;
+    const auto d = [](const QColor& x) { return towardBlack(x, 0.45); };
+    return {d(day.hullFill), d(day.hullOutline), d(day.cabin), d(day.windshield), d(day.motor), d(day.motorOutline),
+            d(day.portLight), d(day.stbdLight), d(day.aisFill), d(day.aisOutline), d(day.heading), d(day.cog),
+            d(day.aisVector), d(day.track)};
+}
+
+QColor trackColour(const QColor& chosen, const QString& palette)
+{
+    if (palette == QLatin1String("night")) return overlayColours(palette).track;
+    if (palette == QLatin1String("dusk")) return towardBlack(chosen, 0.45);
+    return chosen;
 }

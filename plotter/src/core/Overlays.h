@@ -16,6 +16,7 @@ inline constexpr const char* kBoatImage = "cm-boat";
 inline constexpr const char* kAisImageA = "cm-ais-a";
 inline constexpr const char* kAisImageB = "cm-ais-b";
 inline constexpr const char* kAisImageHollow = "cm-ais-hollow";
+inline constexpr const char* kCogTipImage = "cm-cog-tip";
 }
 
 // Spec 6.6. True heading in degrees [0, 360): the heading when hdgRef is "True", heading + variation
@@ -46,8 +47,17 @@ QJsonObject tracksGeoJson(const QList<QList<LatLon>>& tracks);
 QJsonObject aisGeoJson(const QList<AisTarget>& targets, const VesselState& own);
 
 // Colours of the runtime overlays (icons and lines) for a palette ("day", "dusk", "night"; anything
-// else gives day). Night uses reds and black only: no channel but red above 0x20, as in Theme.qml.
+// else gives day). Dusk is the day set toward black by 0.45, as in the charts pack. Night is amber on
+// black: blue <= 0x20 and green <= 0.75 x red, except the starboard light (#20A040), as in Theme.qml.
+// The hull* to stbdLight fields draw the own-boat icon; `track` is the night track colour and the
+// fallback (day and dusk tracks come from trackColour).
 struct OverlayColours {
-    QColor boatFill, boatOutline, aisFill, aisOutline, heading, cog, aisVector, track;
+    QColor hullFill, hullOutline, cabin, windshield, motor, motorOutline, portLight, stbdLight;
+    QColor aisFill, aisOutline, heading, cog, aisVector, track;
 };
 OverlayColours overlayColours(const QString& palette);
+// Each channel x (1 - t), rounded half to even like Python's round in chartpack's _toward_black.
+QColor towardBlack(const QColor& c, double t);
+// The track color for a palette: the owner's choice by day, dimmed toward black at dusk, a fixed
+// dim amber at night.
+QColor trackColour(const QColor& chosen, const QString& palette);
