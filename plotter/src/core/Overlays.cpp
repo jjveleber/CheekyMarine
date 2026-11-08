@@ -5,7 +5,7 @@
 namespace {
 constexpr double kPi = 3.14159265358979323846;
 constexpr double kHeadingLineM = 50000.0;
-constexpr double kCogSecs = 120.0, kAisVecSecs = 360.0;
+constexpr double kAisVecSecs = 360.0;
 constexpr double kMinCogSogMs = 0.2572;
 constexpr double kHollowAgeSecs = 60.0;
 
@@ -52,7 +52,7 @@ std::optional<double> cogDeg(const VesselState& v)
     return std::nullopt;
 }
 
-QJsonObject ownShipGeoJson(const VesselState& v)
+QJsonObject ownShipGeoJson(const VesselState& v, const OwnShipOptions& opts)
 {
     QJsonArray fs;
     if (!v.lat || !v.lon) return collection(fs);
@@ -60,8 +60,12 @@ QJsonObject ownShipGeoJson(const VesselState& v)
 
     const std::optional<double> hdg = trueHeadingDeg(v), cog = cogDeg(v);
     fs.append(point(pos, QJsonObject{{"kind", "boat"}, {"rot", hdg.or_else([&] { return cog; }).value_or(0.0)}}));
-    if (hdg) fs.append(line(pos, destination(pos, *hdg, kHeadingLineM), "heading"));
-    if (cog) fs.append(line(pos, destination(pos, *cog, *v.sogMs * kCogSecs), "cog"));
+    if (opts.heading && hdg) fs.append(line(pos, destination(pos, *hdg, kHeadingLineM), "heading"));
+    if (opts.cog && cog) {
+        const LatLon end = destination(pos, *cog, *v.sogMs * opts.cogSecs);
+        fs.append(line(pos, end, "cog"));
+        fs.append(point(end, QJsonObject{{"kind", "cogtip"}, {"rot", *cog}}));
+    }
     return collection(fs);
 }
 

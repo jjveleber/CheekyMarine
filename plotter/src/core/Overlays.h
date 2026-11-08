@@ -27,10 +27,17 @@ std::optional<double> cogDeg(const VesselState& v);
 
 // Conventions: GeoJSON coordinates are [lon, lat]; `rot` is degrees in [0, 360), true; every LineString
 // starts at the vessel position. The 50 km heading line is a 2-point great-circle chord (adequate at
-// chart zooms). Own ship features: kind "boat" (Point, rot), "heading", "cog" (LineStrings). The boat's
-// rot is trueHeadingDeg, else cogDeg, else 0, like the head-up camera; heading and cog lines only
-// when those are known.
-QJsonObject ownShipGeoJson(const VesselState& v);
+// chart zooms). Own ship features: kind "boat" (Point, rot), "heading", "cog" (LineStrings) and "cogtip"
+// (Point at the cog line's last coordinate, rot = COG degrees). The boat's rot is trueHeadingDeg, else
+// cogDeg, else 0, like the head-up camera; heading and cog lines only when those are known and enabled.
+// OwnShipOptions: heading and cog switch the lines (cog off also drops the tip); cogSecs is the cog
+// line's length in seconds of travel at the current SOG.
+struct OwnShipOptions {
+    bool heading = true;
+    bool cog = true;
+    double cogSecs = 60.0;
+};
+QJsonObject ownShipGeoJson(const VesselState& v, const OwnShipOptions& opts = {});
 // One LineString (kind "track") per track with at least 2 points.
 QJsonObject tracksGeoJson(const QList<QList<LatLon>>& tracks);
 // Per target with a position: kind "ais" Point (mmsi, cls, rot, hollow) and, with COG and SOG, kind
