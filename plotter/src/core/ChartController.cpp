@@ -1,6 +1,7 @@
 #include "core/ChartController.h"
 #include "core/AisModel.h"
 #include "core/Fields.h"
+#include "core/Legend.h"
 #include "core/DepthFilters.h"
 #include "core/Overlays.h"
 #include "core/Settings.h"
@@ -195,6 +196,7 @@ ChartController::ChartController(ChartMap& map, Settings& settings, VesselModel&
     connect(&m_ais, &QAbstractItemModel::modelReset, this, &ChartController::pushAis);
 
     m_map.setZoom(std::clamp(kStartZoom, m_minZoom, m_maxZoom));
+    rebuildLegend(); // AIS only: without a pack loadStyle returns early
     loadStyle();
 }
 
@@ -277,6 +279,13 @@ void ChartController::zoomBy(double log2Delta) {
     applyCamera(); // the lower-third offset depends on the zoom
 }
 
+void ChartController::rebuildLegend() {
+    m_legendCategories = ::legendCategories(m_mode, m_style, m_palette, m_legend);
+    m_spriteBase = m_style[QStringLiteral("sprite")].toString();
+    if (m_spriteBase.startsWith(QLatin1String("file://"))) m_spriteBase.remove(0, 7);
+    emit legendCategoriesChanged();
+}
+
 void ChartController::loadStyle() {
     if (!m_charts) return;
     // Parsed once at start: files that change afterwards are not read again.
@@ -286,6 +295,7 @@ void ChartController::loadStyle() {
         return;
     }
     m_style = m_styles.value(name);
+    rebuildLegend();
     const QString notice = m_style[QStringLiteral("metadata")][QStringLiteral("cheekymarine")]
                                [QStringLiteral("notice")].toString();
     if (notice != m_notice) {

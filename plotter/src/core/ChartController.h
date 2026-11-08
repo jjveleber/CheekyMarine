@@ -29,6 +29,11 @@ class ChartController : public QObject {
     Q_PROPERTY(QString notice READ notice NOTIFY noticeChanged)
     // The charts pack's legend: list of {abbr, meaning, kind}; empty without a pack or legend.json.
     Q_PROPERTY(QVariantList legend READ legend CONSTANT)
+    // The legend for the current view (legendCategories() in Legend.h): AIS only without a pack,
+    // rebuilt on every style load.
+    Q_PROPERTY(QVariantList legendCategories READ legendCategories NOTIFY legendCategoriesChanged)
+    // The loaded style's sprite path without "file://" (no .json or .png suffix); empty without a style.
+    Q_PROPERTY(QString spriteBase READ spriteBase NOTIFY legendCategoriesChanged)
     Q_PROPERTY(bool noPosition READ noPosition NOTIFY noPositionChanged)
     Q_PROPERTY(double minZoom READ minZoom CONSTANT)
     Q_PROPERTY(double maxZoom READ maxZoom CONSTANT)
@@ -53,6 +58,8 @@ public:
     bool fishAvailable() const { return m_bathy.has_value(); }
     QString notice() const { return m_notice; }
     QVariantList legend() const { return m_legend; }
+    QVariantList legendCategories() const { return m_legendCategories; }
+    QString spriteBase() const { return m_spriteBase; }
     bool noPosition() const { return m_noPosition; }
     double minZoom() const { return m_minZoom; }
     double maxZoom() const { return m_maxZoom; }
@@ -102,9 +109,11 @@ signals:
     void noticeChanged();
     void noPositionChanged();
     void aisSelectionChanged();
+    void legendCategoriesChanged();
 
 private:
     void loadStyle();
+    void rebuildLegend();
     void onStyleLoaded();
     void applyDepthFilters();
     Depths currentDepths() const;
@@ -127,6 +136,8 @@ private:
     std::optional<LatLon> m_startPosition;
     QString m_notice;
     QVariantList m_legend;
+    QVariantList m_legendCategories;
+    QString m_spriteBase;
     bool m_noPosition = true;
     double m_minZoom = 0, m_maxZoom = 22;
     QHash<QString, QJsonObject> m_styles; // the accepted packs' parsed styles, keyed by style name

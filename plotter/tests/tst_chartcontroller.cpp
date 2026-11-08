@@ -876,6 +876,61 @@ private slots:
         QVERIFY(r.ctrl->legend().isEmpty());
     }
 
+    // The legend categories are rebuilt on every style load: mode and palette changes reload the style.
+    void legendFollowsModeAndPalette() {
+        Rig r;
+        QVERIFY(r.settings);
+        r.make();
+        r.map.loaded();
+        const auto ids = [&r] {
+            QStringList out;
+            for (const QVariant& c : r.ctrl->legendCategories()) out << c.toMap()["id"].toString();
+            return out;
+        };
+        QVERIFY(ids().contains("navaids"));
+        QCOMPARE(r.ctrl->spriteBase(), r.chartsDir() + "/sprites/nav");
+        QSignalSpy changed(r.ctrl.get(), &ChartController::legendCategoriesChanged);
+        r.ctrl->setMode("fish");
+        QCOMPARE(changed.count(), 1);
+        QVERIFY(!ids().contains("navaids"));
+        QVERIFY(r.ctrl->spriteBase().endsWith("/bathy-puget-north-1.0.0/sprites/fish"));
+        QVERIFY(!r.ctrl->spriteBase().startsWith("file:"));
+        r.map.loaded();
+        r.ctrl->setPalette("night");
+        QCOMPARE(changed.count(), 2);
+        int hazardSprites = 0;
+        for (const QVariant& c : r.ctrl->legendCategories()) {
+            if (c.toMap()["id"] != "hazards") continue;
+            for (const QVariant& row : c.toMap()["rows"].toList()) {
+                const QString sprite = row.toMap()["sprite"].toString();
+                if (!sprite.startsWith("hazard-")) continue;
+                ++hazardSprites;
+                QVERIFY2(sprite.endsWith("-night"), qPrintable(sprite));
+            }
+        }
+        QVERIFY(hazardSprites >= 4);
+    }
+
+    void legendWithoutPackIsAisOnly() {
+        Rig r;
+        QVERIFY(r.settings);
+        r.packs.clear();
+        QTest::ignoreMessage(QtWarningMsg, "ChartController: no usable charts pack");
+        r.make();
+        const QVariantList cats = r.ctrl->legendCategories();
+        QVERIFY(!cats.isEmpty());
+        for (const QVariant& c : cats) {
+            const QVariantMap m = c.toMap();
+            if (m["id"] == "ais") {
+                QCOMPARE(m["rows"].toList().size(), 4);
+            } else {
+                QVERIFY(m["rows"].toList().isEmpty());
+                QVERIFY(m["needsPack"].toBool());
+            }
+        }
+        QCOMPARE(r.ctrl->spriteBase(), QString());
+    }
+
     void zoomRangeFallbackWithoutMetadata() {
         Rig r(true, false, -1, -1);
         QVERIFY(r.settings);
