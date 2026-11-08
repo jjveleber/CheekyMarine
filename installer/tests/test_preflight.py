@@ -1,11 +1,18 @@
 import fcntl
 import json
 import os
+import pathlib
 import subprocess
 import tarfile
 import unittest
 
 from installer.tests.harness import Rig
+
+
+# The set version the committed script embeds, read from the committed lock so a set bump needs no test edit.
+COMMITTED_SET = next(line.split("=", 1)[1] for line in
+                     (pathlib.Path(__file__).resolve().parents[1] / "cheekymarine.lock").read_text().splitlines()
+                     if line.startswith("set="))
 
 
 def first_line(text):
@@ -79,27 +86,28 @@ class TestPreflight(unittest.TestCase):
                          "cheekymarine: unknown command: frobnicate (use install, rollback or version)")
 
     def test_version_prints_set_and_parts(self):
-        rel = self.rig.make_set("0.2.0", "0.3.0", n2kd_ver="0.1.1", charts_ver="1.2.0", bathy_ver="1.3.0")
+        rel = self.rig.make_set("9.8.7", "0.3.0", n2kd_ver="0.1.1", charts_ver="1.2.0", bathy_ver="1.3.0")
         self.rig.plant_set(rel / "cheekymarine.lock")
         r = self.rig.run("version", script=rel / "install-cheekymarine.sh")
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual(r.stdout.splitlines(), [
-            "installed: 0.2.0",
+            "installed: 9.8.7",
             "  n2kd: 0.1.1",
             "  charts: 1.2.0",
             "  bathy: 1.3.0",
             "  plotter: 0.3.0",
         ])
-        # The committed script embeds set 0.1.0, which differs from the installed 0.2.0.
+        # The committed script embeds the committed lock's set, which differs from the installed 9.8.7.
+        self.assertNotEqual(COMMITTED_SET, "9.8.7")
         r = self.rig.run("version")
         self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertEqual(r.stdout.splitlines()[0], "installed: 0.2.0")
-        self.assertEqual(r.stdout.splitlines()[-1], "this script installs: 0.1.0")
+        self.assertEqual(r.stdout.splitlines()[0], "installed: 9.8.7")
+        self.assertEqual(r.stdout.splitlines()[-1], f"this script installs: {COMMITTED_SET}")
 
     def test_version_no_set_installed(self):
         r = self.rig.run("version")
         self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertEqual(r.stdout.splitlines(), ["installed: none", "this script installs: 0.1.0"])
+        self.assertEqual(r.stdout.splitlines(), ["installed: none", f"this script installs: {COMMITTED_SET}"])
 
     def test_version_needs_no_preflight(self):
         self.rig.write("/etc/os-release", "ID=debian\n")
