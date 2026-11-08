@@ -728,7 +728,7 @@ TestCase {
     function test_slotBoxWithinItsCoefficients_data() {
         let out = []
         for (const s of H.sizes())
-            for (const c of [{ id: "TL", field: "depth", label: "Depth", unit: "ft", sample: "9999.9", mm: 25 },
+            for (const c of [{ id: "TL", field: "depth", label: "Depth", unit: "ft", sample: "9999", mm: 25 },
                              { id: "BR", field: "wtemp", label: "Water temp", unit: "°F", sample: "999.9", mm: 6 },
                              { id: "TR", field: "pos", label: "Position", unit: "", sample: "89°59.999'N\n122°59.999'W", mm: 14 },
                              { id: "Top", field: "pos", label: "Position", unit: "", sample: "89°59.999'N\n122°59.999'W", mm: 8 },
@@ -953,7 +953,7 @@ TestCase {
         const want = Units.mm(data.mm)
         const slot = createTemporaryObject(slotComp, testCase, {
             x: 20, y: 20, slotId: "TL", on: true, field: "depth", fieldLabel: "Depth", sizeMm: data.mm,
-            formatted: "8", unit: "ft", widestSample: "9999.9" })
+            formatted: "8", unit: "ft", widestSample: "9999" })
         verify(H.byName(slot, "slotValue"))
         compare(slot.drawnMm, data.mm)
         waitForRendering(slot)

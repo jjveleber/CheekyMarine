@@ -42,6 +42,11 @@ private slots:
         p.depth = DepthUnit::Metres;
         QCOMPARE(fv(Field::Depth, depth(0.0, -0.01), p), QStringLiteral("0.0"));  // no negative zero
         QCOMPARE(fv(Field::Depth, depth(0.0, -0.1), p), QStringLiteral("-0.1"));  // honest negative stays
+        // Whole numbers from 10 either way, so a negative depth is never wider than the slot clamp's
+        // "9999" sample (#67): the offset's floor in PGN 128267, -32.767 m, is -108 ft.
+        QCOMPARE(fv(Field::Depth, depth(0.0, -10.5), p), QStringLiteral("-11"));
+        p.depth = DepthUnit::Feet;
+        QCOMPARE(fv(Field::Depth, depth(0.0, -32.767), p), QStringLiteral("-108"));
     }
     void depthMissingAndLabels() {
         QCOMPARE(fv(Field::Depth, VesselState{}), QStringLiteral("--"));
