@@ -605,6 +605,26 @@ private slots:
         check(r, type, dash, cap, trackColour(QColor("#654321"), "dusk").name());
     }
 
+    // Owner hands-on (PR #70): a Track line change on the real map showed the previous dash, or
+    // nothing for solid, until a style reload. MapLibre holds a non-interpolatable property such as
+    // line-dasharray at its prior value for the whole paint transition (300 ms by default), builds
+    // the line drawables from that prior value, and does not rebuild them when the transition ends.
+    // A zero dasharray transition makes a runtime dash change take effect in the same frame.
+    void trackDashChangesWithoutTransition() {
+        Rig r;
+        QVERIFY(r.settings);
+        r.make();
+        r.map.loaded();
+        for (const char* id : {"cm-tracks-line", "cm-track-active-line"}) {
+            const QJsonObject paint = r.map.layers.value(id)["paint"].toObject();
+            QVERIFY2(paint.contains("line-dasharray-transition"), id);
+            QCOMPARE(paint["line-dasharray-transition"].toObject()["duration"].toInt(-1), 0);
+        }
+        r.map.calls.clear();
+        r.settings->setTrackLineType("solid");
+        QCOMPARE(r.map.count("style"), 0); // still applied in place, not by a style reload
+    }
+
     void trackNightIsAmberWhateverChosen() {
         Rig r;
         QVERIFY(r.settings);

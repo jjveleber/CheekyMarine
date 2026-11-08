@@ -50,6 +50,9 @@ QJsonObject trackLayer(const char* json, const QColor& colour, const QString& ty
     QJsonObject layer = line(parse(json), colour);
     QJsonObject paint = layer[QStringLiteral("paint")].toObject();
     if (const QJsonValue dash = trackDash(type); !dash.isNull()) paint[QStringLiteral("line-dasharray")] = dash;
+    // No dash transition: MapLibre holds the prior dash for the whole transition, builds the line
+    // from it, and does not rebuild when the transition ends (the old dash, or no line for solid).
+    paint[QStringLiteral("line-dasharray-transition")] = QJsonObject{{QStringLiteral("duration"), 0}};
     layer[QStringLiteral("paint")] = paint;
     QJsonObject layout = layer[QStringLiteral("layout")].toObject();
     layout[QStringLiteral("line-cap")] = trackCap(type);
