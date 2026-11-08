@@ -132,6 +132,12 @@ Stored in `plotter.db`, changed in the Settings page. Defaults:
 | `lastViewId` | empty | the id of the view last shown, shown again at start (empty or unknown: the first view) |
 | `tabBarHideS` | 8 | `0`, `5`, `8`, `15`, `30`: seconds before the tab bar slides off a view, 0 = never hides |
 | `showChartNotice` | on | the notice line on the chart and the boot splash |
+| `showHeadingLine` | on | the heading line (50 km, thin, solid) |
+| `showCogLine` | on | the COG line, ending in a T bar |
+| `cogLineMin` | 1 | whole minutes of travel the COG line shows, 1 to 60 |
+| `trackLineType` | `dashed` | `solid`, `dashed`, `dotted`, `dashdot`: how tracks are drawn |
+| `trackColor` | `#444444` | `#RRGGBB`: track color (a bad value is refused and reads as the default) |
+| `legendOpenIds` | empty | JSON list of the legend categories left open (`ais`, `navaids`, `lights`, `hazards`, `depths`, `seabed`) |
 | `panelDiagonalIn` | 10.1 | inches, sizes the touch targets |
 | `trackRecording` | off | |
 | `trackIntervalS` | 5 | seconds between track points |
@@ -237,6 +243,8 @@ For example `plotter/tools/run-dev.sh "" --palette dusk --view Fish` (an empty f
 means the default fixture). Renders need a display (WSLg or X): the offscreen and minimal platforms
 exit 1 with a message saying so. The Settings and Legend renders are taller than the panel, so use a
 tall window (`--window 1024x1400`).
+
+The plan 6 renders (boat, AIS, COG line and track on the navigating scenario, and the legend with one category open) are in `docs/plotter/renders/plan6/`: `chart-*` after 25 s of `--record`, `legend-*` with `legendOpenIds` set in the data dir.
 
 The saved views renders (every page and editor sheet, day and night, at 1024x600 and 1280x800 on a
 10.1 in panel, and 1920x1280 on a 13 in panel) are in `docs/plotter/renders/views/`, named `<name>-<day|night>-<WxH>.png`. They come from
