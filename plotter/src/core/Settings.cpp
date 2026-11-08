@@ -1,6 +1,7 @@
 #include "Settings.h"
 #include <QJsonArray>
 #include <QJsonDocument>
+#include <QRegularExpression>
 #include <QSqlError>
 #include <QSqlQuery>
 #include <cmath>
@@ -23,6 +24,26 @@ Check isNum(double min, double max = 1e12) {
 }
 Check isInt(int min) {
     return [=](const QJsonValue& v) { return v.isDouble() && v.toDouble() == std::floor(v.toDouble()) && v.toInt() >= min; };
+}
+
+Check isInt(int min, int max) {
+    return [=](const QJsonValue& v) {
+        return v.isDouble() && v.toDouble() == std::floor(v.toDouble()) && v.toDouble() >= min && v.toDouble() <= max;
+    };
+}
+Check matches(const char* pattern) {
+    const QRegularExpression re(QString::fromLatin1(pattern));
+    return [re](const QJsonValue& v) { return v.isString() && re.match(v.toString()).hasMatch(); };
+}
+Check isStringArray() {
+    return [](const QJsonValue& v) {
+        if (!v.isArray())
+            return false;
+        for (const QJsonValue& e : v.toArray())
+            if (!e.isString())
+                return false;
+        return true;
+    };
 }
 
 struct Def {
@@ -51,6 +72,12 @@ const std::map<QString, Def>& defs() {
         {"trackRecording", {false, isBool()}},
         {"trackIntervalS", {5, isInt(1)}},
         {"trackMinDistanceM", {10, isNum(0)}},
+        {"showHeadingLine", {true, isBool()}},
+        {"showCogLine", {true, isBool()}},
+        {"cogLineMin", {1, isInt(1, 60)}},
+        {"trackLineType", {"dashed", oneOf({"solid", "dashed", "dotted", "dashdot"})}},
+        {"trackColor", {"#444444", matches("^#[0-9A-Fa-f]{6}$")}},
+        {"legendOpenIds", {QJsonArray{}, isStringArray()}},
     };
     return d;
 }
@@ -125,6 +152,21 @@ bool Settings::put(const QString& key, const QJsonValue& v) {
         return false;
     m_v.insert(key, v);
     return true;
+}
+
+QStringList Settings::legendOpenIds() const {
+    QStringList l;
+    for (const QJsonValue& e : m_v.value("legendOpenIds").toArray())
+        l << e.toString();
+    return l;
+}
+
+void Settings::setLegendOpenIds(const QStringList& v) {
+    QJsonArray a;
+    for (const QString& s : v)
+        a.append(s);
+    if (put("legendOpenIds", a))
+        emit legendOpenIdsChanged();
 }
 
 QVariantMap Settings::depthsProblem(double a, double b, double c) {
