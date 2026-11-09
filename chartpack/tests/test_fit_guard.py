@@ -91,3 +91,12 @@ def test_returns_promptly_with_long_sample_interval(guard):
     r, _ = guard("true", sample_s="30")
     assert r.returncode == 0
     assert time.monotonic() - t0 < 10
+
+
+def test_writes_min_mem_available(guard, tmp_path, monkeypatch):
+    meminfo = tmp_path / "meminfo"
+    meminfo.write_text("MemTotal: 99999999 kB\nMemAvailable: 4321000 kB\n")
+    monkeypatch.setenv("CM_MEMINFO", str(meminfo))
+    r, stats = guard("true")
+    assert r.returncode == 0, r.stderr
+    assert stats["min_mem_available_kb"] == 4321000
