@@ -23,10 +23,12 @@
 - Versions: every new region pack starts at `1.0.0`; plotter `0.3.0`; set `0.3.0` (pre-release).
 - Grid zoom is 10 everywhere (`GRID_ZOOM = 10`). Region packs: charts zoom 10 to 16, bathy fine zoom 10 to 16 (DEM 10 to `dem_maxzoom`), bathy coarse zoom 10 to 12. Overview: charts zoom 6 to 9, bathy coarse zoom 6 to 9.
 - Plotter build and test: `cmake -S . -B build-plotter -G Ninja -DCM_BUILD_PLOTTER=ON -DCMAKE_PREFIX_PATH="$HOME/Qt/6.8.3/gcc_64;$HOME/.local/maplibre-qt"`, `cmake --build build-plotter`, `ctest --test-dir build-plotter --output-on-failure` (prefix with `env -u LD_LIBRARY_PATH PATH=$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin` if linuxbrew is on PATH).
-- chartpack tests: `cd chartpack && PATH="$HOME/.local/bin:$PATH" .venv/bin/pytest -q`. Installer tests: `cd installer/tests && python3 -m pytest -q` (as `installer-ci.yml` runs them).
+- chartpack tests: `cd chartpack && PATH="$HOME/.local/bin:$PATH" .venv/bin/pytest -q`. Installer tests: `python3 -m unittest discover -s installer/tests -v` from the repo root (as `installer-ci.yml` runs them).
+- Zoom caps are global, never per region, so merged sources never mix max zooms: fine vector 16, fine DEM 14 (`dem_maxzoom = 14` in every region file), coarse 12. A size fix lowers a cap for all regions or splits a region; it never changes one region's cap alone.
+- Tile rows: `chartpack/src/chartpack/mbtiles.py` stores TMS rows (`tile_row = 2**z - 1 - y`). Every ownership lookup works in XYZ: flip the stored row before taking the zoom-10 ancestor (`x >> (z - 10)`, `y >> (z - 10)`), in Python and C++ alike.
 - Report a pass only from the test runner's own exit status of a fresh run, never from piped output or an old log.
 - Results and measurements go on the GitHub issue they belong to (#84 for the spike and seams, #85 for build stats).
-- PRs, in order: A (#84, Tasks 1 to 8), B (#85, Tasks 9 and 10), C (#87 and #88, Tasks 11 to 14), D (#14 and #16, Task 15), E (#86 region files, Task 16), F (set lock, Task 18). Each gets one independent adversarial review before merge (reviewer posts its own PR review; threads resolved one by one after verified fixes).
+- PRs, in order: A (#84, Tasks 1 to 8), B (#85, Tasks 9 and 10), C (#87 and #88, Tasks 11 to 14), D (#14 and #16, Tasks 15 and 15b), E (#86 region files, Task 16), F (set lock, Task 18). Each gets one independent adversarial review before merge (reviewer posts its own PR review; threads resolved one by one after verified fixes).
 
 ## Review Focus
 
@@ -78,10 +80,11 @@ Throwaway code on branch `plan7-spike` (from `plan7-stitch` after Task 1); it is
 
 **What the scripts do:**
 - `spike_recut.py SRC_PACK_DIR OUT_DIR --corner LAT,LON`: takes the released `charts-puget-north-1.1.0` and `bathy-puget-north-1.1.0` packs (downloaded from their GitHub releases, not built) and writes five copies of each MBTiles: four region files that each own the zoom-10 tiles in one quadrant around the zoom-10 grid corner nearest `--corner` (zoom 10 and deeper), and one overview file with zoom 9 and shallower. Each file keeps the source metadata. It then merges the five back into one file per kind and prints the merge wall time, merged size and source size. Use the corner nearest 47.95 N, -122.35 W (Possession bar to Everett).
-- `spike_router.py OUT_DIR --port 8765`: serves `/<source>/<z>/<x>/<y>` from the owner file of each tile (zoom-10 ancestor lookup, built once at start from each file's zoom-10 rows), with a TileJSON at `/<source>.json`. A matching style copy points each source's `url` at `http://127.0.0.1:8765/<source>.json`. This is the upper bound for app routing: an in-app endpoint would do the same lookup without a process hop.
+- `spike_router.py OUT_DIR --port 8765`: serves `/<source>/<z>/<x>/<y>` from the owner file of each tile (zoom-10 ancestor lookup, built once at start from each file's zoom-10 rows, TMS rows flipped), with a TileJSON at `/<source>.json`. A matching style copy points each source's `url` at `http://127.0.0.1:8765/<source>.json`. This is the upper bound for app routing: an in-app endpoint would do the same lookup without a process hop. Today's `rewriteStyle` refuses any source url other than `mbtiles://<name>`, so the spike branch also patches `StyleLoader.cpp` to pass `http://127.0.0.1:` urls through unchanged (spike only).
+- The script prints the corner's latitude and longitude. For the Possession bar to Everett choice that corner is about 47.9899 N, -122.3438 W (zoom-10 tile lines).
 
 - [ ] **Step 1:** Write both scripts on `plan7-spike`, push the branch.
-- [ ] **Step 2:** Send the run to `laptop-chart` via SendMessage, as one numbered list: pull `plan7-spike`, build the plotter, download the two puget-north 1.1.0 release tars from GitHub, run `spike_recut.py`, then three runs of 60 s each with `--pan-path` over the four-pack corner (`47.98,-122.48,11;47.90,-122.25,14;47.98,-122.48,15;47.90,-122.25,12` or the corner's real coordinates printed by the script), `--pan-leg-ms 1200`, `--frame-stats`, `--exit-after-ms 60000`, wrapped in `/usr/bin/time -v`:
+- [ ] **Step 2:** Send the run to `laptop-chart` via SendMessage, as one numbered list: pull `plan7-spike`, build the plotter, download the two puget-north 1.1.0 release tars from GitHub, run `spike_recut.py`, then three runs of 60 s each with `--pan-path` around the printed corner (LAT, LON) through all four quadrants: `LAT+0.08,LON-0.08,11;LAT-0.08,LON+0.08,14;LAT+0.08,LON+0.08,15;LAT-0.08,LON-0.08,12` (with the corner above: `48.0699,-122.4238,11;47.9099,-122.2638,14;48.0699,-122.2638,15;47.9099,-122.4238,12`), `--pan-leg-ms 1200`, `--frame-stats`, `--exit-after-ms 60000`, wrapped in `/usr/bin/time -v`:
   1. baseline: the original one-pack dirs;
   2. merged: the merged files from the script, placed as the pack's `enc.mbtiles`, `bathy.mbtiles`, `dem.mbtiles`;
   3. routed: `spike_router.py` running and the style copy pointing at it.
@@ -105,17 +108,19 @@ Throwaway code on branch `plan7-spike` (from `plan7-stitch` after Task 1); it is
   - `assign(regions: list[Region], order: list[str], clip: shapely.Geometry | None) -> dict[tuple[int, int], str]`: each zoom-10 tile meeting any non-overview region box goes to the first name in `order` whose box meets it; a tile fully inside `clip` goes to no one.
   - `load_grid(path: Path) -> list[str]` reads `grid.toml`: `zoom = 10` (must equal `GRID_ZOOM`) and `order = [...]`.
   - `owned_tiles(region: Region, regions_dir: Path) -> set[tuple[int, int]] | None` (None for the overview).
-  - `keep_tiles(path: Path, owned: set[tuple[int, int]] | None, *, minzoom: int, maxzoom: int) -> None`: deletes rows outside `minzoom..maxzoom` and, when `owned` is set, rows at zoom 10 or deeper whose zoom-10 ancestor is not owned; then `VACUUM`. Sets metadata `minzoom`, `maxzoom` and `bounds` (union of owned tile bounds, or the region bbox for the overview).
+  - `keep_tiles(path: Path, owned: set[tuple[int, int]] | None, *, minzoom: int, maxzoom: int) -> None`: deletes rows outside `minzoom..maxzoom` and, when `owned` is set, rows at zoom 10 or deeper whose zoom-10 ancestor (XYZ, after flipping the stored TMS row) is not owned; then `VACUUM`. Sets metadata `minzoom`, `maxzoom`, `bounds` (union of owned tile bounds, or the region bbox for the overview) and `cheekymarine:owned` (sorted JSON list of `[x, y]`, or `null` for the overview), which `chartpack check` reads (Task 9).
   - `Region.overview: bool` (TOML `overview = true`, default false). Region packs build zoom 10 to 16; the overview builds zoom 6 to 9.
   - `build_enc_mbtiles(..., zooms: tuple[int, int])` replaces the fixed `MINZOOM, MAXZOOM` in the tippecanoe call.
-- `grid.toml` for wave 1: `zoom = 10`, `order = ["sound-central", "sound-south", "north-sound", "strait", "wa-coast"]`. With `strait` before `wa-coast`, `wa-coast` is a plain box (-127, 46.15, -123.75, 48.6).
+- `grid.toml` for wave 1: `zoom = 10`, `order = ["sound-south", "sound-central", "north-sound", "strait", "wa-coast"]`. With `strait` before `wa-coast`, `wa-coast` is a plain box (-127, 46.15, -123.75, 48.6). `sound-south` comes first so the tile row holding 47.45 N goes south: the seam lands on the tile line at 47.5172 N and Tacoma Narrows and Commencement Bay stay in `sound-south` (with `sound-central` first the seam would fall at 47.2792 N, across the Narrows). The `sound-central`/`north-sound` seam lands at 48.2247 N, and the three-pack corner at about 48.2247 N, -123.3984 W. Task 16 prints the real seams from `assign` and posts them for the owner.
 
 - [ ] **Step 1: Write the failing tests** in `test_grid.py`, using small fake regions:
-  - `test_tile_bounds_round_trip`: `tile_bounds(10, 163, 357)` contains (47.9, -122.4) and `tiles_meeting` of a tiny box around that point is `{(163, 357)}`.
+  - `test_tile_bounds_round_trip`: `tile_bounds(10, 163, 356)` contains (47.9, -122.4) and `tiles_meeting` of a tiny box around that point is `{(163, 356)}`.
   - `test_shared_edge_has_one_owner`: two regions sharing an edge on the latitude of a zoom-10 tile line: every tile meeting either box has exactly one owner, and no tile between them is unowned.
   - `test_overlap_goes_to_first_in_order`: two overlapping boxes; tiles in the overlap go to the first in `order`.
   - `test_tile_inside_clip_is_unowned` and `test_tile_partly_inside_clip_is_owned`.
-  - `test_keep_tiles_prunes_unowned_and_out_of_range`: an MBTiles fixture with rows at z9, z10 and z12 under owned and unowned tiles; after `keep_tiles`, only z10 and z12 rows under owned tiles remain and metadata `minzoom` is `10`.
+  - `test_keep_tiles_prunes_unowned_and_out_of_range`: an MBTiles fixture written through `MBTiles.put_tile` (XYZ) with rows at z9, z10 and z12 under owned and unowned tiles; after `keep_tiles`, only z10 and z12 rows under owned tiles remain (read back with `get_tile`), metadata `minzoom` is `10` and `cheekymarine:owned` lists the owned tiles.
+  - `test_keep_tiles_uses_xyz_rows`: an owned tile whose TMS row differs from its XYZ row keeps its children (fails if the stored row is not flipped).
+  - `test_wave1_order_puts_narrows_south`: with the wave 1 boxes and order, the tile holding Tacoma Narrows (47.27, -122.55) is owned by `sound-south` and the tile holding Seattle (47.60, -122.34) by `sound-central`.
   - `test_overview_keeps_only_low_zooms`: `owned=None, minzoom=6, maxzoom=9` keeps z6 to z9 rows only.
   - `test_grid_zoom_must_be_10`: `zoom = 11` in a grid file raises `RegionError`.
   In `test_enc_tiles.py`, `test_zoom_range_reaches_tippecanoe` asserts the command has `-Z 10 -z 16` for a region and `-Z 6 -z 9` for an overview (patch `run`).
@@ -134,6 +139,8 @@ Throwaway code on branch `plan7-spike` (from `plan7-stitch` after Task 1); it is
 **Interfaces:**
 - Consumes: `PackInfo`, `PackCatalog::scan` (`plotter/src/core/PackCatalog.h`).
 - Produces:
+  - `static QList<PackInfo> PackCatalog::usable(const QList<PackInfo>& packs, QStringView kind);` the newest non-refused version of each region, sorted by region (Task 5 uses it too). Test `usableTakesNewestPerRegion` in `tst_packcatalog.cpp` moves here: a 1.0.0 and 1.1.0 of region a and 1.0.0 of b give a 1.1.0 and b 1.0.0.
+  - Members whose file `maxzoom` is 10 or more must agree on `maxzoom` per file (the global caps); a disagreement fails with `<file>: maxzoom differs: <packA> <za>, <packB> <zb>`. Members below zoom 10 (the overview) are exempt.
   - `inline const QStringList kChartsFiles{"enc.mbtiles"};`, `inline const QStringList kBathyFiles{"bathy.mbtiles", "dem.mbtiles", "bathy-coarse.mbtiles", "dem-coarse.mbtiles"};` (in `PackCatalog.h`, used by scan, merge and the controller).
   - `std::expected<void, QString> mergePacks(const QList<PackInfo>& usable, const QString& outDir);` For each kind with two or more packs, writes `outDir/<kind>/<file>` for every file of that kind. Rows are copied with plain `INSERT` (no `OR REPLACE`); a duplicate `(zoom_level, tile_column, tile_row)` fails with `tile z/x/y is in both <packA> and <packB>`. Metadata: `format` from the first member; `minzoom` min and `maxzoom` max over members that have tiles; `bounds` union; `json` with `vector_layers` united by `id` (first wins); `cheekymarine:valdco` sorted union (charts); `cheekymarine:members` a sorted JSON array of member dir names. Each file is written as `<file>.tmp` and renamed at the end; on any error no file of that kind is left in `outDir/<kind>`.
   - `QStringList mergeMembers(const QString& mbtilesPath);` reads `cheekymarine:members` (empty on any error).
@@ -145,6 +152,8 @@ Throwaway code on branch `plan7-spike` (from `plan7-stitch` after Task 1); it is
   - `duplicateTileFailsAndLeavesNothing`: the same row in both packs fails naming both packs, and `outDir/charts` has no `.mbtiles` or `.tmp` file.
   - `memberWithNoTilesKeepsOthersZooms`: an overview bathy with empty fine files does not pull fine `minzoom` down.
   - `singlePackKindIsNotMerged`: one charts pack writes nothing under `outDir/charts`.
+  - `regionMaxzoomMismatchFails`: two bathy packs whose `bathy-coarse.mbtiles` maxzoom is 12 and 11 fail naming both; an overview member at maxzoom 9 does not.
+  - `usableTakesNewestPerRegion` (see above).
 - [ ] **Step 2:** Run `ctest -R tst_packmerge`. Expected: FAIL.
 - [ ] **Step 3:** Implement `PackMerge.cpp` and the CLI path.
 - [ ] **Step 4:** Run the full ctest. Expected: PASS.
@@ -153,41 +162,44 @@ Throwaway code on branch `plan7-spike` (from `plan7-stitch` after Task 1); it is
 ### Task 5: The app loads every usable pack
 
 **Files:**
-- Modify: `plotter/src/core/PackCatalog.h/.cpp` (`usable`, bathy files, schema 2), `plotter/src/core/StyleLoader.h/.cpp` (`rewriteStyle` takes a source file map), `plotter/src/core/ChartController.h/.cpp`, `plotter/CMakeLists.txt` (schema 2), `plotter/tests/fixtures/styles/fish-*.json` (four sources)
+- Modify: `plotter/src/core/PackCatalog.h/.cpp` (bathy files, schema 2), `plotter/src/core/StyleLoader.h/.cpp` (`rewriteStyle` takes a source file map), `plotter/src/core/ChartController.h/.cpp`, `plotter/CMakeLists.txt` (schema 2), `plotter/tests/fixtures/styles/fish-*.json` (four sources)
 - Test: `plotter/tests/tst_packcatalog.cpp`, `plotter/tests/tst_styleloader.cpp`, `plotter/tests/tst_chartcontroller.cpp`
 
 **Interfaces:**
-- Consumes: `kChartsFiles`, `kBathyFiles`, `mergeMembers` (Task 4).
+- Consumes: `PackCatalog::usable`, `kChartsFiles`, `kBathyFiles`, `mergeMembers` (Task 4).
 - Produces:
-  - `static QList<PackInfo> PackCatalog::usable(const QList<PackInfo>& packs, QStringView kind);` the newest non-refused version of each region, sorted by region.
   - `std::expected<QJsonObject, QString> rewriteStyle(QJsonObject style, const QString& packDir, const QHash<QString, QString>& sourceFiles);` sources must be named `enc`, `bathy`, `dem`, `bathy-coarse` or `dem-coarse`, each with url `mbtiles://<name>`; each is replaced with `tileUrl(sourceFiles[name])`; a name missing from the map is `source <name> needs a pack that is not there`. Sprite and glyph handling is unchanged.
-  - `ChartController` picks, per kind: one usable pack, its own files; several, the files in `<packs>/merged/<kind>/` when `mergeMembers` equals the usable pack dir names; otherwise the newest single pack (highest version, then region name) and `notice` = `Chart packs are not merged. Run sudo cheekymarine install again.` Styles, sprites and glyphs come from the newest usable pack of each kind. Zoom range is min of `minZoom` and max of `maxZoom` over usable charts packs. `valdco` and `legend` are unions (legend deduplicated by `abbr` and `kind`). `fishAvailable()` is true when any bathy pack is usable. The packs dir comes in through a new constructor argument `const QString& packsDir`.
-  - `AppInfo`: `chartsPack` and `bathyPack` become `packsInUse` (list of `{kind, region, version}`).
+  - `ChartController` picks, per kind: one usable pack, its own files; several, the files in `<packs>/merged/<kind>/` when `mergeMembers` equals the usable pack dir names; otherwise the newest single pack (highest version, then region name) and the new property `packNotice` = `Chart packs are not merged. Run sudo cheekymarine install again.` (`Q_PROPERTY(QString packNotice READ packNotice CONSTANT)`, set once in the constructor; it is separate from `notice`, which `loadStyle()` overwrites from the style on every load). Styles, sprites and glyphs come from the newest usable pack of each kind. Zoom range is min of `minZoom` and max of `maxZoom` over usable charts packs. `valdco` and `legend` are unions (legend deduplicated by `abbr` and `kind`). `fishAvailable()` is true when any bathy pack is usable. The packs dir comes in through a new constructor argument `const QString& packsDir`.
+  - `QList<PackInfo> ChartController::packsInUse() const;` the packs whose files the loaded styles read (every usable pack when merged; the one single pack per kind otherwise). Task 6 feeds `AppInfo` from it.
 
 - [ ] **Step 1: Write the failing tests:**
-  - `tst_packcatalog`: `usableTakesNewestPerRegion` (a 1.0.0 and 1.1.0 of region a, 1.0.0 of b gives a 1.1.0 and b 1.0.0); `bathyNeedsFourFiles` (missing `dem-coarse.mbtiles` refuses with `missing dem-coarse.mbtiles`); `schemaOneRefused` (`schema 1 not supported`).
+  - `tst_packcatalog`: `bathyNeedsFourFiles` (missing `dem-coarse.mbtiles` refuses with `missing dem-coarse.mbtiles`); `schemaOneRefused` (`schema 1 not supported`).
   - `tst_styleloader`: `rewritesCoarseSources` (`bathy-coarse` url becomes `mbtiles://<abs path>`); `missingSourceFileIsError`; `unknownSourceIsError` keeps passing with a new name `fooo`.
-  - `tst_chartcontroller`: `loadsMergedFilesForSeveralPacks` (two charts and two bathy packs plus matching merged dirs: the loaded style's `enc` url points at `merged/charts/enc.mbtiles`); `staleMergeFallsBackWithNotice` (merged members list a pack that is not installed: url points at the newest single pack and `notice` is the text above); `singlePackUsesOwnFiles`; `zoomAndValdcoAreUnions` (charts minZoom 6 and 10, maxZoom 9 and 16 give minZoom 6, maxZoom 18 with the existing `kOverzoom`); `fishOutsideBathyLoads` (fish style loads with only an overview bathy pack whose fine files are empty, no refusal).
+  - `tst_chartcontroller`: `loadsMergedFilesForSeveralPacks` (two charts and two bathy packs plus matching merged dirs: the loaded style's `enc` url points at `merged/charts/enc.mbtiles`); `staleMergeFallsBackWithNotice` (merged members list a pack that is not installed: url points at the newest single pack, `packNotice` is the text above and still is after a palette change reloads the style); `singlePackUsesOwnFiles`; `zoomAndValdcoAreUnions` (charts minZoom 6 and 10, maxZoom 9 and 16 give minZoom 6, maxZoom 18 with the existing `kOverzoom`); `fishOutsideBathyLoads` (fish style loads with only an overview bathy pack whose fine files are empty, no refusal).
 - [ ] **Step 2:** Run the three test binaries. Expected: FAIL.
 - [ ] **Step 3:** Implement. Update the fish fixture styles to declare the four bathy sources (Task 12 changes the real styles to match). Set `PLOTTER_PACK_SCHEMA_MIN 2` and `MAX 2`; update the fixtures that write schema 1.
 - [ ] **Step 4:** Run the full ctest. Expected: PASS.
 - [ ] **Step 5:** Commit `feat(plotter): load every usable pack, merged or single (#84)`.
 
-### Task 6: About page lists every pack
+### Task 6: About, Splash and set version with several packs
 
 **Files:**
-- Modify: `plotter/src/core/AppInfo.h/.cpp`, `plotter/qml/AboutPage.qml` (lines 55 to 66)
-- Test: `plotter/tests/tst_appinfo.cpp` (or the existing AppInfo test file), `plotter/tests/qml/tst_aboutpage.qml` if one exists, else a C++ check of the model
+- Modify: `plotter/src/core/AppInfo.h/.cpp` (`readSetVersion()` at line 31 accepts lock `schema` 1 or 2; the constructor takes the packs in use from `ChartController::packsInUse()` instead of choosing again with `PackCatalog::best`), `plotter/src/app/main.cpp` (pass them), `plotter/qml/AboutPage.qml` (lines 55 to 66), `plotter/qml/Splash.qml` (lines 71, 79, 93)
+- Test: `plotter/tests/tst_appshell.cpp`, `plotter/tests/qml/tst_pages.qml`, and every other test under `plotter/tests` that reads `chartsPack` or `bathyPack` (find them with `grep -rn "chartsPack\|bathyPack" plotter/tests plotter/qml`)
 
 **Interfaces:**
-- Consumes: `packsInUse` (Task 5).
-- Produces: About shows a `Chart packs` heading with one line per pack in use, `packLine(p)` as today, sorted charts first then bathy, then by region; `No chart packs installed` when empty. Refused packs list unchanged.
+- Consumes: `ChartController::packsInUse()`, `ChartController::packNotice` (Task 5).
+- Produces:
+  - `AppInfo`: `chartsPack` and `bathyPack` are replaced by `Q_PROPERTY(QVariantList packsInUse ...)` (each `{kind, region, version, notice}`), sorted charts first then bathy, then by region; `packs` (all scanned, with `refused`) stays.
+  - About: a `Chart packs` heading with one `packLine(p)` per pack in use; `No chart packs installed` when empty. Refused packs list unchanged.
+  - Splash: `Charts` and `Bathy` lines show the region count and newest version per kind (`Charts: 6 packs, 1.0.0`), or the old one-pack text when there is one; the notice line shows the first charts pack's notice, then `packNotice` when set.
+  - Set version: a schema 2 lock reads `set=` like schema 1.
 
-- [ ] **Step 1: Write the failing test** `aboutListsEveryPack`: six charts and six bathy packs in use give twelve lines in that order.
-- [ ] **Step 2:** Run it. Expected: FAIL.
-- [ ] **Step 3:** Implement.
+- [ ] **Step 1: Write the failing tests:** `aboutListsEveryPack` (six charts and six bathy packs in use give twelve lines in that order), `setVersionReadsSchema2Lock` (a lock with `schema=2` and `set=0.3.0` gives `0.3.0`), `setVersionStillReadsSchema1Lock`, `inUseFollowsController` (a stale merge marks only the single fallback pack per kind as in use), `splashShowsPackNotice`.
+- [ ] **Step 2:** Run them. Expected: FAIL.
+- [ ] **Step 3:** Implement; update the existing tests that read `chartsPack` or `bathyPack`.
 - [ ] **Step 4:** Run the full ctest. Expected: PASS.
-- [ ] **Step 5:** Commit `feat(plotter): About lists every pack in use (#84)`.
+- [ ] **Step 5:** Commit `feat(plotter): About and Splash list every pack, set version reads lock schema 2 (#84)`.
 
 ### Task 7: Installer and lock schema 2
 
@@ -222,16 +234,19 @@ Throwaway code on branch `plan7-spike` (from `plan7-stitch` after Task 1); it is
 
 ## PR B: pack size and CI fit (#85)
 
-### Task 9: Size cap in `chartpack check`
+### Task 9: Size cap and ownership-aware `chartpack check`
 
 **Files:**
 - Modify: `chartpack/src/chartpack/pack/check.py`
 - Test: `chartpack/tests/test_pack_check.py`
 
 **Interfaces:**
-- Produces: `PACK_CAP_BYTES = 1_500_000_000`; `check_pack` reports `pack is <n> bytes, over the 1.5 GB cap` when the sum of the manifest's file bytes exceeds it. For schema 2, bathy packs must list the four files of `kBathyFiles` (Task 4); fine files may hold zero tiles only when the manifest region is `overview`.
+- Produces:
+  - `PACK_CAP_BYTES = 1_500_000_000`; `check_pack` reports `pack is <n> bytes, over the 1.5 GB cap` when the sum of the manifest's file bytes exceeds it.
+  - `BATHY_FILES = ("bathy.mbtiles", "dem.mbtiles", "bathy-coarse.mbtiles", "dem-coarse.mbtiles")` in `chartpack/src/chartpack/pack/assemble.py`, the Python twin of `kBathyFiles`; schema 2 bathy packs must have all four, each with metadata keys in `_METADATA_KEYS`. Any of the four may hold zero tiles (the overview's fine files, a Sound region's coarse files, a region without CRM-only water); a pack whose four files are all empty is an error.
+  - Ownership-aware checks. `_band_zooms` intersects the band zooms with the file's metadata `minzoom..maxzoom`, so a region pack is not asked for zoom 6 to 9 safety layers and the overview is not asked for zoom 10. `_check_against_sources` clips each source cell's coverage to the owned tile bounds from `cheekymarine:owned` (Task 3) before comparing hazards and the depare/lndare coverage ratio; with `null` (overview) it uses the whole cells at the overview's zooms only.
 
-- [ ] **Step 1: Write the failing tests** `test_over_cap_is_reported` (patch `PACK_CAP_BYTES` to 100 on a fixture pack), `test_bathy_needs_coarse_files`, `test_empty_fine_files_only_for_overview`.
+- [ ] **Step 1: Write the failing tests** `test_over_cap_is_reported` (patch `PACK_CAP_BYTES` to 100 on a fixture pack), `test_bathy_needs_coarse_files`, `test_empty_bathy_file_allowed`, `test_all_bathy_files_empty_is_error`, `test_region_pack_not_checked_below_z10` (a fixture charts pack pruned with `keep_tiles` to z10 and deeper passes the safety layer check), `test_overview_not_checked_at_z10`, `test_sources_clipped_to_owned_tiles` (a cell whose hazard lies outside the owned tiles does not report it missing).
 - [ ] **Step 2:** Run. Expected: FAIL.
 - [ ] **Step 3:** Implement.
 - [ ] **Step 4:** Run the chartpack tests. Expected: PASS.
@@ -245,10 +260,10 @@ Throwaway code on branch `plan7-spike` (from `plan7-stitch` after Task 1); it is
 - Test: `chartpack/tests/test_fit_guard.py`
 
 **Interfaces:**
-- Produces: `fit-guard.sh OUT_JSON -- CMD...` runs CMD under `/usr/bin/time -v`, then writes `{"max_rss_kb", "elapsed_s", "disk_free_kb"}` to OUT_JSON and exits 1 with `runner fit: <what> over the limit` when max RSS > 12 GiB (12582912 kB), free disk on the work volume < 2 GiB, or elapsed > 5 h. Otherwise it exits with CMD's status.
+- Produces: `fit-guard.sh OUT_JSON -- CMD...` runs CMD under `${CM_TIME:-/usr/bin/time} -v` while a background loop samples `df -k` of the work volume every 10 s and keeps the lowest free value; then writes `{"max_rss_kb", "elapsed_s", "min_disk_free_kb"}` to OUT_JSON and exits 1 with `runner fit: <what> over the limit` when max RSS > 12 GiB (12582912 kB), the lowest free disk < 2 GiB (2097152 kB), or elapsed > 5 h. Otherwise it exits with CMD's status. The workflow adds `time` to its `apt-get install` line. `CM_TIME` and `CM_DF` (default `df`) exist for the tests.
 - Spec text for the Pack size section: the 1.5 GB cap per pack file, splits only on the ownership grid (never by kind halves or zoom ranges), every pack builds on `ubuntu-24.04` within the guard limits, and no local builds (owner, 2026-11-08).
 
-- [ ] **Step 1: Write the failing tests** in `test_fit_guard.py` (run the script with `CMD` = small shell commands and a fake `time` shim on PATH printing a chosen `Maximum resident set size`): `test_passes_and_writes_stats`, `test_rss_over_limit_fails`, `test_command_failure_passes_through`.
+- [ ] **Step 1: Write the failing tests** in `test_fit_guard.py` (run the script with `CMD` = small shell commands, `CM_TIME` pointing at a fake `time` that runs the command and prints a chosen `Maximum resident set size`, and `CM_DF` at a fake `df` that reports a chosen free value): `test_passes_and_writes_stats`, `test_rss_over_limit_fails`, `test_low_disk_during_run_fails` (the fake `df` dips below 2 GiB mid-run, then recovers), `test_command_failure_passes_through`.
 - [ ] **Step 2:** Run. Expected: FAIL.
 - [ ] **Step 3:** Implement the script, the workflow changes and the spec text.
 - [ ] **Step 4:** Run the chartpack tests and `actionlint` on the workflow if installed (else `python3 -c "import yaml,sys; yaml.safe_load(open(sys.argv[1]))" .github/workflows/chartpack-release.yml`). Expected: PASS.
@@ -290,8 +305,12 @@ Throwaway code on branch `plan7-spike` (from `plan7-stitch` after Task 1); it is
 - Consumes: `owned_tiles`, `tile_bounds`, `keep_tiles` (Task 3); levels (Task 11).
 - Produces:
   - `iter_blocks(owned: set[tuple[int, int]], margin_deg: float = 0.02) -> Iterator[tuple[tuple[int, int], tuple[float, float, float, float], tuple[float, float, float, float]]]`: per owned zoom-10 tile, its core bounds and its read bounds (core plus margin).
-  - `build_block(core, read, cudem_tiles, crm_path, datum) -> BlockResult` with `fine_contours`, `fine_bands`, `coarse_contours`, `coarse_bands` (features clipped to `core`), and `fine_grid`, `coarse_grid` (with transforms) for the DEMs. Fine is the CUDEM-then-CRM merge as today restricted to CUDEM cells (source index 1); coarse is CRM at 1 arc-second where the block has no CUDEM cell (source index 2 cells, coarsened). Memory per block stays under 3 GB (one zoom-10 tile at 1/9 arc-second is about 11k by 8k cells).
+  - `build_block(core, read, cudem_tiles, crm_path, datum, clip: shapely.Geometry | None) -> BlockResult` with `fine_contours`, `fine_bands`, `fine_coverage`, `coarse_contours`, `coarse_bands`, `coarse_coverage` (features clipped to `core`), and `fine_grid`, `coarse_grid` (with transforms) for the DEMs. Fine is the CUDEM-then-CRM merge as today restricted to CUDEM cells (source index 1); coarse is CRM at 1 arc-second on every cell with no CUDEM value (decided per cell, not per block). Cells inside `clip` (Canadian water, `region.clip`) are nan in both grids before anything is drawn, as `clip_mask` does today. Memory per block stays under 3 GB (one zoom-10 tile at 1/9 arc-second is about 11k by 8k cells).
+  - `datum` in this task is `DatumFn = Callable[[str, tuple, tuple[int, int]], np.ndarray]` (source name, transform, shape to offset grid, meters); Task 12 passes one built from the region's current constants (`navd88_to_mllw_m` for `cudem`, `msl_to_mllw_m` for `crm`), and Task 13 replaces it with the per-area one.
+  - Global grid anchoring, so contours from neighboring blocks (and neighboring packs) meet: the fine grid, the coarse grid and every block-mean downsample (`zoom_grids`) use origins on multiples of their own cell size from (-180, 90), and the read bounds snap outward to those multiples. Lines are smoothed and simplified over the read bounds, then clipped to the core; the 0.02 degree margin keeps the cut ends of Chaikin and Douglas-Peucker outside the core.
   - `COARSE_BANDS = ((10, 11, 150.0), (12, 12, 30.0))`, `OVERVIEW_BANDS = ((6, 9, 300.0),)` with major levels only.
+  - Overview build: `owned_tiles` is `None`, so the overview does not use `iter_blocks`. It reads CRM over the whole overview bbox at 0.0025 degree (WCS `width` and `height` set from the bbox; about 2,100 by 1,160 cells for wave 1), applies the datum and clip, and writes only the coarse outputs with `OVERVIEW_BANDS`, the coarse DEM at z6 to 9 and a coverage layer. CUDEM adds no detail at 300 m cells.
+  - `coarse_fallback` stays `"crm"` for every wave 1 region (the `"enc"` path is not used with coarse layers; `load_region` rejects `"enc"` together with `crm` in `bathy.sources`).
   - `build_dem_mbtiles(..., skip_empty: bool = False)`: with `skip_empty`, a tile whose source cells are all nan is not written.
   - Bathy pack files: `bathy.mbtiles` (fine vector, z10 to 16), `dem.mbtiles` (fine, z10 to `dem_maxzoom`), `bathy-coarse.mbtiles` (z10 to 12; overview z6 to 9), `dem-coarse.mbtiles` (same). Every file goes through `keep_tiles` with the owned set. The overview writes empty fine files with metadata only.
   - Fish style sources `enc`, `bathy`, `dem`, `bathy-coarse`, `dem-coarse`; each bathy layer has a `-coarse` twin on the coarse source placed directly below the fine layers. The layer list is fixed: it does not depend on the packs.
@@ -300,12 +319,17 @@ Throwaway code on branch `plan7-spike` (from `plan7-stitch` after Task 1); it is
   - `test_iter_blocks_cover_owned_exactly` (cores of 4 owned tiles tile their union, no overlap).
   - `test_block_features_clipped_to_core` (no coordinate of any feature outside `core`).
   - `test_fine_and_coarse_split_by_source` (a grid half CUDEM, half CRM: fine features only in the CUDEM half, coarse only in the CRM half).
+  - `test_coarse_fills_per_cell` (a block with one small CUDEM patch still gets coarse depth everywhere else in it).
+  - `test_clip_removes_water_in_block` (a clip polygon over half the block: no fine or coarse feature and no DEM value inside it).
+  - `test_adjacent_blocks_contours_meet` (one ridge grid spanning two owned tiles: the end points of each contour at the shared edge from one block match an end point from the other within one fine cell; same for the 150 m band).
+  - `test_each_output_has_coverage` (a region with both kinds of water gets a non-empty coverage layer in both vector files).
+  - `test_overview_build_path` (a fake overview region with `owned_tiles` None writes coarse outputs at z6 to 9 only, from one CRM read).
   - `test_coarse_maxzoom_is_12` (`bathy-coarse.mbtiles` metadata `maxzoom` is `12`, no rows deeper).
   - `test_dem_skip_empty` (an all-nan quarter writes no tile there).
   - `test_overview_has_empty_fine_files`.
   - `test_fish_style_coarse_under_fine` (index of each `-coarse` layer is below the first fine bathy layer; sources are exactly the five names).
 - [ ] **Step 2:** Run. Expected: FAIL.
-- [ ] **Step 3:** Implement. `_build_bathy` loops `iter_blocks`, appends each block's features to the four GeoJSONSeq files and its DEM tiles to the two DEM files, then runs tippecanoe once per output and `keep_tiles`.
+- [ ] **Step 3:** Implement. `_build_bathy` loops `iter_blocks` (regions) or runs the overview path, appends each block's features to the four GeoJSONSeq files and its DEM tiles to the two DEM files, then runs tippecanoe once per output and `keep_tiles`.
 - [ ] **Step 4:** Run the chartpack tests. Expected: PASS.
 - [ ] **Step 5:** Commit `feat(chartpack): fine and coarse bathy per owned tile, CRM capped at zoom 12 (#87)`.
 
@@ -320,9 +344,9 @@ Throwaway code on branch `plan7-spike` (from `plan7-stitch` after Task 1); it is
 - Produces:
   - `@dataclass(frozen=True) class Station: id: str; name: str; lat: float; lon: float; navd88_to_mllw_m: float`
   - `load_datum(path: Path) -> Datum` with `stations: list[Station]` and `lakes: list[Lake]` (Task 14).
-  - `navd88_to_mllw_grid(stations, transform, shape) -> np.ndarray` (float32): inverse distance weighting, power 2, over the 3 nearest stations, computed on a 0.05 degree grid and bilinear-resampled to `shape`. Far offshore the nearest coastal stations dominate (spec 8 asks for the nearest station there; this is continuous and the test below bounds the difference).
+  - `navd88_to_mllw_grid(stations, transform, shape) -> np.ndarray` (float32): inverse distance weighting, power 3, over all stations (no nearest-k cut, so no jump where the nearest set changes), computed on a global 0.05 degree grid anchored at (-180, 90) and bilinear-resampled to `shape`. Far offshore the nearest coastal station dominates. Spec 8 says the nearest station offshore; this is continuous instead and the test below bounds the difference. The owner is asked to accept this when the plan is shown.
   - `SOURCE_VERTICAL = {"cudem": "navd88", "crm": "egm2008"}`; plan 8 adds sources with `"mllw"` (no shift).
-  - `egm2008_to_navd88_m(transform, shape, cache: Path) -> np.ndarray`: `N_egm2008 - N_geoid18` per cell, from PROJ-data grids `us_nga_egm08_25.tif` and `us_noaa_g2018u0.tif` fetched from `https://cdn.proj.org/` into the cache (verify both are public domain before use and credit them in `NOTICE`). CRM heights become NAVD88 by adding this, then MLLW like CUDEM.
+  - `egm2008_to_navd88_m(transform, shape, cache: Path) -> np.ndarray`: the height change per cell from a `pyproj.Transformer` from `EPSG:4326+3855` (WGS 84 + EGM2008 height) to `EPSG:6318+5703` (NAD83(2011) + NAVD88 height) at epoch 2010.0, which includes the WGS 84 to NAD83(2011) frame change (about 1 m of ellipsoid height in Washington) as well as both geoids. Evaluated on the global 0.05 degree grid and resampled. Grids (`us_nga_egm08_25.tif`, `us_noaa_g2018u0.tif` and any the pipeline asks for) come from `https://cdn.proj.org/` into the cache with `PROJ_DATA` pointing there (verify each is public domain before use and credit them in `NOTICE`). The test pins one point against NOAA VDatum. CRM heights become NAVD88 by adding this, then MLLW like CUDEM.
   - `wa-stations.toml`: NOAA CO-OPS stations with published NAVD88 and MLLW, from the CO-OPS datums API (`https://api.tidesandcurrents.noaa.gov/mdapi/prod/webapi/stations/<id>/datums.json?units=metric`), each with `source` URL and retrieval date. Start from Seattle 9447130, Tacoma 9446484, Olympia 9446969 (or the nearest with datums), Port Townsend 9444900, Friday Harbor 9449880, Bellingham 9449211, Port Angeles 9444090, Neah Bay 9443090, La Push 9442396, Toke Point 9440910 or Westport 9441102, Astoria or Columbia mouth 9439040. The builder confirms the list and records any substitution in the file.
 
 - [ ] **Step 1: Write the failing tests:**
@@ -330,7 +354,8 @@ Throwaway code on branch `plan7-spike` (from `plan7-stitch` after Task 1); it is
   - `test_offset_between_two_stations_is_between` (midway between two stations the value lies between theirs).
   - `test_far_offshore_close_to_nearest` (synthetic stations: a point 50 km west of the nearest station is within 0.15 m of it when the next station differs by 0.3 m).
   - `test_seattle_offset_matches_today` (with the real `wa-stations.toml`, the Seattle cell is 0.715 m within 0.01).
-  - `test_crm_goes_through_navd88` (a constant EGM2008 grid with a patched geoid difference of 0.5 m gives depths 0.5 m shallower than the old MSL path would, sign checked by hand in the test comment).
+  - `test_crm_goes_through_navd88` (patch `egm2008_to_navd88_m` to a constant dN: a CRM elevation of -50 m gives depth `50 - dN - navd88_to_mllw` at that cell; with dN = 0.5 the depth is exactly 0.5 m less than with dN = 0; sign reasoning in the test comment).
+  - `test_frame_change_matches_vdatum` (network, marked `slow`, run in CI: at Seattle 47.6026 N, -122.3393 W the transform matches the NOAA VDatum EGM2008 to NAVD88 value recorded in the test, with its VDatum URL, within 0.05 m).
   - `test_stations_file_has_sources` (every station has a `source` URL and `retrieved` date).
 - [ ] **Step 2:** Run. Expected: FAIL.
 - [ ] **Step 3:** Implement. Fetch the CO-OPS datums for the station list and record them in `wa-stations.toml` (fetching data is allowed; packs are still built only in CI).
@@ -371,7 +396,7 @@ Throwaway code on branch `plan7-spike` (from `plan7-stitch` after Task 1); it is
 **Interfaces:**
 - Produces:
   - `load_region` raises `RegionError("unknown bathy source: <name>")` for a name not in `SOURCE_VERTICAL` (Task 13), and when `sources` is empty.
-  - Fetch and build skip CUDEM when `"cudem"` is not listed and CRM when `"crm"` is not listed (no fine or no coarse output then; the files still exist, empty, so the pack layout stays fixed).
+  - Fetch and build skip CUDEM when `"cudem"` is not listed and CRM when `"crm"` is not listed (no fine or no coarse output then; the files still exist, empty, as Task 9 allows, so the pack layout stays fixed).
   - `enc_fallback_contours(enc_cells, uncovered, clip: shapely.Geometry | None)`: lines are clipped to `uncovered.difference(clip)`.
 
 - [ ] **Step 1: Write the failing tests** `test_unknown_bathy_source_is_error`, `test_empty_bathy_sources_is_error`, `test_crm_only_region_fetches_no_cudem` (patch `download`, assert no CUDEM url), `test_fallback_contours_clipped` (an ENC line crossing a clip polygon keeps only the part outside it).
@@ -379,7 +404,24 @@ Throwaway code on branch `plan7-spike` (from `plan7-stitch` after Task 1); it is
 - [ ] **Step 3:** Implement.
 - [ ] **Step 4:** Run the chartpack tests. Expected: PASS.
 - [ ] **Step 5:** Commit `fix(chartpack): honor bathy sources, clip ENC fallback contours (#14, #16)`.
-- [ ] **Step 6:** Push `plan7-fixes`, open PR D (`Fixes #14`, `Fixes #16`). Review, fix, merge as in Task 8.
+
+### Task 15b: Quilt bands 1 and 2 under band 3
+
+Today `enc/quilt.py` `_band()` folds bands 1 and 2 into 3, so their features are never clipped by band 3 coverage and draw twice (why `puget-north` left them out). `strait`, `wa-coast` and `overview` need them past -126 W.
+
+**Files:**
+- Modify: `chartpack/src/chartpack/enc/quilt.py`, `chartpack/src/chartpack/enc/scamin.py` (`BAND_ZOOMS` gains `1: (6, 10)`)
+- Test: `chartpack/tests/test_enc_quilt.py`
+
+**Interfaces:**
+- Produces: clipping ranks the real bands 1 < 2 < 3 < 4 < 5: a feature of band b is clipped by the coverage of every band above b up to the range's primary. Zoom ranges still come from the primary ranges (3, 4, 5), and `minzoom_for_scamin` gets `max(band, 2)` so `BAND_ZOOMS` lookups stay valid. Results for cells of bands 3 to 5 are unchanged.
+
+- [ ] **Step 1: Write the failing tests** `test_band2_clipped_by_band3` (a band 2 depth area under a band 3 cell's coverage is cut away at z6 to 10, kept outside it), `test_band1_clipped_by_band2_and_3`, `test_bands_3_to_5_unchanged` (the existing puget-north style fixture output is identical before and after).
+- [ ] **Step 2:** Run. Expected: FAIL.
+- [ ] **Step 3:** Implement.
+- [ ] **Step 4:** Run the chartpack tests. Expected: PASS.
+- [ ] **Step 5:** Commit `fix(chartpack): quilt bands 1 and 2 under band 3 (#86)`.
+- [ ] **Step 6:** Push `plan7-fixes`, open PR D (`Fixes #14`, `Fixes #16`, `Refs #86`). Review, fix, merge as in Task 8.
 
 ---
 
@@ -393,8 +435,8 @@ Throwaway code on branch `plan7-spike` (from `plan7-stitch` after Task 1); it is
 - Delete: `chartpack/regions/puget-north.toml` (retired; its test moves to the new regions)
 
 **Interfaces:**
-- Consumes: Tasks 3, 11 to 15.
-- Produces: boxes from spec section 4 (`wa-coast` is the box -127, 46.15, -123.75, 48.6; `grid.toml` order cuts the strait out). ENC cells per band from `chartpack cells` against the current catalog: every active cell meeting the region's owned tiles, bands 3 to 5 for Sound regions, bands 1 to 5 for `strait` and `wa-coast`, bands 1 to 3 for `overview`. `bathy.sources = ["cudem", "crm"]` everywhere. `[datum] file = "datum/wa-stations.toml"`. Seabed as in `puget-north` where the CMECS blocks fall in the region. Render views: Everett (47.98, -122.23), Possession bar (47.90, -122.37), Jeff Head (47.75, -122.47), Tacoma Narrows (47.27, -122.55), Friday Harbor (48.54, -123.01), the corner (48.2, -123.3), Neah Bay grounds (48.3, -125.3), Lake Washington (47.62, -122.26), plus the old puget-north views, each in the region that owns it. All versions `1.0.0`.
+- Consumes: Tasks 3, 11 to 15b.
+- Produces: boxes from spec section 4 (`wa-coast` is the box -127, 46.15, -123.75, 48.6; `grid.toml` order cuts the strait out). ENC cells per band from `chartpack cells` against the current catalog: every active cell meeting the region's owned tiles, bands 3 to 5 for Sound regions, bands 1 to 5 for `strait` and `wa-coast`, bands 1 to 3 for `overview`. `bathy.sources = ["cudem", "crm"]`, `coarse_fallback = "crm"` and `dem_maxzoom = 14` everywhere. `[datum] file = "datum/wa-stations.toml"`. Seabed as in `puget-north` where the CMECS blocks fall in the region. Render views: Everett (47.98, -122.23), Possession bar (47.90, -122.37), Jeff Head (47.75, -122.47), Tacoma Narrows (47.27, -122.55), Friday Harbor (48.54, -123.01), the corner (48.2, -123.3), Neah Bay grounds (48.3, -125.3), Lake Washington (47.62, -122.26), plus the old puget-north views, each in the region that owns it. All versions `1.0.0`.
 
 - [ ] **Step 1: Write the failing tests** in `test_regions.py`:
   - `test_wave1_regions_load` (all six load).
@@ -403,6 +445,8 @@ Throwaway code on branch `plan7-spike` (from `plan7-stitch` after Task 1); it is
   - `test_views_inside_owned_tiles` (each view's point lies in a tile its region owns).
   - `test_overview_lists_low_bands_only`.
   - `test_puget_north_is_gone`.
+  - `test_global_caps` (every region has `dem_maxzoom = 14`).
+  - `test_seams_printed` (a helper `seams(regions)` returns each pair's shared tile lines; with wave 1 it gives the `sound-south`/`sound-central` seam at 47.5172 N and the `sound-central`/`north-sound` seam at 48.2247 N). Post the seam list on #86 for the owner with Step 7's renders.
 - [ ] **Step 2:** Run. Expected: FAIL.
 - [ ] **Step 3:** Write the region files and the clip.
 - [ ] **Step 4:** Run the chartpack tests. Expected: PASS.
@@ -414,7 +458,7 @@ Throwaway code on branch `plan7-spike` (from `plan7-stitch` after Task 1); it is
 ### Task 17: Plotter release and seam check on the test laptop
 
 - [ ] **Step 1:** Bump the plotter to `0.3.0`, merge, push tag `plotter-v0.3.0`; confirm the release asset.
-- [ ] **Step 2:** On `laptop-chart` (SendMessage, numbered steps): install the plotter release, download the twelve packs from their releases, run `cheekyplotter --merge-packs` on the pack dir and time it, then 60 s `--pan-path` runs with `--frame-stats` under `/usr/bin/time -v` over: the `sound-central`/`north-sound`/`strait` corner (48.2, -123.3), the `sound-central`/`north-sound` seam, and the `sound-south`/`sound-central` seam at 47.45 N; zooms 9 to 15 so the overview edge is crossed too. Screenshots at each seam in Nav and Fish. Baseline: the same runs on puget-north 1.1.0 with plotter 0.2.1 at Possession bar.
+- [ ] **Step 2:** On `laptop-chart` (SendMessage, numbered steps): install the plotter release, download the twelve packs from their releases, run `cheekyplotter --merge-packs` on the pack dir and time it, then 60 s `--pan-path` runs with `--frame-stats` under `/usr/bin/time -v` over: the `sound-central`/`north-sound`/`strait` corner (about 48.2247 N, -123.3984 W, as printed by Task 16's `seams`), the `sound-central`/`north-sound` seam (48.2247 N), and the `sound-south`/`sound-central` seam (47.5172 N); zooms 9 to 15 so the overview edge is crossed too. Screenshots at each seam in Nav and Fish. Baseline: the same runs on puget-north 1.1.0 with plotter 0.2.1 at Possession bar.
 - [ ] **Step 3:** Post numbers and screenshots on #84 with a plain-language verdict against spec section 11: no blank tiles, no stutter beyond the one-pack baseline (p95 within 10%), no doubled or cut lines. A failure goes back to the owning task before Task 18.
 
 ### Task 18: Set lock 0.3.0 (PR F)
