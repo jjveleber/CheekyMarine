@@ -102,10 +102,8 @@ The spike measures: install time to merge, disk use, memory, and frame time whil
 ### 5.4 App changes
 
 - `PackCatalog` keeps every usable pack per kind, not only the best one. The newest version of each region wins; packs with a schema the app does not accept are refused per pack, with the reason, as today.
-- In merged modes the zoom range, the safety contour depths (`cheekymarine:valdco`) and the legend (`cheekymarine:legend`, the union of the members' `legend.json` written by the merge) come from the merged files, so a member removed from disk still counts.
-
-Styles, sprites and glyphs come from the newest installed pack of each kind; all packs of one kind in a set must share the same `schema` (the set build checks this).
-- Zoom range, legend entries and the ENC `valdco` list (safety contour) are the union across packs.
+- Styles, sprites and glyphs come from the newest installed pack of each kind; all packs of one kind in a set must share the same `schema` (the set build checks this).
+- Zoom range, legend entries and the ENC `valdco` list (safety contour) are the union across the packs shown (merged files or the one single pack; details in 5.4a).
 - The About page lists every pack with region and version.
 - Fish mode is available wherever a bathy pack covers the view; the "no bathy pack for the charts region" fallback becomes per area.
 
@@ -123,6 +121,8 @@ Valid merged files: every file of the kind is present, opens, has its metadata, 
 Members: each merged file records every member as its dir name plus the SHA-256 of that pack's `manifest.json`. A member matches a usable pack only when both agree, so a pack changed in place under the same name and version counts as a difference.
 
 The notice names the kind, the area and the reason, with advice that fits the reason. Examples: `Charts: north-sound shows 1.0.0, 1.1.0 is installed. Run sudo cheekymarine install again.`; `Charts: strait 1.0.0 was refused (schema 1 not supported). Remove it or install a newer set.` (only when it is not in the merged files); `Charts: san-juan is installed but not merged, so it is not shown. Run sudo cheekymarine install again.`; `Bathy: merged files are missing or damaged. Showing sound-central only; other areas have no depth. Run sudo cheekymarine install again.` A member that is no longer on disk is shown, not flagged: the merged file still holds its tiles.
+
+In merged modes the zoom range, the safety contour depths (`cheekymarine:valdco`) and the legend (`cheekymarine:legend`, the union of the members' `legend.json` written by the merge) come from the merged files, so a member removed from disk still counts.
 
 Styles, sprites and glyphs come from the newest pack of that kind that is in the merged files and still on disk; if none is, from the newest usable pack of that kind. About and the splash list what is shown: the merged files' members (with their versions, even when the pack dir is gone) or the one single pack, plus whether each kind is merged or single. The reason is also logged to the journal.
 
