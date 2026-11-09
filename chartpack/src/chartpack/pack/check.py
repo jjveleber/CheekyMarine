@@ -15,18 +15,24 @@ from chartpack.enc.reader import read_cell
 from chartpack.enc.scamin import BAND_ZOOMS
 from chartpack.enc.schema import BATHY_LAYER_SPECS, LAYERS, OPTIONAL_LAYERS, SAFETY_LAYERS, SCHEMA_VERSION
 from chartpack.enc.tiles import ENC_METADATA_KEYS
+from chartpack.grid import GRID_ZOOM, tile_bounds
 from chartpack.mbtiles import MBTiles, decode_pbf
+from chartpack.pack.assemble import BATHY_FILES
 from chartpack.pack.manifest import MANIFEST, sha256_of
 from chartpack.style.validate import check_style_against_schema, check_style_sprites_glyphs
 
 _COMMON_KEYS = ("name", "format", "bounds", "minzoom", "maxzoom", "cheekymarine:schema", "cheekymarine:pack",
                 "cheekymarine:region", "cheekymarine:version", "cheekymarine:sources", "cheekymarine:built")
+_DEM_KEYS = ("name", "minzoom", "maxzoom", "bounds", "cheekymarine:encoding", "cheekymarine:pack",
+             "cheekymarine:schema")
 _METADATA_KEYS = {
     "enc.mbtiles": ENC_METADATA_KEYS + ("name", "format", "bounds", "minzoom", "maxzoom"),
     "bathy.mbtiles": _COMMON_KEYS,
-    "dem.mbtiles": ("name", "minzoom", "maxzoom", "bounds", "cheekymarine:encoding", "cheekymarine:pack",
-                    "cheekymarine:schema"),
+    "dem.mbtiles": _DEM_KEYS,
+    "bathy-coarse.mbtiles": _COMMON_KEYS,
+    "dem-coarse.mbtiles": _DEM_KEYS,
 }
+PACK_CAP_BYTES = 1_500_000_000
 _MANIFEST_KEYS = ("pack", "region", "version", "schema", "built", "files", "sources", "notice")
 _EXTENT = 4096
 _COVERAGE_MIN = 0.9999
@@ -85,12 +91,29 @@ def _check_vector_layers(name: str, metadata: dict, specs) -> list[str]:
 
 
 def _band_zooms(metadata: dict) -> set[int]:
-    """Zooms inside the band range of any source cell (band is the third character of the cell name)."""
+    """Zooms inside the band range of any source cell (band is the third character of the cell name),
+    limited to the file's own minzoom..maxzoom so a region pack is not asked for the overview's zooms."""
     zooms = set()
     for source in json.loads(metadata["cheekymarine:sources"]):
         band = min(max(int(source["cell"][2]), 3), 5)  # as the quilt treats bands 1 to 3
         zooms.update(range(BAND_ZOOMS[band][0], BAND_ZOOMS[band][1] + 1))
-    return zooms
+    return {z for z in zooms if int(metadata["minzoom"]) <= z <= int(metadata["maxzoom"])}
+
+
+def _owned_area(metadata: dict):
+    """The owned zoom-10 tiles as one polygon, or None for the overview (null: the whole cells)."""
+    owned = json.loads(metadata.get("cheekymarine:owned", "null"))
+    if owned is None:
+        return None
+    return unary_union([box(*tile_bounds(GRID_ZOOM, x, y)) for x, y in owned])
+
+
+def _has_tiles(path: Path) -> bool:
+    conn = sqlite3.connect(path)
+    try:
+        return conn.execute("select 1 from tiles limit 1").fetchone() is not None
+    finally:
+        conn.close()
 
 
 def _check_safety_layers(m: MBTiles, metadata: dict) -> list[str]:
@@ -109,6 +132,7 @@ def _check_safety_layers(m: MBTiles, metadata: dict) -> list[str]:
 def _check_against_sources(m: MBTiles, metadata: dict, enc_zips: list[Path]) -> list[str]:
     """Hazards and depth/land coverage at the top zoom against the source cells."""
     z = int(metadata["maxzoom"])
+    owned = _owned_area(metadata)
     tile_box = box(0, 0, _EXTENT, _EXTENT)
     hazards: dict[tuple, list] = {}
     area_polys = []
@@ -135,6 +159,8 @@ def _check_against_sources(m: MBTiles, metadata: dict, enc_zips: list[Path]) -> 
             if f.layer != "hazard":
                 continue
             point = shape(f.geometry).representative_point()
+            if owned is not None and not owned.intersects(point):
+                continue  # another pack owns this ground
             if finer.contains(point):
                 continue  # a finer band's cell takes this ground over in the quilt
             key = hazard_key(f.props)
@@ -144,6 +170,10 @@ def _check_against_sources(m: MBTiles, metadata: dict, enc_zips: list[Path]) -> 
     errors += [f"hazard {key} in the tiles at zoom {z} is not in the source cells" for key in sorted(set(hazards) - source_keys, key=str)]
 
     covr = unary_union([shape(meta.covr) for meta, _ in cells])
+    if owned is not None:
+        covr = covr.intersection(owned)
+    if covr.area == 0:
+        return errors
     covered = unary_union(area_polys) if area_polys else Polygon()
     ratio = 1 - covr.difference(covered).area / covr.area
     if ratio < _COVERAGE_MIN:
@@ -181,6 +211,14 @@ def check_pack(pack_root: Path, *, enc_zips: list[Path] | None = None) -> list[s
     if manifest["schema"] != SCHEMA_VERSION:
         errors.append(f"{MANIFEST}: schema {manifest['schema']!r} is not {SCHEMA_VERSION}")
     errors += _check_files(root, manifest)
+    total = sum(entry["bytes"] for entry in manifest["files"])
+    if total > PACK_CAP_BYTES:
+        errors.append(f"pack is {total} bytes, over the 1.5 GB cap")
+    if manifest["pack"] == "bathy":
+        errors += [f"{name}: missing from the bathy pack" for name in BATHY_FILES if not (root / name).is_file()]
+        present = [root / name for name in BATHY_FILES if (root / name).is_file()]
+        if present and len(present) == len(BATHY_FILES) and not any(_has_tiles(p) for p in present):
+            errors.append("bathy pack: all four bathy files hold no tiles")
 
     for name, keys in _METADATA_KEYS.items():
         path = root / name
@@ -193,7 +231,7 @@ def check_pack(pack_root: Path, *, enc_zips: list[Path] | None = None) -> list[s
                 errors += [f"{name}: metadata key {k} missing" for k in missing]
                 if metadata.get("cheekymarine:schema") not in (None, str(SCHEMA_VERSION)):
                     errors.append(f"{name}: schema {metadata['cheekymarine:schema']} is not {SCHEMA_VERSION}")
-                if name == "dem.mbtiles" or missing:
+                if name.startswith("dem") or missing or not _has_tiles(path):
                     continue
                 errors += _check_vector_layers(name, metadata, LAYERS if name == "enc.mbtiles" else BATHY_LAYER_SPECS)
                 if name == "enc.mbtiles":
