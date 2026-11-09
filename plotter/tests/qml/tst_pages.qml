@@ -877,7 +877,7 @@ TestCase {
         const bad = { kind: "charts", region: "puget-north", version: "2.0.0", notice: "", refused: "styles/nav-day.json: bad", inUse: false }
         const bathy = { kind: "bathy", region: "puget-north", version: "1.0.0", notice: "", refused: "", inUse: false }
         return [
-            { tag: "in use", charts: ok, packs: [ok, bad], want: "Charts: puget-north 1.0.0" },
+            { tag: "in use", charts: ok, packs: [ok, bad], want: "Charts: single, puget-north 1.0.0" },
             { tag: "all refused", charts: ({}), packs: [bad, bathy], want: "Charts pack refused: see Settings, About" },
             { tag: "none", charts: ({}), packs: [bathy], want: "No charts pack installed" },
             { tag: "no packs", charts: ({}), packs: [], want: "No charts pack installed" }
@@ -896,7 +896,7 @@ TestCase {
         const bad = { kind: "bathy", region: "puget-north", version: "2.0.0", notice: "", refused: "styles/fish-day.json: bad", inUse: false }
         const charts = { kind: "charts", region: "puget-north", version: "1.0.0", notice: "", refused: "", inUse: true }
         return [
-            { tag: "in use", bathy: ok, packs: [charts, ok, bad], want: "Bathy: puget-north 1.0.0" },
+            { tag: "in use", bathy: ok, packs: [charts, ok, bad], want: "Bathy: single, puget-north 1.0.0" },
             { tag: "refused", bathy: ({}), packs: [charts, bad], want: "Bathy pack refused: see Settings, About" },
             { tag: "none", bathy: ({}), packs: [charts], want: "No fishing chart installed" }
         ]
@@ -945,6 +945,29 @@ TestCase {
         compare(H.byName(splash, "splashNotice").text, twoNotices.join("\n"))
         verify(H.byName(splash, "splashNotice").visible)
         appInfoStub.packNotices = []
+    }
+    function test_splashSingleSaysSingle() {
+        appInfoStub.packNotices = []
+        appInfoStub.packs = []
+        appInfoStub.packsInUse = [{ kind: "charts", region: "a", version: "1.0.0", notice: "", onDisk: true },
+                                  { kind: "bathy", region: "sound-central", version: "1.2.0", notice: "", onDisk: true }]
+        appInfoStub.packModes = { charts: "single", bathy: "single-fallback" }
+        const splash = createTemporaryObject(splashComp, testCase, { width: 1024, height: 600, appInfo: appInfoStub })
+        compare(H.byName(splash, "splashCharts").text, "Charts: single, a 1.0.0")
+        compare(H.byName(splash, "splashBathy").text, "Bathy: single, sound-central 1.2.0")
+        appInfoStub.packModes = ({})
+    }
+    // A gone merged member has no notice: the disclaimer comes from the first charts pack on disk that has one.
+    function test_splashDisclaimerSkipsGoneMember() {
+        appInfoStub.packNotices = []
+        appInfoStub.packs = []
+        appInfoStub.packsInUse = [{ kind: "charts", region: "a", version: "1.0.0", notice: "", onDisk: false },
+                                  { kind: "charts", region: "b", version: "1.0.0", notice: "", onDisk: true },
+                                  { kind: "charts", region: "c", version: "1.0.0", notice: "charts notice", onDisk: true }]
+        appInfoStub.packModes = { charts: "merged" }
+        const splash = createTemporaryObject(splashComp, testCase, { width: 1024, height: 600, appInfo: appInfoStub })
+        compare(H.byName(splash, "splashNotice").text, "charts notice")
+        appInfoStub.packModes = ({})
     }
     function test_aboutShowsPackNotices() {
         appInfoStub.packNotices = twoNotices

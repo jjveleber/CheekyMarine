@@ -175,11 +175,6 @@ struct KindFiles {
     QStringList notices;
 };
 
-const QRegularExpression& packNameRe() {
-    static const QRegularExpression re(QStringLiteral("^(charts|bathy)-([a-z0-9-]+)-(\\d+\\.\\d+\\.\\d+)$"));
-    return re;
-}
-
 // The members of the merged files in `mergedDir` when they are valid: every file is present, opens,
 // has its metadata, names members of `kind` in one list, and has a schema the plotter accepts.
 std::optional<QList<MergeMember>> validMembers(const QString& mergedDir, const QString& kind, const QStringList& fileNames) {
@@ -192,7 +187,7 @@ std::optional<QList<MergeMember>> validMembers(const QString& mergedDir, const Q
             || (out && *out != members))
             return std::nullopt;
         for (const MergeMember& m : members)
-            if (packNameRe().match(m.dir).captured(1) != kind) return std::nullopt;
+            if (packDirRe().match(m.dir).captured(1) != kind) return std::nullopt;
         out = members;
     }
     return out;
@@ -211,15 +206,23 @@ KindFiles kindFiles(const QList<PackInfo>& all, const QString& kind, const QStri
     const QString again = QStringLiteral(" Run sudo cheekymarine install again.");
     const QString mergedDir = packsDir + QStringLiteral("/merged/") + kind;
     const auto name = [](const PackInfo& p) { return QFileInfo(p.dir).fileName(); };
+    const auto refusedNotices = [&](const QStringList& memberDirs) {
+        for (const PackInfo& p : all)
+            if (p.kind == kind && !p.refused.isEmpty() && !memberDirs.contains(name(p)))
+                k.notices << label + p.region + QLatin1Char(' ') + p.version.toString() + QStringLiteral(" was refused (")
+                                 + p.refused + QStringLiteral("). Remove it or install a newer set.");
+    };
     const std::optional<QList<MergeMember>> members =
         usable.size() > 1 ? validMembers(mergedDir, kind, fileNames) : std::nullopt;
     if (!members) {
         const PackInfo& newest = newestOf(usable);
         k.mode = usable.size() > 1 ? Mode::SingleFallback : Mode::Single;
-        if (k.mode == Mode::SingleFallback)
+        if (k.mode == Mode::SingleFallback) {
             k.notices << label + QStringLiteral("merged files are missing or damaged. Showing ") + newest.region
                              + QStringLiteral(" only; other areas ")
                              + (charts ? QStringLiteral("are blank.") : QStringLiteral("have no depth.")) + again;
+            refusedNotices({});
+        }
         k.inUse = {newest};
         k.stylePack = newest;
         for (const QString& f : fileNames) k.files.insert(f.chopped(8), newest.dir + QLatin1Char('/') + f); // ".mbtiles"
@@ -228,7 +231,7 @@ KindFiles kindFiles(const QList<PackInfo>& all, const QString& kind, const QStri
     QStringList memberDirs, memberRegions;
     QList<PackInfo> stylePacks; // members still on disk and not refused
     for (const MergeMember& m : *members) {
-        const QRegularExpressionMatch match = packNameRe().match(m.dir);
+        const QRegularExpressionMatch match = packDirRe().match(m.dir);
         const QString region = match.captured(2);
         const QString version = match.captured(3);
         memberDirs << m.dir;
@@ -258,10 +261,7 @@ KindFiles kindFiles(const QList<PackInfo>& all, const QString& kind, const QStri
     for (const PackInfo& u : usable)
         if (!memberRegions.contains(u.region))
             k.notices << label + u.region + QStringLiteral(" is installed but not merged, so it is not shown.") + again;
-    for (const PackInfo& p : all)
-        if (p.kind == kind && !p.refused.isEmpty() && !memberDirs.contains(name(p)))
-            k.notices << label + p.region + QLatin1Char(' ') + p.version.toString() + QStringLiteral(" was refused (")
-                             + p.refused + QStringLiteral("). Remove it or install a newer set.");
+    refusedNotices(memberDirs);
     k.mode = k.notices.isEmpty() ? Mode::Merged : Mode::MergedStale;
     k.stylePack = newestOf(stylePacks.isEmpty() ? usable : stylePacks);
     for (const QString& f : fileNames) k.files.insert(f.chopped(8), mergedDir + QLatin1Char('/') + f);
@@ -287,12 +287,11 @@ ChartController::ChartController(ChartMap& map, Settings& settings, VesselModel&
         if (charts.isEmpty()) break;
         cf = kindFiles(m_packs, QStringLiteral("charts"), kChartsFiles, m_packsDir);
         m_charts = cf.stylePack;
-        // The contours and the legend are those of the charts packs shown that are on disk.
-        m_valdco.clear();
-        for (const PackInfo& c : cf.inUse)
-            for (double v : c.valdco)
-                if (!m_valdco.contains(v)) m_valdco.append(v);
-        std::sort(m_valdco.begin(), m_valdco.end());
+        // The contours of the charts shown: the merged file's valdco (the union over all its members, gone
+        // ones too), or the single pack's.
+        m_valdco = cf.mode == Mode::Merged || cf.mode == Mode::MergedStale
+                       ? mergeValdco(m_packsDir + QStringLiteral("/merged/charts/enc.mbtiles"))
+                       : cf.inUse.first().valdco;
         const auto withFiles = [&cf](const KindFiles& bathy) {
             QHash<QString, QString> files = cf.files;
             files.insert(bathy.files);
@@ -323,6 +322,7 @@ ChartController::ChartController(ChartMap& map, Settings& settings, VesselModel&
         m_packModes.insert(QStringLiteral("charts"), modeName(cf.mode));
         if (m_bathy) m_packModes.insert(QStringLiteral("bathy"), modeName(bf.mode));
         for (const QString& line : m_packNotices) qWarning().noquote() << "ChartController:" << line;
+        // The legend of the charts shown: legend.json is not merged, so a gone member adds nothing.
         QSet<QPair<QString, QString>> seen;
         int minZ = -1, maxZ = -1;
         for (const PackInfo& c : cf.inUse)
@@ -333,6 +333,7 @@ ChartController::ChartController(ChartMap& map, Settings& settings, VesselModel&
                                                 {QStringLiteral("meaning"), e.meaning},
                                                 {QStringLiteral("kind"), e.kind}});
                 }
+        // The zoom range is the union over every usable charts pack, shown or not.
         for (const PackInfo& c : charts) {
             if (c.minZoom >= 0) minZ = minZ < 0 ? c.minZoom : std::min(minZ, c.minZoom);
             if (c.maxZoom >= 0) maxZ = std::max(maxZ, c.maxZoom);

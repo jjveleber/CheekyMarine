@@ -243,8 +243,17 @@ struct Rig {
     // Writes packs/merged/<kind>/<file> for each file, recording `members` (pack directory names, each
     // with the SHA-256 of its manifest.json now, or of nothing when it has none) and `schema`.
     // `oldFormat` records the members as a plain array of names, as before #97.
+    // Charts files also record `valdco`, or when it is empty the union over the listed packs in `packs`.
     bool writeMerged(const QString& kind, const QStringList& files, const QStringList& members,
-                     int schema = PLOTTER_PACK_SCHEMA_MIN, bool oldFormat = false) {
+                     int schema = PLOTTER_PACK_SCHEMA_MIN, bool oldFormat = false, QList<double> valdco = {}) {
+        if (valdco.isEmpty())
+            for (const PackInfo& p : packs)
+                if (members.contains(QFileInfo(p.dir).fileName()))
+                    for (double v : p.valdco)
+                        if (!valdco.contains(v)) valdco.append(v);
+        std::sort(valdco.begin(), valdco.end());
+        QJsonArray valdcoJson;
+        for (double v : valdco) valdcoJson.append(v);
         const QString dir = packsDir() + "/merged/" + kind;
         if (!QDir().mkpath(dir)) return false;
         QJsonArray list;
@@ -267,6 +276,11 @@ struct Rig {
                     q.prepare("INSERT INTO metadata VALUES ('cheekymarine:members', ?), ('cheekymarine:schema', ?)");
                     q.addBindValue(QString::fromUtf8(QJsonDocument(list).toJson(QJsonDocument::Compact)));
                     q.addBindValue(QString::number(schema));
+                    ok = q.exec();
+                }
+                if (ok && kind == "charts") {
+                    q.prepare("INSERT INTO metadata VALUES ('cheekymarine:valdco', ?)");
+                    q.addBindValue(QString::fromUtf8(QJsonDocument(valdcoJson).toJson(QJsonDocument::Compact)));
                     ok = q.exec();
                 }
             }
@@ -528,7 +542,62 @@ private slots:
         r.make();
         QCOMPARE(encUrl(r.map.styles[0]), "mbtiles://" + r.chartsDir() + "/enc.mbtiles");
         QCOMPARE(r.ctrl->packModes(), modes("single-fallback", "single"));
-        QCOMPARE(r.ctrl->packNotices().size(), 1);
+        QCOMPARE(r.ctrl->packNotices(),
+                 QStringList{"Charts: merged files are missing or damaged. Showing puget-north only; other areas are blank. Run sudo cheekymarine install again."});
+    }
+
+    void membersDisagreeFallsBack() {
+        Rig r;
+        QVERIFY(r.settings);
+        QVERIFY(!r.addPack("bathy", "san-juan", QVersionNumber(1, 0, 0)).isEmpty());
+        QVERIFY(!r.addPack("bathy", "strait", QVersionNumber(1, 0, 0)).isEmpty());
+        // two of the four bathy files list other members
+        QVERIFY(r.writeMerged("bathy", bathyFiles().mid(0, 2), {"bathy-puget-north-1.0.0", "bathy-san-juan-1.0.0", "bathy-strait-1.0.0"}));
+        QVERIFY(r.writeMerged("bathy", bathyFiles().mid(2), {"bathy-puget-north-1.0.0", "bathy-san-juan-1.0.0"}));
+        r.make();
+        QCOMPARE(r.ctrl->packModes(), modes("single", "single-fallback"));
+        QCOMPARE(r.ctrl->packNotices(),
+                 QStringList{"Bathy: merged files are missing or damaged. Showing puget-north only; other areas have no depth. Run sudo cheekymarine install again."});
+    }
+
+    void wrongKindMemberFallsBack() {
+        Rig r;
+        QVERIFY(r.settings);
+        QVERIFY(!r.addPack("charts", "san-juan", QVersionNumber(1, 0, 0)).isEmpty());
+        QVERIFY(r.writeMerged("charts", {"enc.mbtiles"}, {"bathy-puget-north-1.0.0", "charts-san-juan-1.0.0"}));
+        r.make();
+        QCOMPARE(encUrl(r.map.styles[0]), "mbtiles://" + r.chartsDir() + "/enc.mbtiles");
+        QCOMPARE(r.ctrl->packModes(), modes("single-fallback", "single"));
+    }
+
+    void fallbackAlsoNamesRefused() {
+        Rig r;
+        QVERIFY(r.settings);
+        QVERIFY(!r.addPack("charts", "san-juan", QVersionNumber(1, 0, 0)).isEmpty());
+        QVERIFY(!r.addPack("charts", "strait", QVersionNumber(1, 0, 0)).isEmpty());
+        r.packs.last().refused = "schema 1 not supported";
+        r.make();
+        QCOMPARE(r.ctrl->packModes(), modes("single-fallback", "single"));
+        QCOMPARE(r.ctrl->packNotices(),
+                 (QStringList{"Charts: merged files are missing or damaged. Showing puget-north only; other areas are blank. Run sudo cheekymarine install again.",
+                              "Charts: strait 1.0.0 was refused (schema 1 not supported). Remove it or install a newer set."}));
+    }
+
+    void goneMemberValdcoDrivesSafety() {
+        Rig r;
+        QVERIFY(r.settings);
+        QVERIFY(!r.addPack("charts", "san-juan", QVersionNumber(1, 0, 0)).isEmpty());
+        // the gone member brought 2 into the merged file's valdco; the packs on disk have only kValdco
+        QList<double> merged = kValdco;
+        merged << 2;
+        QVERIFY(r.writeMerged("charts", {"enc.mbtiles"}, {"charts-gone-1.0.0", "charts-puget-north-1.0.0", "charts-san-juan-1.0.0"},
+                              PLOTTER_PACK_SCHEMA_MIN, false, merged));
+        QVERIFY(r.settings->setDepths(1.0, 1.9, 12.0));
+        r.make();
+        QCOMPARE(r.ctrl->packModes(), modes("merged", "single"));
+        r.map.loaded();
+        // kValdco alone would give 3.6
+        QCOMPARE(r.map.filters.value("depcnt-safety"), json(R"(["==",["to-number",["get","VALDCO"]],2])"));
     }
 
     void stylesFromNewestMemberOnDisk() {

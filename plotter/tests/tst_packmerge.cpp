@@ -209,6 +209,16 @@ private slots:
         QCOMPARE(r.error(), QString("schema differs: charts-a-1.0.0 2, charts-b-1.0.0 3"));
         QVERIFY(QDir(o.path() + "/charts").entryList({"*.mbtiles", "*.tmp"}, QDir::Files).isEmpty());
     }
+    void unreadableManifestFails() {
+        QTemporaryDir t, o;
+        const auto a = pack(t.path(), "charts", "a", "1.0.0", {{"enc.mbtiles", mb({{10, 1, 1, "A"}}, "10", "10")}});
+        const auto b = pack(t.path(), "charts", "b", "1.0.0", {{"enc.mbtiles", mb({{10, 2, 2, "B"}}, "10", "10")}});
+        QVERIFY(QFile::remove(b.dir + "/manifest.json"));
+        const auto r = mergePacks({a, b}, o.path());
+        QVERIFY(!r.has_value());
+        QCOMPARE(r.error(), QString("charts-b-1.0.0: cannot read manifest.json"));
+        QVERIFY(QDir(o.path() + "/charts").entryList({"*.mbtiles", "*.tmp"}, QDir::Files).isEmpty());
+    }
     void oldMembersFormatIsNotValid() {
         QTemporaryDir t;
         Mb m = mb({}, "", "");
@@ -256,6 +266,7 @@ private slots:
         QCOMPARE(meta(f, "bounds"), QString("-123,47,-121,49"));
         QCOMPARE(QJsonDocument::fromJson(meta(f, "cheekymarine:valdco").toUtf8()).array(),
                  (QJsonArray{5, 10, 20}));
+        QCOMPARE(mergeValdco(f), (QList<double>{5, 10, 20}));
         const QJsonArray layers = QJsonDocument::fromJson(meta(f, "json").toUtf8()).object()["vector_layers"].toArray();
         QCOMPARE(layers.size(), 2);
         QCOMPARE(layers[0].toObject()["id"].toString(), QString("depare"));

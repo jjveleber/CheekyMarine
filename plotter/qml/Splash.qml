@@ -29,13 +29,13 @@ Rectangle {
     // Touches during the splash go nowhere.
     MouseArea { anchors.fill: parent }
 
-    // The packs shown of one kind: a single pack reads "Charts: region 1.0.0", merged files
+    // The packs shown of one kind: a single pack reads "Charts: single, region 1.0.0", merged files
     // "Charts: merged, 6 packs, 1.0.0" (the newest version).
     function packText(kind, label, missing) {
         const ps = splash.appInfo.packsInUse.filter(p => p.kind === kind)
         if (ps.length === 0) return missing
         const mode = splash.appInfo.packModes[kind]
-        if (mode === undefined || !mode.startsWith("merged")) return label + ": " + ps[0].region + " " + ps[0].version
+        if (mode === undefined || !mode.startsWith("merged")) return label + ": single, " + ps[0].region + " " + ps[0].version
         const newest = ps.map(p => p.version).reduce((a, b) => newer(b, a) ? b : a)
         return label + ": merged, " + ps.length + " packs, " + newest
     }
@@ -47,10 +47,11 @@ Rectangle {
         }
         return false
     }
-    // The first charts pack's notice (when the setting allows), then every pack notice line: those are
-    // faults to fix, not a disclaimer, so the setting does not hide them.
+    // The first charts pack's notice (when the setting allows; the first on disk that has one, as a gone
+    // merged member has none), then every pack notice line: those are faults to fix, not a disclaimer,
+    // so the setting does not hide them.
     readonly property string noticeText: {
-        const first = splash.appInfo.packsInUse.find(p => p.kind === "charts")
+        const first = splash.appInfo.packsInUse.find(p => p.kind === "charts" && p.onDisk !== false && p.notice !== "")
         return [first !== undefined && splash.noticeShown ? first.notice : ""].concat(splash.appInfo.packNotices)
             .filter(t => t !== "").join("\n")
     }

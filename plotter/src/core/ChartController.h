@@ -148,7 +148,7 @@ private:
     // Per kind, where styles, sprites and glyphs come from: the newest merged member still on disk,
     // else the newest usable pack.
     std::optional<PackInfo> m_charts, m_bathy;
-    QList<double> m_valdco;                    // union over the charts packs shown
+    QList<double> m_valdco;                    // of the charts shown: the merged file's, or the single pack's
     QList<PackInfo> m_inUse;
     QStringList m_packNotices;
     QVariantMap m_packModes;

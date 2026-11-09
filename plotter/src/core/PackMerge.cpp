@@ -446,6 +446,15 @@ std::optional<int> mergeSchema(const QString& mbtilesPath) {
     return ok ? std::optional<int>(s) : std::nullopt;
 }
 
+QList<double> mergeValdco(const QString& mbtilesPath) {
+    QList<double> out;
+    if (const auto v = metadataValue(mbtilesPath, QStringLiteral("cheekymarine:valdco")))
+        for (const QJsonValue& e : QJsonDocument::fromJson(v->toUtf8()).array())
+            out.append(num(e));
+    std::sort(out.begin(), out.end());
+    return out;
+}
+
 QString manifestSha256(const QString& packDir) {
     QFile f(packDir + QStringLiteral("/manifest.json"));
     if (!f.open(QIODevice::ReadOnly))

@@ -29,5 +29,9 @@ QList<MergeMember> mergeMembers(const QString& mbtilesPath);
 // The cheekymarine:schema of a merged MBTiles; nullopt when unreadable, absent or not a whole number.
 std::optional<int> mergeSchema(const QString& mbtilesPath);
 
+// The cheekymarine:valdco of a merged charts MBTiles (the union over its members), ascending; empty
+// when unreadable or absent.
+QList<double> mergeValdco(const QString& mbtilesPath);
+
 // The SHA-256 (lowercase hex) of packDir/manifest.json; empty when it cannot be read.
 QString manifestSha256(const QString& packDir);

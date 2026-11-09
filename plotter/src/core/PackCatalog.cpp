@@ -89,12 +89,16 @@ bool hasStyles(const QString& dir) {
 
 } // namespace
 
+const QRegularExpression& packDirRe() {
+    static const QRegularExpression re(QStringLiteral("^(charts|bathy)-([a-z0-9-]+)-(\\d+\\.\\d+\\.\\d+)$"));
+    return re;
+}
+
 QList<PackInfo> PackCatalog::scan(const QString& dir) {
-    static const QRegularExpression nameRe(QStringLiteral("^(charts|bathy)-([a-z0-9-]+)-(\\d+\\.\\d+\\.\\d+)$"));
     QList<PackInfo> out;
     const QDir root(dir);
     for (const QFileInfo& fi : root.entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot, QDir::Name)) {
-        const QRegularExpressionMatch m = nameRe.match(fi.fileName());
+        const QRegularExpressionMatch m = packDirRe().match(fi.fileName());
         if (!m.hasMatch())
             continue;
         PackInfo p;

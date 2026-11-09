@@ -31,6 +31,11 @@ struct PackInfo {
 inline const QStringList kChartsFiles{"enc.mbtiles"};
 inline const QStringList kBathyFiles{"bathy.mbtiles", "dem.mbtiles", "bathy-coarse.mbtiles", "dem-coarse.mbtiles"};
 
+class QRegularExpression;
+
+// A pack directory name, <kind>-<region>-<x.y.z>: captures kind, region (may hold dashes) and version.
+const QRegularExpression& packDirRe();
+
 class PackCatalog {
 public:
     // Scans `dir` for charts-<region>-<x.y.z> and bathy-<region>-<x.y.z> directories. A broken pack
