@@ -270,21 +270,21 @@ def test_sources_clipped_to_owned_tiles(charts_pack_root_copy, fixtures_dir, tes
 
 
 def test_tile_hazard_outside_owned_area_is_ignored(charts_pack_root_copy, fixtures_dir, test_region):
-    """A hazard in an owned tile's buffer from ground another pack owns is not 'not in the source cells'."""
-    _prune(charts_pack_root_copy, test_region, _z10_tiles(charts_pack_root_copy), 10, 16)
-    done = []
+    """A hazard 20 tile pixels across the owned edge, in the buffer of the boundary tile, is not 'not in the
+    source cells'."""
+    from chartpack.mbtiles import MBTiles
 
-    def add_far(layers):
-        for layer in layers:
-            if layer["name"] == "hazard" and layer["features"] and not done:
-                feat = layer["features"][0]
-                layer["features"].append({**feat, "geometry": {"type": "Point", "coordinates": [-1_000_000, 100]},
-                                          "properties": {**feat["properties"], "VALSOU": "99.9"}})
-                done.append(1)
-        return layers
-
-    _rewrite_tiles(charts_pack_root_copy / "enc.mbtiles", 16, add_far)
-    assert done
+    tiles = sorted(_z10_tiles(charts_pack_root_copy))
+    _prune(charts_pack_root_copy, test_region, {tiles[0]}, 10, 16)
+    _rewrite_tiles(charts_pack_root_copy / "enc.mbtiles", 16, lambda layers: layers)  # flatten the tiles view
+    x10, y10 = tiles[0]
+    layers = [{"name": "hazard", "features": [{
+        "geometry": {"type": "Point", "coordinates": [-20, 2000]},
+        "properties": {"class": "UWTROC", "VALSOU": "99.9", "WATLEV": 4}}]}]
+    tile = gzip.compress(mapbox_vector_tile.encode(layers, default_options={"y_coord_down": True}))
+    with MBTiles.open(charts_pack_root_copy / "enc.mbtiles") as m:
+        m.put_tile(16, x10 * 64, y10 * 64 + 32, tile)  # west edge of the owned tile
     _refresh(charts_pack_root_copy, test_region)
     errs = check_pack(charts_pack_root_copy, enc_zips=[fixtures_dir / "US4WA1HK.zip"])
-    assert not [e for e in errs if "not in the source cells" in e], errs
+    assert errs == [f"enc.mbtiles: safety layer {layer} has no features at zoom {z}"
+                    for z in (11, 12) for layer in ("hazard", "navaid", "light")], errs
