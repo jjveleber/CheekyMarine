@@ -405,7 +405,11 @@ private slots:
         r.packs.last().valdco = {0, 2, 4};
         const QStringList cm{"charts-puget-north-1.0.0", "charts-san-juan-1.0.0"};
         QVERIFY(r.writeMerged("charts", {"enc.mbtiles"}, cm));
+        QVERIFY(r.settings->setDepths(1.0, 1.9, 12.0));
         r.make();
+        r.map.loaded();
+        // puget-north alone would give 3.6; the union {0, 0.9, 1.8, 2, 3.6, ...} gives 2
+        QCOMPARE(r.map.filters.value("depcnt-safety"), json(R"(["==",["to-number",["get","VALDCO"]],2])"));
         QCOMPARE(r.ctrl->minZoom(), 6.0);
         QCOMPARE(r.ctrl->maxZoom(), 18.0);
         QCOMPARE(r.ctrl->legend().size(), 3); // Blds/type, Sand/type, Blds/kind2

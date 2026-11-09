@@ -90,7 +90,7 @@ private slots:
         s["sources"] = sources;
         QVERIFY(!rewriteStyle(s, "/p/charts", files()).has_value());
     }
-    void rejectsMismatchedAndUnknownSources() {
+    void rejectsMismatchedSourceUrl() {
         QJsonObject s = load("nav-day");
         QJsonObject sources = s["sources"].toObject();
         QJsonObject enc = sources["enc"].toObject();
@@ -98,12 +98,15 @@ private slots:
         sources["enc"] = enc;
         s["sources"] = sources;
         QVERIFY(!rewriteStyle(s, "/p/charts", files()).has_value());
-
-        s = load("nav-day");
-        sources = s["sources"].toObject();
+    }
+    void unknownSourceIsError() {
+        QJsonObject s = load("nav-day");
+        QJsonObject sources = s["sources"].toObject();
         sources["fooo"] = sources["enc"];
         s["sources"] = sources;
-        QVERIFY(!rewriteStyle(s, "/p/charts", files()).has_value());
+        auto r = rewriteStyle(s, "/p/charts", files());
+        QVERIFY(!r.has_value());
+        QCOMPARE(r.error(), QStringLiteral("unknown source: fooo"));
     }
     void rejectsOddPackValues() {
         QJsonObject s = load("nav-day");
