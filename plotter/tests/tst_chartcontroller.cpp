@@ -364,7 +364,9 @@ private slots:
         QVERIFY(r.settings);
         const QString newest = r.addPack("charts", "san-juan", QVersionNumber(1, 1, 0));
         QVERIFY(!newest.isEmpty());
+        r.packs.last().valdco = {0, 4};
         QVERIFY(!r.addPack("bathy", "san-juan", QVersionNumber(1, 1, 0)).isEmpty());
+        QVERIFY(r.settings->setDepths(1.0, 1.9, 12.0));
         // the merged members name a pack that is not installed
         QVERIFY(r.writeMerged("charts", {"enc.mbtiles"}, {"charts-gone-1.0.0", "charts-puget-north-1.0.0"}));
         QVERIFY(r.writeMerged("bathy", bathyFiles(), {"bathy-puget-north-1.0.0", "bathy-san-juan-1.1.0"}));
@@ -374,6 +376,8 @@ private slots:
         QCOMPARE(r.ctrl->packNotice(), text);
         QCOMPARE(r.ctrl->packsInUse().size(), 3); // one charts pack, both merged bathy packs
         r.map.loaded();
+        // the one drawn charts pack has {0, 4}: the other pack's 3.6 is not on screen
+        QCOMPARE(r.map.filters.value("depcnt-safety"), json(R"(["==",["to-number",["get","VALDCO"]],4])"));
         r.ctrl->setPalette("dusk");
         QCOMPARE(r.map.styles.size(), 2);
         QCOMPARE(r.ctrl->packNotice(), text);

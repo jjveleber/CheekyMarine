@@ -197,19 +197,21 @@ ChartController::ChartController(ChartMap& map, Settings& settings, VesselModel&
         for (PackInfo& p : m_packs)
             if (p.dir == dir) p.refused = reason;
     };
-    QList<PackInfo> charts;
+    QList<PackInfo> charts, chartsInUse;
     bool stale = false;
     // The newest bathy pack is picked for each charts candidate first: nav styles load with it too.
     for (;;) {
         charts = PackCatalog::usable(m_packs, u"charts");
         if (charts.isEmpty()) break;
         m_charts = newestOf(charts);
+        const KindFiles cf = kindFiles(charts, QStringLiteral("charts"), kChartsFiles, m_packsDir);
+        chartsInUse = cf.inUse;
+        // The contours and the legend are those of the charts packs drawn (one pack in the stale fallback).
         m_valdco.clear();
-        for (const PackInfo& c : charts)
+        for (const PackInfo& c : cf.inUse)
             for (double v : c.valdco)
                 if (!m_valdco.contains(v)) m_valdco.append(v);
         std::sort(m_valdco.begin(), m_valdco.end());
-        const KindFiles cf = kindFiles(charts, QStringLiteral("charts"), kChartsFiles, m_packsDir);
         const auto withFiles = [&cf](const KindFiles& bathy) {
             QHash<QString, QString> files = cf.files;
             files.insert(bathy.files);
@@ -245,7 +247,7 @@ ChartController::ChartController(ChartMap& map, Settings& settings, VesselModel&
     if (!charts.isEmpty()) {
         QSet<QPair<QString, QString>> seen;
         int minZ = -1, maxZ = -1;
-        for (const PackInfo& c : charts) {
+        for (const PackInfo& c : chartsInUse)
             for (const LegendEntry& e : c.legend)
                 if (!seen.contains({e.abbr, e.kind})) {
                     seen.insert({e.abbr, e.kind});
@@ -253,6 +255,7 @@ ChartController::ChartController(ChartMap& map, Settings& settings, VesselModel&
                                                 {QStringLiteral("meaning"), e.meaning},
                                                 {QStringLiteral("kind"), e.kind}});
                 }
+        for (const PackInfo& c : charts) {
             if (c.minZoom >= 0) minZ = minZ < 0 ? c.minZoom : std::min(minZ, c.minZoom);
             if (c.maxZoom >= 0) maxZ = std::max(maxZ, c.maxZoom);
         }
