@@ -24,6 +24,7 @@ struct PackInfo {
     int maxZoom = -1;
     QList<LegendEntry> legend; // charts only, from legend.json; empty when absent, unreadable or schema != 1
     QString refused;
+    bool onDisk = true; // false: a merged member whose dir is gone (ChartController::packsInUse)
 };
 
 // The MBTiles files of each pack kind. Merging (PackMerge) writes one file of this name per kind.

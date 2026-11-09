@@ -856,7 +856,8 @@ TestCase {
         id: appInfoStub
         property string appVersion: "0.1.0"
         property var packsInUse: []
-        property string packNotice: ""
+        property var packNotices: []
+        property var packModes: ({})
         property var packs: []
         property string daemonVersion: ""
         property string setVersion: ""
@@ -883,7 +884,7 @@ TestCase {
         ]
     }
     function test_splashChartsLine(data) {
-        appInfoStub.packNotice = ""
+        appInfoStub.packNotices = []
         appInfoStub.packsInUse = data.charts.kind !== undefined ? [data.charts] : []
         appInfoStub.packs = data.packs
         const splash = createTemporaryObject(splashComp, testCase, { width: 1024, height: 600, appInfo: appInfoStub })
@@ -901,7 +902,7 @@ TestCase {
         ]
     }
     function test_splashBathyLine(data) {
-        appInfoStub.packNotice = ""
+        appInfoStub.packNotices = []
         appInfoStub.packsInUse = data.bathy.kind !== undefined ? [data.bathy] : []
         appInfoStub.packs = data.packs
         const splash = createTemporaryObject(splashComp, testCase, { width: 1024, height: 600, appInfo: appInfoStub })
@@ -913,41 +914,63 @@ TestCase {
                                                       notice: i === 0 ? notice : "", refused: "", inUse: true }))
     }
     function test_splashSeveralPacks() {
-        appInfoStub.packNotice = ""
+        appInfoStub.packNotices = []
         appInfoStub.packs = []
         appInfoStub.packsInUse = packs("charts", 6, "").concat(packs("bathy", 6, ""))
+        appInfoStub.packModes = { charts: "merged", bathy: "merged-stale" }
         const splash = createTemporaryObject(splashComp, testCase, { width: 1024, height: 600, appInfo: appInfoStub })
-        compare(H.byName(splash, "splashCharts").text, "Charts: 6 packs, 1.10.0")
-        compare(H.byName(splash, "splashBathy").text, "Bathy: 6 packs, 1.10.0")
+        compare(H.byName(splash, "splashCharts").text, "Charts: merged, 6 packs, 1.10.0")
+        compare(H.byName(splash, "splashBathy").text, "Bathy: merged, 6 packs, 1.10.0")
+        appInfoStub.packModes = ({})
     }
-    function test_splashShowsPackNotice() {
+    readonly property var twoNotices: [
+        "Charts: san-juan shows 1.0.0, 1.1.0 is installed. Run sudo cheekymarine install again.",
+        "Bathy: merged files are missing or damaged. Showing sound-central only; other areas have no depth. Run sudo cheekymarine install again."]
+    function test_splashShowsPackNotices() {
         appInfoStub.packs = []
         appInfoStub.packsInUse = packs("charts", 2, "charts notice")
-        appInfoStub.packNotice = "Chart packs are not merged. Run sudo cheekymarine install again."
+        appInfoStub.packNotices = twoNotices
         let splash = createTemporaryObject(splashComp, testCase, { width: 1024, height: 600, appInfo: appInfoStub })
-        compare(H.byName(splash, "splashNotice").text, "charts notice\nChart packs are not merged. Run sudo cheekymarine install again.")
+        compare(H.byName(splash, "splashNotice").text, "charts notice\n" + twoNotices.join("\n"))
         appInfoStub.packsInUse = packs("charts", 2, "")
         splash = createTemporaryObject(splashComp, testCase, { width: 1024, height: 600, appInfo: appInfoStub })
-        compare(H.byName(splash, "splashNotice").text, "Chart packs are not merged. Run sudo cheekymarine install again.")
-        appInfoStub.packNotice = ""
+        compare(H.byName(splash, "splashNotice").text, twoNotices.join("\n"))
+        appInfoStub.packNotices = []
     }
-    function test_splashPackNoticeIgnoresChartNoticeSetting() {
+    function test_splashPackNoticesIgnoreChartNoticeSetting() {
         appInfoStub.packs = []
         appInfoStub.packsInUse = packs("charts", 2, "charts notice")
-        appInfoStub.packNotice = "Chart packs are not merged. Run sudo cheekymarine install again."
+        appInfoStub.packNotices = twoNotices
         const splash = createTemporaryObject(splashComp, testCase, { width: 1024, height: 600, appInfo: appInfoStub, noticeShown: false })
-        compare(H.byName(splash, "splashNotice").text, "Chart packs are not merged. Run sudo cheekymarine install again.")
+        compare(H.byName(splash, "splashNotice").text, twoNotices.join("\n"))
         verify(H.byName(splash, "splashNotice").visible)
-        appInfoStub.packNotice = ""
+        appInfoStub.packNotices = []
     }
-    function test_aboutShowsPackNotice() {
-        appInfoStub.packNotice = "Chart packs are not merged. Run sudo cheekymarine install again."
+    function test_aboutShowsPackNotices() {
+        appInfoStub.packNotices = twoNotices
         let about = createTemporaryObject(aboutPageComp, testCase, { width: 1024, height: 600, appInfo: appInfoStub })
-        compare(H.byName(about, "aboutPackNotice").text, "Chart packs are not merged. Run sudo cheekymarine install again.")
-        verify(H.byName(about, "aboutPackNotice").visible)
-        appInfoStub.packNotice = ""
+        const lines = H.findAll(about, o => o.objectName === "aboutPackNotice").reverse() // findAll visits last first
+        compare(lines.map(l => l.text), twoNotices)
+        appInfoStub.packNotices = []
         about = createTemporaryObject(aboutPageComp, testCase, { width: 1024, height: 600, appInfo: appInfoStub })
-        verify(!H.byName(about, "aboutPackNotice").visible)
+        compare(H.findAll(about, o => o.objectName === "aboutPackNotice").length, 0)
+    }
+    function test_aboutShowsModes() {
+        appInfoStub.packs = []
+        appInfoStub.packsInUse = [{ kind: "charts", region: "a", version: "1.0.0", notice: "", onDisk: true },
+                                  { kind: "charts", region: "b", version: "1.1.0", notice: "", onDisk: false },
+                                  { kind: "bathy", region: "a", version: "1.0.0", notice: "", onDisk: true }]
+        appInfoStub.packModes = { charts: "merged-stale", bathy: "single-fallback" }
+        const about = createTemporaryObject(aboutPageComp, testCase, { width: 1024, height: 600, appInfo: appInfoStub })
+        compare(H.findAll(about, o => o.objectName === "aboutPackMode").reverse().map(l => l.text),
+                ["Charts: merged", "Bathy: single"])
+        compare(H.findAll(about, o => o.objectName === "aboutPackLine").reverse().map(l => l.text),
+                ["charts a 1.0.0", "charts b 1.1.0 (pack removed)", "bathy a 1.0.0"])
+        appInfoStub.packModes = { charts: "merged", bathy: "single" }
+        compare(H.findAll(about, o => o.objectName === "aboutPackMode").reverse().map(l => l.text),
+                ["Charts: merged", "Bathy: single"])
+        appInfoStub.packModes = ({})
+        appInfoStub.packsInUse = []
     }
     function test_aboutListsEveryPack() {
         appInfoStub.packs = []

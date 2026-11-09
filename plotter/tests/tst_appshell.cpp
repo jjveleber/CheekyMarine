@@ -103,13 +103,23 @@ private slots:
     }
 
     void inUseFollowsController() {
-        // A stale merge falls back to the one newest single pack per kind.
+        // Merged charts with one member gone, a single bathy pack.
         const QList<PackInfo> scanned{pack("charts", "a", 1, 0), pack("charts", "b", 1, 1), pack("bathy", "a", 1, 0)};
-        const AppInfo info(scanned, {scanned[1], scanned[2]}, {}, "Chart packs are not merged.");
-        QCOMPARE(info.packNotice(), QStringLiteral("Chart packs are not merged."));
-        QCOMPARE(info.packs().at(0).toMap().value("inUse").toBool(), false);
-        QCOMPARE(info.packs().at(1).toMap().value("inUse").toBool(), true);
+        PackInfo gone = pack("charts", "c", 2, 0);
+        gone.onDisk = false;
+        const QStringList notices{"Charts: b shows 1.0.0, 1.1.0 is installed. Run sudo cheekymarine install again.",
+                                  "Charts: d is installed but not merged, so it is not shown. Run sudo cheekymarine install again."};
+        const QVariantMap modes{{"charts", "merged-stale"}, {"bathy", "single"}};
+        const AppInfo info(scanned, {scanned[0], gone, scanned[2]}, {}, notices, modes);
+        QCOMPARE(info.packNotices(), notices);
+        QCOMPARE(info.packModes(), modes);
+        QCOMPARE(info.packs().at(0).toMap().value("inUse").toBool(), true);
+        QCOMPARE(info.packs().at(1).toMap().value("inUse").toBool(), false);
         QCOMPARE(info.packs().at(2).toMap().value("inUse").toBool(), true);
+        QCOMPARE(info.packsInUse().size(), 3);
+        QCOMPARE(info.packsInUse().at(0).toMap().value("onDisk").toBool(), true);
+        QCOMPARE(info.packsInUse().at(1).toMap().value("region").toString(), QStringLiteral("c"));
+        QCOMPARE(info.packsInUse().at(1).toMap().value("onDisk").toBool(), false);
     }
 
     void appInfoSchemaMismatch() {

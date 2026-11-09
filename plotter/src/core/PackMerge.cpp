@@ -1,4 +1,5 @@
 #include "core/PackMerge.h"
+#include <QCryptographicHash>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -145,7 +146,7 @@ std::optional<Member> readMember(const PackInfo& p, const QString& file, QString
 double num(const QJsonValue& v) { return v.isString() ? v.toString().toDouble() : v.toDouble(); }
 
 // Everything that goes into the merged file's metadata table.
-QList<QPair<QString, QString>> mergedMetadata(const QList<Member>& ms, bool charts) {
+QList<QPair<QString, QString>> mergedMetadata(const QList<Member>& ms, bool charts, const QJsonArray& members, int schema) {
     QList<QPair<QString, QString>> out;
     out.append({QStringLiteral("format"), ms.first().format});
 
@@ -202,12 +203,9 @@ QList<QPair<QString, QString>> mergedMetadata(const QList<Member>& ms, bool char
         out.append({QStringLiteral("cheekymarine:valdco"), QString::fromUtf8(QJsonDocument(arr).toJson(QJsonDocument::Compact))});
     }
 
-    QStringList names;
-    for (const Member& m : ms)
-        names.append(m.name);
-    names.sort();
     out.append({QStringLiteral("cheekymarine:members"),
-                QString::fromUtf8(QJsonDocument(QJsonArray::fromStringList(names)).toJson(QJsonDocument::Compact))});
+                QString::fromUtf8(QJsonDocument(members).toJson(QJsonDocument::Compact))});
+    out.append({QStringLiteral("cheekymarine:schema"), QString::number(schema)});
     return out;
 }
 
@@ -225,7 +223,8 @@ bool memberHasTile(const Member& m, const QString& file, int z, int col, int row
 }
 
 // Writes one merged MBTiles at `tmpPath`. `err` is set on failure.
-bool writeMerged(const QList<Member>& ms, const QString& file, bool charts, const QString& tmpPath, QString& err) {
+bool writeMerged(const QList<Member>& ms, const QString& file, bool charts, const QJsonArray& members, int packSchema,
+                 const QString& tmpPath, QString& err) {
     // map/images only when every member has it; otherwise the rows go to a plain `tiles` table.
     const bool mapImages = std::all_of(ms.begin(), ms.end(), [](const Member& m) { return m.mapImages; });
     Conn c(tmpPath, false);
@@ -298,7 +297,7 @@ bool writeMerged(const QList<Member>& ms, const QString& file, bool charts, cons
 
     if (!run(db, QStringLiteral("BEGIN"), err))
         return false;
-    for (const auto& kv : mergedMetadata(ms, charts))
+    for (const auto& kv : mergedMetadata(ms, charts, members, packSchema))
         if (!run(db, QStringLiteral("INSERT INTO metadata VALUES (?, ?)"), err, {kv.first, kv.second}))
             return false;
     return run(db, QStringLiteral("COMMIT"), err);
@@ -335,6 +334,30 @@ std::expected<void, QString> mergeKind(const QList<PackInfo>& packs, const QStri
         return std::unexpected(QStringLiteral("cannot create ") + dir);
     clean(); // stale output from an earlier run
 
+    // The members, sorted by dir name, with their manifest hashes; their manifests must share one schema.
+    QList<MergeMember> list;
+    int schema = 0;
+    QString schemaOf;
+    for (const PackInfo& p : packs) {
+        const QString name = QFileInfo(p.dir).fileName();
+        QFile f(p.dir + QStringLiteral("/manifest.json"));
+        if (!f.open(QIODevice::ReadOnly))
+            return fail(name + QStringLiteral(": cannot read manifest.json"));
+        const QByteArray bytes = f.readAll();
+        const int s = QJsonDocument::fromJson(bytes).object().value(QStringLiteral("schema")).toInt();
+        if (schemaOf.isEmpty()) {
+            schema = s;
+            schemaOf = name;
+        } else if (s != schema) {
+            return fail(QStringLiteral("schema differs: %1 %2, %3 %4").arg(schemaOf).arg(schema).arg(name).arg(s));
+        }
+        list.append({name, QString::fromLatin1(QCryptographicHash::hash(bytes, QCryptographicHash::Sha256).toHex())});
+    }
+    std::sort(list.begin(), list.end(), [](const MergeMember& a, const MergeMember& b) { return a.dir < b.dir; });
+    QJsonArray members;
+    for (const MergeMember& m : list)
+        members.append(QJsonObject{{QStringLiteral("dir"), m.dir}, {QStringLiteral("manifest_sha256"), m.manifestSha256}});
+
     QStringList tmps;
     for (const QString& file : files) {
         QList<Member> ms;
@@ -350,7 +373,7 @@ std::expected<void, QString> mergeKind(const QList<PackInfo>& packs, const QStri
         const QString tmp = dir + QLatin1Char('/') + file + QStringLiteral(".tmp");
         tmps.append(tmp);
         QString err;
-        if (!writeMerged(ms, file, charts, tmp, err))
+        if (!writeMerged(ms, file, charts, members, schema, tmp, err))
             return fail(err);
     }
     // All files are written; rename them last so a failure above leaves nothing behind.
@@ -380,20 +403,52 @@ std::expected<void, QString> mergePacks(const QList<PackInfo>& usable, const QSt
     return {};
 }
 
-QStringList mergeMembers(const QString& mbtilesPath) {
+namespace {
+// The value of metadata `name` in an MBTiles; nullopt when the file or the row cannot be read.
+std::optional<QString> metadataValue(const QString& mbtilesPath, const QString& name) {
     if (!QFileInfo::exists(mbtilesPath))
-        return {};
+        return std::nullopt;
     Conn c(mbtilesPath, true);
     if (!c.ok())
-        return {};
+        return std::nullopt;
     QSqlQuery q(c.db());
-    if (!q.exec(QStringLiteral("SELECT value FROM metadata WHERE name = 'cheekymarine:members'")) || !q.next())
+    q.prepare(QStringLiteral("SELECT value FROM metadata WHERE name = ?"));
+    q.addBindValue(name);
+    if (!q.exec() || !q.next())
+        return std::nullopt;
+    return q.value(0).toString();
+}
+} // namespace
+
+QList<MergeMember> mergeMembers(const QString& mbtilesPath) {
+    const auto v = metadataValue(mbtilesPath, QStringLiteral("cheekymarine:members"));
+    if (!v)
         return {};
-    const QJsonDocument d = QJsonDocument::fromJson(q.value(0).toString().toUtf8());
+    const QJsonDocument d = QJsonDocument::fromJson(v->toUtf8());
     if (!d.isArray())
         return {};
-    QStringList out;
-    for (const QJsonValue& v : d.array())
-        out.append(v.toString());
+    QList<MergeMember> out;
+    for (const QJsonValue& e : d.array()) {
+        const QJsonObject o = e.toObject();
+        const QJsonValue dir = o.value(QStringLiteral("dir")), sha = o.value(QStringLiteral("manifest_sha256"));
+        if (!e.isObject() || !dir.isString() || !sha.isString())
+            return {}; // the old list of plain names, or damaged
+        out.append({dir.toString(), sha.toString()});
+    }
+    std::sort(out.begin(), out.end(), [](const MergeMember& a, const MergeMember& b) { return a.dir < b.dir; });
     return out;
+}
+
+std::optional<int> mergeSchema(const QString& mbtilesPath) {
+    const auto v = metadataValue(mbtilesPath, QStringLiteral("cheekymarine:schema"));
+    bool ok = false;
+    const int s = v ? v->toInt(&ok) : 0;
+    return ok ? std::optional<int>(s) : std::nullopt;
+}
+
+QString manifestSha256(const QString& packDir) {
+    QFile f(packDir + QStringLiteral("/manifest.json"));
+    if (!f.open(QIODevice::ReadOnly))
+        return {};
+    return QString::fromLatin1(QCryptographicHash::hash(f.readAll(), QCryptographicHash::Sha256).toHex());
 }
