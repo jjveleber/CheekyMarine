@@ -117,6 +117,7 @@ def _has_tiles(path: Path) -> bool:
 
 
 def _check_safety_layers(m: MBTiles, metadata: dict) -> list[str]:
+    # Pack-wide on purpose, not clipped to the owned tiles: it fails closed.
     errors = []
     for z in sorted(_band_zooms(metadata)):
         missing = set(SAFETY_LAYERS)
@@ -140,6 +141,8 @@ def _check_against_sources(m: MBTiles, metadata: dict, enc_zips: list[Path]) -> 
         layers = decode_pbf(data)
         for feat in layers.get("hazard", []):
             geom = shapely.transform(shape(feat["geometry"]), lambda c, x=x, y=y: _lonlat(z, x, y, c))
+            if owned is not None and not owned.intersects(geom.representative_point()):
+                continue  # tippecanoe's tile buffer carries hazards from ground another pack owns
             hazards.setdefault(hazard_key(feat["properties"]), []).append(geom)
         for layer in ("depare", "lndare"):
             for feat in layers.get(layer, []):
