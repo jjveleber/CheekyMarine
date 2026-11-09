@@ -211,6 +211,23 @@ private slots:
         QVERIFY(QDir(o.path() + "/charts").entryList({"*.mbtiles", "*.tmp"}, QDir::Files).isEmpty());
         QVERIFY(QSqlDatabase::connectionNames().isEmpty());
     }
+    void duplicateTileInPlainBathyFails() {
+        QTemporaryDir t, o;
+        // bathy.mbtiles is disjoint and merges first; the duplicate is in dem.mbtiles, the second file, so
+        // the cleanup of the finished bathy.mbtiles.tmp is covered too. Plain tiles tables, no map/images.
+        const auto a = pack(t.path(), "bathy", "a", "1.0.0",
+                            bathyFiles({{"bathy.mbtiles", mb({{10, 1, 1, "x"}}, "10", "10")},
+                                        {"dem.mbtiles", mb({{10, 163, 357, "p"}}, "10", "10")}}));
+        const auto b = pack(t.path(), "bathy", "b", "1.0.0",
+                            bathyFiles({{"bathy.mbtiles", mb({{10, 2, 2, "y"}}, "10", "10")},
+                                        {"dem.mbtiles", mb({{10, 163, 357, "q"}}, "10", "10")}}));
+        const auto r = mergePacks({a, b}, o.path());
+        QVERIFY(!r.has_value());
+        // stored row 357 at zoom 10 is XYZ y 1023 - 357 = 666
+        QCOMPARE(r.error(), QString("tile 10/163/666 is in both bathy-a-1.0.0 and bathy-b-1.0.0"));
+        QVERIFY(QDir(o.path() + "/bathy").entryList(QDir::Files | QDir::NoDotAndDotDot).isEmpty());
+        QVERIFY(QSqlDatabase::connectionNames().isEmpty());
+    }
     void memberWithNoTilesKeepsOthersZooms() {
         QTemporaryDir t, o;
         const auto a = pack(t.path(), "bathy", "overview", "1.0.0",
