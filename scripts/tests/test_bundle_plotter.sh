@@ -7,7 +7,10 @@
 #   (d) in a clean container per IMAGE (default ubuntu:24.04) with only CM_APT_PACKAGES from
 #       installer/cheekymarine.sh installed (plus xvfb, xauth, libgl1-mesa-dri for the test), ldd
 #       finds every library of the binary, the plugins and the QML plugins, and the plotter starts
-#       under xvfb-run, logs "ready in" and exits 0.
+#       under xvfb-run, logs "ready in" and exits 0,
+#   (e) share/icons/hicolor/scalable/apps/cheekyplotter.svg is byte-identical to
+#       plotter/assets/cheekyplotter.svg, and in each container (with librsvg2-bin added for the test)
+#       rsvg-convert renders it to a non-empty 256x256 PNG, as GNOME's librsvg must.
 # Exit 0 when every check passes; otherwise print each failure and exit 1.
 set -euo pipefail
 
@@ -75,6 +78,13 @@ else
     bad "(b) PACK_SCHEMA is '$got', plotter/CMakeLists.txt says '$want'"
 fi
 
+# (e) the app icon, byte for byte
+if cmp -s "$b/share/icons/hicolor/scalable/apps/cheekyplotter.svg" "$root/plotter/assets/cheekyplotter.svg"; then
+    ok "(e) icon"
+else
+    bad "(e) icon missing or differs from plotter/assets/cheekyplotter.svg"
+fi
+
 # (c) RPATH
 dyn="$(readelf -d "$b/bin/cheekyplotter" 2>/dev/null || true)"
 rpath="$(sed -n 's/.*(RPATH).*\[\(.*\)\]$/\1/p' <<< "$dyn")"
@@ -92,7 +102,7 @@ set -u
 export DEBIAN_FRONTEND=noninteractive
 apt-get -qq update >/dev/null && apt-get -qq install -y --no-install-recommends $APT_LIST >/dev/null 2>&1 \
     || { echo "FAIL: apt-get install of CM_APT_PACKAGES failed"; exit 1; }
-apt-get -qq install -y --no-install-recommends xvfb xauth libgl1-mesa-dri >/dev/null 2>&1 \
+apt-get -qq install -y --no-install-recommends xvfb xauth libgl1-mesa-dri librsvg2-bin >/dev/null 2>&1 \
     || { echo "FAIL: apt-get install of the test packages failed"; exit 1; }
 cd /bundle
 rc=0
@@ -112,6 +122,12 @@ if [ $code -eq 0 ] && grep -q 'ready in' /tmp/run.log; then
 else
     echo "FAIL: (d) launch exit $code, log:"
     sed 's/^/    /' /tmp/run.log
+    rc=1
+fi
+if rsvg-convert -w 256 -h 256 -o /tmp/icon.png share/icons/hicolor/scalable/apps/cheekyplotter.svg && [ -s /tmp/icon.png ]; then
+    echo "ok: (e) rsvg-convert renders the icon"
+else
+    echo "FAIL: (e) rsvg-convert could not render share/icons/hicolor/scalable/apps/cheekyplotter.svg"
     rc=1
 fi
 exit $rc
