@@ -254,6 +254,20 @@ struct Rig {
         std::sort(valdco.begin(), valdco.end());
         QJsonArray valdcoJson;
         for (double v : valdco) valdcoJson.append(v);
+        // zooms and legend: the union over the listed packs, as mergePacks writes them
+        int minZ = -1, maxZ = -1;
+        QJsonArray legendJson;
+        QSet<QPair<QString, QString>> seen;
+        for (const PackInfo& p : packs)
+            if (members.contains(QFileInfo(p.dir).fileName())) {
+                if (p.minZoom >= 0) minZ = minZ < 0 ? p.minZoom : std::min(minZ, p.minZoom);
+                maxZ = std::max(maxZ, p.maxZoom);
+                for (const LegendEntry& e : p.legend)
+                    if (!seen.contains({e.abbr, e.kind})) {
+                        seen.insert({e.abbr, e.kind});
+                        legendJson.append(QJsonObject{{"abbr", e.abbr}, {"meaning", e.meaning}, {"kind", e.kind}});
+                    }
+            }
         const QString dir = packsDir() + "/merged/" + kind;
         if (!QDir().mkpath(dir)) return false;
         QJsonArray list;
@@ -279,8 +293,15 @@ struct Rig {
                     ok = q.exec();
                 }
                 if (ok && kind == "charts") {
-                    q.prepare("INSERT INTO metadata VALUES ('cheekymarine:valdco', ?)");
+                    q.prepare("INSERT INTO metadata VALUES ('cheekymarine:valdco', ?), ('cheekymarine:legend', ?)");
                     q.addBindValue(QString::fromUtf8(QJsonDocument(valdcoJson).toJson(QJsonDocument::Compact)));
+                    q.addBindValue(QString::fromUtf8(QJsonDocument(legendJson).toJson(QJsonDocument::Compact)));
+                    ok = q.exec();
+                }
+                if (ok && kind == "charts" && maxZ >= 0) {
+                    q.prepare("INSERT INTO metadata VALUES ('minzoom', ?), ('maxzoom', ?)");
+                    q.addBindValue(QString::number(minZ));
+                    q.addBindValue(QString::number(maxZ));
                     ok = q.exec();
                 }
             }
@@ -288,6 +309,26 @@ struct Rig {
             if (!ok) return false;
         }
         return true;
+    }
+    // Sets metadata `name` of packs/merged/<kind>/<file> to `value`.
+    bool setMergedMeta(const QString& kind, const QString& file, const QString& name, const QString& value) {
+        const QString conn = "meta-" + kind + file;
+        bool ok = false;
+        {
+            QSqlDatabase db = QSqlDatabase::addDatabase("QSQLITE", conn);
+            db.setDatabaseName(packsDir() + "/merged/" + kind + "/" + file);
+            QSqlQuery q(db);
+            ok = db.open();
+            q.prepare("DELETE FROM metadata WHERE name = ?");
+            q.addBindValue(name);
+            ok = ok && q.exec();
+            q.prepare("INSERT INTO metadata VALUES (?, ?)");
+            q.addBindValue(name);
+            q.addBindValue(value);
+            ok = ok && q.exec();
+        }
+        QSqlDatabase::removeDatabase(conn);
+        return ok;
     }
     ChartController& make() {
         ctrl = std::make_unique<ChartController>(map, *settings, vessel, ais, packs, packsDir());
@@ -581,6 +622,65 @@ private slots:
         QCOMPARE(r.ctrl->packNotices(),
                  (QStringList{"Charts: merged files are missing or damaged. Showing puget-north only; other areas are blank. Run sudo cheekymarine install again.",
                               "Charts: strait 1.0.0 was refused (schema 1 not supported). Remove it or install a newer set."}));
+    }
+
+    void twoInstalledOneRefusedKeepsMerged() {
+        {
+            // the refused pack is not in the merged files: merged kept, the refused pack named
+            Rig r;
+            QVERIFY(r.settings);
+            QVERIFY(!r.addPack("charts", "strait", QVersionNumber(1, 0, 0)).isEmpty());
+            r.packs.last().refused = "schema 1 not supported";
+            QVERIFY(r.writeMerged("charts", {"enc.mbtiles"}, {"charts-gone-1.0.0", "charts-puget-north-1.0.0"}));
+            r.make();
+            QCOMPARE(encUrl(r.map.styles[0]), "mbtiles://" + r.packsDir() + "/merged/charts/enc.mbtiles");
+            QCOMPARE(r.ctrl->packModes(), modes("merged-stale", "single"));
+            QCOMPARE(r.ctrl->packNotices(),
+                     QStringList{"Charts: strait 1.0.0 was refused (schema 1 not supported). Remove it or install a newer set."});
+        }
+        {
+            // the refused pack is in the merged files: its tiles are shown, no notice
+            Rig r;
+            QVERIFY(r.settings);
+            QVERIFY(!r.addPack("charts", "strait", QVersionNumber(1, 0, 0)).isEmpty());
+            r.packs.last().refused = "styles missing";
+            QVERIFY(r.writeMerged("charts", {"enc.mbtiles"}, {"charts-puget-north-1.0.0", "charts-strait-1.0.0"}));
+            r.make();
+            QCOMPARE(encUrl(r.map.styles[0]), "mbtiles://" + r.packsDir() + "/merged/charts/enc.mbtiles");
+            QCOMPARE(r.ctrl->packModes(), modes("merged", "single"));
+            QCOMPARE(r.ctrl->packNotices(), QStringList());
+        }
+    }
+
+    void twoInstalledOneRefusedNoMergeFallsBack() {
+        Rig r;
+        QVERIFY(r.settings);
+        QVERIFY(!r.addPack("bathy", "strait", QVersionNumber(1, 0, 0)).isEmpty());
+        r.packs.last().refused = "schema 1 not supported";
+        r.make();
+        QCOMPARE(r.ctrl->packModes(), modes("single", "single-fallback"));
+        QCOMPARE(r.ctrl->packNotices(),
+                 (QStringList{"Bathy: merged files are missing or damaged. Showing puget-north only; other areas have no depth. Run sudo cheekymarine install again.",
+                              "Bathy: strait 1.0.0 was refused (schema 1 not supported). Remove it or install a newer set."}));
+    }
+
+    void mergedZoomAndLegendFromMergedFile() {
+        Rig r(true, false, 6, 16);
+        QVERIFY(r.settings);
+        r.packs[0].legend = {{"Sand", "sand", "type"}};
+        QVERIFY(!r.addPack("charts", "san-juan", QVersionNumber(1, 0, 0), 10, 16).isEmpty());
+        QVERIFY(!r.addPack("charts", "deep", QVersionNumber(1, 0, 0), 3, 12).isEmpty()); // not merged, not shown
+        QVERIFY(r.writeMerged("charts", {"enc.mbtiles"}, {"charts-gone-1.0.0", "charts-puget-north-1.0.0", "charts-san-juan-1.0.0"}));
+        // the gone member reached zoom 18 and brought a legend entry
+        QVERIFY(r.setMergedMeta("charts", "enc.mbtiles", "maxzoom", "18"));
+        QVERIFY(r.setMergedMeta("charts", "enc.mbtiles", "cheekymarine:legend",
+                                R"([{"abbr":"Sand","meaning":"sand","kind":"type"},{"abbr":"Rk","meaning":"rock","kind":"type"}])"));
+        r.make();
+        QCOMPARE(r.ctrl->packModes(), modes("merged-stale", "single"));
+        QCOMPARE(r.ctrl->minZoom(), 6.0);  // not 3: the unmerged pack is not shown
+        QCOMPARE(r.ctrl->maxZoom(), 20.0); // 18 + overzoom
+        QCOMPARE(r.ctrl->legend().size(), 2);
+        QCOMPARE(r.ctrl->legend()[1].toMap().value("abbr").toString(), QString("Rk"));
     }
 
     void goneMemberValdcoDrivesSafety() {

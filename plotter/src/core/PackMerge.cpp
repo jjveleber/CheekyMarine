@@ -7,6 +7,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QRandomGenerator>
+#include <QSet>
 #include <QSqlDatabase>
 #include <QSqlError>
 #include <QSqlQuery>
@@ -201,6 +202,18 @@ QList<QPair<QString, QString>> mergedMetadata(const QList<Member>& ms, bool char
         for (const QJsonValue& v : vals)
             arr.append(v);
         out.append({QStringLiteral("cheekymarine:valdco"), QString::fromUtf8(QJsonDocument(arr).toJson(QJsonDocument::Compact))});
+
+        // legend.json is not merged as a file: its union (first wins per abbr and kind) goes here.
+        QJsonArray legend;
+        QSet<QPair<QString, QString>> seenEntries;
+        for (const Member& m : ms)
+            for (const LegendEntry& e : m.pack.legend)
+                if (!seenEntries.contains({e.abbr, e.kind})) {
+                    seenEntries.insert({e.abbr, e.kind});
+                    legend.append(QJsonObject{{QStringLiteral("abbr"), e.abbr}, {QStringLiteral("meaning"), e.meaning},
+                                              {QStringLiteral("kind"), e.kind}});
+                }
+        out.append({QStringLiteral("cheekymarine:legend"), QString::fromUtf8(QJsonDocument(legend).toJson(QJsonDocument::Compact))});
     }
 
     out.append({QStringLiteral("cheekymarine:members"),
@@ -403,8 +416,6 @@ std::expected<void, QString> mergePacks(const QList<PackInfo>& usable, const QSt
     return {};
 }
 
-namespace {
-// The value of metadata `name` in an MBTiles; nullopt when the file or the row cannot be read.
 std::optional<QString> metadataValue(const QString& mbtilesPath, const QString& name) {
     if (!QFileInfo::exists(mbtilesPath))
         return std::nullopt;
@@ -418,7 +429,6 @@ std::optional<QString> metadataValue(const QString& mbtilesPath, const QString& 
         return std::nullopt;
     return q.value(0).toString();
 }
-} // namespace
 
 QList<MergeMember> mergeMembers(const QString& mbtilesPath) {
     const auto v = metadataValue(mbtilesPath, QStringLiteral("cheekymarine:members"));
@@ -452,6 +462,17 @@ QList<double> mergeValdco(const QString& mbtilesPath) {
         for (const QJsonValue& e : QJsonDocument::fromJson(v->toUtf8()).array())
             out.append(num(e));
     std::sort(out.begin(), out.end());
+    return out;
+}
+
+QList<LegendEntry> mergeLegend(const QString& mbtilesPath) {
+    QList<LegendEntry> out;
+    if (const auto v = metadataValue(mbtilesPath, QStringLiteral("cheekymarine:legend")))
+        for (const QJsonValue& e : QJsonDocument::fromJson(v->toUtf8()).array()) {
+            const QJsonObject o = e.toObject();
+            out.append({o.value(QStringLiteral("abbr")).toString(), o.value(QStringLiteral("meaning")).toString(),
+                        o.value(QStringLiteral("kind")).toString()});
+        }
     return out;
 }
 

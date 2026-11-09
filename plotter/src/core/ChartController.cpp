@@ -193,7 +193,7 @@ std::optional<QList<MergeMember>> validMembers(const QString& mergedDir, const Q
     return out;
 }
 
-// One usable pack: its own files. Several: the merged files in <packsDir>/merged/<kind>/ when they
+// One installed pack, usable: its own files. Several installed: the merged files in <packsDir>/merged/<kind>/ when they
 // are valid, with a notice line per difference from the usable packs; else the newest single pack's
 // (never a mix) with a notice that other areas are blank. `all` is every pack, refused ones too.
 KindFiles kindFiles(const QList<PackInfo>& all, const QString& kind, const QStringList& fileNames,
@@ -212,11 +212,12 @@ KindFiles kindFiles(const QList<PackInfo>& all, const QString& kind, const QStri
                 k.notices << label + p.region + QLatin1Char(' ') + p.version.toString() + QStringLiteral(" was refused (")
                                  + p.refused + QStringLiteral("). Remove it or install a newer set.");
     };
-    const std::optional<QList<MergeMember>> members =
-        usable.size() > 1 ? validMembers(mergedDir, kind, fileNames) : std::nullopt;
+    // Rule 1 only for one installed pack; with more (refused ones count) the merged files decide.
+    const bool onePack = std::count_if(all.begin(), all.end(), [&](const PackInfo& p) { return p.kind == kind; }) == 1;
+    const std::optional<QList<MergeMember>> members = onePack ? std::nullopt : validMembers(mergedDir, kind, fileNames);
     if (!members) {
         const PackInfo& newest = newestOf(usable);
-        k.mode = usable.size() > 1 ? Mode::SingleFallback : Mode::Single;
+        k.mode = onePack ? Mode::Single : Mode::SingleFallback;
         if (k.mode == Mode::SingleFallback) {
             k.notices << label + QStringLiteral("merged files are missing or damaged. Showing ") + newest.region
                              + QStringLiteral(" only; other areas ")
@@ -322,21 +323,30 @@ ChartController::ChartController(ChartMap& map, Settings& settings, VesselModel&
         m_packModes.insert(QStringLiteral("charts"), modeName(cf.mode));
         if (m_bathy) m_packModes.insert(QStringLiteral("bathy"), modeName(bf.mode));
         for (const QString& line : m_packNotices) qWarning().noquote() << "ChartController:" << line;
-        // The legend of the charts shown: legend.json is not merged, so a gone member adds nothing.
+        // The legend and zoom range of the charts shown: from the merged file in merged modes (its members,
+        // gone ones too), else the legend of the single pack and the zoom union over every usable charts pack.
+        const bool merged = cf.mode == Mode::Merged || cf.mode == Mode::MergedStale;
+        const QString mergedEnc = m_packsDir + QStringLiteral("/merged/charts/enc.mbtiles");
         QSet<QPair<QString, QString>> seen;
+        for (const LegendEntry& e : merged ? mergeLegend(mergedEnc) : cf.inUse.first().legend)
+            if (!seen.contains({e.abbr, e.kind})) {
+                seen.insert({e.abbr, e.kind});
+                m_legend.append(QVariantMap{{QStringLiteral("abbr"), e.abbr},
+                                            {QStringLiteral("meaning"), e.meaning},
+                                            {QStringLiteral("kind"), e.kind}});
+            }
         int minZ = -1, maxZ = -1;
-        for (const PackInfo& c : cf.inUse)
-            for (const LegendEntry& e : c.legend)
-                if (!seen.contains({e.abbr, e.kind})) {
-                    seen.insert({e.abbr, e.kind});
-                    m_legend.append(QVariantMap{{QStringLiteral("abbr"), e.abbr},
-                                                {QStringLiteral("meaning"), e.meaning},
-                                                {QStringLiteral("kind"), e.kind}});
-                }
-        // The zoom range is the union over every usable charts pack, shown or not.
-        for (const PackInfo& c : charts) {
-            if (c.minZoom >= 0) minZ = minZ < 0 ? c.minZoom : std::min(minZ, c.minZoom);
-            if (c.maxZoom >= 0) maxZ = std::max(maxZ, c.maxZoom);
+        if (merged) {
+            bool okMin = false, okMax = false;
+            const int a = metadataValue(mergedEnc, QStringLiteral("minzoom")).value_or(QString()).toInt(&okMin);
+            const int b = metadataValue(mergedEnc, QStringLiteral("maxzoom")).value_or(QString()).toInt(&okMax);
+            if (okMin) minZ = a;
+            if (okMax) maxZ = b;
+        } else {
+            for (const PackInfo& c : charts) {
+                if (c.minZoom >= 0) minZ = minZ < 0 ? c.minZoom : std::min(minZ, c.minZoom);
+                if (c.maxZoom >= 0) maxZ = std::max(maxZ, c.maxZoom);
+            }
         }
         m_minZoom = minZ >= 0 ? minZ : kFallbackMinZoom;
         m_maxZoom = maxZ >= 0 ? maxZ + kOverzoom : kFallbackMaxZoom;

@@ -33,5 +33,12 @@ std::optional<int> mergeSchema(const QString& mbtilesPath);
 // when unreadable or absent.
 QList<double> mergeValdco(const QString& mbtilesPath);
 
+// The cheekymarine:legend of a merged charts MBTiles (the union over its members' legend.json, first
+// wins per abbr and kind); empty when unreadable or absent.
+QList<LegendEntry> mergeLegend(const QString& mbtilesPath);
+
+// The value of metadata `name` in an MBTiles; nullopt when the file or the row cannot be read.
+std::optional<QString> metadataValue(const QString& mbtilesPath, const QString& name);
+
 // The SHA-256 (lowercase hex) of packDir/manifest.json; empty when it cannot be read.
 QString manifestSha256(const QString& packDir);

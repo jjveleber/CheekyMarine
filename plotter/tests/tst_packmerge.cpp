@@ -209,6 +209,24 @@ private slots:
         QCOMPARE(r.error(), QString("schema differs: charts-a-1.0.0 2, charts-b-1.0.0 3"));
         QVERIFY(QDir(o.path() + "/charts").entryList({"*.mbtiles", "*.tmp"}, QDir::Files).isEmpty());
     }
+    void mergedFileCarriesLegend() {
+        QTemporaryDir t, o;
+        auto a = pack(t.path(), "charts", "a", "1.0.0", {{"enc.mbtiles", mb({{10, 1, 1, "A"}}, "10", "10")}});
+        auto b = pack(t.path(), "charts", "b", "1.0.0", {{"enc.mbtiles", mb({{10, 2, 2, "B"}}, "10", "10")}});
+        a.legend = {{"Blds", "boulders", "type"}, {"Sand", "sand", "type"}};
+        b.legend = {{"Blds", "boulders again", "type"}, {"Blds", "boulders", "kind2"}};
+        const auto r = mergePacks({b, a}, o.path());
+        QVERIFY2(r.has_value(), qPrintable(r.error()));
+        const QString f = o.path() + "/charts/enc.mbtiles";
+        // first wins per abbr and kind, members in region order
+        QCOMPARE(QJsonDocument::fromJson(meta(f, "cheekymarine:legend").toUtf8()).array(),
+                 (QJsonArray{QJsonObject{{"abbr", "Blds"}, {"meaning", "boulders"}, {"kind", "type"}},
+                             QJsonObject{{"abbr", "Sand"}, {"meaning", "sand"}, {"kind", "type"}},
+                             QJsonObject{{"abbr", "Blds"}, {"meaning", "boulders"}, {"kind", "kind2"}}}));
+        const QList<LegendEntry> l = mergeLegend(f);
+        QCOMPARE(l.size(), 3);
+        QCOMPARE(l[2].kind, QString("kind2"));
+    }
     void unreadableManifestFails() {
         QTemporaryDir t, o;
         const auto a = pack(t.path(), "charts", "a", "1.0.0", {{"enc.mbtiles", mb({{10, 1, 1, "A"}}, "10", "10")}});
