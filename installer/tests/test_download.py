@@ -91,10 +91,10 @@ class TestDownload(unittest.TestCase):
 
     def plant_pack(self, rel, pack, sidecar):
         """Plant the unpacked pack in the store (as an earlier run left it) with SIDECAR."""
-        name = self.lockval(rel, pack + ".asset")[:-len(".tar")]
+        name = self.lockval(rel, "pack." + pack + ".asset")[:-len(".tar")]
         store = self.rig.path("/opt/cheekymarine/packs")
         store.mkdir(parents=True)
-        tar = self.rig.base / self.lockval(rel, pack + ".tag") / (name + ".tar")
+        tar = self.rig.base / self.lockval(rel, "pack." + pack + ".tag") / (name + ".tar")
         with tarfile.open(tar) as t:
             t.extractall(store, filter="data")
         (store / (name + ".sha256")).write_text(sidecar + "\n")
@@ -102,7 +102,7 @@ class TestDownload(unittest.TestCase):
 
     def test_pack_in_store_not_downloaded(self):
         rel = self.rig.make_set("0.2.0", "0.3.0")
-        self.plant_pack(rel, "charts", self.lockval(rel, "charts.sha256"))
+        self.plant_pack(rel, "charts-puget-north", self.lockval(rel, "pack.charts-puget-north.sha256"))
         r = self.rig.run("install", script=rel / "install-cheekymarine.sh")
         self.assertEqual(r.returncode, 0, r.stderr)
         urls = self.rig.downloads()
@@ -111,16 +111,32 @@ class TestDownload(unittest.TestCase):
         lines = r.stdout.splitlines()
         self.assertEqual([l for l in lines if l.startswith("downloading ") or l.endswith(" in the store")], [
             "downloading n2kd n2kd-0.1.0-x86_64.tar.gz",
-            "charts already in the store",
-            "downloading bathy bathy-puget-north-1.1.0.tar",
+            "charts-puget-north already in the store",
+            "downloading bathy-puget-north bathy-puget-north-1.1.0.tar",
             "downloading plotter cheekyplotter-0.3.0-x86_64.tar.gz"])
 
     def test_pack_with_wrong_sidecar_is_downloaded(self):
         rel = self.rig.make_set("0.2.0", "0.3.0")
-        self.plant_pack(rel, "charts", "f" * 64)
+        self.plant_pack(rel, "charts-puget-north", "f" * 64)
         r = self.rig.run("install", script=rel / "install-cheekymarine.sh")
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertTrue([u for u in self.rig.downloads() if u.endswith("charts-puget-north-1.1.0.tar")])
+
+    def test_fetches_every_pack(self):
+        packs = [("charts", "sound-central", "1.0.0"), ("charts", "sound-south", "1.0.0"),
+                 ("bathy", "sound-central", "1.0.0")]
+        rel = self.rig.make_set("0.2.0", "0.3.0", packs=packs)
+        self.plant_pack(rel, "charts-sound-south", self.lockval(rel, "pack.charts-sound-south.sha256"))
+        r = self.rig.run("install", script=rel / "install-cheekymarine.sh")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        urls = self.rig.downloads()
+        for name in ("charts-sound-central-1.0.0", "bathy-sound-central-1.0.0"):
+            self.assertTrue([u for u in urls if u.endswith(name + ".tar")], (name, urls))
+        self.assertFalse([u for u in urls if u.endswith("charts-sound-south-1.0.0.tar")], urls)
+        self.assertIn("charts-sound-south already in the store", r.stdout.splitlines())
+        links = sorted(os.listdir(self.rig.path("/opt/cheekymarine/current/packs")))
+        self.assertEqual(links, ["bathy-sound-central-1.0.0", "charts-sound-central-1.0.0",
+                                 "charts-sound-south-1.0.0", "merged"])
 
     def test_piped_install(self):
         rel = self.rig.make_set("0.2.0", "0.3.0")

@@ -15,22 +15,22 @@ umask 022
 # BEGIN LOCK
 CM_LOCK=$(cat <<'LOCK'
 # CheekyMarine set lock. Format: see installer/README.md.
-schema=1
+schema=2
 set=0.2.1
 n2kd.version=0.1.0
 n2kd.tag=v0.1.0
 n2kd.asset=n2kd-0.1.0-x86_64.tar.gz
 n2kd.sha256=1d47e0d861aff50a5c8e02009fd8da3f46fd18cc4cbd99eb86188487e9732670
-charts.version=1.1.0
-charts.tag=charts-puget-north-v1.1.0
-charts.asset=charts-puget-north-1.1.0.tar
-charts.sha256=8ea8fbb7e186e1b51c131eab32aa861f057d68ad62db437cb496bfe0cb9a62bf
-charts.schema=1
-bathy.version=1.1.0
-bathy.tag=bathy-puget-north-v1.1.0
-bathy.asset=bathy-puget-north-1.1.0.tar
-bathy.sha256=c12bc0deef6f43826a4f407f5430aa74f6aae2040266bd2c412bc7b2128a7599
-bathy.schema=1
+pack.charts-puget-north.version=1.1.0
+pack.charts-puget-north.tag=charts-puget-north-v1.1.0
+pack.charts-puget-north.asset=charts-puget-north-1.1.0.tar
+pack.charts-puget-north.sha256=8ea8fbb7e186e1b51c131eab32aa861f057d68ad62db437cb496bfe0cb9a62bf
+pack.charts-puget-north.schema=1
+pack.bathy-puget-north.version=1.1.0
+pack.bathy-puget-north.tag=bathy-puget-north-v1.1.0
+pack.bathy-puget-north.asset=bathy-puget-north-1.1.0.tar
+pack.bathy-puget-north.sha256=c12bc0deef6f43826a4f407f5430aa74f6aae2040266bd2c412bc7b2128a7599
+pack.bathy-puget-north.schema=1
 plotter.version=0.2.1
 plotter.tag=plotter-v0.2.1
 plotter.asset=cheekyplotter-0.2.1-x86_64.tar.gz
@@ -72,6 +72,16 @@ p() {
 # lock_file_get FILE KEY: value of KEY in the lock file FILE.
 lock_file_get() {
   awk -F= -v k="$2" '$1==k {sub(/^[^=]*=/, ""); print; exit}' "$1"
+}
+
+# lock_packs: the pack ids of the lock in use (charts-sound-central, ...), in lock order.
+lock_packs() {
+  lock_text | awk -F= '$1 ~ /^pack\..+\.version$/ {id=$1; sub(/^pack\./, "", id); sub(/\.version$/, "", id); print id}'
+}
+
+# lock_file_packs FILE: the same for the lock file FILE.
+lock_file_packs() {
+  awk -F= '$1 ~ /^pack\..+\.version$/ {id=$1; sub(/^pack\./, "", id); sub(/\.version$/, "", id); print id}' "$1"
 }
 
 # os_release_get KEY: value of KEY in os-release, quotes removed.
@@ -134,9 +144,9 @@ check_sum() {
 check_linked_packs() {
   local root part name want l
   root=$(p /opt/cheekymarine)
-  for part in charts bathy; do
+  for part in $(lock_packs); do
     name=$(pack_name "$part")
-    want=$(lock_get "$part.sha256")
+    want=$(lock_get "pack.$part.sha256")
     [ -d "$root/packs/$name" ] || continue
     pack_in_store "$name" "$want" && continue
     for l in current previous; do
@@ -151,13 +161,14 @@ check_linked_packs() {
 # lock (which must equal the lock in use).
 # A pack already in the store (dir plus a sidecar equal to the lock's sha256) is skipped.
 fetch_parts() {
-  local stage=$1 base part asset want name set
+  local stage=$1 base part key asset want name set
   check_linked_packs
   base=$(base_url)
   set=$(lock_get set)
-  for part in n2kd charts bathy plotter; do
-    asset=$(lock_get "$part.asset")
-    want=$(lock_get "$part.sha256")
+  for key in n2kd $(lock_packs | sed 's/^/pack./') plotter; do
+    part=${key#pack.}
+    asset=$(lock_get "$key.asset")
+    want=$(lock_get "$key.sha256")
     case "$asset" in
       *.tar)
         name=${asset%.tar}
@@ -169,7 +180,7 @@ fetch_parts() {
         ;;
     esac
     echo "downloading $part $asset"
-    fetch_file "$base/$(lock_get "$part.tag")/$asset" "$stage/$asset" "$part"
+    fetch_file "$base/$(lock_get "$key.tag")/$asset" "$stage/$asset" "$part"
     check_sum "$stage/$asset" "$want" "$part" "$asset"
   done
   fetch_file "$base/cheekymarine-v$set/SHA256SUMS" "$stage/SHA256SUMS" set
@@ -207,10 +218,10 @@ unique_name() {
   printf '%s\n' "$n"
 }
 
-# pack_name PART: the store name of a pack part (its asset without .tar).
+# pack_name ID: the store name of pack ID (its asset without .tar).
 pack_name() {
   local asset
-  asset=$(lock_get "$1.asset")
+  asset=$(lock_get "pack.$1.asset")
   printf '%s\n' "${asset%.tar}"
 }
 
@@ -234,13 +245,13 @@ unpack_set() {
   tar -xzf "$stage/$(lock_get n2kd.asset)" -C "$d/n2kd" --strip-components=1
   tar -xzf "$stage/$(lock_get plotter.asset)" -C "$d/plotter" --strip-components=1
   rm -rf "$store"/.tmp-*
-  for part in charts bathy; do
+  for part in $(lock_packs); do
     name=$(pack_name "$part")
-    want=$(lock_get "$part.sha256")
+    want=$(lock_get "pack.$part.sha256")
     if ! pack_in_store "$name" "$want"; then
       rm -rf "${store:?}/$name" "$store/$name.sha256"
       mkdir "$store/.tmp-$name"
-      tar -xf "$stage/$(lock_get "$part.asset")" -C "$store/.tmp-$name" --strip-components=1
+      tar -xf "$stage/$(lock_get "pack.$part.asset")" -C "$store/.tmp-$name" --strip-components=1
       mv -T "$store/.tmp-$name" "$store/$name"
       printf '%s\n' "$want" > "$store/$name.sha256"
     fi
@@ -256,9 +267,9 @@ unpack_set() {
 # DIR must equal the lock, else die `pack schema mismatch: <detail>`.
 check_pack_schema() {
   local d=$1 part name want got key
-  for part in charts bathy; do
+  for part in $(lock_packs); do
     name=$(pack_name "$part")
-    want=$(lock_get "$part.schema")
+    want=$(lock_get "pack.$part.schema")
     got=$(python3 -I -c 'import json, sys; print(json.load(open(sys.argv[1]))["schema"])' \
       "$d/packs/$name/manifest.json" 2>/dev/null) || got=
     [ "$got" = "$want" ] \
@@ -270,6 +281,16 @@ check_pack_schema() {
     [ "$got" = "$want" ] \
       || die "pack schema mismatch: plotter PACK_SCHEMA $key is ${got:-unreadable}, the lock says $want"
   done
+}
+
+# merge_packs DIR: when some kind (charts, bathy) has two or more packs in the lock, run the
+# set's plotter with --merge-packs on DIR/packs; a non-zero exit dies `pack merge failed: <output>`.
+# With one pack per kind there is nothing to merge (and a 0.2.1 plotter has no --merge-packs).
+merge_packs() {
+  local d=$1 out
+  lock_packs | sed 's/-.*//' | sort | uniq -d | grep -q . || return 0
+  out=$(QT_QPA_PLATFORM=offscreen "$d/plotter/bin/cheekyplotter" --merge-packs "$d/packs" 2>&1) \
+    || die "pack merge failed: $out"
 }
 
 # install_apt: refresh the package lists and install the run-time packages; either failing stops
@@ -740,6 +761,8 @@ confirm_downgrade() {
 }
 
 cmd_install() {
+  [ "$(lock_get schema)" = 2 ] \
+    || die "lock schema $(lock_get schema) cannot be installed, only lock schema 2; nothing was changed"
   preflight
   take_lock
   confirm_downgrade
@@ -752,6 +775,7 @@ cmd_install() {
   unpack_set "$CM_STAGE" "$(lock_get set)"
   rm -rf "$CM_STAGE"
   check_pack_schema "$CM_SET_DIR"
+  merge_packs "$CM_SET_DIR"
   install_sysusers "$CM_SET_DIR"
   ensure_group
   install_launcher
@@ -784,12 +808,19 @@ cmd_rollback() {
 
 # print_installed: the installed set and its parts.
 print_installed() {
-  local lock part
+  local lock part key
   lock="$(p /opt/cheekymarine/current)/cheekymarine.lock"
   if [ -f "$lock" ]; then
     echo "installed: $(lock_file_get "$lock" set)"
-    for part in n2kd charts bathy plotter; do
-      echo "  $part: $(lock_file_get "$lock" "$part.version")"
+    if [ "$(lock_file_get "$lock" schema)" = 1 ]; then
+      # a set installed by 0.2.1 or earlier (rollback target): charts.* and bathy.* keys
+      set -- n2kd charts bathy plotter
+    else
+      set -- n2kd $(lock_file_packs "$lock" | sed 's/^/pack./') plotter
+    fi
+    for key in "$@"; do
+      part=${key#pack.}
+      echo "  $part: $(lock_file_get "$lock" "$key.version")"
     done
   else
     echo "installed: none"

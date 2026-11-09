@@ -120,6 +120,31 @@ class TestRollback(unittest.TestCase):
         self.assertIn("installed: 0.1.0", r.stdout)
         self.assertNotIn("this script installs", r.stdout)
 
+    def test_rollback_to_schema1_set(self):
+        a = self.rig.make_set("0.1.0", "0.1.0", charts_ver="1.0.0")
+        b = self.rig.make_set("0.2.0", "0.2.0", packs=[("charts", "sound-central", "1.0.0"),
+                                                       ("charts", "sound-south", "1.0.0"),
+                                                       ("bathy", "sound-central", "1.0.0")])
+        self.install(a)
+        a_dir = self.link("current")
+        # lay the first set out as 0.2.1 did: lock schema 1, charts.* and bathy.* keys, no merged dir
+        lock = self.opt / a_dir / "cheekymarine.lock"
+        text = lock.read_text().replace("schema=2\n", "schema=1\n", 1)
+        text = re.sub(r"(?m)^pack\.(charts|bathy)-puget-north\.", r"\1.", text)
+        lock.write_text(text)
+        self.assertFalse((self.opt / a_dir / "packs/merged").exists())
+        self.install(b)
+        self.assertTrue((self.opt / self.link("current") / "packs/merged").is_dir())
+        r = self.rollback()
+        self.assertEqual(self.link("current"), a_dir)
+        self.assertIsNone(self.link("previous"))
+        self.assertEqual(sorted(os.listdir(self.opt / "current/packs")),
+                         ["bathy-puget-north-1.1.0", "charts-puget-north-1.0.0"])
+        self.assertEqual(r.stdout.splitlines(), ["installed: 0.1.0", "  n2kd: 0.1.0", "  charts: 1.0.0",
+                                                 "  bathy: 1.1.0", "  plotter: 0.1.0"])
+        self.assertEqual(self.rig.run("version", script=self.opt / "bin/cheekymarine").stdout.splitlines()[0],
+                         "installed: 0.1.0")
+
     def test_second_rollback_refused(self):
         a = self.rig.make_set("0.1.0", "0.1.0")
         b = self.rig.make_set("0.2.0", "0.2.0")

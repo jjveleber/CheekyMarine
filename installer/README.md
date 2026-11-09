@@ -117,13 +117,13 @@ Keys, in this order:
 
 | Key | Meaning |
 | --- | --- |
-| `schema` | Lock format number. Bumps on an incompatible change. Currently `1`. |
+| `schema` | Lock format number. Bumps on an incompatible change. Currently `2`. Schema 2 holds any number of chart and bathy packs. The installer refuses to install from a schema 1 lock, but it still rolls back to a set that was installed from one. |
 | `set` | Set version `X.Y.Z`. |
-| `<part>.version` | Version of the part (`n2kd`, `charts`, `bathy`, `plotter`). |
+| `<part>.version` | Version of the part (`n2kd`, `plotter`). |
 | `<part>.tag` | GitHub release tag that holds the part's asset. |
 | `<part>.asset` | Asset file name in that release. |
 | `<part>.sha256` | SHA-256 of the asset, as listed in the release's `SHA256SUMS`. |
-| `charts.schema`, `bathy.schema` | The pack's manifest `schema`. Placed after the pack's `sha256`. They exist so a later project can update packs apart from sets. |
+| `pack.<kind>-<region>.version`, `.tag`, `.asset`, `.sha256`, `.schema` | One block of five keys per pack, between `n2kd` and `plotter`, in the order the packs are listed (for example `pack.charts-sound-central.version`). `<kind>` is `charts` or `bathy`. Any number of packs, at least one `charts` pack. `.schema` is the pack's manifest `schema`, placed after the pack's `sha256`. All packs of one kind share one schema. |
 | `plotter.pack_schema_min`, `plotter.pack_schema_max` | Inclusive range of pack manifest `schema` values the set's plotter accepts. Placed after the plotter's `sha256`. |
 
 Rules for readers:
@@ -136,9 +136,10 @@ Rules for readers:
 
 ## lock-tool.sh
 
-- `lock-tool.sh check LOCK`: exit 0 when every part's `sha256` equals the line for its `asset` in
-  `<base>/<tag>/SHA256SUMS`, the four schema keys are whole numbers, and each pack's `schema` is
-  inside the plotter range. Otherwise exit 1, naming the part or key.
+- `lock-tool.sh check LOCK`: exit 0 when every part's `sha256` (`n2kd`, each `pack.*`, `plotter`)
+  equals the line for its `asset` in `<base>/<tag>/SHA256SUMS`, the plotter range keys and every
+  pack `schema` are whole numbers, each pack's `schema` is inside the plotter range, all packs of one
+  kind share one schema, and there is a `charts` pack. Otherwise exit 1, naming the part or key.
 - `lock-tool.sh fill LOCK`: rewrite each `sha256` from those files.
 - `lock-tool.sh embed LOCK SCRIPT OUT`: write OUT as SCRIPT with the lines between
   `CM_LOCK=$(cat <<'LOCK'` and `LOCK` replaced by the lines of LOCK.
