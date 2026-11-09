@@ -107,6 +107,25 @@ The spike measures: install time to merge, disk use, memory, and frame time whil
 - The About page lists every pack with region and version.
 - Fish mode is available wherever a bathy pack covers the view; the "no bathy pack for the charts region" fallback becomes per area.
 
+### 5.4a Merged or single: which files the app shows (owner, 2026-11-09)
+
+The owner prefers a full chart from known good merged files over a partial one. For each kind (charts, bathy), checked once at app start:
+
+1. One usable pack: the app uses that pack's own files. Any `merged/<kind>/` dir is ignored. No notice.
+2. Two or more usable packs, and the merged files are valid and their members match the usable packs: the app uses the merged files. No notice.
+3. The merged files are valid but their members differ from the usable packs: the app still uses the merged files (they are full copies of the tiles, so they do not need the member packs on disk). A notice names each difference.
+4. The merged files are missing or not valid: the app uses the newest single pack of that kind, and the notice says which areas are blank.
+
+Valid merged files: every file of the kind is present, opens, has its metadata, and its `cheekymarine:schema` is inside the plotter's pack schema range. A full integrity check is not run at start (too slow on 1 GB files).
+
+Members: each merged file records every member as its dir name plus the SHA-256 of that pack's `manifest.json`. A member matches a usable pack only when both agree, so a pack changed in place under the same name and version counts as a difference.
+
+The notice names the kind, the area and the reason, with advice that fits the reason. Examples: `Charts: north-sound shows 1.0.0, 1.1.0 is installed. Run sudo cheekymarine install again.`; `Charts: strait 1.0.0 was refused (schema 1 not supported). Remove it or install a newer set.` (only when it is not in the merged files); `Charts: san-juan is installed but not merged, so it is not shown. Run sudo cheekymarine install again.`; `Bathy: merged files are missing or damaged. Showing sound-central only; other areas have no depth. Run sudo cheekymarine install again.` A member that is no longer on disk is shown, not flagged: the merged file still holds its tiles.
+
+Styles, sprites and glyphs come from the newest pack of that kind that is in the merged files and still on disk; if none is, from the newest usable pack of that kind. About and the splash list what is shown: the merged files' members (with their versions, even when the pack dir is gone) or the one single pack, plus whether each kind is merged or single. The reason is also logged to the journal.
+
+After a normal install the notice never shows (the installer merges before it flips `current`, and a failed merge keeps the old set).
+
 ### 5.5 Installer and lock file
 
 The lock file moves to schema 2: one entry per pack, `pack.<kind>-<region>.{version,tag,asset,sha256,schema}`, any number of them. The plotter's `pack_schema_min/max` stays. The set build checks every listed pack. Rollback and pruning work per pack as today. Selecting areas later means listing fewer packs; nothing in this plan should assume every set lists all regions.

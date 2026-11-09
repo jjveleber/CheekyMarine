@@ -28,12 +28,12 @@
 - Tile rows: `chartpack/src/chartpack/mbtiles.py` stores TMS rows (`tile_row = 2**z - 1 - y`). Every ownership lookup works in XYZ: flip the stored row before taking the zoom-10 ancestor (`x >> (z - 10)`, `y >> (z - 10)`), in Python and C++ alike.
 - Report a pass only from the test runner's own exit status of a fresh run, never from piped output or an old log.
 - Results and measurements go on the GitHub issue they belong to (#84 for the spike and seams, #85 for build stats).
-- PRs, in order: A (#84, Tasks 1 to 8), B (#85, Tasks 9 and 10), C (#87 and #88, Tasks 11 to 14), D (#14 and #16, Tasks 15 and 15b), E (#86 region files, Task 16), F (set lock, Task 18). Each gets one independent adversarial review before merge (reviewer posts its own PR review; threads resolved one by one after verified fixes).
+- PRs, in order: A (#84, Tasks 1 to 8, merged fdaec98), A2 (#97, Task 8b), B (#85, Tasks 9 and 10), C (#87 and #88, Tasks 11 to 14), D (#14 and #16, Tasks 15 and 15b), E (#86 region files, Task 16), F (set lock, Task 18). Each gets one independent adversarial review before merge (reviewer posts its own PR review; threads resolved one by one after verified fixes).
 
 ## Review Focus
 
 1. Rolling back from a 0.3.0 set to the installed 0.2.1 set (lock schema 1, one pack per kind, no `merged` dir) with the new installer must work and leave 0.2.1 runnable. Test in Task 7 (`test_rollback_to_schema1_set`).
-2. A merged dir that does not match the usable packs (a pack refused at scan, or packs copied in by hand after install) must never be mixed with single packs: the app uses the newest single pack of that kind and shows a notice. Test in Task 5 (`staleMergeFallsBackWithNotice`).
+2. A merged dir that does not match the usable packs (a pack refused at scan, or packs copied in by hand after install) is never mixed with single packs. Owner rule 2026-11-09 (spec 5.4a, #97): when the merged files are valid the app keeps showing them and the notice names each difference; only when they are missing or invalid does it fall back to the newest single pack, and the notice says which areas are blank. Tests in Task 8b.
 3. A tile present in two packs of one kind (a bad ownership build) must fail the merge with both pack names, and leave no partial merged file. Test in Task 4 (`duplicateTileFailsAndLeavesNothing`).
 4. A region box edge lying exactly on a zoom-10 tile line, or two boxes that overlap (near -123.3 W), must leave no tile unowned between them and none owned twice. Test in Task 3 (`test_shared_edge_has_one_owner`, `test_overlap_goes_to_first_in_order`).
 5. Fish mode panned off every bathy pack (the Canadian side, or past -127 W) must show the chart without depth layers, never a blank or a crash. Test in Task 5 (`fishOutsideBathyLoads`) and render view in Task 16.
@@ -229,6 +229,32 @@ Throwaway code on branch `plan7-spike` (from `plan7-stitch` after Task 1); it is
 
 - [ ] **Step 1:** Push `plan7-stitch`, open PR A (`Refs #84`; #84 closes with Task 17's seam check, so not `Fixes`). Body: what changed, the spike comment link, test commands run with their results.
 - [ ] **Step 2:** One independent adversarial review that posts its own PR review; adjudicate, fix, resolve threads one by one; merge.
+
+### Task 8b: Merged or single, clear rules (#97, PR A2)
+
+Owner decision 2026-11-09, spec section 5.4a. Branch `plan7-merge-rules` from `main` after PR A.
+
+**Files:**
+- Modify: `plotter/src/core/PackMerge.h/.cpp` (members with manifest SHA-256, `cheekymarine:schema` on merged files), `plotter/src/core/ChartController.h/.cpp` (the four rules, notice text, styles source, packs shown), `plotter/src/core/AppInfo.h/.cpp`, `plotter/qml/AboutPage.qml`, `plotter/qml/Splash.qml`, `plotter/src/app/main.cpp`
+- Test: `plotter/tests/tst_packmerge.cpp`, `plotter/tests/tst_chartcontroller.cpp`, `plotter/tests/tst_appshell.cpp`, `plotter/tests/qml/tst_pages.qml`
+
+**Interfaces:**
+- `cheekymarine:members` becomes a sorted JSON array of `{"dir": "<pack dir name>", "manifest_sha256": "<hex>"}`; `cheekymarine:schema` is the members' shared schema. `mergeMembers` returns that list (empty on any error); an old string-array value counts as not valid.
+- `ChartController` per kind: `Mode { Single, Merged, MergedStale, SingleFallback }` exposed as `Q_PROPERTY(QVariantMap packModes ...)` (`{"charts": "merged", "bathy": "single"}`, values `single`, `merged`, `merged-stale`, `single-fallback`). `packNotice` becomes a list of lines (`Q_PROPERTY(QStringList packNotices ... CONSTANT)`), one per difference, with the texts in spec 5.4a.
+- `packsInUse()` returns what is shown: the merged members (version from the dir name, region from the dir name; a member whose dir is gone is still listed, flagged `onDisk: false`), or the one single pack.
+- Styles, sprites and glyphs: newest merged member still on disk, else newest usable pack of the kind.
+- Each notice line is also written with `qWarning()` once at start.
+
+- [ ] **Step 1: Write the failing tests:**
+  - `tst_packmerge`: `membersCarryManifestHash` (members list dir and the SHA-256 of `manifest.json`); `mergedFileCarriesSchema`.
+  - `tst_chartcontroller`: `mergedMatchingHasNoNotice`; `newerPackKeepsMergedWithNotice` (installed 1.1.0 of a member at 1.0.0: merged url, mode `merged-stale`, notice `Charts: <region> shows 1.0.0, 1.1.0 is installed. Run sudo cheekymarine install again.`); `unmergedPackKeepsMergedWithNotice` (a region not in members); `refusedPackNotInMergedNotice`; `memberGoneIsShownNotFlagged` (member dir removed: merged url, no notice, packsInUse lists it with `onDisk` false); `changedManifestIsADifference` (same name, different manifest hash); `missingMergedFallsBackToSingle` (mode `single-fallback`, notice names the shown pack and says other areas are blank, for both kinds); `badSchemaMergedFallsBack`; `oldMembersFormatFallsBack`; `stylesFromNewestMemberOnDisk`. Replace `staleMergeFallsBackWithNotice` with these.
+  - `tst_appshell` / `tst_pages.qml`: About shows merged or single per kind and every notice line; the splash shows every notice line.
+  - `tst_chartcontroller`: `mergeThenStartHasNoNotice` (two charts and two bathy packs: `mergePacks` over `PackCatalog::scan` output, as the installer runs it, then the controller starts with mode `merged` for both kinds and no notice). The installer's fake plotter cannot prove this, so the proof lives on the plotter side.
+- [ ] **Step 2:** Run them. Expected: FAIL.
+- [ ] **Step 3:** Implement.
+- [ ] **Step 4:** Run the full ctest. Expected: PASS.
+- [ ] **Step 5:** Commit `feat(plotter): keep known good merged files and say why when packs differ (#97)`.
+- [ ] **Step 6:** PR A2 (`Fixes #97`, `Refs #84`), one independent adversarial review, threads resolved one by one after verified fixes, owner merge OK.
 
 ---
 
