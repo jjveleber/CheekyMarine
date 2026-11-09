@@ -157,17 +157,6 @@ QList<PackInfo> PackCatalog::scan(const QString& dir) {
     return out;
 }
 
-std::optional<PackInfo> PackCatalog::best(const QList<PackInfo>& packs, QStringView kind, QStringView region) {
-    std::optional<PackInfo> b;
-    for (const PackInfo& p : packs) {
-        if (!p.refused.isEmpty() || p.kind != kind || (!region.isEmpty() && p.region != region))
-            continue;
-        if (!b || p.version > b->version)
-            b = p;
-    }
-    return b;
-}
-
 QList<PackInfo> PackCatalog::usable(const QList<PackInfo>& packs, QStringView kind) {
     QList<PackInfo> out;
     for (const PackInfo& p : packs) {

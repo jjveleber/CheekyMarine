@@ -35,8 +35,6 @@ public:
     // Scans `dir` for charts-<region>-<x.y.z> and bathy-<region>-<x.y.z> directories. A broken pack
     // is returned with `refused` set, never a crash. Other entries are ignored.
     static QList<PackInfo> scan(const QString& dir);
-    // Highest version among non-refused packs of `kind` (and `region` when non-empty).
-    static std::optional<PackInfo> best(const QList<PackInfo>& packs, QStringView kind, QStringView region = {});
     // The newest non-refused version of each region among packs of `kind`, sorted by region.
     static QList<PackInfo> usable(const QList<PackInfo>& packs, QStringView kind);
 };
