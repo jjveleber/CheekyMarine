@@ -104,7 +104,7 @@ static int mergePacksCli(int argc, char* argv[], const QString& dir) {
     }
     const auto r = mergePacks(use, dir + QStringLiteral("/merged"));
     if (!r) {
-        fprintf(stderr, "merge failed: %s\n", qPrintable(r.error()));
+        fprintf(stderr, "%s\n", qPrintable(r.error()));
         return 1;
     }
     for (const QString& f : written)
