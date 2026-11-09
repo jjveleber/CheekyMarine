@@ -164,3 +164,127 @@ def test_hazard_on_a_seam_of_finer_cells_is_quilted_away(charts_pack_root, fixtu
     }
     monkeypatch.setattr(check, "read_cell", lambda path: cells[str(path)])
     assert check_pack(charts_pack_root, enc_zips=["hk", "west", "east"]) == []
+
+
+# ---- plan 7: size cap, four bathy files, ownership-aware checks
+
+def _bathy_pack(tmp_path, test_region, tiles):
+    """A minimal bathy pack: the four files, with a tile in each file named in `tiles`."""
+    from chartpack.enc.schema import BATHY_LAYER_SPECS, OPTIONAL_LAYERS
+    from chartpack.mbtiles import MBTiles
+    from chartpack.pack.assemble import BATHY_FILES
+
+    root = tmp_path / "bathy-pack"
+    root.mkdir()
+    layers = json.dumps({"vector_layers": [{"id": s.name} for s in BATHY_LAYER_SPECS if s.name not in OPTIONAL_LAYERS]})
+    common = {"name": "t", "format": "pbf", "bounds": "0,0,1,1", "minzoom": "10", "maxzoom": "12", "cheekymarine:schema": "2",
+              "cheekymarine:pack": "bathy", "cheekymarine:region": "t", "cheekymarine:version": "0.1.0",
+              "cheekymarine:sources": "{}", "cheekymarine:built": "x", "json": layers,
+              "cheekymarine:encoding": "terrarium"}
+    for name in BATHY_FILES:
+        with MBTiles.create(root / name, fmt="pbf") as m:
+            m.set_metadata(common)
+            if name in tiles:
+                m.put_tile(10, 1, 1, b"x")
+    write_manifest(root, pack="bathy", region=test_region, sources=[], notice="n", built=datetime.now(timezone.utc))
+    return root
+
+
+def test_over_cap_is_reported(charts_pack_root, monkeypatch):
+    from chartpack.pack import check
+
+    monkeypatch.setattr(check, "PACK_CAP_BYTES", 100)
+    errs = check_pack(charts_pack_root)
+    assert any(e.startswith("pack is ") and e.endswith(" bytes, over the 1.5 GB cap") for e in errs)
+
+
+def test_bathy_needs_coarse_files(tmp_path, test_region):
+    root = _bathy_pack(tmp_path, test_region, {"bathy.mbtiles"})
+    assert check_pack(root) == []
+    (root / "bathy-coarse.mbtiles").unlink()
+    (root / "dem-coarse.mbtiles").unlink()
+    write_manifest(root, pack="bathy", region=test_region, sources=[], notice="n", built=datetime.now(timezone.utc))
+    errs = check_pack(root)
+    assert "bathy-coarse.mbtiles: missing from the bathy pack" in errs
+    assert "dem-coarse.mbtiles: missing from the bathy pack" in errs
+
+
+def test_empty_bathy_file_allowed(tmp_path, test_region):
+    root = _bathy_pack(tmp_path, test_region, {"bathy-coarse.mbtiles"})
+    assert check_pack(root) == []
+
+
+def test_all_bathy_files_empty_is_error(tmp_path, test_region):
+    root = _bathy_pack(tmp_path, test_region, set())
+    assert any("no tiles" in e for e in check_pack(root))
+
+
+def _prune(pack, test_region, owned, minzoom, maxzoom):
+    from chartpack.grid import keep_tiles
+
+    keep_tiles(pack / "enc.mbtiles", owned, minzoom=minzoom, maxzoom=maxzoom)
+    _refresh(pack, test_region)
+
+
+def _z10_tiles(pack):
+    from chartpack.mbtiles import MBTiles
+
+    with MBTiles.open(pack / "enc.mbtiles") as m:
+        return {(x >> 6, y >> 6) for x, y, _ in m.tiles_at(16)}
+
+
+def test_region_pack_not_checked_below_z10(charts_pack_root_copy, test_region):
+    from chartpack.pack.check import _band_zooms
+
+    sources = json.dumps([{"cell": "US3WA1DF"}, {"cell": "US4WA1HK"}])  # a band 3 cell asks for zooms 6 to 10
+    assert min(_band_zooms({"cheekymarine:sources": sources, "minzoom": "6", "maxzoom": "16"})) == 6
+    assert min(_band_zooms({"cheekymarine:sources": sources, "minzoom": "10", "maxzoom": "16"})) == 10
+    _prune(charts_pack_root_copy, test_region, _z10_tiles(charts_pack_root_copy), 10, 16)
+    assert check_pack(charts_pack_root_copy) == []
+
+
+def test_emptied_enc_pack_still_errors(charts_pack_root_copy, test_region):
+    conn = sqlite3.connect(charts_pack_root_copy / "enc.mbtiles")
+    conn.executescript("create table flat as select * from tiles; drop view tiles; alter table flat rename to tiles;"
+                       "delete from tiles;")
+    conn.commit()
+    conn.close()
+    _refresh(charts_pack_root_copy, test_region)
+    assert any("safety layer" in e for e in check_pack(charts_pack_root_copy))
+
+
+def test_overview_not_checked_at_z10(charts_pack_root_copy, test_region):
+    _prune(charts_pack_root_copy, test_region, None, 6, 9)
+    assert check_pack(charts_pack_root_copy) == []
+
+
+def test_sources_clipped_to_owned_tiles(charts_pack_root_copy, fixtures_dir, test_region):
+    """Owning one zoom-10 tile, the pack lacks hazards that lie in the cell's other tiles; they are not
+    reported. The safety layer check stays pack-wide, so its errors are the only ones left."""
+    tiles = sorted(_z10_tiles(charts_pack_root_copy))
+    assert len(tiles) > 1
+    _prune(charts_pack_root_copy, test_region, {tiles[0]}, 10, 16)
+    errs = check_pack(charts_pack_root_copy, enc_zips=[fixtures_dir / "US4WA1HK.zip"])
+    assert errs == [f"enc.mbtiles: safety layer {layer} has no features at zoom {z}"
+                    for z in (11, 12) for layer in ("hazard", "navaid", "light")], errs
+
+
+def test_tile_hazard_outside_owned_area_is_ignored(charts_pack_root_copy, fixtures_dir, test_region):
+    """A hazard 20 tile pixels across the owned edge, in the buffer of the boundary tile, is not 'not in the
+    source cells'."""
+    from chartpack.mbtiles import MBTiles
+
+    tiles = sorted(_z10_tiles(charts_pack_root_copy))
+    _prune(charts_pack_root_copy, test_region, {tiles[0]}, 10, 16)
+    _rewrite_tiles(charts_pack_root_copy / "enc.mbtiles", 16, lambda layers: layers)  # flatten the tiles view
+    x10, y10 = tiles[0]
+    layers = [{"name": "hazard", "features": [{
+        "geometry": {"type": "Point", "coordinates": [-20, 2000]},
+        "properties": {"class": "UWTROC", "VALSOU": "99.9", "WATLEV": 4}}]}]
+    tile = gzip.compress(mapbox_vector_tile.encode(layers, default_options={"y_coord_down": True}))
+    with MBTiles.open(charts_pack_root_copy / "enc.mbtiles") as m:
+        m.put_tile(16, x10 * 64, y10 * 64 + 32, tile)  # west edge of the owned tile
+    _refresh(charts_pack_root_copy, test_region)
+    errs = check_pack(charts_pack_root_copy, enc_zips=[fixtures_dir / "US4WA1HK.zip"])
+    assert errs == [f"enc.mbtiles: safety layer {layer} has no features at zoom {z}"
+                    for z in (11, 12) for layer in ("hazard", "navaid", "light")], errs
