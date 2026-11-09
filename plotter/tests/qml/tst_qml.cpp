@@ -149,7 +149,7 @@ public slots:
         refused.version = QVersionNumber(2, 0, 0);
         refused.dir = "/packs/charts-puget-north-2.0.0";
         refused.refused = "schema 2 not supported";
-        m_appInfo = std::make_unique<AppInfo>(QList<PackInfo>{charts, refused});
+        m_appInfo = std::make_unique<AppInfo>(QList<PackInfo>{charts, refused}, QList<PackInfo>{charts});
         m_recovery = std::make_unique<Recovery>(m_dir.filePath("broken"), StoreError::Io);
     }
 

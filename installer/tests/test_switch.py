@@ -76,7 +76,7 @@ class TestSwitch(unittest.TestCase):
             self.assertEqual(os.path.realpath(l), str((self.store / name).resolve()))
             self.assertTrue((l / "manifest.json").is_file())
             self.assertEqual((self.store / (name + ".sha256")).read_text().strip(),
-                             self.lockval(rel, pack + ".sha256"))
+                             self.lockval(rel, "pack." + pack + "-puget-north.sha256"))
         self.assertEqual(self.label.read_text(), "set=0.1.0\nplotter=0.1.0\n")
         self.assertEqual((self.opt / "bin/cheekymarine").read_bytes(), (rel / "install-cheekymarine.sh").read_bytes())
         self.assertFalse([n for n in os.listdir(self.opt) if n.startswith(".stage-")])
@@ -132,7 +132,7 @@ class TestSwitch(unittest.TestCase):
         self.assertFalse((half / "junk").exists())
         self.assertTrue((half / "manifest.json").is_file())
         self.assertEqual((self.store / "bathy-puget-north-1.1.0.sha256").read_text().strip(),
-                         self.lockval(rel, "bathy.sha256"))
+                         self.lockval(rel, "pack.bathy-puget-north.sha256"))
         self.assertFalse([n for n in os.listdir(self.store) if n.startswith(".tmp-")])
 
     def changed_pack_message(self, name):
@@ -185,7 +185,44 @@ class TestSwitch(unittest.TestCase):
         self.assertTrue([u for u in self.rig.downloads() if u.endswith(name + ".tar")])
         self.assertFalse((self.store / name / "junk").exists())
         self.assertTrue((self.store / name / "manifest.json").is_file())
-        self.assertEqual((self.store / (name + ".sha256")).read_text().strip(), self.lockval(b, "charts.sha256"))
+        self.assertEqual((self.store / (name + ".sha256")).read_text().strip(), self.lockval(b, "pack.charts-puget-north.sha256"))
+
+    MANY = [("charts", "sound-central", "1.0.0"), ("charts", "sound-south", "1.0.0"),
+            ("bathy", "sound-central", "1.0.0")]
+
+    def merge_calls(self):
+        return [c for c in self.rig.calls() if "--merge-packs" in c]
+
+    def test_merge_runs_before_flip(self):
+        a = self.rig.make_set("0.1.0", "0.1.0")
+        b = self.rig.make_set("0.2.0", "0.2.0", packs=self.MANY)
+        self.install(a)
+        a_dir = self.link("current")
+        self.install(b)
+        merges = self.merge_calls()
+        self.assertEqual(len(merges), 1, self.rig.calls())
+        new = self.link("current")
+        self.assertRegex(merges[0], r"^cheekyplotter 0\.2\.0 --merge-packs .*/opt/cheekymarine/sets/0\.2\.0\.[^/]+/packs$")
+        self.assertTrue((self.opt / new / "packs/merged").is_dir())
+        # at the call, `current` still pointed at the old set
+        calls = self.rig.calls()
+        self.assertEqual(calls[calls.index(merges[0]) + 1], "merge-current " + a_dir)
+
+    def test_one_pack_per_kind_does_not_merge(self):
+        self.install(self.rig.make_set("0.1.0", "0.1.0"))
+        self.assertEqual(self.merge_calls(), [])
+        self.assertFalse((self.opt / "current/packs/merged").exists())
+
+    def test_merge_failure_leaves_current(self):
+        a = self.rig.make_set("0.1.0", "0.1.0")
+        b = self.rig.make_set("0.2.0", "0.2.0", packs=self.MANY)
+        self.install(a)
+        before = (self.link("current"), self.link("previous"))
+        r = self.install(b, env={"CM_FAKE_MERGE_FAIL": "no usable pack"}, ok=False)
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("pack merge failed: no usable pack", r.stderr)
+        self.assertEqual((self.link("current"), self.link("previous")), before)
+        self.assertFalse([c for c in self.rig.calls() if c.startswith("systemctl stop")][1:])
 
     def test_pack_schema_mismatch_leaves_current_untouched(self):
         a = self.rig.make_set("0.1.0", "0.1.0")
@@ -194,7 +231,7 @@ class TestSwitch(unittest.TestCase):
         (self.rig.root / "calls").unlink()
         cases = [
             (self.rig.make_set("0.2.0", "0.2.0", charts_ver="1.2.0", bathy_ver="1.2.0", pack_schema=2,
-                               lock_overrides={"charts.schema": "1", "bathy.schema": "1"}),
+                               lock_overrides={"pack.charts-puget-north.schema": "1", "pack.bathy-puget-north.schema": "1"}),
              "pack schema mismatch: charts-puget-north-1.2.0 manifest.json schema is 2, the lock says 1"),
             (self.rig.make_set("0.3.0", "0.3.0", plotter_range=(1, 2),
                                lock_overrides={"plotter.pack_schema_max": "1"}),

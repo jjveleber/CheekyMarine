@@ -855,8 +855,8 @@ TestCase {
     QtObject {
         id: appInfoStub
         property string appVersion: "0.1.0"
-        property var chartsPack: ({})
-        property var bathyPack: ({})
+        property var packsInUse: []
+        property string packNotice: ""
         property var packs: []
         property string daemonVersion: ""
         property string setVersion: ""
@@ -883,7 +883,8 @@ TestCase {
         ]
     }
     function test_splashChartsLine(data) {
-        appInfoStub.chartsPack = data.charts
+        appInfoStub.packNotice = ""
+        appInfoStub.packsInUse = data.charts.kind !== undefined ? [data.charts] : []
         appInfoStub.packs = data.packs
         const splash = createTemporaryObject(splashComp, testCase, { width: 1024, height: 600, appInfo: appInfoStub })
         compare(H.byName(splash, "splashCharts").text, data.want)
@@ -900,11 +901,68 @@ TestCase {
         ]
     }
     function test_splashBathyLine(data) {
-        appInfoStub.chartsPack = ({})
-        appInfoStub.bathyPack = data.bathy
+        appInfoStub.packNotice = ""
+        appInfoStub.packsInUse = data.bathy.kind !== undefined ? [data.bathy] : []
         appInfoStub.packs = data.packs
         const splash = createTemporaryObject(splashComp, testCase, { width: 1024, height: 600, appInfo: appInfoStub })
         compare(H.byName(splash, "splashBathy").text, data.want)
+    }
+
+    function packs(kind, n, notice) {
+        return Array.from({ length: n }, (_, i) => ({ kind: kind, region: "r" + i, version: i === 2 ? "1.10.0" : "1.9.0",
+                                                      notice: i === 0 ? notice : "", refused: "", inUse: true }))
+    }
+    function test_splashSeveralPacks() {
+        appInfoStub.packNotice = ""
+        appInfoStub.packs = []
+        appInfoStub.packsInUse = packs("charts", 6, "").concat(packs("bathy", 6, ""))
+        const splash = createTemporaryObject(splashComp, testCase, { width: 1024, height: 600, appInfo: appInfoStub })
+        compare(H.byName(splash, "splashCharts").text, "Charts: 6 packs, 1.10.0")
+        compare(H.byName(splash, "splashBathy").text, "Bathy: 6 packs, 1.10.0")
+    }
+    function test_splashShowsPackNotice() {
+        appInfoStub.packs = []
+        appInfoStub.packsInUse = packs("charts", 2, "charts notice")
+        appInfoStub.packNotice = "Chart packs are not merged. Run sudo cheekymarine install again."
+        let splash = createTemporaryObject(splashComp, testCase, { width: 1024, height: 600, appInfo: appInfoStub })
+        compare(H.byName(splash, "splashNotice").text, "charts notice\nChart packs are not merged. Run sudo cheekymarine install again.")
+        appInfoStub.packsInUse = packs("charts", 2, "")
+        splash = createTemporaryObject(splashComp, testCase, { width: 1024, height: 600, appInfo: appInfoStub })
+        compare(H.byName(splash, "splashNotice").text, "Chart packs are not merged. Run sudo cheekymarine install again.")
+        appInfoStub.packNotice = ""
+    }
+    function test_splashPackNoticeIgnoresChartNoticeSetting() {
+        appInfoStub.packs = []
+        appInfoStub.packsInUse = packs("charts", 2, "charts notice")
+        appInfoStub.packNotice = "Chart packs are not merged. Run sudo cheekymarine install again."
+        const splash = createTemporaryObject(splashComp, testCase, { width: 1024, height: 600, appInfo: appInfoStub, noticeShown: false })
+        compare(H.byName(splash, "splashNotice").text, "Chart packs are not merged. Run sudo cheekymarine install again.")
+        verify(H.byName(splash, "splashNotice").visible)
+        appInfoStub.packNotice = ""
+    }
+    function test_aboutShowsPackNotice() {
+        appInfoStub.packNotice = "Chart packs are not merged. Run sudo cheekymarine install again."
+        let about = createTemporaryObject(aboutPageComp, testCase, { width: 1024, height: 600, appInfo: appInfoStub })
+        compare(H.byName(about, "aboutPackNotice").text, "Chart packs are not merged. Run sudo cheekymarine install again.")
+        verify(H.byName(about, "aboutPackNotice").visible)
+        appInfoStub.packNotice = ""
+        about = createTemporaryObject(aboutPageComp, testCase, { width: 1024, height: 600, appInfo: appInfoStub })
+        verify(!H.byName(about, "aboutPackNotice").visible)
+    }
+    function test_aboutListsEveryPack() {
+        appInfoStub.packs = []
+        appInfoStub.packsInUse = packs("charts", 6, "").concat(packs("bathy", 6, ""))
+        const about = createTemporaryObject(aboutPageComp, testCase, { width: 1024, height: 600, appInfo: appInfoStub })
+        const lines = H.findAll(about, o => o.objectName === "aboutPackLine").reverse() // findAll visits last first
+        compare(lines.length, 12)
+        compare(lines[0].text, "charts r0 1.9.0")
+        compare(lines[11].text, "bathy r5 1.9.0")
+    }
+    function test_aboutNoPacks() {
+        appInfoStub.packs = []
+        appInfoStub.packsInUse = []
+        const about = createTemporaryObject(aboutPageComp, testCase, { width: 1024, height: 600, appInfo: appInfoStub })
+        compare(H.findAll(about, o => o.objectName === "aboutPackLine").length, 0)
     }
 
     function test_noDataBanner() {

@@ -93,8 +93,8 @@ class TestPreflight(unittest.TestCase):
         self.assertEqual(r.stdout.splitlines(), [
             "installed: 9.8.7",
             "  n2kd: 0.1.1",
-            "  charts: 1.2.0",
-            "  bathy: 1.3.0",
+            "  charts-puget-north: 1.2.0",
+            "  bathy-puget-north: 1.3.0",
             "  plotter: 0.3.0",
         ])
         # The committed script embeds the committed lock's set, which differs from the installed 9.8.7.
@@ -164,8 +164,8 @@ class TestHarness(unittest.TestCase):
             self.rig.make_set("0.2.2", "0.3.0", plotter_range=(1, 2))
 
     def test_make_set_lock_overrides(self):
-        rel = self.rig.make_set("0.2.0", "0.3.0", lock_overrides={"charts.schema": "7"})
-        self.assertIn("charts.schema=7\n", (rel / "cheekymarine.lock").read_text())
+        rel = self.rig.make_set("0.2.0", "0.3.0", lock_overrides={"pack.charts-puget-north.schema": "7"})
+        self.assertIn("pack.charts-puget-north.schema=7\n", (rel / "cheekymarine.lock").read_text())
 
     def test_curl_shim_logs_and_fetches(self):
         self.rig.make_release("x-v1", "a.bin", b"hello")

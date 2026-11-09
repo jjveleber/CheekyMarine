@@ -3,6 +3,7 @@
 #include "plotter/Version.h"
 #include <QFile>
 #include <QSettings>
+#include <algorithm>
 
 namespace {
 QVariantMap summary(const PackInfo& p) {
@@ -10,17 +11,20 @@ QVariantMap summary(const PackInfo& p) {
 }
 } // namespace
 
-AppInfo::AppInfo(const QList<PackInfo>& packs, const QString& setVersion, QObject* parent)
-    : QObject(parent), m_setVersion(setVersion) {
-    // The same choice as ChartController: the best charts pack, and the best bathy pack of its region.
-    const auto charts = PackCatalog::best(packs, u"charts");
-    const auto bathy = charts ? PackCatalog::best(packs, u"bathy", charts->region) : std::nullopt;
-    if (charts) m_charts = summary(*charts);
-    if (bathy) m_bathy = summary(*bathy);
-    for (const PackInfo& p : packs) {
+AppInfo::AppInfo(const QList<PackInfo>& scanned, const QList<PackInfo>& inUse, const QString& setVersion,
+                 const QString& packNotice, QObject* parent)
+    : QObject(parent), m_setVersion(setVersion), m_packNotice(packNotice) {
+    QList<PackInfo> sorted = inUse;
+    std::stable_sort(sorted.begin(), sorted.end(), [](const PackInfo& a, const PackInfo& b) {
+        if (a.kind != b.kind) return a.kind == QLatin1String("charts");
+        return a.region < b.region;
+    });
+    for (const PackInfo& p : sorted)
+        m_inUse.append(summary(p));
+    for (const PackInfo& p : scanned) {
         QVariantMap m = summary(p);
         m.insert("refused", p.refused);
-        m.insert("inUse", (charts && p.dir == charts->dir) || (bathy && p.dir == bathy->dir));
+        m.insert("inUse", std::any_of(inUse.begin(), inUse.end(), [&](const PackInfo& u) { return u.dir == p.dir; }));
         m_packs.append(m);
     }
 }
@@ -28,7 +32,8 @@ AppInfo::AppInfo(const QList<PackInfo>& packs, const QString& setVersion, QObjec
 QString readSetVersion(const QString& lockPath) {
     if (!QFile::exists(lockPath)) return {};
     const QSettings lock(lockPath, QSettings::IniFormat);
-    return lock.value(QStringLiteral("schema")).toString() == QLatin1String("1")
+    const QString schema = lock.value(QStringLiteral("schema")).toString();
+    return schema == QLatin1String("1") || schema == QLatin1String("2")
                ? lock.value(QStringLiteral("set")).toString() : QString();
 }
 

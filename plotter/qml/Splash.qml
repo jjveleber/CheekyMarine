@@ -8,7 +8,7 @@ Rectangle {
     id: splash
     required property QtObject appInfo // AppInfo
     property int minimumMs: 5000
-    property bool noticeShown: true // the showChartNotice setting: off leaves the notice line out here too
+    property bool noticeShown: true // the showChartNotice setting: off leaves the pack's own notice out here (not the not merged one)
     // White over the logo by day and dusk; at night the logo is dimmed and the lines take the night red.
     readonly property color infoColor: Theme.palette === "night" ? Theme.text : "#ffffff"
     // The emblem (the round badge) spans the middle half of the 1408 px wide image and almost its full
@@ -29,8 +29,28 @@ Rectangle {
     // Touches during the splash go nowhere.
     MouseArea { anchors.fill: parent }
 
-    function packText(p, kind, missing) {
-        return p.version !== undefined ? kind + ": " + p.region + " " + p.version : missing
+    // The packs in use of one kind: one pack reads "Charts: region 1.0.0", several "Charts: 6 packs, 1.0.0"
+    // (the newest version).
+    function packText(kind, label, missing) {
+        const ps = splash.appInfo.packsInUse.filter(p => p.kind === kind)
+        if (ps.length === 0) return missing
+        if (ps.length === 1) return label + ": " + ps[0].region + " " + ps[0].version
+        const newest = ps.map(p => p.version).reduce((a, b) => newer(b, a) ? b : a)
+        return label + ": " + ps.length + " packs, " + newest
+    }
+    function newer(a, b) {
+        const x = a.split("."), y = b.split(".")
+        for (let i = 0; i < Math.max(x.length, y.length); ++i) {
+            const d = (parseInt(x[i]) || 0) - (parseInt(y[i]) || 0)
+            if (d !== 0) return d > 0
+        }
+        return false
+    }
+    // The first charts pack's notice (when the setting allows), then the not merged notice when set: that
+    // one is a fault to fix, not a disclaimer, so the setting does not hide it.
+    readonly property string noticeText: {
+        const first = splash.appInfo.packsInUse.find(p => p.kind === "charts")
+        return [first !== undefined && splash.noticeShown ? first.notice : "", splash.appInfo.packNotice].filter(t => t !== "").join("\n")
     }
 
     // The project logo fills the splash; the emblem is in the middle of the image, so the crop at
@@ -68,7 +88,7 @@ Rectangle {
         InfoLine {
             objectName: "splashCharts"
             // No pack in use: either none is installed, or every one was refused (About says why).
-            text: splash.packText(splash.appInfo.chartsPack, "Charts",
+            text: splash.packText("charts", "Charts",
                                   splash.appInfo.packs.some(p => p.kind === "charts") ? "Charts pack refused: see Settings, About"
                                                                                       : "No charts pack installed")
             font.pixelSize: Units.mm(3.5)
@@ -76,7 +96,7 @@ Rectangle {
         InfoLine {
             objectName: "splashBathy"
             // A bathy pack can also go unused for another region: only a refused one says so.
-            text: splash.packText(splash.appInfo.bathyPack, "Bathy",
+            text: splash.packText("bathy", "Bathy",
                                   splash.appInfo.packs.some(p => p.kind === "bathy" && p.refused !== "") ? "Bathy pack refused: see Settings, About"
                                                                                                          : "No fishing chart installed")
             font.pixelSize: Units.mm(3.5)
@@ -89,8 +109,8 @@ Rectangle {
         x: splash.emblemRight + Units.mm(3)
         width: splash.width - splash.emblemRight - Units.mm(6)
         anchors { bottom: parent.bottom; bottomMargin: Units.mm(3) }
-        visible: splash.noticeShown && text !== ""
-        text: splash.appInfo.chartsPack.notice !== undefined ? splash.appInfo.chartsPack.notice : ""
+        visible: text !== ""
+        text: splash.noticeText
         font.pixelSize: Units.mm(3.5)
         horizontalAlignment: Text.AlignRight
     }

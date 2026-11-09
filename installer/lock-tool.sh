@@ -3,7 +3,17 @@
 set -euo pipefail
 
 BASE="${CM_BASE_URL:-https://github.com/jjveleber/CheekyMarine/releases/download}"
-PARTS="n2kd charts bathy plotter"
+
+lock_packs() { # LOCK -> pack ids on stdout, in lock order
+  awk -F= '$1 ~ /^pack\..+\.version$/ {id=$1; sub(/^pack\./, "", id); sub(/\.version$/, "", id); print id}' "$1"
+}
+
+lock_parts() { # LOCK -> lock key prefixes of every part: n2kd, pack.<id>..., plotter
+  local id
+  echo n2kd
+  for id in $(lock_packs "$1"); do echo "pack.$id"; done
+  echo plotter
+}
 
 get() { # FILE KEY
   awk -F= -v k="$2" '$1==k {sub(/^[^=]*=/, ""); print; exit}' "$1"
@@ -16,31 +26,56 @@ sums_line() { # PART TAG ASSET -> sha256 on stdout
 }
 
 cmd_check() {
-  local lock=$1 part rc=0 min max sch want have key
-  for key in charts.schema bathy.schema plotter.pack_schema_min plotter.pack_schema_max; do
+  local lock=$1 part rc=0 min max sch want have id kind prev key ids
+  ids=$(lock_packs "$lock")
+  if ! printf '%s\n' "$ids" | grep -q '^charts-'; then
+    echo "lock-tool: no charts pack in the lock" >&2
+    rc=1
+  fi
+  for key in plotter.pack_schema_min plotter.pack_schema_max; do
     if ! [[ $(get "$lock" "$key") =~ ^[0-9]+$ ]]; then
       echo "lock-tool: $key is missing or not a whole number" >&2
       rc=1
     fi
   done
-  [ "$rc" -eq 0 ] || return 1
-  min=$(get "$lock" plotter.pack_schema_min); max=$(get "$lock" plotter.pack_schema_max)
-  for part in charts bathy; do
-    sch=$(get "$lock" "$part.schema")
-    if [ "$sch" -lt "$min" ] || [ "$sch" -gt "$max" ]; then
-      echo "lock-tool: $part: schema $sch outside plotter range $min..$max" >&2
+  for id in $ids; do
+    if ! [[ $(get "$lock" "pack.$id.schema") =~ ^[0-9]+$ ]]; then
+      echo "lock-tool: pack.$id.schema is missing or not a whole number" >&2
       rc=1
     fi
   done
   [ "$rc" -eq 0 ] || return 1
-  for part in $PARTS; do
+  min=$(get "$lock" plotter.pack_schema_min); max=$(get "$lock" plotter.pack_schema_max)
+  for id in $ids; do
+    sch=$(get "$lock" "pack.$id.schema")
+    if [ "$sch" -lt "$min" ] || [ "$sch" -gt "$max" ]; then
+      echo "lock-tool: $id: schema $sch outside plotter range $min..$max" >&2
+      rc=1
+    fi
+  done
+  # spec 5.4: all packs of one kind share one schema
+  for kind in $(printf '%s\n' "$ids" | sed 's/-.*//' | sort -u); do
+    prev=
+    for id in $ids; do
+      [ "${id%%-*}" = "$kind" ] || continue
+      sch=$(get "$lock" "pack.$id.schema")
+      if [ -n "$prev" ] && [ "$sch" != "$prev" ]; then
+        echo "lock-tool: $kind packs have mixed schemas ($prev and $sch)" >&2
+        rc=1
+        break
+      fi
+      prev=$sch
+    done
+  done
+  [ "$rc" -eq 0 ] || return 1
+  for part in $(lock_parts "$lock"); do
     want=$(get "$lock" "$part.sha256")
-    have=$(sums_line "$part" "$(get "$lock" "$part.tag")" "$(get "$lock" "$part.asset")") || return 1
+    have=$(sums_line "${part#pack.}" "$(get "$lock" "$part.tag")" "$(get "$lock" "$part.asset")") || return 1
     if [ -z "$have" ]; then
-      echo "lock-tool: $part: asset $(get "$lock" "$part.asset") not in SHA256SUMS" >&2
+      echo "lock-tool: ${part#pack.}: asset $(get "$lock" "$part.asset") not in SHA256SUMS" >&2
       rc=1
     elif [ "$have" != "$want" ]; then
-      echo "lock-tool: $part: sha256 mismatch (lock $want, release $have)" >&2
+      echo "lock-tool: ${part#pack.}: sha256 mismatch (lock $want, release $have)" >&2
       rc=1
     fi
   done
@@ -51,10 +86,10 @@ cmd_fill() {
   local lock=$1 part have tmp
   tmp=$(mktemp)
   cp "$lock" "$tmp"
-  for part in $PARTS; do
-    have=$(sums_line "$part" "$(get "$lock" "$part.tag")" "$(get "$lock" "$part.asset")") || { rm -f "$tmp"; return 1; }
+  for part in $(lock_parts "$lock"); do
+    have=$(sums_line "${part#pack.}" "$(get "$lock" "$part.tag")" "$(get "$lock" "$part.asset")") || { rm -f "$tmp"; return 1; }
     if [ -z "$have" ]; then
-      echo "lock-tool: $part: asset not in SHA256SUMS" >&2; rm -f "$tmp"; return 1
+      echo "lock-tool: ${part#pack.}: asset not in SHA256SUMS" >&2; rm -f "$tmp"; return 1
     fi
     awk -v k="$part.sha256" -v v="$have" 'BEGIN{FS=OFS="="} $1==k {print k "=" v; next} {print}' "$tmp" > "$tmp.new"
     mv "$tmp.new" "$tmp"

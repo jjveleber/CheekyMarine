@@ -12,7 +12,7 @@
 namespace {
 
 struct Opts {
-    int schema = 1;
+    int schema = 2;
     QString manifestVersion;     // empty: same as the version
     bool manifest = true;
     bool mbtiles = true;
@@ -21,6 +21,7 @@ struct Opts {
     bool zoomMeta = true;        // minzoom and maxzoom rows
     bool garbageMbtiles = false; // enc.mbtiles is not SQLite
     bool valdcoJunk = false;     // valdco is not a JSON array
+    QString skipFile;            // a bathy file not to write
     bool valdcoRow = true;       // write the cheekymarine:valdco row
     QString valdco;              // non-empty: the valdco row's value
     QJsonValue schemaValue = QJsonValue::Undefined; // defined: the manifest's schema, overriding `schema`
@@ -84,8 +85,8 @@ void makePack(const QString& root, const QString& kind, const QString& region, c
         if (kind == "charts") {
             makeMbtiles(dir + "/enc.mbtiles", o);
         } else {
-            makeMbtiles(dir + "/bathy.mbtiles", o);
-            makeMbtiles(dir + "/dem.mbtiles", o);
+            for (const QString& f : kBathyFiles)
+                if (f != o.skipFile) makeMbtiles(dir + "/" + f, o);
         }
     }
 }
@@ -172,34 +173,34 @@ private slots:
         QCOMPARE(l[0].minZoom, -1);
         QCOMPARE(l[0].maxZoom, -1);
     }
-    void bestIsHighestVersion() {
+    void usableIsNewestPerRegionSortedByRegion() {
         QTemporaryDir t;
-        makePack(t.path(), "charts", "puget-north", "1.0.0");
+        makePack(t.path(), "charts", "san-juan", "2.0.0");
         makePack(t.path(), "charts", "puget-north", "1.2.0");
         makePack(t.path(), "charts", "puget-north", "1.10.0");
-        const auto l = PackCatalog::scan(t.path());
-        const auto b = PackCatalog::best(l, u"charts");
-        QVERIFY(b);
-        QCOMPARE(b->version, QVersionNumber(1, 10, 0));
+        makePack(t.path(), "bathy", "puget-north", "1.0.0");
+        const auto u = PackCatalog::usable(PackCatalog::scan(t.path()), u"charts");
+        QCOMPARE(u.size(), 2);
+        QCOMPARE(u[0].region, QString("puget-north"));
+        QCOMPARE(u[0].version, QVersionNumber(1, 10, 0));
+        QCOMPARE(u[1].region, QString("san-juan"));
     }
-    void bestFiltersRegion() {
-        QTemporaryDir t;
-        makePack(t.path(), "charts", "puget-north", "1.0.0");
-        makePack(t.path(), "charts", "san-juan", "2.0.0");
-        const auto l = PackCatalog::scan(t.path());
-        QCOMPARE(PackCatalog::best(l, u"charts")->region, QString("san-juan"));
-        QCOMPARE(PackCatalog::best(l, u"charts", u"puget-north")->version, QVersionNumber(1, 0, 0));
-        QVERIFY(!PackCatalog::best(l, u"charts", u"nowhere"));
-    }
-    void schemaTwoRefusedAndSkipped() {
+    void schemaOneRefused() {
         QTemporaryDir t;
         makePack(t.path(), "charts", "puget-north", "1.0.0");
         Opts o;
-        o.schema = 2;
+        o.schema = 1;
         makePack(t.path(), "charts", "puget-north", "1.2.0", o);
         const auto l = PackCatalog::scan(t.path());
-        QCOMPARE(find(l, "charts", "1.2.0")->refused, QString("schema 2 not supported"));
-        QCOMPARE(PackCatalog::best(l, u"charts")->version, QVersionNumber(1, 0, 0));
+        QCOMPARE(find(l, "charts", "1.2.0")->refused, QString("schema 1 not supported"));
+        QCOMPARE(PackCatalog::usable(l, u"charts").first().version, QVersionNumber(1, 0, 0));
+    }
+    void bathyNeedsFourFiles() {
+        QTemporaryDir t;
+        Opts o;
+        o.skipFile = "dem-coarse.mbtiles";
+        makePack(t.path(), "bathy", "puget-north", "1.0.0", o);
+        QCOMPARE(PackCatalog::scan(t.path())[0].refused, QString("missing dem-coarse.mbtiles"));
     }
     void schemaBelowMinRefused() {
         QTemporaryDir t;
@@ -232,7 +233,7 @@ private slots:
         const auto l = PackCatalog::scan(t.path());
         QCOMPARE(l.size(), 1);
         QCOMPARE(l[0].refused, QString("name does not match manifest"));
-        QVERIFY(!PackCatalog::best(l, u"charts"));
+        QVERIFY(PackCatalog::usable(l, u"charts").isEmpty());
     }
     void missingEncMbtiles() {
         QTemporaryDir t;
@@ -242,7 +243,7 @@ private slots:
         makePack(t.path(), "charts", "puget-north", "1.0.0");
         const auto l = PackCatalog::scan(t.path());
         QCOMPARE(find(l, "charts", "1.1.0")->refused, QString("missing enc.mbtiles"));
-        QCOMPARE(PackCatalog::best(l, u"charts")->version, QVersionNumber(1, 0, 0));
+        QCOMPARE(PackCatalog::usable(l, u"charts").first().version, QVersionNumber(1, 0, 0));
     }
     void missingBathyFiles() {
         QTemporaryDir t;
@@ -284,7 +285,7 @@ private slots:
         makePack(t.path(), "charts", "puget-north", "1.0.0");
         const auto l = PackCatalog::scan(t.path());
         QCOMPARE(find(l, "charts", "1.1.0")->refused, QString("enc.mbtiles unreadable"));
-        QCOMPARE(PackCatalog::best(l, u"charts")->version, QVersionNumber(1, 0, 0));
+        QCOMPARE(PackCatalog::usable(l, u"charts").first().version, QVersionNumber(1, 0, 0));
     }
     void corruptMbtilesNoMetadataTable() {
         QTemporaryDir t;
@@ -349,11 +350,6 @@ private slots:
     }
     void missingPacksDir() {
         QVERIFY(PackCatalog::scan("/nonexistent/packs/dir").isEmpty());
-    }
-    void bestEmptyKind() {
-        QTemporaryDir t;
-        makePack(t.path(), "charts", "puget-north", "1.0.0");
-        QVERIFY(!PackCatalog::best(PackCatalog::scan(t.path()), u"bathy"));
     }
     void noLeakedConnections() {
         QTemporaryDir t;

@@ -133,9 +133,7 @@ QList<PackInfo> PackCatalog::scan(const QString& dir) {
                    || mo.value(QStringLiteral("version")).toString() != m.captured(3)) {
             p.refused = QStringLiteral("name does not match manifest");
         } else {
-            const QStringList files = p.kind == QLatin1String("charts")
-                ? QStringList{QStringLiteral("enc.mbtiles")}
-                : QStringList{QStringLiteral("bathy.mbtiles"), QStringLiteral("dem.mbtiles")};
+            const QStringList& files = p.kind == QLatin1String("charts") ? kChartsFiles : kBathyFiles;
             for (const QString& f : files) {
                 if (!QFileInfo::exists(p.dir + QLatin1Char('/') + f)) {
                     p.refused = QStringLiteral("missing ") + f;
@@ -159,13 +157,17 @@ QList<PackInfo> PackCatalog::scan(const QString& dir) {
     return out;
 }
 
-std::optional<PackInfo> PackCatalog::best(const QList<PackInfo>& packs, QStringView kind, QStringView region) {
-    std::optional<PackInfo> b;
+QList<PackInfo> PackCatalog::usable(const QList<PackInfo>& packs, QStringView kind) {
+    QList<PackInfo> out;
     for (const PackInfo& p : packs) {
-        if (!p.refused.isEmpty() || p.kind != kind || (!region.isEmpty() && p.region != region))
+        if (!p.refused.isEmpty() || p.kind != kind)
             continue;
-        if (!b || p.version > b->version)
-            b = p;
+        auto it = std::find_if(out.begin(), out.end(), [&](const PackInfo& o) { return o.region == p.region; });
+        if (it == out.end())
+            out.append(p);
+        else if (p.version > it->version)
+            *it = p;
     }
-    return b;
+    std::sort(out.begin(), out.end(), [](const PackInfo& a, const PackInfo& b) { return a.region < b.region; });
+    return out;
 }

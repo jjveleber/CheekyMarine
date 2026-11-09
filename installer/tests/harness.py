@@ -225,28 +225,36 @@ class Rig:
         return _tar("n2kd-%s-%s" % (ver, arch), files, gz=True)
 
     def _plotter(self, ver, rng):
-        stub = ('#!/bin/sh\n[ -n "$CM_ROOT" ] && echo "cheekyplotter %s $*" >> "$CM_ROOT/calls"\nexit 0\n' % ver)
+        # --merge-packs DIR records the call and what `current` is at that moment, makes DIR/merged,
+        # and exits 1 with a message when CM_FAKE_MERGE_FAIL is set.
+        stub = ('#!/bin/sh\n[ -n "$CM_ROOT" ] && echo "cheekyplotter %s $*" >> "$CM_ROOT/calls"\n'
+                'if [ "$1" = --merge-packs ]; then\n'
+                '  echo "merge-current $(readlink "$CM_ROOT/opt/cheekymarine/current" || echo none)" >> "$CM_ROOT/calls"\n'
+                '  [ -z "$CM_FAKE_MERGE_FAIL" ] || { echo "$CM_FAKE_MERGE_FAIL"; exit 1; }\n'
+                '  mkdir -p "$2/merged"\n'
+                'fi\nexit 0\n' % ver)
         files = {
             "bin/cheekyplotter": (stub.encode(), 0o755),
             "PACK_SCHEMA": ("min=%d\nmax=%d\n" % rng).encode(),
         }
         return _tar("cheekyplotter-%s-x86_64" % ver, files, gz=True)
 
-    def _pack(self, pack, ver, schema):
-        manifest = {"pack": pack, "region": "puget-north", "version": ver, "schema": schema,
+    def _pack(self, pack, region, ver, schema):
+        manifest = {"pack": pack, "region": region, "version": ver, "schema": schema,
                     "built": "2026-11-01T00:00:00Z", "files": [], "sources": [], "notice": "test"}
         files = {"manifest.json": (json.dumps(manifest, indent=2) + "\n").encode(),
                  "%s.mbtiles" % pack: b"fake tiles\n"}
-        return _tar("%s-puget-north-%s" % (pack, ver), files, gz=False)
+        return _tar("%s-%s-%s" % (pack, region, ver), files, gz=False)
 
     def make_set(self, set_ver, plotter_ver, n2kd_ver="0.1.0", charts_ver="1.1.0", bathy_ver="1.1.0",
-                 pack_schema=1, plotter_range=(1, 1), lock_overrides=None, n2kd_tar=None):
+                 pack_schema=1, plotter_range=(1, 1), lock_overrides=None, n2kd_tar=None, packs=None):
         """Build every release of one set under self.base and return the set release dir
         cheekymarine-v<set>/ holding install-cheekymarine.sh (lock embedded by lock-tool.sh),
         cheekymarine.lock and SHA256SUMS. Part releases with the same tag and asset as an earlier
         make_set must be identical (ValueError otherwise). lock_overrides: {key: value} applied to
         the lock after the real hashes, before embedding. n2kd_tar: bytes of a real n2kd x86_64 tarball
-        used instead of the fake one."""
+        used instead of the fake one. packs: [(kind, region, version[, schema])] in lock order; the
+        default is charts and bathy for puget-north at charts_ver and bathy_ver. The lock is schema 2."""
         n2kd_tag, n2kd_asset = "v" + n2kd_ver, "n2kd-%s-x86_64.tar.gz" % n2kd_ver
         n2kd = n2kd_tar or self._n2kd(n2kd_ver)
         self.make_release(n2kd_tag, n2kd_asset, n2kd)
@@ -254,19 +262,21 @@ class Rig:
         plotter_tag, plotter_asset = "plotter-v" + plotter_ver, "cheekyplotter-%s-x86_64.tar.gz" % plotter_ver
         plotter = self._plotter(plotter_ver, plotter_range)
         self.make_release(plotter_tag, plotter_asset, plotter)
-        packs = {}
-        for pack, ver in (("charts", charts_ver), ("bathy", bathy_ver)):
-            tag, asset = "%s-puget-north-v%s" % (pack, ver), "%s-puget-north-%s.tar" % (pack, ver)
-            data = self._pack(pack, ver, pack_schema)
+        built = []
+        for spec in packs or [("charts", "puget-north", charts_ver), ("bathy", "puget-north", bathy_ver)]:
+            kind, region, ver = spec[:3]
+            sch = spec[3] if len(spec) > 3 else pack_schema
+            tag, asset = "%s-%s-v%s" % (kind, region, ver), "%s-%s-%s.tar" % (kind, region, ver)
+            data = self._pack(kind, region, ver, sch)
             self.make_release(tag, asset, data)
-            packs[pack] = (ver, tag, asset, data)
-        lines = ["# CheekyMarine set lock. Format: see installer/README.md.", "schema=1", "set=" + set_ver]
+            built.append(("%s-%s" % (kind, region), ver, tag, asset, data, sch))
+        lines = ["# CheekyMarine set lock. Format: see installer/README.md.", "schema=2", "set=" + set_ver]
         lines += ["n2kd.version=" + n2kd_ver, "n2kd.tag=" + n2kd_tag, "n2kd.asset=" + n2kd_asset,
                   "n2kd.sha256=" + sha256(n2kd)]
-        for pack in ("charts", "bathy"):
-            ver, tag, asset, data = packs[pack]
-            lines += ["%s.version=%s" % (pack, ver), "%s.tag=%s" % (pack, tag), "%s.asset=%s" % (pack, asset),
-                      "%s.sha256=%s" % (pack, sha256(data)), "%s.schema=%d" % (pack, pack_schema)]
+        for pid, ver, tag, asset, data, sch in built:
+            lines += ["pack.%s.version=%s" % (pid, ver), "pack.%s.tag=%s" % (pid, tag),
+                      "pack.%s.asset=%s" % (pid, asset), "pack.%s.sha256=%s" % (pid, sha256(data)),
+                      "pack.%s.schema=%d" % (pid, sch)]
         lines += ["plotter.version=" + plotter_ver, "plotter.tag=" + plotter_tag, "plotter.asset=" + plotter_asset,
                   "plotter.sha256=" + sha256(plotter), "plotter.pack_schema_min=%d" % plotter_range[0],
                   "plotter.pack_schema_max=%d" % plotter_range[1]]

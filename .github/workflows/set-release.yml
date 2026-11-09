@@ -49,9 +49,11 @@ jobs:
             echo
             echo "| Part | Version | Tag |"
             echo "| --- | --- | --- |"
-            for part in n2kd charts bathy plotter; do
-              echo "| ${part} | $(get "${part}.version") | $(get "${part}.tag") |"
+            echo "| n2kd | $(get n2kd.version) | $(get n2kd.tag) |"
+            for id in $(sed -n 's/^pack\.\(.*\)\.version=.*/\1/p' "$lock"); do
+              echo "| ${id} | $(get "pack.${id}.version") | $(get "pack.${id}.tag") |"
             done
+            echo "| plotter | $(get plotter.version) | $(get plotter.tag) |"
             echo
             echo "Plotter pack schema range: $(get plotter.pack_schema_min) to $(get plotter.pack_schema_max)."
           } > release/NOTES.md

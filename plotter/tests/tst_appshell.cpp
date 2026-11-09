@@ -37,14 +37,18 @@ class TstAppShell : public QObject {
     Q_OBJECT
 private slots:
     void appInfoPacks() {
-        const AppInfo info({pack("charts", "puget-north", 1, 0), pack("charts", "puget-north", 1, 2),
-                            pack("bathy", "puget-north", 1, 0), pack("bathy", "other", 2, 0),
-                            pack("charts", "puget-north", 9, 0, "schema 2 not supported")});
+        const QList<PackInfo> scanned{pack("charts", "puget-north", 1, 0), pack("charts", "puget-north", 1, 2),
+                                      pack("bathy", "puget-north", 1, 0), pack("bathy", "other", 2, 0),
+                                      pack("charts", "puget-north", 9, 0, "schema 2 not supported")};
+        const AppInfo info(scanned, {scanned[2], scanned[1]});
         QCOMPARE(info.appVersion(), QStringLiteral(PLOTTER_EXPECTED_VERSION));
-        QCOMPARE(info.chartsPack().value("version").toString(), QStringLiteral("1.2.0"));
-        QCOMPARE(info.chartsPack().value("region").toString(), QStringLiteral("puget-north"));
-        QCOMPARE(info.chartsPack().value("notice").toString(), QStringLiteral("charts notice"));
-        QCOMPARE(info.bathyPack().value("version").toString(), QStringLiteral("1.0.0"));
+        QCOMPARE(info.packsInUse().size(), 2);
+        const QVariantMap charts = info.packsInUse().at(0).toMap();
+        QCOMPARE(charts.value("kind").toString(), QStringLiteral("charts"));
+        QCOMPARE(charts.value("version").toString(), QStringLiteral("1.2.0"));
+        QCOMPARE(charts.value("region").toString(), QStringLiteral("puget-north"));
+        QCOMPARE(charts.value("notice").toString(), QStringLiteral("charts notice"));
+        QCOMPARE(info.packsInUse().at(1).toMap().value("version").toString(), QStringLiteral("1.0.0"));
         QCOMPARE(info.packs().size(), 5);
         const QVariantMap refused = info.packs().at(4).toMap();
         QCOMPARE(refused.value("refused").toString(), QStringLiteral("schema 2 not supported"));
@@ -82,8 +86,30 @@ private slots:
 
     void appInfoNoPacks() {
         const AppInfo info({});
-        QVERIFY(info.chartsPack().isEmpty());
-        QVERIFY(info.bathyPack().isEmpty());
+        QVERIFY(info.packsInUse().isEmpty());
+    }
+
+    void aboutListsEveryPack() {
+        const char* regions[] = {"f", "a", "e", "b", "d", "c"};
+        QList<PackInfo> inUse;
+        for (const char* r : regions) inUse.append(pack("bathy", r, 1, 0));
+        for (const char* r : regions) inUse.append(pack("charts", r, 1, 0));
+        const AppInfo info(inUse, inUse);
+        QCOMPARE(info.packsInUse().size(), 12);
+        QStringList got;
+        for (const QVariant& v : info.packsInUse()) got << v.toMap().value("kind").toString() + v.toMap().value("region").toString();
+        QCOMPARE(got, (QStringList{"chartsa", "chartsb", "chartsc", "chartsd", "chartse", "chartsf",
+                                   "bathya", "bathyb", "bathyc", "bathyd", "bathye", "bathyf"}));
+    }
+
+    void inUseFollowsController() {
+        // A stale merge falls back to the one newest single pack per kind.
+        const QList<PackInfo> scanned{pack("charts", "a", 1, 0), pack("charts", "b", 1, 1), pack("bathy", "a", 1, 0)};
+        const AppInfo info(scanned, {scanned[1], scanned[2]}, {}, "Chart packs are not merged.");
+        QCOMPARE(info.packNotice(), QStringLiteral("Chart packs are not merged."));
+        QCOMPARE(info.packs().at(0).toMap().value("inUse").toBool(), false);
+        QCOMPARE(info.packs().at(1).toMap().value("inUse").toBool(), true);
+        QCOMPARE(info.packs().at(2).toMap().value("inUse").toBool(), true);
     }
 
     void appInfoSchemaMismatch() {
@@ -210,12 +236,24 @@ private slots:
         QTemporaryDir t;
         QVERIFY(readSetVersion(t.filePath("nope.lock")).isEmpty());
     }
+    void setVersionReadsSchema2Lock() {
+        QTemporaryDir t;
+        const QString lock = t.filePath("cheekymarine.lock");
+        writeFile(lock, "schema=2\nset=0.3.0\n");
+        QCOMPARE(readSetVersion(lock), QString("0.3.0"));
+    }
+    void setVersionStillReadsSchema1Lock() {
+        QTemporaryDir t;
+        const QString lock = t.filePath("cheekymarine.lock");
+        writeFile(lock, "schema=1\nset=0.2.0\n");
+        QCOMPARE(readSetVersion(lock), QString("0.2.0"));
+    }
     void readSetVersionEmptyOnOtherSchema() {
         QTemporaryDir t;
         const QString lock = t.filePath("cheekymarine.lock");
         QFile f(lock);
         QVERIFY(f.open(QIODevice::WriteOnly));
-        f.write("# comment\nschema=2\nset=0.1.0\n");
+        f.write("# comment\nschema=3\nset=0.1.0\n");
         f.close();
         QVERIFY(readSetVersion(lock).isEmpty());
     }

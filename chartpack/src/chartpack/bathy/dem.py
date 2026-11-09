@@ -8,6 +8,7 @@ import numpy as np
 from osgeo import gdal, osr
 from PIL import Image
 
+from chartpack.enc.schema import SCHEMA_VERSION
 from chartpack.mbtiles import MBTiles
 
 gdal.UseExceptions()
@@ -95,7 +96,7 @@ def build_dem_mbtiles(
                 "bounds": ",".join(str(round(v, 6)) for v in (west, south, east, north)),
                 "cheekymarine:encoding": "terrarium",
                 "cheekymarine:pack": "bathy",
-                "cheekymarine:schema": "1",
+                "cheekymarine:schema": str(SCHEMA_VERSION),
             }
         )
     return Path(out)

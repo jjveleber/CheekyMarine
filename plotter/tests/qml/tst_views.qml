@@ -1215,9 +1215,10 @@ TestCase {
     function test_splashNoticeFollowsNoticeShown() {
         const off = createTemporaryObject(splashComp, testCase, { width: 1024, height: 600, appInfo: fixture.appInfo, noticeShown: false })
         const notice = H.byName(off, "splashNotice")
-        verify(notice.text !== "", "the pack has a notice")
+        compare(notice.text, "") // the pack's own notice is hidden by the setting
         verify(!notice.visible)
         off.noticeShown = true
+        verify(notice.text !== "", "the pack has a notice")
         verify(notice.visible)
     }
 }

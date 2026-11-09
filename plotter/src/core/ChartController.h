@@ -27,6 +27,9 @@ class ChartController : public QObject {
     Q_PROPERTY(bool follow READ follow WRITE setFollow NOTIFY followChanged)
     Q_PROPERTY(bool fishAvailable READ fishAvailable CONSTANT)
     Q_PROPERTY(QString notice READ notice NOTIFY noticeChanged)
+    // Set when several packs of a kind are installed but the merged files do not match them: the
+    // newest single pack is shown instead. Empty otherwise. Unlike `notice`, a style load never changes it.
+    Q_PROPERTY(QString packNotice READ packNotice CONSTANT)
     // The charts pack's legend: list of {abbr, meaning, kind}; empty without a pack or legend.json.
     Q_PROPERTY(QVariantList legend READ legend CONSTANT)
     // The legend for the current view (legendCategories() in Legend.h): AIS only without a pack,
@@ -44,8 +47,9 @@ class ChartController : public QObject {
 
 public:
     // All references must outlive the controller. Starts in nav and loads its style at once.
+    // `packsDir` holds the pack directories and merged/<kind>/ (written by --merge-packs).
     ChartController(ChartMap& map, Settings& settings, VesselModel& vessel, AisModel& ais, QList<PackInfo> packs,
-                    QObject* parent = nullptr);
+                    const QString& packsDir, QObject* parent = nullptr);
 
     QString mode() const { return m_mode; }
     void setMode(const QString& mode); // "nav" or "fish"; "fish" is refused without a bathy pack. Not stored.
@@ -55,8 +59,9 @@ public:
     void setPalette(const QString& palette); // "day", "dusk" or "night"
     bool follow() const { return m_follow; }
     void setFollow(bool follow);
-    bool fishAvailable() const { return m_bathy.has_value(); }
+    bool fishAvailable() const { return m_bathy.has_value(); } // any usable bathy pack
     QString notice() const { return m_notice; }
+    QString packNotice() const { return m_packNotice; }
     QVariantList legend() const { return m_legend; }
     QVariantList legendCategories() const { return m_legendCategories; }
     QString spriteBase() const { return m_spriteBase; }
@@ -66,6 +71,9 @@ public:
     // Every pack given, with `refused` set on a pack whose styles cannot be used (a depth filter error,
     // or a style that cannot be read or rewritten). The About page lists this, not the scan.
     QList<PackInfo> packs() const { return m_packs; }
+    // The packs whose files the loaded styles read: every usable pack of a kind when its merged files
+    // are used, else the one single pack of that kind.
+    QList<PackInfo> packsInUse() const { return m_inUse; }
 
     // The own-ship line switches and COG line length from the settings.
     OwnShipOptions ownShipOptions() const;
@@ -129,7 +137,11 @@ private:
     VesselModel& m_vessel;
     AisModel& m_ais;
     QList<PackInfo> m_packs;
-    std::optional<PackInfo> m_charts, m_bathy;
+    QString m_packsDir;
+    std::optional<PackInfo> m_charts, m_bathy; // the newest usable pack of each kind: styles, sprites, glyphs
+    QList<double> m_valdco;                    // union over the usable charts packs
+    QList<PackInfo> m_inUse;
+    QString m_packNotice;
     QString m_mode = QStringLiteral("nav");
     QString m_palette = QStringLiteral("day");
     bool m_follow = true;

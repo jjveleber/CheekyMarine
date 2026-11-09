@@ -8,6 +8,8 @@
 #include "core/Geo.h"
 #include "core/N2kClient.h"
 #include "core/PackCatalog.h"
+#include "core/PackMerge.h"
+#include "core/PanPath.h"
 #include "core/PaletteController.h"
 #include "core/Recovery.h"
 #include "core/Settings.h"
@@ -22,6 +24,7 @@
 #include "core/WindowOptions.h"
 
 #include <QCommandLineParser>
+#include <QCoreApplication>
 #include <QDateTime>
 #include <QDebug>
 #include <QElapsedTimer>
@@ -38,6 +41,7 @@
 #include <QStandardPaths>
 #include <QTimer>
 #include <csignal>
+#include <cstdio>
 #include <memory>
 #include <utility>
 
@@ -84,7 +88,38 @@ std::unique_ptr<Store> recover(QGuiApplication& app, const QString& dir, StoreEr
 
 } // namespace
 
+// `cheekyplotter --merge-packs DIR`: merges the usable packs under DIR (newest per region) into
+// DIR/merged and prints one line per written file. Runs without a display.
+static int mergePacksCli(int argc, char* argv[], const QString& dir) {
+    QCoreApplication app(argc, argv);
+    const QList<PackInfo> all = PackCatalog::scan(dir);
+    QList<PackInfo> use;
+    QStringList written;
+    for (const QString& kind : {QStringLiteral("charts"), QStringLiteral("bathy")}) {
+        const QList<PackInfo> k = PackCatalog::usable(all, kind);
+        use += k;
+        if (k.size() >= 2)
+            for (const QString& f : kind == QLatin1String("charts") ? kChartsFiles : kBathyFiles)
+                written << dir + QStringLiteral("/merged/") + kind + QLatin1Char('/') + f;
+    }
+    const auto r = mergePacks(use, dir + QStringLiteral("/merged"));
+    if (!r) {
+        fprintf(stderr, "%s\n", qPrintable(r.error()));
+        return 1;
+    }
+    for (const QString& f : written)
+        printf("%s\n", qPrintable(f));
+    return 0;
+}
+
 int main(int argc, char* argv[]) {
+    for (int i = 1; i < argc; ++i) {
+        const QString a = QString::fromLocal8Bit(argv[i]);
+        if (a == QLatin1String("--merge-packs") && i + 1 < argc)
+            return mergePacksCli(argc, argv, QString::fromLocal8Bit(argv[i + 1]));
+        if (a.startsWith(QLatin1String("--merge-packs=")))
+            return mergePacksCli(argc, argv, a.mid(14));
+    }
     QElapsedTimer startTimer;
     startTimer.start();
     // The MapLibre library is built with the OpenGL renderer only.
@@ -119,12 +154,14 @@ int main(int argc, char* argv[]) {
     QCommandLineOption exitAfterOpt("exit-after-ms", "Quit N ms after start.", "ms");
     QCommandLineOption frameStatsOpt("frame-stats", "Print the frame interval and track write summaries at quit.");
     QCommandLineOption seedTrackOpt("seed-track", "Prepend N synthetic points to every active-track write (for the frame measurement).", "n");
+    QCommandLineOption panPathOpt("pan-path", "Pan the chart through LAT,LON,ZOOM;LAT,LON,ZOOM;... again and again (follow off).", "path");
+    QCommandLineOption panLegOpt("pan-leg-ms", "Time for each --pan-path leg (default 1500).", "ms");
     QCommandLineOption positionOpt("position", "Chart center while there is no vessel position.", "lat,lon");
     for (QCommandLineOption* o : {&positionOpt, &shotOpt, &shotAfterOpt, &paletteOpt, &viewOpt, &pageOpt, &editorOpt, &sheetOpt,
-                                  &lockOpt, &recordOpt, &exitAfterOpt, &frameStatsOpt, &seedTrackOpt})
+                                  &lockOpt, &recordOpt, &exitAfterOpt, &frameStatsOpt, &seedTrackOpt, &panPathOpt, &panLegOpt})
         o->setFlags(QCommandLineOption::HiddenFromHelp);
     cli.addOptions({positionOpt, socketOpt, packsOpt, dataOpt, windowOpt, fullscreenOpt, shotOpt, shotAfterOpt, paletteOpt, viewOpt, pageOpt,
-                    editorOpt, sheetOpt, lockOpt, recordOpt, exitAfterOpt, frameStatsOpt, seedTrackOpt});
+                    editorOpt, sheetOpt, lockOpt, recordOpt, exitAfterOpt, frameStatsOpt, seedTrackOpt, panPathOpt, panLegOpt});
     cli.process(app);
 
     QSize windowSize;
@@ -174,6 +211,21 @@ int main(int argc, char* argv[]) {
     const int exitAfterMs = cli.value(exitAfterOpt).toInt(&exitAfterOk);
     if (cli.isSet(exitAfterOpt) && (!exitAfterOk || exitAfterMs < 0)) {
         qCritical() << "--exit-after-ms wants a whole number of ms, got" << cli.value(exitAfterOpt);
+        return 2;
+    }
+    QList<PanPoint> panPath;
+    if (cli.isSet(panPathOpt)) {
+        auto parsed = parsePanPath(cli.value(panPathOpt));
+        if (!parsed) {
+            qCritical().noquote() << "--pan-path:" << parsed.error();
+            return 2;
+        }
+        panPath = *parsed;
+    }
+    bool panLegOk = true;
+    const int panLegMs = cli.isSet(panLegOpt) ? cli.value(panLegOpt).toInt(&panLegOk) : 1500;
+    if (cli.isSet(panLegOpt) && (!panLegOk || panLegMs <= 0)) {
+        qCritical() << "--pan-leg-ms wants a whole number of ms above 0, got" << cli.value(panLegOpt);
         return 2;
     }
     bool seedOk = true;
@@ -251,14 +303,15 @@ int main(int argc, char* argv[]) {
     // Declared before the engine so it is destroyed after it, once the scene graph has released its node.
     auto mapItem = std::make_unique<MapLibreChartMap>();
     QQmlEngine::setObjectOwnership(mapItem.get(), QQmlEngine::CppOwnership);
-    ChartController chart(mapItem->port(), settings, vessel, ais, packs);
+    ChartController chart(mapItem->port(), settings, vessel, ais, packs, packsDir);
     if (startPosition) chart.setStartPosition(startPosition->x(), startPosition->y());
     mapItem->setZoomRange(chart.minZoom(), chart.maxZoom());
     // The controller adds its own refusals (a style it cannot use) to the scan's.
     for (const PackInfo& p : chart.packs())
         if (!p.refused.isEmpty()) qWarning() << "pack refused:" << p.dir << p.refused;
     // sets/<v>/plotter/bin/ up two: the lock of the set this binary belongs to.
-    AppInfo appInfo(chart.packs(), readSetVersion(QCoreApplication::applicationDirPath() + "/../../cheekymarine.lock"));
+    AppInfo appInfo(chart.packs(), chart.packsInUse(), readSetVersion(QCoreApplication::applicationDirPath() + "/../../cheekymarine.lock"),
+                    chart.packNotice());
     connectAppInfo(client, appInfo);
     // The active track always draws, the finished ones when shown.
     if (cli.isSet(seedTrackOpt)) chart.setSeedTrack(syntheticTrack(seedN));
@@ -371,6 +424,19 @@ int main(int argc, char* argv[]) {
             const bool ok = window->grabWindow().save(path);
             qInfo() << "screenshot" << path << (ok ? "saved" : "FAILED");
         });
+    }
+
+    if (!panPath.isEmpty()) {
+        // Same camera path every run: every 16 ms follow is forced off and the center and zoom move.
+        auto panClock = std::make_shared<QElapsedTimer>();
+        panClock->start();
+        auto* panTimer = new QTimer(&app);
+        QObject::connect(panTimer, &QTimer::timeout, &app, [panClock, panPath, panLegMs, port = &mapItem->port(), &chart] {
+            chart.setFollow(false); // a no-op while off; the recenter button can turn it back on
+            const PanPoint p = panAt(panPath, panLegMs, panClock->elapsed());
+            port->setCamera(p.lat, p.lon, p.zoom, 0);
+        });
+        panTimer->start(16);
     }
 
     if (cli.isSet(exitAfterOpt)) QTimer::singleShot(exitAfterMs, &app, &QCoreApplication::quit);

@@ -94,7 +94,8 @@ def enc_pack_path(tmp_path_factory) -> Path:
     cells = [read_cell(fixtures / "US4WA1HK.zip")]
     seabed = (read_usseabed([fixtures / "seabed" / name for name in FILES], region.bbox)
               + read_cmecs(fixtures / "seabed" / "CMECS_OffshoreSeattle.zip", "seattle", region.bbox))
-    return build_enc_mbtiles(cells, base / "enc.mbtiles", region=region, work=base / "work", seabed=seabed)
+    return build_enc_mbtiles(cells, base / "enc.mbtiles", region=region, work=base / "work", seabed=seabed,
+                              zooms=(6, 16))
 
 
 @pytest.fixture(scope="session")

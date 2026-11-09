@@ -55,15 +55,18 @@ Item {
             }
             Line { text: "n2kd: " + (page.appInfo.daemonVersion !== "" ? page.appInfo.daemonVersion : "not connected") }
 
-            Heading { text: "Packs in use" }
-            Line {
-                text: page.appInfo.chartsPack.kind !== undefined ? page.packLine(page.appInfo.chartsPack)
-                                                                 : "No charts pack installed"
+            Heading { text: "Chart packs" }
+            Line { visible: page.appInfo.packsInUse.length === 0; text: "No chart packs installed" }
+            Repeater {
+                model: page.appInfo.packsInUse
+                Line {
+                    required property var modelData
+                    objectName: "aboutPackLine"
+                    text: page.packLine(modelData)
+                }
             }
-            Line {
-                text: page.appInfo.bathyPack.kind !== undefined ? page.packLine(page.appInfo.bathyPack)
-                                                                : "No fishing chart installed"
-            }
+
+            Line { objectName: "aboutPackNotice"; visible: text !== ""; text: page.appInfo.packNotice }
 
             Heading { text: "Refused packs" }
             Line { visible: page.refused.length === 0; text: "None" }

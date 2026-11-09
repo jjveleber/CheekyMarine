@@ -3,8 +3,8 @@ cmake_minimum_required(VERSION 3.25)
 # The app's semver, independent of the root project's (n2kd) version.
 set(PLOTTER_VERSION 0.2.1)
 # The pack manifest schemas this app accepts, inclusive.
-set(PLOTTER_PACK_SCHEMA_MIN 1)
-set(PLOTTER_PACK_SCHEMA_MAX 1)
+set(PLOTTER_PACK_SCHEMA_MIN 2)
+set(PLOTTER_PACK_SCHEMA_MAX 2)
 
 find_package(Qt6 6.5 REQUIRED COMPONENTS Core Gui Network Sql Quick QuickControls2 Svg)
 option(CM_PLOTTER_TESTS "Build the plotter tests (needs Qt Test and QuickTest)" ON)
@@ -28,10 +28,12 @@ add_library(plottercore STATIC
     src/core/Store.cpp
     src/core/Settings.cpp
     src/core/PackCatalog.cpp
+    src/core/PackMerge.cpp
     src/core/StyleLoader.cpp
     src/core/DepthFilters.cpp
     src/core/Geo.cpp
     src/core/Tilings.cpp
+    src/core/PanPath.cpp
     src/core/Overlays.cpp
     src/core/ChartMap.h
     src/core/ChartController.cpp
@@ -81,10 +83,12 @@ if(CM_PLOTTER_TESTS)
     plotter_add_test(tst_store tests/tst_store.cpp)
     plotter_add_test(tst_settings tests/tst_settings.cpp)
     plotter_add_test(tst_packcatalog tests/tst_packcatalog.cpp)
+    plotter_add_test(tst_packmerge tests/tst_packmerge.cpp)
     plotter_add_test(tst_styleloader tests/tst_styleloader.cpp)
     plotter_add_test(tst_depthfilters tests/tst_depthfilters.cpp)
     plotter_add_test(tst_geo tests/tst_geo.cpp)
     plotter_add_test(tst_tilings tests/tst_tilings.cpp)
+    plotter_add_test(tst_panpath tests/tst_panpath.cpp)
     plotter_add_test(tst_overlays tests/tst_overlays.cpp)
     plotter_add_test(tst_chartcontroller tests/tst_chartcontroller.cpp)
     plotter_add_test(tst_sun tests/tst_sun.cpp)

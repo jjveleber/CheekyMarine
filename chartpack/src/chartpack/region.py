@@ -39,12 +39,20 @@ class Region:
     views: list[View]
     seabed_sources: tuple[str, ...] = ("enc",)
     cmecs_blocks: tuple[str, ...] = ()  # keys of seabed.cmecs.BLOCKS
+    overview: bool = False  # the zoom 6 to 9 overview pack: owns no zoom-10 tile
 
 
 def _need(table: dict, key: str, where: str = ""):
     if key not in table:
         raise RegionError(f"missing key {where}{key}")
     return table[key]
+
+
+def _overview(data: dict) -> bool:
+    value = data.get("overview", False)
+    if not isinstance(value, bool):
+        raise RegionError("overview must be true or false")
+    return value
 
 
 def load_region(path: Path) -> Region:
@@ -112,4 +120,5 @@ def load_region(path: Path) -> Region:
         views=views,
         seabed_sources=seabed_sources,
         cmecs_blocks=cmecs_blocks,
+        overview=_overview(data),
     )

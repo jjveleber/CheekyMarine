@@ -46,3 +46,17 @@ def test_seabed_table(tmp_path, regions_dir):
 def test_seabed_table_errors(tmp_path, regions_dir, table, match):
     with pytest.raises(RegionError, match=match):
         load_region(_with_seabed(tmp_path, regions_dir, table))
+
+
+def test_overview_must_be_a_boolean(tmp_path, regions_dir):
+    path = tmp_path / "r.toml"
+    path.write_text('overview = "false"\n' + (regions_dir / "test-cell.toml").read_text())
+    with pytest.raises(RegionError, match="overview must be true or false"):
+        load_region(path)
+
+
+def test_overview_flag(tmp_path, regions_dir):
+    assert load_region(regions_dir / "test-cell.toml").overview is False
+    path = tmp_path / "ov.toml"
+    path.write_text("overview = true\n" + (regions_dir / "test-cell.toml").read_text())
+    assert load_region(path).overview is True

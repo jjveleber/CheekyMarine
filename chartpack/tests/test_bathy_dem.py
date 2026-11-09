@@ -49,7 +49,7 @@ def test_dem_mbtiles_roundtrip(ridge_depth, tmp_path):
         assert md["format"] == "png" and md["cheekymarine:encoding"] == "terrarium"
         assert md["maxzoom"] == "12" and md["minzoom"] == "10" and md["name"] == "dem"
         assert md["bounds"] == "-122.5,47.8,-122.3,48.0"
-        assert md["cheekymarine:pack"] == "bathy" and md["cheekymarine:schema"] == "1"
+        assert md["cheekymarine:pack"] == "bathy" and md["cheekymarine:schema"] == "2"
         assert md["type"] == "baselayer"
         assert len(list(m.tiles_at(10))) >= 1
         x, y, data = next(m.tiles_at(12))

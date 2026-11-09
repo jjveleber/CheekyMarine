@@ -12,6 +12,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QSet>
+#include <QSqlDatabase>
 #include <QSqlQuery>
 #include <QTemporaryDir>
 #include <QtTest>
@@ -212,8 +213,49 @@ struct Rig {
         ais.setLive(true);
     }
     QString chartsDir() const { return tmp.path() + "/packs/charts-puget-north-1.0.0"; }
+    QString packsDir() const { return tmp.path() + "/packs"; }
+    // Installs one more pack (styles only) and lists it. Returns its directory.
+    QString addPack(const QString& kind, const QString& region, const QVersionNumber& version, int minZoom = -1,
+                    int maxZoom = -1, const QList<LegendEntry>& legend = {}) {
+        const QString dir = packsDir() + "/" + kind + "-" + region + "-" + version.toString();
+        if (!copyStyles(dir)) return {};
+        PackInfo p;
+        p.kind = kind;
+        p.region = region;
+        p.version = version;
+        p.dir = dir;
+        p.minZoom = minZoom;
+        p.maxZoom = maxZoom;
+        p.legend = legend;
+        if (kind == "charts") p.valdco = kValdco;
+        packs << p;
+        return dir;
+    }
+    // Writes packs/merged/<kind>/<file> for each file, recording `members` (pack directory names).
+    bool writeMerged(const QString& kind, const QStringList& files, const QStringList& members) {
+        const QString dir = packsDir() + "/merged/" + kind;
+        if (!QDir().mkpath(dir)) return false;
+        for (const QString& f : files) {
+            const QString conn = "merged-" + kind + f;
+            bool ok = false;
+            {
+                QSqlDatabase db = QSqlDatabase::addDatabase("QSQLITE", conn);
+                db.setDatabaseName(dir + "/" + f);
+                QSqlQuery q(db);
+                ok = db.open() && q.exec("CREATE TABLE metadata (name TEXT, value TEXT)");
+                if (ok) {
+                    q.prepare("INSERT INTO metadata VALUES ('cheekymarine:members', ?)");
+                    q.addBindValue(QString::fromUtf8(QJsonDocument(QJsonArray::fromStringList(members)).toJson(QJsonDocument::Compact)));
+                    ok = q.exec();
+                }
+            }
+            QSqlDatabase::removeDatabase(conn);
+            if (!ok) return false;
+        }
+        return true;
+    }
     ChartController& make() {
-        ctrl = std::make_unique<ChartController>(map, *settings, vessel, ais, packs);
+        ctrl = std::make_unique<ChartController>(map, *settings, vessel, ais, packs, packsDir());
         QHash<QString, QImage> imgs;
         for (const QString& id : kImageIds) imgs[id] = QImage(8, 8, QImage::Format_ARGB32_Premultiplied);
         ctrl->setImages(imgs);
@@ -286,6 +328,113 @@ private slots:
         QVERIFY(spriteOf(r.map.styles[1]).endsWith("/bathy-puget-north-1.0.0/sprites/fish"));
         QCOMPARE(paletteOf(r.map.styles[1]), QStringLiteral("day"));
         QVERIFY(r.ctrl->notice().startsWith("Fishing chart"));
+    }
+
+    static QString encUrl(const QJsonObject& style) {
+        return style["sources"].toObject()["enc"].toObject()["url"].toString();
+    }
+    static QString srcUrl(const QJsonObject& style, const QString& name) {
+        return style["sources"].toObject()[name].toObject()["url"].toString();
+    }
+    static QStringList bathyFiles() { return {"bathy.mbtiles", "dem.mbtiles", "bathy-coarse.mbtiles", "dem-coarse.mbtiles"}; }
+
+    void loadsMergedFilesForSeveralPacks() {
+        Rig r;
+        QVERIFY(r.settings);
+        QVERIFY(!r.addPack("charts", "san-juan", QVersionNumber(1, 0, 0)).isEmpty());
+        QVERIFY(!r.addPack("bathy", "san-juan", QVersionNumber(1, 0, 0)).isEmpty());
+        const QStringList cm{"charts-puget-north-1.0.0", "charts-san-juan-1.0.0"};
+        const QStringList bm{"bathy-puget-north-1.0.0", "bathy-san-juan-1.0.0"};
+        QVERIFY(r.writeMerged("charts", {"enc.mbtiles"}, cm));
+        QVERIFY(r.writeMerged("bathy", bathyFiles(), bm));
+        r.make();
+        QCOMPARE(encUrl(r.map.styles[0]), "mbtiles://" + r.packsDir() + "/merged/charts/enc.mbtiles");
+        QVERIFY(r.ctrl->packNotice().isEmpty());
+        r.map.loaded();
+        r.ctrl->setMode("fish");
+        for (const QString& f : bathyFiles())
+            QCOMPARE(srcUrl(r.map.styles[1], f.chopped(8)), "mbtiles://" + r.packsDir() + "/merged/bathy/" + f);
+        QCOMPARE(encUrl(r.map.styles[1]), "mbtiles://" + r.packsDir() + "/merged/charts/enc.mbtiles");
+        QCOMPARE(r.ctrl->packsInUse().size(), 4);
+        QVERIFY(r.ctrl->fishAvailable());
+    }
+
+    void staleMergeFallsBackWithNotice() {
+        Rig r;
+        QVERIFY(r.settings);
+        const QString newest = r.addPack("charts", "san-juan", QVersionNumber(1, 1, 0));
+        QVERIFY(!newest.isEmpty());
+        r.packs.last().valdco = {0, 4};
+        QVERIFY(!r.addPack("bathy", "san-juan", QVersionNumber(1, 1, 0)).isEmpty());
+        QVERIFY(r.settings->setDepths(1.0, 1.9, 12.0));
+        // the merged members name a pack that is not installed
+        QVERIFY(r.writeMerged("charts", {"enc.mbtiles"}, {"charts-gone-1.0.0", "charts-puget-north-1.0.0"}));
+        QVERIFY(r.writeMerged("bathy", bathyFiles(), {"bathy-puget-north-1.0.0", "bathy-san-juan-1.1.0"}));
+        r.make();
+        const QString text = "Chart packs are not merged. Run sudo cheekymarine install again.";
+        QCOMPARE(encUrl(r.map.styles[0]), "mbtiles://" + newest + "/enc.mbtiles");
+        QCOMPARE(r.ctrl->packNotice(), text);
+        QCOMPARE(r.ctrl->packsInUse().size(), 3); // one charts pack, both merged bathy packs
+        r.map.loaded();
+        // the one drawn charts pack has {0, 4}: the other pack's 3.6 is not on screen
+        QCOMPARE(r.map.filters.value("depcnt-safety"), json(R"(["==",["to-number",["get","VALDCO"]],4])"));
+        r.ctrl->setPalette("dusk");
+        QCOMPARE(r.map.styles.size(), 2);
+        QCOMPARE(r.ctrl->packNotice(), text);
+        QCOMPARE(encUrl(r.map.styles[1]), "mbtiles://" + newest + "/enc.mbtiles");
+        r.map.loaded();
+        r.ctrl->setMode("fish"); // bathy merge is current, charts are single: no mixing
+        QCOMPARE(srcUrl(r.map.styles[2], "bathy"), "mbtiles://" + r.packsDir() + "/merged/bathy/bathy.mbtiles");
+        QCOMPARE(encUrl(r.map.styles[2]), "mbtiles://" + newest + "/enc.mbtiles");
+    }
+
+    void singlePackUsesOwnFiles() {
+        Rig r;
+        QVERIFY(r.settings);
+        // a merged dir left over from two packs: ignored for one usable pack
+        QVERIFY(r.writeMerged("charts", {"enc.mbtiles"}, {"charts-gone-1.0.0", "charts-puget-north-1.0.0"}));
+        r.make();
+        QCOMPARE(encUrl(r.map.styles[0]), "mbtiles://" + r.chartsDir() + "/enc.mbtiles");
+        QVERIFY(r.ctrl->packNotice().isEmpty());
+        QCOMPARE(r.ctrl->packsInUse().size(), 2);
+    }
+
+    void zoomAndValdcoAreUnions() {
+        Rig r(true, false, 6, 9);
+        QVERIFY(r.settings);
+        const QList<LegendEntry> la{{"Blds", "boulders", "type"}, {"Sand", "sand", "type"}};
+        const QList<LegendEntry> lb{{"Blds", "boulders again", "type"}, {"Blds", "boulders", "kind2"}};
+        r.packs[0].legend = la;
+        QVERIFY(!r.addPack("charts", "san-juan", QVersionNumber(1, 0, 0), 10, 16, lb).isEmpty());
+        r.packs.last().valdco = {0, 2, 4};
+        const QStringList cm{"charts-puget-north-1.0.0", "charts-san-juan-1.0.0"};
+        QVERIFY(r.writeMerged("charts", {"enc.mbtiles"}, cm));
+        QVERIFY(r.settings->setDepths(1.0, 1.9, 12.0));
+        r.make();
+        r.map.loaded();
+        // puget-north alone would give 3.6; the union {0, 0.9, 1.8, 2, 3.6, ...} gives 2
+        QCOMPARE(r.map.filters.value("depcnt-safety"), json(R"(["==",["to-number",["get","VALDCO"]],2])"));
+        QCOMPARE(r.ctrl->minZoom(), 6.0);
+        QCOMPARE(r.ctrl->maxZoom(), 18.0);
+        QCOMPARE(r.ctrl->legend().size(), 3); // Blds/type, Sand/type, Blds/kind2
+    }
+
+    void fishOutsideBathyLoads() {
+        Rig r;
+        QVERIFY(r.settings);
+        // an overview-only bathy pack: its fine files exist but are empty
+        const QString dir = r.packs.last().dir;
+        for (const char* f : {"bathy.mbtiles", "dem.mbtiles"}) {
+            QFile file(dir + "/" + QString::fromLatin1(f));
+            QVERIFY(file.open(QIODevice::WriteOnly));
+        }
+        r.make();
+        r.map.loaded();
+        QVERIFY(r.ctrl->fishAvailable());
+        r.ctrl->setMode("fish");
+        QCOMPARE(r.ctrl->mode(), QStringLiteral("fish"));
+        QCOMPARE(r.map.styles.size(), 2);
+        for (const PackInfo& p : r.ctrl->packs()) QVERIFY2(p.refused.isEmpty(), qPrintable(p.refused));
     }
 
     void fishRefusedWithoutBathy() {
