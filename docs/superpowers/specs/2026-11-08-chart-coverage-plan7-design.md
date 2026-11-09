@@ -102,7 +102,9 @@ The spike measures: install time to merge, disk use, memory, and frame time whil
 ### 5.4 App changes
 
 - `PackCatalog` keeps every usable pack per kind, not only the best one. The newest version of each region wins; packs with a schema the app does not accept are refused per pack, with the reason, as today.
-- Styles, sprites and glyphs come from the newest installed pack of each kind; all packs of one kind in a set must share the same `schema` (the set build checks this).
+- In merged modes the zoom range, the safety contour depths (`cheekymarine:valdco`) and the legend (`cheekymarine:legend`, the union of the members' `legend.json` written by the merge) come from the merged files, so a member removed from disk still counts.
+
+Styles, sprites and glyphs come from the newest installed pack of each kind; all packs of one kind in a set must share the same `schema` (the set build checks this).
 - Zoom range, legend entries and the ENC `valdco` list (safety contour) are the union across packs.
 - The About page lists every pack with region and version.
 - Fish mode is available wherever a bathy pack covers the view; the "no bathy pack for the charts region" fallback becomes per area.
@@ -111,7 +113,7 @@ The spike measures: install time to merge, disk use, memory, and frame time whil
 
 The owner prefers a full chart from known good merged files over a partial one. For each kind (charts, bathy), checked once at app start:
 
-1. One usable pack: the app uses that pack's own files. Any `merged/<kind>/` dir is ignored. No notice.
+1. One pack of the kind installed, and it is usable: the app uses that pack's own files. Any `merged/<kind>/` dir is ignored. No notice. When more than one pack of the kind is installed (refused packs count), rules 2 to 4 apply even if only one is usable, so known good merged files keep the full chart and a refused pack is named.
 2. Two or more usable packs, and the merged files are valid and their members match the usable packs: the app uses the merged files. No notice.
 3. The merged files are valid but their members differ from the usable packs: the app still uses the merged files (they are full copies of the tiles, so they do not need the member packs on disk). A notice names each difference.
 4. The merged files are missing or not valid: the app uses the newest single pack of that kind, and the notice says which areas are blank.
