@@ -234,8 +234,23 @@ def _z10_tiles(pack):
 
 
 def test_region_pack_not_checked_below_z10(charts_pack_root_copy, test_region):
+    from chartpack.pack.check import _band_zooms
+
+    sources = json.dumps([{"cell": "US3WA1DF"}, {"cell": "US4WA1HK"}])  # a band 3 cell asks for zooms 6 to 10
+    assert min(_band_zooms({"cheekymarine:sources": sources, "minzoom": "6", "maxzoom": "16"})) == 6
+    assert min(_band_zooms({"cheekymarine:sources": sources, "minzoom": "10", "maxzoom": "16"})) == 10
     _prune(charts_pack_root_copy, test_region, _z10_tiles(charts_pack_root_copy), 10, 16)
     assert check_pack(charts_pack_root_copy) == []
+
+
+def test_emptied_enc_pack_still_errors(charts_pack_root_copy, test_region):
+    conn = sqlite3.connect(charts_pack_root_copy / "enc.mbtiles")
+    conn.executescript("create table flat as select * from tiles; drop view tiles; alter table flat rename to tiles;"
+                       "delete from tiles;")
+    conn.commit()
+    conn.close()
+    _refresh(charts_pack_root_copy, test_region)
+    assert any("safety layer" in e for e in check_pack(charts_pack_root_copy))
 
 
 def test_overview_not_checked_at_z10(charts_pack_root_copy, test_region):

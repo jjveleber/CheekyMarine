@@ -231,7 +231,7 @@ def check_pack(pack_root: Path, *, enc_zips: list[Path] | None = None) -> list[s
                 errors += [f"{name}: metadata key {k} missing" for k in missing]
                 if metadata.get("cheekymarine:schema") not in (None, str(SCHEMA_VERSION)):
                     errors.append(f"{name}: schema {metadata['cheekymarine:schema']} is not {SCHEMA_VERSION}")
-                if name.startswith("dem") or missing or not _has_tiles(path):
+                if name.startswith("dem") or missing or (name != "enc.mbtiles" and not _has_tiles(path)):
                     continue
                 errors += _check_vector_layers(name, metadata, LAYERS if name == "enc.mbtiles" else BATHY_LAYER_SPECS)
                 if name == "enc.mbtiles":
