@@ -392,12 +392,12 @@ int main(int argc, char* argv[]) {
     }
 
     if (!panPath.isEmpty()) {
-        // Same camera path every run: follow off, then the center and zoom move every 16 ms.
-        chart.setFollow(false);
+        // Same camera path every run: every 16 ms follow is forced off and the center and zoom move.
         auto panClock = std::make_shared<QElapsedTimer>();
         panClock->start();
         auto* panTimer = new QTimer(&app);
-        QObject::connect(panTimer, &QTimer::timeout, &app, [panClock, panPath, panLegMs, port = &mapItem->port()] {
+        QObject::connect(panTimer, &QTimer::timeout, &app, [panClock, panPath, panLegMs, port = &mapItem->port(), &chart] {
+            chart.setFollow(false); // a no-op while off; the recenter button can turn it back on
             const PanPoint p = panAt(panPath, panLegMs, panClock->elapsed());
             port->setCamera(p.lat, p.lon, p.zoom, 0);
         });
