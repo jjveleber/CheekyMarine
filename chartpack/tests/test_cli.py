@@ -39,6 +39,28 @@ def _grid_region(tmp_path, regions_dir):
     return Path(shutil.copy(regions_dir / "test-cell.toml", tmp_path / "regions"))
 
 
+@pytest.mark.parametrize("overview, zooms", [(False, ("10", "16")), (True, ("6", "9"))])
+def test_build_enc_zoom_range_reaches_tippecanoe(tmp_path, fixtures_dir, regions_dir, monkeypatch, overview, zooms):
+    import shutil
+
+    from chartpack.enc import tiles
+
+    (tmp_path / "cache" / "enc").mkdir(parents=True)
+    shutil.copy(fixtures_dir / "US4WA1HK.zip", tmp_path / "cache" / "enc" / "US4WA1HK-1.3.zip")
+    region = _grid_region(tmp_path, regions_dir)
+    if overview:
+        region.write_text("overview = true\n" + region.read_text())
+    cmds = []
+    monkeypatch.setattr(tiles, "run", cmds.append)
+    with pytest.raises(Exception):  # the patched run writes no mbtiles: only the commands matter
+        main(["build-enc", str(region), str(tmp_path / "out"), "--cache", str(tmp_path / "cache"),
+              "--work", str(tmp_path / "work")])
+    tippecanoe = [c for c in cmds if c[0] == "tippecanoe"]
+    assert tippecanoe
+    for c in tippecanoe:
+        assert (c[c.index("-Z") + 1], c[c.index("-z") + 1]) == zooms
+
+
 def test_build_enc_uses_cached_zip(tmp_path, fixtures_dir, regions_dir):
     import json
     import shutil

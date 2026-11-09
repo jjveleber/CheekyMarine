@@ -320,15 +320,13 @@ def test_metadata_has_no_temp_paths(enc_pack):
     assert md["description"] == "CheekyMarine charts pack test-cell" and "generator_options" not in md
 
 
-@pytest.mark.parametrize("overview, zooms", [(False, (10, 16)), (True, (6, 9))])
-def test_zoom_range_reaches_tippecanoe(tmp_path, fixtures_dir, regions_dir, monkeypatch, overview, zooms):
-    import dataclasses
-
+@pytest.mark.parametrize("zooms", [(10, 16), (6, 9)])
+def test_zoom_range_reaches_tippecanoe(tmp_path, fixtures_dir, regions_dir, monkeypatch, zooms):
     from chartpack.enc import tiles
 
     cmds = []
     monkeypatch.setattr(tiles, "run", cmds.append)
-    region = dataclasses.replace(load_region(regions_dir / "test-cell.toml"), overview=overview)
+    region = load_region(regions_dir / "test-cell.toml")
     with pytest.raises(Exception):  # the patched run writes no mbtiles: only the commands matter
         build_enc_mbtiles([read_cell(fixtures_dir / "US4WA1HK.zip")], tmp_path / "o.mbtiles", region=region,
                           work=tmp_path / "w", zooms=zooms)
