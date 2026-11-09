@@ -33,13 +33,13 @@ def guard(chartpack_dir, tmp_path):
     for f in (fake_time, fake_df):
         f.chmod(f.stat().st_mode | stat.S_IEXEC)
 
-    def run(*cmd, rss_kb=1000, df_seq="9000000"):
+    def run(*cmd, rss_kb=1000, df_seq="9000000", sample_s="0.1"):
         out = tmp_path / "stats.json"
         env = dict(
             os.environ,
             CM_TIME=str(fake_time),
             CM_DF=str(fake_df),
-            CM_SAMPLE_S="0.1",
+            CM_SAMPLE_S=sample_s,
             CM_WORK=str(tmp_path),
             FAKE_RSS_KB=str(rss_kb),
             FAKE_DF_SEQ=df_seq,
@@ -82,3 +82,12 @@ def test_command_failure_passes_through(guard):
     r, stats = guard("sh", "-c", "exit 7")
     assert r.returncode == 7
     assert stats is not None
+
+
+def test_returns_promptly_with_long_sample_interval(guard):
+    # An orphaned sleep would hold the captured pipes open for the full 30 s.
+    import time
+    t0 = time.monotonic()
+    r, _ = guard("true", sample_s="30")
+    assert r.returncode == 0
+    assert time.monotonic() - t0 < 10

@@ -21,7 +21,7 @@ MIN_FREE_KB=2097152
 MAX_ELAPSED_S=18000
 work="${CM_WORK:-.}"
 tmp="$(mktemp -d)"
-trap 'kill "${sampler:-0}" 2>/dev/null; rm -rf "$tmp"' EXIT
+trap '[ -n "${sampler:-}" ] && kill "$sampler" 2>/dev/null; rm -rf "$tmp"' EXIT
 
 free_kb() { "${CM_DF:-df}" -Pk "$work" | awk 'NR==2 {print $4}'; }
 sample() {
@@ -33,7 +33,16 @@ sample() {
 }
 
 sample
-( while sleep "${CM_SAMPLE_S:-10}"; do sample; done ) &
+# The sleep runs in the background and the TERM trap kills it, so no orphan holds the step's output open.
+(
+    trap '[ -n "${nap:-}" ] && kill "$nap" 2>/dev/null; exit 0' TERM
+    while :; do
+        sleep "${CM_SAMPLE_S:-10}" &
+        nap=$!
+        wait "$nap"
+        sample
+    done
+) &
 sampler=$!
 
 start=$SECONDS
@@ -49,6 +58,7 @@ rss="${rss:-0}"
 min_free="$(cat "$tmp/min" 2>/dev/null || echo 0)"
 printf '{"max_rss_kb": %s, "elapsed_s": %s, "min_disk_free_kb": %s}\n' "$rss" "$elapsed" "$min_free" > "$out"
 
+cat "$out"
 bad=0
 [ "$rss" -gt "$MAX_RSS_KB" ] && { echo "runner fit: max RSS over the limit ($rss kB > $MAX_RSS_KB kB)" >&2; bad=1; }
 [ "$min_free" -lt "$MIN_FREE_KB" ] && { echo "runner fit: disk use over the limit (free fell to $min_free kB < $MIN_FREE_KB kB)" >&2; bad=1; }

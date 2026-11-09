@@ -139,6 +139,14 @@ jobs:
             chartpack/dist/build-stats.json
           if-no-files-found: error
 
+      # The guard writes build-stats.json even when it fails the build, so keep it for a dry run over the limits.
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: build-stats
+          path: build-stats.json
+          if-no-files-found: ignore
+
   publish:
     needs: build
     if: github.event_name == 'push'
