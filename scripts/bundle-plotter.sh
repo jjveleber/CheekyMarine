@@ -5,7 +5,7 @@
 # relocatable: the binary has the classic RPATH $ORIGIN/../lib and bin/qt.conf points Qt at
 # plugins/ and qml/.
 # Layout: cheekyplotter-VERSION-x86_64/{bin/{cheekyplotter,qt.conf},lib/,plugins/,qml/,licenses/,
-#         THIRD_PARTY_NOTICES,MANIFEST,DEPS,PACK_SCHEMA}
+#         share/icons/hicolor/scalable/apps/cheekyplotter.svg,THIRD_PARTY_NOTICES,MANIFEST,DEPS,PACK_SCHEMA}
 #   MANIFEST     one line per file: path, a tab, its SPDX license expression
 #   DEPS         sonames the bundle needs from the system (NEEDED entries not in lib/)
 #   PACK_SCHEMA  min=PLOTTER_PACK_SCHEMA_MIN and max=PLOTTER_PACK_SCHEMA_MAX from plotter/CMakeLists.txt
@@ -144,7 +144,7 @@ license_of() {
         lib/libicu*) echo "Unicode-DFS-2016 AND ICU AND BSD-3-Clause AND NAIST-2003" ;;
         lib/libQMapLibre*) echo "BSD-2-Clause AND Unicode-DFS-2016 AND MIT AND curl AND Apache-2.0 AND BSD-3-Clause AND BSL-1.0 AND ISC" ;;
         licenses/*) echo "LicenseRef-license-text" ;;
-        bin/qt.conf|THIRD_PARTY_NOTICES|MANIFEST|DEPS|PACK_SCHEMA) echo "MIT" ;;
+        bin/qt.conf|THIRD_PARTY_NOTICES|MANIFEST|DEPS|PACK_SCHEMA|share/icons/hicolor/scalable/apps/cheekyplotter.svg) echo "MIT" ;;
         *) return 1 ;;
     esac
 }

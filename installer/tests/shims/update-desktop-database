@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Logs and succeeds (desktop database refresh); exits 1 when CM_FAKE_DESKTOP_DB_FAIL is set.
+. "$(dirname "$0")/_shim.sh"
+[ -z "${CM_FAKE_DESKTOP_DB_FAIL:-}" ] || exit 1
+exit 0

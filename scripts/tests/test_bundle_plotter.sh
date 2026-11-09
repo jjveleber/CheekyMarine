@@ -7,7 +7,11 @@
 #   (d) in a clean container per IMAGE (default ubuntu:24.04) with only CM_APT_PACKAGES from
 #       installer/cheekymarine.sh installed (plus xvfb, xauth, libgl1-mesa-dri for the test), ldd
 #       finds every library of the binary, the plugins and the QML plugins, and the plotter starts
-#       under xvfb-run, logs "ready in" and exits 0.
+#       under xvfb-run, logs "ready in" and exits 0,
+#   (e) share/icons/hicolor/scalable/apps/cheekyplotter.svg is byte-identical to
+#       plotter/assets/cheekyplotter.svg, and in each container, after (d) so (d) still sees only
+#       CM_APT_PACKAGES, librsvg2-bin is added and rsvg-convert renders it to a non-empty 256x256 PNG,
+#       as GNOME's librsvg must.
 # Exit 0 when every check passes; otherwise print each failure and exit 1.
 set -euo pipefail
 
@@ -75,6 +79,13 @@ else
     bad "(b) PACK_SCHEMA is '$got', plotter/CMakeLists.txt says '$want'"
 fi
 
+# (e) the app icon, byte for byte
+if cmp -s "$b/share/icons/hicolor/scalable/apps/cheekyplotter.svg" "$root/plotter/assets/cheekyplotter.svg"; then
+    ok "(e) icon"
+else
+    bad "(e) icon missing or differs from plotter/assets/cheekyplotter.svg"
+fi
+
 # (c) RPATH
 dyn="$(readelf -d "$b/bin/cheekyplotter" 2>/dev/null || true)"
 rpath="$(sed -n 's/.*(RPATH).*\[\(.*\)\]$/\1/p' <<< "$dyn")"
@@ -112,6 +123,15 @@ if [ $code -eq 0 ] && grep -q 'ready in' /tmp/run.log; then
 else
     echo "FAIL: (d) launch exit $code, log:"
     sed 's/^/    /' /tmp/run.log
+    rc=1
+fi
+if ! apt-get -qq install -y --no-install-recommends librsvg2-bin >/dev/null 2>&1; then
+    echo "FAIL: (e) apt-get install of librsvg2-bin failed"
+    rc=1
+elif rsvg-convert -w 256 -h 256 -o /tmp/icon.png share/icons/hicolor/scalable/apps/cheekyplotter.svg && [ -s /tmp/icon.png ]; then
+    echo "ok: (e) rsvg-convert renders the icon"
+else
+    echo "FAIL: (e) rsvg-convert could not render share/icons/hicolor/scalable/apps/cheekyplotter.svg"
     rc=1
 fi
 exit $rc

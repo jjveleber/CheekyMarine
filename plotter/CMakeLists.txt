@@ -148,6 +148,7 @@ set_target_properties(cheekyplotter PROPERTIES
     INSTALL_RPATH "\$ORIGIN/../lib"
     INSTALL_RPATH_USE_LINK_PATH OFF)
 install(TARGETS cheekyplotter RUNTIME DESTINATION bin)
+install(FILES assets/cheekyplotter.svg DESTINATION share/icons/hicolor/scalable/apps)
 
 if(CM_PLOTTER_TESTS)
     # QuickTest runner: runs every tests/qml/tst_*.qml against the CheekyMarine module, offscreen.

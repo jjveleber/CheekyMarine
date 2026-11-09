@@ -224,7 +224,7 @@ class Rig:
                                       for k, v in sorted(files.items())).encode()
         return _tar("n2kd-%s-%s" % (ver, arch), files, gz=True)
 
-    def _plotter(self, ver, rng):
+    def _plotter(self, ver, rng, icon=None):
         # --merge-packs DIR records the call and what `current` is at that moment, makes DIR/merged,
         # and exits 1 with a message when CM_FAKE_MERGE_FAIL is set.
         stub = ('#!/bin/sh\n[ -n "$CM_ROOT" ] && echo "cheekyplotter %s $*" >> "$CM_ROOT/calls"\n'
@@ -237,6 +237,8 @@ class Rig:
             "bin/cheekyplotter": (stub.encode(), 0o755),
             "PACK_SCHEMA": ("min=%d\nmax=%d\n" % rng).encode(),
         }
+        if icon is not None:
+            files["share/icons/hicolor/scalable/apps/cheekyplotter.svg"] = icon
         return _tar("cheekyplotter-%s-x86_64" % ver, files, gz=True)
 
     def _pack(self, pack, region, ver, schema):
@@ -247,20 +249,23 @@ class Rig:
         return _tar("%s-%s-%s" % (pack, region, ver), files, gz=False)
 
     def make_set(self, set_ver, plotter_ver, n2kd_ver="0.1.0", charts_ver="1.1.0", bathy_ver="1.1.0",
-                 pack_schema=1, plotter_range=(1, 1), lock_overrides=None, n2kd_tar=None, packs=None):
+                 pack_schema=1, plotter_range=(1, 1), lock_overrides=None, n2kd_tar=None, packs=None,
+                 plotter_icon=None):
         """Build every release of one set under self.base and return the set release dir
         cheekymarine-v<set>/ holding install-cheekymarine.sh (lock embedded by lock-tool.sh),
         cheekymarine.lock and SHA256SUMS. Part releases with the same tag and asset as an earlier
         make_set must be identical (ValueError otherwise). lock_overrides: {key: value} applied to
         the lock after the real hashes, before embedding. n2kd_tar: bytes of a real n2kd x86_64 tarball
         used instead of the fake one. packs: [(kind, region, version[, schema])] in lock order; the
-        default is charts and bathy for puget-north at charts_ver and bathy_ver. The lock is schema 2."""
+        default is charts and bathy for puget-north at charts_ver and bathy_ver. plotter_icon: (bytes, mode)
+        of share/icons/hicolor/scalable/apps/cheekyplotter.svg in the plotter tarball, or None for a
+        bundle with no icon. The lock is schema 2."""
         n2kd_tag, n2kd_asset = "v" + n2kd_ver, "n2kd-%s-x86_64.tar.gz" % n2kd_ver
         n2kd = n2kd_tar or self._n2kd(n2kd_ver)
         self.make_release(n2kd_tag, n2kd_asset, n2kd)
         self.make_release(n2kd_tag, "n2kd-%s-aarch64.tar.gz" % n2kd_ver, self._n2kd(n2kd_ver, "aarch64"))
         plotter_tag, plotter_asset = "plotter-v" + plotter_ver, "cheekyplotter-%s-x86_64.tar.gz" % plotter_ver
-        plotter = self._plotter(plotter_ver, plotter_range)
+        plotter = self._plotter(plotter_ver, plotter_range, plotter_icon)
         self.make_release(plotter_tag, plotter_asset, plotter)
         built = []
         for spec in packs or [("charts", "puget-north", charts_ver), ("bathy", "puget-north", bathy_ver)]:

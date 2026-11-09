@@ -130,6 +130,8 @@ int main(int argc, char* argv[]) {
         return 1;
     }
     QGuiApplication::setApplicationName(QStringLiteral("cheekyplotter"));
+    // GNOME matches the window (Wayland app_id) to cheekyplotter.desktop for its icon.
+    QGuiApplication::setDesktopFileName(QStringLiteral("cheekyplotter"));
 
     const QString appData = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
     QCommandLineParser cli;
