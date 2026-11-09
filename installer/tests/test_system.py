@@ -263,6 +263,15 @@ class TestSystem(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual(self.rig.path(ICON_DIR + "/cheekyplotter.svg").read_bytes(), ICON)
 
+    def test_refresh_failures_only_warn(self):
+        r = self.install(self.rig.make_set("0.1.0", "0.1.0", plotter_icon=(ICON, 0o644)),
+                         env={"CM_FAKE_ICON_CACHE_FAIL": "1", "CM_FAKE_DESKTOP_DB_FAIL": "1"})
+        self.assertIn("cheekymarine: warning: gtk-update-icon-cache failed", r.stderr)
+        self.assertIn("cheekymarine: warning: update-desktop-database failed", r.stderr)
+        self.assertEqual(self.rig.path(ICON_DIR + "/cheekyplotter.svg").read_bytes(), ICON)
+        self.assertEqual(self.rig.path("/usr/share/applications/cheekyplotter.desktop").read_text(), MENU)
+        self.assertTrue(self.opt.joinpath("current").is_symlink())
+
     def test_no_tmp_left(self):
         self.install(self.rig.make_set("0.1.0", "0.1.0", plotter_icon=(ICON, 0o644)))
         self.install(self.rig.make_set("0.2.0", "0.2.0", plotter_icon=(ICON, 0o644)))

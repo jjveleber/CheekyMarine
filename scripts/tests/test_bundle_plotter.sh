@@ -9,8 +9,9 @@
 #       finds every library of the binary, the plugins and the QML plugins, and the plotter starts
 #       under xvfb-run, logs "ready in" and exits 0,
 #   (e) share/icons/hicolor/scalable/apps/cheekyplotter.svg is byte-identical to
-#       plotter/assets/cheekyplotter.svg, and in each container (with librsvg2-bin added for the test)
-#       rsvg-convert renders it to a non-empty 256x256 PNG, as GNOME's librsvg must.
+#       plotter/assets/cheekyplotter.svg, and in each container, after (d) so (d) still sees only
+#       CM_APT_PACKAGES, librsvg2-bin is added and rsvg-convert renders it to a non-empty 256x256 PNG,
+#       as GNOME's librsvg must.
 # Exit 0 when every check passes; otherwise print each failure and exit 1.
 set -euo pipefail
 
@@ -102,7 +103,7 @@ set -u
 export DEBIAN_FRONTEND=noninteractive
 apt-get -qq update >/dev/null && apt-get -qq install -y --no-install-recommends $APT_LIST >/dev/null 2>&1 \
     || { echo "FAIL: apt-get install of CM_APT_PACKAGES failed"; exit 1; }
-apt-get -qq install -y --no-install-recommends xvfb xauth libgl1-mesa-dri librsvg2-bin >/dev/null 2>&1 \
+apt-get -qq install -y --no-install-recommends xvfb xauth libgl1-mesa-dri >/dev/null 2>&1 \
     || { echo "FAIL: apt-get install of the test packages failed"; exit 1; }
 cd /bundle
 rc=0
@@ -124,7 +125,10 @@ else
     sed 's/^/    /' /tmp/run.log
     rc=1
 fi
-if rsvg-convert -w 256 -h 256 -o /tmp/icon.png share/icons/hicolor/scalable/apps/cheekyplotter.svg && [ -s /tmp/icon.png ]; then
+if ! apt-get -qq install -y --no-install-recommends librsvg2-bin >/dev/null 2>&1; then
+    echo "FAIL: (e) apt-get install of librsvg2-bin failed"
+    rc=1
+elif rsvg-convert -w 256 -h 256 -o /tmp/icon.png share/icons/hicolor/scalable/apps/cheekyplotter.svg && [ -s /tmp/icon.png ]; then
     echo "ok: (e) rsvg-convert renders the icon"
 else
     echo "FAIL: (e) rsvg-convert could not render share/icons/hicolor/scalable/apps/cheekyplotter.svg"
