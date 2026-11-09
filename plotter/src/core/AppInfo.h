@@ -18,20 +18,24 @@ class AppInfo : public QObject {
     Q_PROPERTY(bool schemaMismatch READ schemaMismatch NOTIFY schemaMismatchChanged)
     // Every scanned pack: {kind, region, version, notice, refused, inUse}.
     Q_PROPERTY(QVariantList packs READ packs CONSTANT)
-    // The packs in use (the chart controller's choice): {kind, region, version, notice}; empty if none.
-    Q_PROPERTY(QVariantMap chartsPack READ chartsPack CONSTANT)
-    Q_PROPERTY(QVariantMap bathyPack READ bathyPack CONSTANT)
+    // The packs in use (the chart controller's choice): {kind, region, version, notice}, charts first,
+    // then bathy, then by region; empty if none.
+    Q_PROPERTY(QVariantList packsInUse READ packsInUse CONSTANT)
+    // ChartController::packNotice: set when the packs are not merged; empty otherwise.
+    Q_PROPERTY(QString packNotice READ packNotice CONSTANT)
 
 public:
-    explicit AppInfo(const QList<PackInfo>& packs, const QString& setVersion = {}, QObject* parent = nullptr);
+    // `scanned` is every pack found; `inUse` the ones the loaded styles read (ChartController::packsInUse).
+    explicit AppInfo(const QList<PackInfo>& scanned, const QList<PackInfo>& inUse = {}, const QString& setVersion = {},
+                     const QString& packNotice = {}, QObject* parent = nullptr);
 
     QString appVersion() const;
     QString setVersion() const { return m_setVersion; }
     QString daemonVersion() const { return m_daemonVersion; }
     bool schemaMismatch() const { return m_schemaMismatch; }
     QVariantList packs() const { return m_packs; }
-    QVariantMap chartsPack() const { return m_charts; }
-    QVariantMap bathyPack() const { return m_bathy; }
+    QVariantList packsInUse() const { return m_inUse; }
+    QString packNotice() const { return m_packNotice; }
 
 public slots:
     // From N2kClient::daemonVersion (every hello). A new hello clears an earlier mismatch: the
@@ -49,11 +53,12 @@ private:
     QString m_daemonVersion;
     bool m_schemaMismatch = false;
     QVariantList m_packs;
-    QVariantMap m_charts, m_bathy;
+    QVariantList m_inUse;
+    QString m_packNotice;
 };
 
 // The `set` of a cheekymarine.lock (installer/README.md, "Lock format"), or empty when the file is
-// missing or its schema is not 1.
+// missing or its schema is not 1 or 2.
 QString readSetVersion(const QString& lockPath);
 
 // Forwards the client's hello version and schema mismatch to `info`. The client emits the hello's

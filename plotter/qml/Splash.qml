@@ -29,8 +29,27 @@ Rectangle {
     // Touches during the splash go nowhere.
     MouseArea { anchors.fill: parent }
 
-    function packText(p, kind, missing) {
-        return p.version !== undefined ? kind + ": " + p.region + " " + p.version : missing
+    // The packs in use of one kind: one pack reads "Charts: region 1.0.0", several "Charts: 6 packs, 1.0.0"
+    // (the newest version).
+    function packText(kind, label, missing) {
+        const ps = splash.appInfo.packsInUse.filter(p => p.kind === kind)
+        if (ps.length === 0) return missing
+        if (ps.length === 1) return label + ": " + ps[0].region + " " + ps[0].version
+        const newest = ps.map(p => p.version).reduce((a, b) => newer(b, a) ? b : a)
+        return label + ": " + ps.length + " packs, " + newest
+    }
+    function newer(a, b) {
+        const x = a.split("."), y = b.split(".")
+        for (let i = 0; i < Math.max(x.length, y.length); ++i) {
+            const d = (parseInt(x[i]) || 0) - (parseInt(y[i]) || 0)
+            if (d !== 0) return d > 0
+        }
+        return false
+    }
+    // The first charts pack's notice, then the not merged notice when set.
+    readonly property string noticeText: {
+        const first = splash.appInfo.packsInUse.find(p => p.kind === "charts")
+        return [first !== undefined ? first.notice : "", splash.appInfo.packNotice].filter(t => t !== "").join("\n")
     }
 
     // The project logo fills the splash; the emblem is in the middle of the image, so the crop at
@@ -68,7 +87,7 @@ Rectangle {
         InfoLine {
             objectName: "splashCharts"
             // No pack in use: either none is installed, or every one was refused (About says why).
-            text: splash.packText(splash.appInfo.chartsPack, "Charts",
+            text: splash.packText("charts", "Charts",
                                   splash.appInfo.packs.some(p => p.kind === "charts") ? "Charts pack refused: see Settings, About"
                                                                                       : "No charts pack installed")
             font.pixelSize: Units.mm(3.5)
@@ -76,7 +95,7 @@ Rectangle {
         InfoLine {
             objectName: "splashBathy"
             // A bathy pack can also go unused for another region: only a refused one says so.
-            text: splash.packText(splash.appInfo.bathyPack, "Bathy",
+            text: splash.packText("bathy", "Bathy",
                                   splash.appInfo.packs.some(p => p.kind === "bathy" && p.refused !== "") ? "Bathy pack refused: see Settings, About"
                                                                                                          : "No fishing chart installed")
             font.pixelSize: Units.mm(3.5)
@@ -90,7 +109,7 @@ Rectangle {
         width: splash.width - splash.emblemRight - Units.mm(6)
         anchors { bottom: parent.bottom; bottomMargin: Units.mm(3) }
         visible: splash.noticeShown && text !== ""
-        text: splash.appInfo.chartsPack.notice !== undefined ? splash.appInfo.chartsPack.notice : ""
+        text: splash.noticeText
         font.pixelSize: Units.mm(3.5)
         horizontalAlignment: Text.AlignRight
     }
