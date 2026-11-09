@@ -180,7 +180,7 @@ def test_polygon_crossing_tile_edge_is_in_both_tiles(enc_pack, fixtures_dir):
 def test_metadata(enc_pack, fixtures_dir):
     meta, _ = read_cell(fixtures_dir / "US4WA1HK.zip")
     md = enc_pack.metadata()
-    assert md["format"] == "pbf" and md["cheekymarine:schema"] == "1" and md["cheekymarine:pack"] == "charts"
+    assert md["format"] == "pbf" and md["cheekymarine:schema"] == "2" and md["cheekymarine:pack"] == "charts"
     assert md["cheekymarine:region"] == "test-cell" and md["cheekymarine:version"] == "0.1.0"
     assert md["name"] == "charts-test-cell" and md["bounds"] == "-122.4,47.7,-122.1,48.0"
     assert (md["minzoom"], md["maxzoom"]) == ("6", "16")
@@ -202,13 +202,13 @@ def test_missing_tippecanoe_names_install_script(tmp_path, fixtures_dir, regions
     monkeypatch.setattr("chartpack.enc.tiles.shutil.which", lambda name: None)
     with pytest.raises(RuntimeError, match="scripts/install-tippecanoe.sh"):
         build_enc_mbtiles([_cell_without(fixtures_dir, "line")], tmp_path / "o.mbtiles",
-                          region=load_region(regions_dir / "test-cell.toml"), work=tmp_path / "w")
+                          region=load_region(regions_dir / "test-cell.toml"), work=tmp_path / "w", zooms=(6, 16))
 
 
 def test_layer_without_features_is_named(tmp_path, fixtures_dir, regions_dir):
     with pytest.raises(RuntimeError, match="line"):
         build_enc_mbtiles([_cell_without(fixtures_dir, "line")], tmp_path / "o.mbtiles",
-                          region=load_region(regions_dir / "test-cell.toml"), work=tmp_path / "w")
+                          region=load_region(regions_dir / "test-cell.toml"), work=tmp_path / "w", zooms=(6, 16))
 
 
 def _seabed_at(enc_pack, z):
@@ -268,7 +268,7 @@ def test_seabed_thinned_by_scamin_and_size(enc_pack, fixtures_dir):
 def test_build_without_seabed_features(tmp_path, fixtures_dir, regions_dir):
     """seabed is an optional layer (ruling R21): a region with none still builds."""
     out = build_enc_mbtiles([_cell_without(fixtures_dir, "seabed")], tmp_path / "o.mbtiles",
-                            region=load_region(regions_dir / "test-cell.toml"), work=tmp_path / "w")
+                            region=load_region(regions_dir / "test-cell.toml"), work=tmp_path / "w", zooms=(6, 16))
     with MBTiles.open(out) as m:
         md = m.metadata()
     assert "seabed" not in {l["id"] for l in json.loads(md["json"])["vector_layers"]}
@@ -318,3 +318,21 @@ def test_usgs_seabed_in_tiles_not_quilted(enc_pack, fixtures_dir, test_region):
 def test_metadata_has_no_temp_paths(enc_pack):
     md = enc_pack.metadata()
     assert md["description"] == "CheekyMarine charts pack test-cell" and "generator_options" not in md
+
+
+@pytest.mark.parametrize("overview, zooms", [(False, (10, 16)), (True, (6, 9))])
+def test_zoom_range_reaches_tippecanoe(tmp_path, fixtures_dir, regions_dir, monkeypatch, overview, zooms):
+    import dataclasses
+
+    from chartpack.enc import tiles
+
+    cmds = []
+    monkeypatch.setattr(tiles, "run", cmds.append)
+    region = dataclasses.replace(load_region(regions_dir / "test-cell.toml"), overview=overview)
+    with pytest.raises(Exception):  # the patched run writes no mbtiles: only the commands matter
+        build_enc_mbtiles([read_cell(fixtures_dir / "US4WA1HK.zip")], tmp_path / "o.mbtiles", region=region,
+                          work=tmp_path / "w", zooms=zooms)
+    tippecanoe = [c for c in cmds if c[0] == "tippecanoe"]
+    assert tippecanoe
+    for c in tippecanoe:
+        assert c[c.index("-Z") + 1] == str(zooms[0]) and c[c.index("-z") + 1] == str(zooms[1])

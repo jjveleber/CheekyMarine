@@ -76,7 +76,7 @@ def test_bathy_layers_and_metadata(bathy_pack):
     md = bathy_pack.metadata()
     assert md["cheekymarine:pack"] == "bathy"
     assert {l["id"] for l in json.loads(md["json"])["vector_layers"]} == set(BATHY_LAYERS)
-    assert md["cheekymarine:schema"] == "1" and md["cheekymarine:region"] == "test-cell"
+    assert md["cheekymarine:schema"] == "2" and md["cheekymarine:region"] == "test-cell"
     assert md["cheekymarine:version"] == "0.1.0" and md["name"] == "bathy-test-cell"
     assert md["minzoom"] == "10" and md["maxzoom"] == "16" and md["format"] == "pbf"
     assert md["bounds"] == "-122.4,47.7,-122.1,48.0" and md["description"] == "CheekyMarine bathy pack test-cell"

@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 
 from chartpack import __version__
@@ -28,19 +30,33 @@ def test_cells_and_fetch_enc(tmp_path, fixtures_dir, regions_dir, monkeypatch, c
     assert capsys.readouterr().out == "US4WA1HK 1.3 2026-09-09\n"
 
 
+def _grid_region(tmp_path, regions_dir):
+    """A copy of test-cell.toml next to a grid.toml that lists it: build-enc reads the grid beside the region file."""
+    import shutil
+
+    (tmp_path / "regions").mkdir()
+    (tmp_path / "regions" / "grid.toml").write_text('zoom = 10\norder = ["test-cell"]\n')
+    return Path(shutil.copy(regions_dir / "test-cell.toml", tmp_path / "regions"))
+
+
 def test_build_enc_uses_cached_zip(tmp_path, fixtures_dir, regions_dir):
+    import json
     import shutil
 
     from chartpack.mbtiles import MBTiles
 
     (tmp_path / "cache" / "enc").mkdir(parents=True)
     shutil.copy(fixtures_dir / "US4WA1HK.zip", tmp_path / "cache" / "enc" / "US4WA1HK-1.3.zip")
-    args = ["build-enc", str(regions_dir / "test-cell.toml"), str(tmp_path / "out"),
+    args = ["build-enc", str(_grid_region(tmp_path, regions_dir)), str(tmp_path / "out"),
             "--cache", str(tmp_path / "cache"), "--work", str(tmp_path / "work")]
     assert main(args) == 0
     root = tmp_path / "out" / "charts-test-cell-0.1.0"
     with MBTiles.open(root / "enc.mbtiles") as m:
-        assert m.metadata()["cheekymarine:region"] == "test-cell"
+        md = m.metadata()
+        assert md["cheekymarine:region"] == "test-cell" and (md["minzoom"], md["maxzoom"]) == ("10", "16")
+        owned = json.loads(md["cheekymarine:owned"])
+        assert owned and all(isinstance(t, list) and len(t) == 2 for t in owned)
+        assert {z for z in range(17) if any(True for _ in m.tiles_at(z))} <= set(range(10, 17))
     assert (root / "manifest.json").exists() and (root / "styles" / "nav-day.json").exists()
     assert main(["check", str(root), "--enc-cache", str(tmp_path / "cache")]) == 0
     (tmp_path / "cache" / "enc" / "US4WA1HK-1.3.zip").unlink()
@@ -117,7 +133,7 @@ def test_build_bathy_end_to_end(tmp_path, fixtures_dir, regions_dir, monkeypatch
     assert capsys.readouterr().out.strip() == str(root)
     assert opened[0] == "/vsicurl/https://example.test/ncei19_n48x00_w122x50_2023v1.tif" and len(opened) == 2  # tile, then CRM
     assert (root / "styles" / "fish-day.json").exists() and (root / "dem.mbtiles").exists()
-    assert json.loads((root / "manifest.json").read_text())["charts_schema"] == 1
+    assert json.loads((root / "manifest.json").read_text())["charts_schema"] == 2
     assert main(["check", str(root)]) == 0
     with MBTiles.open(root / "bathy.mbtiles") as m:
         md = m.metadata()
@@ -221,6 +237,7 @@ def test_build_enc_merges_usgs_seabed(tmp_path, fixtures_dir, regions_dir):
     from chartpack.mbtiles import MBTiles, decode_pbf
 
     region = _seabed_region(tmp_path, regions_dir)
+    (tmp_path / "grid.toml").write_text('zoom = 10\norder = ["test-cell"]\n')
     cache = tmp_path / "cache"
     (cache / "enc").mkdir(parents=True)
     shutil.copy(fixtures_dir / "US4WA1HK.zip", cache / "enc" / "US4WA1HK-1.3.zip")

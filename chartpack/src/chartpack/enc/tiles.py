@@ -24,9 +24,10 @@ ENC_METADATA_KEYS = (
     "cheekymarine:built",
 )
 
-MINZOOM, MAXZOOM = 6, 16
+REGION_ZOOMS = (10, 16)
+OVERVIEW_ZOOMS = (6, 9)
 
-_COMMON = ["-Z", str(MINZOOM), "-z", str(MAXZOOM), "-r1", "--no-feature-limit", "--no-tile-size-limit",
+_COMMON = ["-r1", "--no-feature-limit", "--no-tile-size-limit",
            "--no-tiny-polygon-reduction", "--no-simplification-of-shared-nodes",
            "--extend-zooms-if-still-dropping", "-P", "--force"]
 _SAFETY_ONLY = ["--detect-shared-borders"]
@@ -54,18 +55,19 @@ def _write_geojsonseq(features: list[Feature], path: Path) -> None:
             }) + "\n")
 
 
-def _tippecanoe(out: Path, layer_files: list[tuple[str, Path]], extra: list[str]) -> None:
-    cmd = ["tippecanoe", "-o", str(out), *_COMMON, *extra]
+def _tippecanoe(out: Path, layer_files: list[tuple[str, Path]], extra: list[str], zooms: tuple[int, int]) -> None:
+    cmd = ["tippecanoe", "-o", str(out), "-Z", str(zooms[0]), "-z", str(zooms[1]), *_COMMON, *extra]
     cmd += [f"-L{name}:{path}" for name, path in layer_files]
     run(cmd)
 
 
 def build_enc_mbtiles(
     cells: list[tuple[CellMeta, list[Feature]]], out: Path, *, region: Region, work: Path,
-    seabed: Sequence[Feature] = (),
+    seabed: Sequence[Feature] = (), zooms: tuple[int, int],
 ) -> Path:
     """`seabed`: USGS survey features (seabed/usseabed.py, seabed/cmecs.py) that already carry their
-    tippecanoe zooms; they join the seabed layer as they are, not quilted (spec 6.10)."""
+    tippecanoe zooms; they join the seabed layer as they are, not quilted (spec 6.10).
+    `zooms`: (minzoom, maxzoom) of the tippecanoe run, REGION_ZOOMS or OVERVIEW_ZOOMS."""
     out, work = Path(out), Path(work)
     work.mkdir(parents=True, exist_ok=True)
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -86,7 +88,7 @@ def build_enc_mbtiles(
     for group, extra in (("safety", _SAFETY_ONLY), ("thinned", [])):
         if groups[group]:
             part = work / f"{group}.mbtiles"
-            _tippecanoe(part, groups[group], extra)
+            _tippecanoe(part, groups[group], extra, zooms)
             parts.append(str(part))
     run(["tile-join", "-o", str(out), "-pk", "-pC", "--force", *parts])
 
@@ -109,8 +111,8 @@ def build_enc_mbtiles(
             "description": f"CheekyMarine charts pack {region.name}",
             "format": "pbf",
             "bounds": f"{w},{s},{e},{n}",
-            "minzoom": str(MINZOOM),
-            "maxzoom": str(MAXZOOM),
+            "minzoom": str(zooms[0]),
+            "maxzoom": str(zooms[1]),
             "cheekymarine:schema": str(SCHEMA_VERSION),
             "cheekymarine:pack": "charts",
             "cheekymarine:region": region.name,

@@ -39,6 +39,7 @@ class Region:
     views: list[View]
     seabed_sources: tuple[str, ...] = ("enc",)
     cmecs_blocks: tuple[str, ...] = ()  # keys of seabed.cmecs.BLOCKS
+    overview: bool = False  # the zoom 6 to 9 overview pack: owns no zoom-10 tile
 
 
 def _need(table: dict, key: str, where: str = ""):
@@ -112,4 +113,5 @@ def load_region(path: Path) -> Region:
         views=views,
         seabed_sources=seabed_sources,
         cmecs_blocks=cmecs_blocks,
+        overview=bool(data.get("overview", False)),
     )

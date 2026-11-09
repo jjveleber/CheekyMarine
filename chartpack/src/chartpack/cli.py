@@ -28,7 +28,8 @@ from chartpack.cache import download
 from chartpack.enc.catalog import CATALOG_URL, cells_in_bbox, parse_catalog
 from chartpack.enc.fetch import fetch_cells
 from chartpack.enc.reader import read_cell
-from chartpack.enc.tiles import build_enc_mbtiles
+from chartpack.enc.tiles import OVERVIEW_ZOOMS, REGION_ZOOMS, build_enc_mbtiles
+from chartpack.grid import keep_tiles, owned_tiles
 from chartpack.pack.archive import archive_pack
 from chartpack.pack.assemble import assemble_bathy_pack, assemble_charts_pack
 from chartpack.pack.check import check_pack
@@ -99,8 +100,11 @@ def _build_enc(args: argparse.Namespace) -> int:
     region = load_region(args.region)
     names = [n for band in sorted(region.cells) for n in region.cells[band]]
     cells = [read_cell(_newest_cached_zip(args.cache, name)) for name in names]
+    owned = owned_tiles(region, args.region.parent)  # before the slow build: a bad grid fails fast
+    zooms = OVERVIEW_ZOOMS if region.overview else REGION_ZOOMS
     enc = build_enc_mbtiles(cells, args.work / "enc.mbtiles", region=region, work=args.work / "tippecanoe",
-                            seabed=_usgs_seabed(region, args.cache))
+                            seabed=_usgs_seabed(region, args.cache), zooms=zooms)
+    keep_tiles(enc, owned, minzoom=zooms[0], maxzoom=zooms[1])
     print(_finish(assemble_charts_pack(region, enc, args.out), region))
     return 0
 

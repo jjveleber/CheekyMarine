@@ -1,0 +1,4 @@
+# Zoom-10 tile ownership order (plan 7): a tile meeting several region boxes goes to the first one listed.
+# sound-south comes first so the tile row holding 47.45 N goes south and Tacoma Narrows stays in sound-south.
+zoom = 10
+order = ["sound-south", "sound-central", "north-sound", "strait", "wa-coast"]
