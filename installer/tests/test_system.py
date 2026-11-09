@@ -7,6 +7,11 @@ from installer.tests.harness import Rig
 EXECSTART = ("ExecStart=/opt/cheekymarine/current/n2kd/usr/bin/n2kd --can can0 --rawlog "
              "/var/lib/cheekymarine/rawlog --pgns "
              "/opt/cheekymarine/current/n2kd/usr/share/cheekymarine/canboat.json")
+ICON = b'<svg xmlns="http://www.w3.org/2000/svg"/>\n'
+ICON_DIR = "/usr/share/icons/hicolor/scalable/apps"
+MENU = ("[Desktop Entry]\nType=Application\nName=CheekyMarine plotter\nComment=Chart plotter\n"
+        "Exec=/opt/cheekymarine/bin/cheekyplotter\nIcon=cheekyplotter\nStartupWMClass=cheekyplotter\n"
+        "Categories=Utility;\nTerminal=false\n")
 
 
 class TestSystem(unittest.TestCase):
@@ -220,10 +225,49 @@ class TestSystem(unittest.TestCase):
         d = self.rig.path(self.rig.home / ".config/autostart")
         f = d / "cheekyplotter.desktop"
         self.assertEqual(f.read_text(), "[Desktop Entry]\nType=Application\nName=CheekyMarine plotter\n"
-                                        "Exec=/opt/cheekymarine/bin/cheekyplotter\n")
+                                        "Exec=/opt/cheekymarine/bin/cheekyplotter\nIcon=cheekyplotter\n"
+                                        "StartupWMClass=cheekyplotter\n")
         uid = os.getuid()
         self.assertEqual(f.stat().st_uid, uid)
         self.assertEqual(d.stat().st_uid, uid)
+
+    def test_menu_entry(self):
+        self.install(self.rig.make_set("0.1.0", "0.1.0"))
+        d = self.rig.path("/usr/share/applications")
+        f = d / "cheekyplotter.desktop"
+        self.assertEqual(f.read_text(), MENU)
+        self.assertEqual(f.stat().st_mode & 0o777, 0o644)
+        self.assertEqual(d.stat().st_mode & 0o777, 0o755)
+        self.assertIn("update-desktop-database -q %s" % d, self.rig.calls())
+
+    def test_icon_installed_from_set(self):
+        self.install(self.rig.make_set("0.1.0", "0.1.0", plotter_icon=(ICON, 0o600)))
+        d = self.rig.path(ICON_DIR)
+        f = d / "cheekyplotter.svg"
+        self.assertEqual(f.read_bytes(), ICON)
+        self.assertEqual(f.stat().st_mode & 0o777, 0o644)
+        self.assertEqual(d.stat().st_mode & 0o777, 0o755)
+        self.assertIn("gtk-update-icon-cache -q -t -f %s" % self.rig.path("/usr/share/icons/hicolor"),
+                      self.rig.calls())
+
+    def test_set_without_icon_installs(self):
+        self.install(self.rig.make_set("0.1.0", "0.1.0"))
+        self.assertFalse(self.rig.path(ICON_DIR + "/cheekyplotter.svg").exists())
+        self.assertFalse([c for c in self.rig.calls() if c.startswith("gtk-update-icon-cache")])
+        self.assertTrue(self.rig.path("/usr/share/applications/cheekyplotter.desktop").is_file())
+
+    def test_icon_kept_when_set_has_none(self):
+        self.install(self.rig.make_set("0.2.0", "0.2.0", plotter_icon=(ICON, 0o644)))
+        rel = self.rig.make_set("0.1.0", "0.1.0")
+        r = self.rig.run("install", script=rel / "install-cheekymarine.sh", tty_answers=["y"])  # a downgrade
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.rig.path(ICON_DIR + "/cheekyplotter.svg").read_bytes(), ICON)
+
+    def test_no_tmp_left(self):
+        self.install(self.rig.make_set("0.1.0", "0.1.0", plotter_icon=(ICON, 0o644)))
+        self.install(self.rig.make_set("0.2.0", "0.2.0", plotter_icon=(ICON, 0o644)))
+        for d, name in (("/usr/share/applications", "cheekyplotter.desktop"), (ICON_DIR, "cheekyplotter.svg")):
+            self.assertEqual(sorted(n.name for n in self.rig.path(d).iterdir()), [name])
 
     def test_new_config_dir_is_private(self):
         cfg = self.rig.path(self.rig.home / ".config")

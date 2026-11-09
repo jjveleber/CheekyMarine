@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Logs and succeeds (desktop database refresh).
+. "$(dirname "$0")/_shim.sh"
+exit 0

@@ -362,9 +362,56 @@ install_autostart() {
 Type=Application
 Name=CheekyMarine plotter
 Exec=/opt/cheekymarine/bin/cheekyplotter
+Icon=cheekyplotter
+StartupWMClass=cheekyplotter
 DESKTOP
   chown "$CM_USER:" "$f.tmp"
   mv -T "$f.tmp" "$f"
+}
+
+# install_icon DIR: copy set DIR's plotter icon into the system hicolor theme (644) and refresh the
+# icon cache. A plotter bundle with no icon (an older release) is skipped and leaves any installed
+# icon in place. A failed cache refresh only warns.
+install_icon() {
+  local src d f
+  src=$1/plotter/share/icons/hicolor/scalable/apps/cheekyplotter.svg
+  [ -f "$src" ] || return 0
+  d=$(p /usr/share/icons/hicolor/scalable/apps)
+  f=$d/cheekyplotter.svg
+  mkdir -p "$d"
+  install -m 644 "$src" "$f.tmp"
+  mv -T "$f.tmp" "$f"
+  if command -v gtk-update-icon-cache > /dev/null; then
+    gtk-update-icon-cache -q -t -f "$(p /usr/share/icons/hicolor)" \
+      || printf 'cheekymarine: warning: gtk-update-icon-cache failed, the icon may show after a relogin\n' >&2
+  fi
+}
+
+# install_menu_entry: the system app-menu entry (app grid, Activities search) that runs the
+# launcher, then refresh the desktop database. A failed refresh only warns. The content names
+# production paths, whatever CM_ROOT is.
+install_menu_entry() {
+  local d f
+  d=$(p /usr/share/applications)
+  f=$d/cheekyplotter.desktop
+  mkdir -p "$d"
+  cat > "$f.tmp" <<'DESKTOP'
+[Desktop Entry]
+Type=Application
+Name=CheekyMarine plotter
+Comment=Chart plotter
+Exec=/opt/cheekymarine/bin/cheekyplotter
+Icon=cheekyplotter
+StartupWMClass=cheekyplotter
+Categories=Utility;
+Terminal=false
+DESKTOP
+  chmod 644 "$f.tmp"
+  mv -T "$f.tmp" "$f"
+  if command -v update-desktop-database > /dev/null; then
+    update-desktop-database -q "$d" \
+      || printf 'cheekymarine: warning: update-desktop-database failed\n' >&2
+  fi
 }
 
 # install_can0: bring can0 up at 250 kbit/s, listen-only, whenever the adapter appears (udev rule
@@ -780,6 +827,8 @@ cmd_install() {
   ensure_group
   install_launcher
   install_autostart
+  install_icon "$CM_SET_DIR"
+  install_menu_entry
   install_can0
   desktop_settings
   switch_to "$CM_SET_DIR"

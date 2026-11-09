@@ -37,6 +37,10 @@ group, and a new group only applies to a new login, so the plotter starts after 
 - `can0` at 250 kbit/s, listen-only, brought up whenever the CAN adapter is plugged in and at boot:
   `/etc/udev/rules.d/80-cheekymarine-can0.rules` and `/etc/systemd/system/cheekymarine-can0.service`.
 - `~/.config/autostart/cheekyplotter.desktop`: the plotter starts when you log in.
+- `/usr/share/applications/cheekyplotter.desktop` and
+  `/usr/share/icons/hicolor/scalable/apps/cheekyplotter.svg`: CheekyMarine in the app grid and
+  Activities search, with its icon (the icon comes from the plotter release, so a set with an older
+  plotter shows a generic icon).
 - Your desktop settings: screen blanking, dimming and automatic sleep are turned off.
 - The apt packages the plotter needs to run.
 - `/var/lib/cheekymarine/db-copies/` and `/var/lib/cheekymarine/db-label`: see "Your data" below.
