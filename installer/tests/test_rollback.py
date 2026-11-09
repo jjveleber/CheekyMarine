@@ -140,6 +140,8 @@ class TestRollback(unittest.TestCase):
         self.assertIsNone(self.link("previous"))
         self.assertEqual(sorted(os.listdir(self.opt / "current/packs")),
                          ["bathy-puget-north-1.1.0", "charts-puget-north-1.0.0"])
+        for pack in os.listdir(self.opt / "current/packs"):  # listdir shows dangling links: resolve each one
+            self.assertTrue(os.path.exists(self.opt / "current/packs" / pack / "manifest.json"), pack)
         self.assertEqual(r.stdout.splitlines(), ["installed: 0.1.0", "  n2kd: 0.1.0", "  charts: 1.0.0",
                                                  "  bathy: 1.1.0", "  plotter: 0.1.0"])
         self.assertEqual(self.rig.run("version", script=self.opt / "bin/cheekymarine").stdout.splitlines()[0],
