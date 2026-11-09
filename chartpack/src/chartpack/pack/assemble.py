@@ -19,6 +19,9 @@ from chartpack.style.sprites import build_sprites
 PROJECT = Path(__file__).resolve().parents[3]
 FONTS = {"Noto Sans Regular": "NotoSans-Regular.ttf", "Noto Sans Bold": "NotoSans-Bold.ttf"}
 
+# Python twin of kBathyFiles in plotter/src/core/PackCatalog.h (same order).
+BATHY_FILES = ("bathy.mbtiles", "dem.mbtiles", "bathy-coarse.mbtiles", "dem-coarse.mbtiles")
+
 _NOTICE_HEAD = """CheekyMarine charts pack {name} {version}
 
 Data source: NOAA ENC (Electronic Navigational Charts), a US Government work.
@@ -139,6 +142,12 @@ def assemble_bathy_pack(region: Region, bathy_mbtiles: Path, dem_mbtiles: Path, 
     shutil.copyfile(dem_mbtiles, root / "dem.mbtiles")
     with MBTiles.open(bathy_mbtiles) as m:
         metadata = m.metadata()
+    # The coarse files are present but hold no tiles until the overview build fills them.
+    for fine, coarse in (("bathy.mbtiles", "bathy-coarse.mbtiles"), ("dem.mbtiles", "dem-coarse.mbtiles")):
+        with MBTiles.open(root / fine) as src:
+            meta = src.metadata()
+        with MBTiles.create(root / coarse, fmt=meta.get("format", "pbf")) as dst:
+            dst.set_metadata(meta)
 
     write_styles(root, "bathy")
 
