@@ -48,6 +48,13 @@ def _need(table: dict, key: str, where: str = ""):
     return table[key]
 
 
+def _overview(data: dict) -> bool:
+    value = data.get("overview", False)
+    if not isinstance(value, bool):
+        raise RegionError("overview must be true or false")
+    return value
+
+
 def load_region(path: Path) -> Region:
     path = Path(path)
     with path.open("rb") as f:
@@ -113,5 +120,5 @@ def load_region(path: Path) -> Region:
         views=views,
         seabed_sources=seabed_sources,
         cmecs_blocks=cmecs_blocks,
-        overview=bool(data.get("overview", False)),
+        overview=_overview(data),
     )
