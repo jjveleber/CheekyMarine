@@ -3,8 +3,8 @@ cmake_minimum_required(VERSION 3.25)
 # The app's semver, independent of the root project's (n2kd) version.
 set(PLOTTER_VERSION 0.2.1)
 # The pack manifest schemas this app accepts, inclusive.
-set(PLOTTER_PACK_SCHEMA_MIN 1)
-set(PLOTTER_PACK_SCHEMA_MAX 1)
+set(PLOTTER_PACK_SCHEMA_MIN 2)
+set(PLOTTER_PACK_SCHEMA_MAX 2)
 
 find_package(Qt6 6.5 REQUIRED COMPONENTS Core Gui Network Sql Quick QuickControls2 Svg)
 option(CM_PLOTTER_TESTS "Build the plotter tests (needs Qt Test and QuickTest)" ON)

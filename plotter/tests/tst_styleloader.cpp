@@ -7,6 +7,15 @@
 namespace {
 // QVERIFY2 evaluates its message eagerly, and expected::error() on a value is undefined.
 template <class R> QByteArray errText(const R& r) { return r.has_value() ? QByteArray() : r.error().toLocal8Bit(); }
+// Source files as the app gives them: enc from /p/charts, the four bathy sources from /p/bathy.
+// An empty `bathy` leaves the bathy sources out, an empty `charts` leaves enc out.
+QHash<QString, QString> files(const QString& charts = "/p/charts", const QString& bathy = "/p/bathy") {
+    QHash<QString, QString> f;
+    if (!charts.isEmpty()) f["enc"] = charts + "/enc.mbtiles";
+    if (!bathy.isEmpty())
+        for (const char* n : {"bathy", "dem", "bathy-coarse", "dem-coarse"}) f[n] = bathy + "/" + n + ".mbtiles";
+    return f;
+}
 QJsonObject load(const QString& name) {
     QFile f(QStringLiteral(PLOTTER_FIXTURES "/styles/") + name + QStringLiteral(".json"));
     if (!f.open(QIODevice::ReadOnly)) return {};
@@ -36,7 +45,7 @@ private slots:
         const QJsonObject in = load(name);
         QVERIFY(!in.isEmpty());
         const QString packDir = fish ? "/p/bathy" : "/p/charts";
-        auto r = rewriteStyle(in, packDir, "/p/charts", "/p/bathy");
+        auto r = rewriteStyle(in, packDir, files());
         QVERIFY2(r.has_value(), errText(r).constData());
         const QJsonObject out = *r;
         const QJsonObject src = out["sources"].toObject();
@@ -44,6 +53,8 @@ private slots:
         if (fish) {
             QCOMPARE(src["bathy"].toObject()["url"].toString(), QStringLiteral("mbtiles:///p/bathy/bathy.mbtiles"));
             QCOMPARE(src["dem"].toObject()["url"].toString(), QStringLiteral("mbtiles:///p/bathy/dem.mbtiles"));
+            QCOMPARE(src["bathy-coarse"].toObject()["url"].toString(), QStringLiteral("mbtiles:///p/bathy/bathy-coarse.mbtiles"));
+            QCOMPARE(src["dem-coarse"].toObject()["url"].toString(), QStringLiteral("mbtiles:///p/bathy/dem-coarse.mbtiles"));
             QCOMPARE(out["sprite"].toString(), QStringLiteral("file:///p/bathy/sprites/fish"));
             QCOMPARE(out["glyphs"].toString(), QStringLiteral("file:///p/bathy/glyphs/{fontstack}/{range}.pbf"));
         } else {
@@ -77,7 +88,7 @@ private slots:
         enc["url"] = "https://x";
         sources["enc"] = enc;
         s["sources"] = sources;
-        QVERIFY(!rewriteStyle(s, "/p/charts", "/p/charts", "/p/bathy").has_value());
+        QVERIFY(!rewriteStyle(s, "/p/charts", files()).has_value());
     }
     void rejectsMismatchedAndUnknownSources() {
         QJsonObject s = load("nav-day");
@@ -86,26 +97,40 @@ private slots:
         enc["url"] = "mbtiles://bathy";
         sources["enc"] = enc;
         s["sources"] = sources;
-        QVERIFY(!rewriteStyle(s, "/p/charts", "/p/charts", "/p/bathy").has_value());
+        QVERIFY(!rewriteStyle(s, "/p/charts", files()).has_value());
 
         s = load("nav-day");
         sources = s["sources"].toObject();
-        sources["other"] = sources["enc"];
+        sources["fooo"] = sources["enc"];
         s["sources"] = sources;
-        QVERIFY(!rewriteStyle(s, "/p/charts", "/p/charts", "/p/bathy").has_value());
+        QVERIFY(!rewriteStyle(s, "/p/charts", files()).has_value());
     }
     void rejectsOddPackValues() {
         QJsonObject s = load("nav-day");
         s["sprite"] = "pack://glyphs/nav";
-        QVERIFY(!rewriteStyle(s, "/p/charts", "/p/charts", "/p/bathy").has_value());
+        QVERIFY(!rewriteStyle(s, "/p/charts", files()).has_value());
         s = load("nav-day");
         s["glyphs"] = "pack://glyphs/other";
-        QVERIFY(!rewriteStyle(s, "/p/charts", "/p/charts", "/p/bathy").has_value());
+        QVERIFY(!rewriteStyle(s, "/p/charts", files()).has_value());
+    }
+    void rewritesCoarseSources() {
+        QJsonObject s = load("fish-day");
+        auto r = rewriteStyle(s, "/p/bathy", files());
+        QVERIFY2(r.has_value(), errText(r).constData());
+        QCOMPARE(r->value("sources").toObject()["bathy-coarse"].toObject()["url"].toString(),
+                 QStringLiteral("mbtiles:///p/bathy/bathy-coarse.mbtiles"));
+    }
+    void missingSourceFileIsError() {
+        QHash<QString, QString> f = files();
+        f.remove("dem-coarse");
+        auto r = rewriteStyle(load("fish-day"), "/p/bathy", f);
+        QVERIFY(!r.has_value());
+        QCOMPARE(r.error(), QStringLiteral("source dem-coarse needs a pack that is not there"));
     }
     void noSpritePassesThrough() {
         QJsonObject s = load("nav-day");
         s.remove("sprite");
-        auto r = rewriteStyle(s, "/p/charts", "/p/charts", "/p/bathy");
+        auto r = rewriteStyle(s, "/p/charts", files());
         QVERIFY2(r.has_value(), errText(r).constData());
         QVERIFY(!r->contains("sprite"));
         QCOMPARE(r->value("glyphs").toString(), QStringLiteral("file:///p/charts/glyphs/{fontstack}/{range}.pbf"));
@@ -113,22 +138,22 @@ private slots:
     void noGlyphsPassesThrough() {
         QJsonObject s = load("nav-day");
         s.remove("glyphs");
-        auto r = rewriteStyle(s, "/p/charts", "/p/charts", "/p/bathy");
+        auto r = rewriteStyle(s, "/p/charts", files());
         QVERIFY2(r.has_value(), errText(r).constData());
         QVERIFY(!r->contains("glyphs"));
         QCOMPARE(r->value("sprite").toString(), QStringLiteral("file:///p/charts/sprites/nav"));
     }
     void badChartsDirErrors() {
         for (const char* d : {"rel", "/a?b", "/a%20b"})
-            QVERIFY(!rewriteStyle(load("nav-day"), "/p/charts", d, "/p/bathy").has_value());
+            QVERIFY(!rewriteStyle(load("nav-day"), "/p/charts", files(d)).has_value());
     }
     // No bathy pack (empty bathyDir): a style using a bathy-pack source cannot be rewritten; one
     // using only enc can.
     void bathySourceWithoutBathyDirErrors() {
-        QVERIFY(!rewriteStyle(load("fish-day"), "/p/bathy", "/p/charts", "").has_value());
-        auto r = rewriteStyle(load("nav-day"), "/p/charts", "/p/charts", "");
+        QVERIFY(!rewriteStyle(load("fish-day"), "/p/bathy", files("/p/charts", "")).has_value());
+        auto r = rewriteStyle(load("nav-day"), "/p/charts", files("/p/charts", ""));
         QVERIFY2(r.has_value(), errText(r).constData());
-        QVERIFY(!rewriteStyle(load("nav-day"), "/p/charts", "", "/p/bathy").has_value());
+        QVERIFY(!rewriteStyle(load("nav-day"), "/p/charts", files("", "/p/bathy")).has_value());
     }
 };
 

@@ -1,6 +1,7 @@
 #include "core/StyleLoader.h"
 #include <QDir>
 #include <QJsonValue>
+#include <QStringList>
 
 std::expected<QString, QString> tileUrl(const QString& absMbtilesPath) {
     if (!QDir::isAbsolutePath(absMbtilesPath))
@@ -10,20 +11,25 @@ std::expected<QString, QString> tileUrl(const QString& absMbtilesPath) {
     return QStringLiteral("mbtiles://") + absMbtilesPath;
 }
 
+namespace {
+const QStringList kSourceNames{"enc", "bathy", "dem", "bathy-coarse", "dem-coarse"};
+}
+
 std::expected<QJsonObject, QString> rewriteStyle(QJsonObject style, const QString& packDir,
-                                                 const QString& chartsDir, const QString& bathyDir) {
+                                                 const QHash<QString, QString>& sourceFiles) {
     const QString prefix = QStringLiteral("mbtiles://");
     QJsonObject sources = style.value(QStringLiteral("sources")).toObject();
     for (auto it = sources.begin(); it != sources.end(); ++it) {
         const QString name = it.key();
-        if (name != QLatin1String("enc") && name != QLatin1String("bathy") && name != QLatin1String("dem"))
+        if (!kSourceNames.contains(name))
             return std::unexpected(QStringLiteral("unknown source: ") + name);
         QJsonObject src = it.value().toObject();
         if (src.value(QStringLiteral("url")).toString() != prefix + name)
             return std::unexpected(QStringLiteral("source %1 url is not %2%1").arg(name, prefix));
-        const QString dir = name == QLatin1String("enc") ? chartsDir : bathyDir;
-        if (dir.isEmpty()) return std::unexpected(QStringLiteral("source %1 needs a pack that is not there").arg(name));
-        auto url = tileUrl(dir + QLatin1Char('/') + name + QStringLiteral(".mbtiles"));
+        const auto file = sourceFiles.constFind(name);
+        if (file == sourceFiles.constEnd())
+            return std::unexpected(QStringLiteral("source %1 needs a pack that is not there").arg(name));
+        auto url = tileUrl(*file);
         if (!url) return std::unexpected(url.error());
         src[QStringLiteral("url")] = *url;
         it.value() = src;

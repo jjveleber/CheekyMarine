@@ -303,7 +303,7 @@ int main(int argc, char* argv[]) {
     // Declared before the engine so it is destroyed after it, once the scene graph has released its node.
     auto mapItem = std::make_unique<MapLibreChartMap>();
     QQmlEngine::setObjectOwnership(mapItem.get(), QQmlEngine::CppOwnership);
-    ChartController chart(mapItem->port(), settings, vessel, ais, packs);
+    ChartController chart(mapItem->port(), settings, vessel, ais, packs, packsDir);
     if (startPosition) chart.setStartPosition(startPosition->x(), startPosition->y());
     mapItem->setZoomRange(chart.minZoom(), chart.maxZoom());
     // The controller adds its own refusals (a style it cannot use) to the scan's.

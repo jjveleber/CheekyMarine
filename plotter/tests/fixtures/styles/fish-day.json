@@ -31,6 +31,16 @@
       "url": "mbtiles://dem",
       "encoding": "terrarium",
       "tileSize": 256
+    },
+    "bathy-coarse": {
+      "type": "vector",
+      "url": "mbtiles://bathy-coarse"
+    },
+    "dem-coarse": {
+      "type": "raster-dem",
+      "url": "mbtiles://dem-coarse",
+      "encoding": "terrarium",
+      "tileSize": 256
     }
   },
   "sprite": "pack://sprites/fish",

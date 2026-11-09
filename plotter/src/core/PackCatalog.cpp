@@ -133,9 +133,7 @@ QList<PackInfo> PackCatalog::scan(const QString& dir) {
                    || mo.value(QStringLiteral("version")).toString() != m.captured(3)) {
             p.refused = QStringLiteral("name does not match manifest");
         } else {
-            const QStringList files = p.kind == QLatin1String("charts")
-                ? QStringList{QStringLiteral("enc.mbtiles")}
-                : QStringList{QStringLiteral("bathy.mbtiles"), QStringLiteral("dem.mbtiles")};
+            const QStringList& files = p.kind == QLatin1String("charts") ? kChartsFiles : kBathyFiles;
             for (const QString& f : files) {
                 if (!QFileInfo::exists(p.dir + QLatin1Char('/') + f)) {
                     p.refused = QStringLiteral("missing ") + f;

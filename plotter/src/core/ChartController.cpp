@@ -4,6 +4,7 @@
 #include "core/Legend.h"
 #include "core/DepthFilters.h"
 #include "core/Overlays.h"
+#include "core/PackMerge.h"
 #include "core/Settings.h"
 #include "core/StyleLoader.h"
 #include "core/Tracks.h"
@@ -11,6 +12,8 @@
 #include <QDebug>
 #include <QElapsedTimer>
 #include <QFile>
+#include <QFileInfo>
+#include <QSet>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <algorithm>
@@ -105,32 +108,30 @@ QList<QJsonObject> runtimeLayers(const OverlayColours& c, const QColor& trackCol
 
 QString styleName(const QString& mode, const QString& palette) { return mode + QLatin1Char('-') + palette; }
 
-// The `mode` ("nav" or "fish") style for `palette`, read from its pack (bathy for fish, charts for
-// nav) and rewritten to load from local files. `bathy` is the bathy pack in use, if any.
-std::expected<QJsonObject, QString> readStyle(const QString& mode, const QString& palette, const PackInfo& charts,
-                                              const std::optional<PackInfo>& bathy) {
-    const QString bathyDir = bathy ? bathy->dir : QString();
-    const QString packDir = mode == QLatin1String("fish") ? bathyDir : charts.dir;
+// The `mode` ("nav" or "fish") style for `palette`, read from `packDir` (the newest bathy pack for
+// fish, the newest charts pack for nav) and rewritten to read the tile files in `sourceFiles`.
+std::expected<QJsonObject, QString> readStyle(const QString& mode, const QString& palette, const QString& packDir,
+                                              const QHash<QString, QString>& sourceFiles) {
     QFile f(packDir + QStringLiteral("/styles/") + styleName(mode, palette) + QStringLiteral(".json"));
     if (!f.open(QIODevice::ReadOnly)) return std::unexpected(QStringLiteral("cannot be read"));
     QJsonParseError err;
     const QJsonDocument doc = QJsonDocument::fromJson(f.readAll(), &err);
     if (err.error != QJsonParseError::NoError || !doc.isObject())
         return std::unexpected(QStringLiteral("bad JSON: ") + err.errorString());
-    return rewriteStyle(doc.object(), packDir, charts.dir, bathyDir);
+    return rewriteStyle(doc.object(), packDir, sourceFiles);
 }
 
-// The day, dusk and night `mode` styles of these packs, keyed by styleName, each read, rewritten and
+// The day, dusk and night `mode` styles of `packDir`, keyed by styleName, each read, rewritten and
 // checked to take the depth filters; or why they cannot be used. The error is the same for any depths.
-std::expected<QHash<QString, QJsonObject>, QString> readStyles(const QString& mode, const PackInfo& charts,
-                                                               const std::optional<PackInfo>& bathy,
-                                                               const Depths& depths) {
+std::expected<QHash<QString, QJsonObject>, QString> readStyles(const QString& mode, const QString& packDir,
+                                                               const QHash<QString, QString>& sourceFiles,
+                                                               const QList<double>& valdco, const Depths& depths) {
     QHash<QString, QJsonObject> styles;
     for (const QString& palette : {QStringLiteral("day"), QStringLiteral("dusk"), QStringLiteral("night")}) {
         const QString name = styleName(mode, palette);
         QString error;
-        if (auto style = readStyle(mode, palette, charts, bathy)) {
-            if (auto filters = depthFilters(*style, depths, safetyContour(charts.valdco, depths.safetyM)); !filters)
+        if (auto style = readStyle(mode, palette, packDir, sourceFiles)) {
+            if (auto filters = depthFilters(*style, depths, safetyContour(valdco, depths.safetyM)); !filters)
                 error = filters.error();
             else
                 styles.insert(name, *style);
@@ -142,42 +143,124 @@ std::expected<QHash<QString, QJsonObject>, QString> readStyles(const QString& mo
     }
     return styles;
 }
+
+// The newest pack: highest version, then first region name. `usable` is not empty.
+const PackInfo& newestOf(const QList<PackInfo>& usable) {
+    const PackInfo* best = &usable.first();
+    for (const PackInfo& p : usable)
+        if (p.version > best->version || (p.version == best->version && p.region < best->region)) best = &p;
+    return *best;
+}
+
+// The tile files one pack kind's styles read, by source name, and the packs behind them.
+struct KindFiles {
+    QHash<QString, QString> files;
+    QList<PackInfo> inUse;
+    bool stale = false; // several packs, merged files missing or for other packs
+};
+
+// One usable pack: its own files. Several: the files in <packsDir>/merged/<kind>/ when every one lists
+// exactly these packs as members, else the newest single pack's (never a mix) and `stale` set.
+KindFiles kindFiles(const QList<PackInfo>& usable, const QString& kind, const QStringList& fileNames,
+                    const QString& packsDir) {
+    KindFiles k;
+    if (usable.isEmpty()) return k;
+    const PackInfo& newest = newestOf(usable);
+    const QString mergedDir = packsDir + QStringLiteral("/merged/") + kind;
+    bool merged = false;
+    if (usable.size() > 1) {
+        QStringList want;
+        for (const PackInfo& p : usable) want << QFileInfo(p.dir).fileName();
+        want.sort();
+        merged = true;
+        for (const QString& f : fileNames) {
+            QStringList have = mergeMembers(mergedDir + QLatin1Char('/') + f);
+            have.sort();
+            if (have != want) merged = false;
+        }
+        k.stale = !merged;
+    }
+    const QString base = merged ? mergedDir : newest.dir;
+    for (const QString& f : fileNames) k.files.insert(f.chopped(8), base + QLatin1Char('/') + f); // ".mbtiles"
+    k.inUse = merged ? usable : QList<PackInfo>{newest};
+    return k;
+}
 } // namespace
 
 ChartController::ChartController(ChartMap& map, Settings& settings, VesselModel& vessel, AisModel& ais,
-                                 QList<PackInfo> packs, QObject* parent)
-    : QObject(parent), m_map(map), m_settings(settings), m_vessel(vessel), m_ais(ais), m_packs(std::move(packs)) {
+                                 QList<PackInfo> packs, const QString& packsDir, QObject* parent)
+    : QObject(parent), m_map(map), m_settings(settings), m_vessel(vessel), m_ais(ais), m_packs(std::move(packs)),
+      m_packsDir(packsDir) {
     // A pack whose styles cannot be used is refused, with the reason, and the next best one is tried.
     const Depths depths = currentDepths();
     const auto refuse = [this](const QString& dir, const QString& reason) {
         for (PackInfo& p : m_packs)
             if (p.dir == dir) p.refused = reason;
     };
-    // The bathy pack is picked for each charts candidate first: nav styles load with it too.
-    while ((m_charts = PackCatalog::best(m_packs, u"charts"))) {
-        while ((m_bathy = PackCatalog::best(m_packs, u"bathy", m_charts->region))) {
-            auto fish = readStyles(QStringLiteral("fish"), *m_charts, m_bathy, depths);
+    QList<PackInfo> charts;
+    bool stale = false;
+    // The newest bathy pack is picked for each charts candidate first: nav styles load with it too.
+    for (;;) {
+        charts = PackCatalog::usable(m_packs, u"charts");
+        if (charts.isEmpty()) break;
+        m_charts = newestOf(charts);
+        m_valdco.clear();
+        for (const PackInfo& c : charts)
+            for (double v : c.valdco)
+                if (!m_valdco.contains(v)) m_valdco.append(v);
+        std::sort(m_valdco.begin(), m_valdco.end());
+        const KindFiles cf = kindFiles(charts, QStringLiteral("charts"), kChartsFiles, m_packsDir);
+        const auto withFiles = [&cf](const KindFiles& bathy) {
+            QHash<QString, QString> files = cf.files;
+            files.insert(bathy.files);
+            return files;
+        };
+        KindFiles bf;
+        for (;;) {
+            const QList<PackInfo> bathy = PackCatalog::usable(m_packs, u"bathy");
+            if (bathy.isEmpty()) {
+                m_bathy.reset();
+                bf = {};
+                break;
+            }
+            m_bathy = newestOf(bathy);
+            bf = kindFiles(bathy, QStringLiteral("bathy"), kBathyFiles, m_packsDir);
+            auto fish = readStyles(QStringLiteral("fish"), m_bathy->dir, withFiles(bf), m_valdco, depths);
             if (fish) {
                 m_styles.insert(*fish);
                 break;
             }
             refuse(m_bathy->dir, fish.error());
         }
-        auto nav = readStyles(QStringLiteral("nav"), *m_charts, m_bathy, depths);
+        auto nav = readStyles(QStringLiteral("nav"), m_charts->dir, withFiles(bf), m_valdco, depths);
         if (nav) {
             m_styles.insert(*nav);
+            m_inUse = cf.inUse + bf.inUse;
+            stale = cf.stale || bf.stale;
             break;
         }
         m_styles.clear(); // the refused charts pack's fish styles
         refuse(m_charts->dir, nav.error());
     }
-    if (m_charts) {
-        for (const LegendEntry& e : m_charts->legend)
-            m_legend.append(QVariantMap{{QStringLiteral("abbr"), e.abbr}, {QStringLiteral("meaning"), e.meaning},
-                                        {QStringLiteral("kind"), e.kind}});
-        m_minZoom = m_charts->minZoom >= 0 ? m_charts->minZoom : kFallbackMinZoom;
-        m_maxZoom = m_charts->maxZoom >= 0 ? m_charts->maxZoom + kOverzoom : kFallbackMaxZoom;
+    if (!charts.isEmpty()) {
+        QSet<QPair<QString, QString>> seen;
+        int minZ = -1, maxZ = -1;
+        for (const PackInfo& c : charts) {
+            for (const LegendEntry& e : c.legend)
+                if (!seen.contains({e.abbr, e.kind})) {
+                    seen.insert({e.abbr, e.kind});
+                    m_legend.append(QVariantMap{{QStringLiteral("abbr"), e.abbr},
+                                                {QStringLiteral("meaning"), e.meaning},
+                                                {QStringLiteral("kind"), e.kind}});
+                }
+            if (c.minZoom >= 0) minZ = minZ < 0 ? c.minZoom : std::min(minZ, c.minZoom);
+            if (c.maxZoom >= 0) maxZ = std::max(maxZ, c.maxZoom);
+        }
+        m_minZoom = minZ >= 0 ? minZ : kFallbackMinZoom;
+        m_maxZoom = maxZ >= 0 ? maxZ + kOverzoom : kFallbackMaxZoom;
+        if (stale) m_packNotice = QStringLiteral("Chart packs are not merged. Run sudo cheekymarine install again.");
     } else {
+        m_charts.reset();
         m_bathy.reset(); // the last refused charts pack's
         m_styles.clear();
         qWarning() << "ChartController: no usable charts pack";
@@ -337,7 +420,7 @@ void ChartController::setStartPosition(double lat, double lon) {
 void ChartController::applyDepthFilters() {
     if (!m_ready || !m_charts) return;
     const Depths d = currentDepths();
-    auto filters = depthFilters(m_style, d, safetyContour(m_charts->valdco, d.safetyM));
+    auto filters = depthFilters(m_style, d, safetyContour(m_valdco, d.safetyM));
     if (!filters) { // the pack was checked at start; its files changed since
         qWarning() << "ChartController: depth filters not applied:" << filters.error();
         return;
