@@ -66,6 +66,8 @@ Item {
                 }
             }
 
+            Line { objectName: "aboutPackNotice"; visible: text !== ""; text: page.appInfo.packNotice }
+
             Heading { text: "Refused packs" }
             Line { visible: page.refused.length === 0; text: "None" }
             Repeater {

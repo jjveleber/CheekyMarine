@@ -931,6 +931,24 @@ TestCase {
         compare(H.byName(splash, "splashNotice").text, "Chart packs are not merged. Run sudo cheekymarine install again.")
         appInfoStub.packNotice = ""
     }
+    function test_splashPackNoticeIgnoresChartNoticeSetting() {
+        appInfoStub.packs = []
+        appInfoStub.packsInUse = packs("charts", 2, "charts notice")
+        appInfoStub.packNotice = "Chart packs are not merged. Run sudo cheekymarine install again."
+        const splash = createTemporaryObject(splashComp, testCase, { width: 1024, height: 600, appInfo: appInfoStub, noticeShown: false })
+        compare(H.byName(splash, "splashNotice").text, "Chart packs are not merged. Run sudo cheekymarine install again.")
+        verify(H.byName(splash, "splashNotice").visible)
+        appInfoStub.packNotice = ""
+    }
+    function test_aboutShowsPackNotice() {
+        appInfoStub.packNotice = "Chart packs are not merged. Run sudo cheekymarine install again."
+        let about = createTemporaryObject(aboutPageComp, testCase, { width: 1024, height: 600, appInfo: appInfoStub })
+        compare(H.byName(about, "aboutPackNotice").text, "Chart packs are not merged. Run sudo cheekymarine install again.")
+        verify(H.byName(about, "aboutPackNotice").visible)
+        appInfoStub.packNotice = ""
+        about = createTemporaryObject(aboutPageComp, testCase, { width: 1024, height: 600, appInfo: appInfoStub })
+        verify(!H.byName(about, "aboutPackNotice").visible)
+    }
     function test_aboutListsEveryPack() {
         appInfoStub.packs = []
         appInfoStub.packsInUse = packs("charts", 6, "").concat(packs("bathy", 6, ""))

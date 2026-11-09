@@ -8,7 +8,7 @@ Rectangle {
     id: splash
     required property QtObject appInfo // AppInfo
     property int minimumMs: 5000
-    property bool noticeShown: true // the showChartNotice setting: off leaves the notice line out here too
+    property bool noticeShown: true // the showChartNotice setting: off leaves the pack's own notice out here (not the not merged one)
     // White over the logo by day and dusk; at night the logo is dimmed and the lines take the night red.
     readonly property color infoColor: Theme.palette === "night" ? Theme.text : "#ffffff"
     // The emblem (the round badge) spans the middle half of the 1408 px wide image and almost its full
@@ -46,10 +46,11 @@ Rectangle {
         }
         return false
     }
-    // The first charts pack's notice, then the not merged notice when set.
+    // The first charts pack's notice (when the setting allows), then the not merged notice when set: that
+    // one is a fault to fix, not a disclaimer, so the setting does not hide it.
     readonly property string noticeText: {
         const first = splash.appInfo.packsInUse.find(p => p.kind === "charts")
-        return [first !== undefined ? first.notice : "", splash.appInfo.packNotice].filter(t => t !== "").join("\n")
+        return [first !== undefined && splash.noticeShown ? first.notice : "", splash.appInfo.packNotice].filter(t => t !== "").join("\n")
     }
 
     // The project logo fills the splash; the emblem is in the middle of the image, so the crop at
@@ -108,7 +109,7 @@ Rectangle {
         x: splash.emblemRight + Units.mm(3)
         width: splash.width - splash.emblemRight - Units.mm(6)
         anchors { bottom: parent.bottom; bottomMargin: Units.mm(3) }
-        visible: splash.noticeShown && text !== ""
+        visible: text !== ""
         text: splash.noticeText
         font.pixelSize: Units.mm(3.5)
         horizontalAlignment: Text.AlignRight
