@@ -8,6 +8,7 @@
 #include "core/Geo.h"
 #include "core/N2kClient.h"
 #include "core/PackCatalog.h"
+#include "core/PanPath.h"
 #include "core/PaletteController.h"
 #include "core/Recovery.h"
 #include "core/Settings.h"
@@ -119,12 +120,14 @@ int main(int argc, char* argv[]) {
     QCommandLineOption exitAfterOpt("exit-after-ms", "Quit N ms after start.", "ms");
     QCommandLineOption frameStatsOpt("frame-stats", "Print the frame interval and track write summaries at quit.");
     QCommandLineOption seedTrackOpt("seed-track", "Prepend N synthetic points to every active-track write (for the frame measurement).", "n");
+    QCommandLineOption panPathOpt("pan-path", "Pan the chart through LAT,LON,ZOOM;LAT,LON,ZOOM;... again and again (follow off).", "path");
+    QCommandLineOption panLegOpt("pan-leg-ms", "Time for each --pan-path leg (default 1500).", "ms");
     QCommandLineOption positionOpt("position", "Chart center while there is no vessel position.", "lat,lon");
     for (QCommandLineOption* o : {&positionOpt, &shotOpt, &shotAfterOpt, &paletteOpt, &viewOpt, &pageOpt, &editorOpt, &sheetOpt,
-                                  &lockOpt, &recordOpt, &exitAfterOpt, &frameStatsOpt, &seedTrackOpt})
+                                  &lockOpt, &recordOpt, &exitAfterOpt, &frameStatsOpt, &seedTrackOpt, &panPathOpt, &panLegOpt})
         o->setFlags(QCommandLineOption::HiddenFromHelp);
     cli.addOptions({positionOpt, socketOpt, packsOpt, dataOpt, windowOpt, fullscreenOpt, shotOpt, shotAfterOpt, paletteOpt, viewOpt, pageOpt,
-                    editorOpt, sheetOpt, lockOpt, recordOpt, exitAfterOpt, frameStatsOpt, seedTrackOpt});
+                    editorOpt, sheetOpt, lockOpt, recordOpt, exitAfterOpt, frameStatsOpt, seedTrackOpt, panPathOpt, panLegOpt});
     cli.process(app);
 
     QSize windowSize;
@@ -174,6 +177,21 @@ int main(int argc, char* argv[]) {
     const int exitAfterMs = cli.value(exitAfterOpt).toInt(&exitAfterOk);
     if (cli.isSet(exitAfterOpt) && (!exitAfterOk || exitAfterMs < 0)) {
         qCritical() << "--exit-after-ms wants a whole number of ms, got" << cli.value(exitAfterOpt);
+        return 2;
+    }
+    QList<PanPoint> panPath;
+    if (cli.isSet(panPathOpt)) {
+        auto parsed = parsePanPath(cli.value(panPathOpt));
+        if (!parsed) {
+            qCritical().noquote() << "--pan-path:" << parsed.error();
+            return 2;
+        }
+        panPath = *parsed;
+    }
+    bool panLegOk = true;
+    const int panLegMs = cli.isSet(panLegOpt) ? cli.value(panLegOpt).toInt(&panLegOk) : 1500;
+    if (cli.isSet(panLegOpt) && (!panLegOk || panLegMs <= 0)) {
+        qCritical() << "--pan-leg-ms wants a whole number of ms above 0, got" << cli.value(panLegOpt);
         return 2;
     }
     bool seedOk = true;
@@ -371,6 +389,19 @@ int main(int argc, char* argv[]) {
             const bool ok = window->grabWindow().save(path);
             qInfo() << "screenshot" << path << (ok ? "saved" : "FAILED");
         });
+    }
+
+    if (!panPath.isEmpty()) {
+        // Same camera path every run: follow off, then the center and zoom move every 16 ms.
+        chart.setFollow(false);
+        auto panClock = std::make_shared<QElapsedTimer>();
+        panClock->start();
+        auto* panTimer = new QTimer(&app);
+        QObject::connect(panTimer, &QTimer::timeout, &app, [panClock, panPath, panLegMs, port = &mapItem->port()] {
+            const PanPoint p = panAt(panPath, panLegMs, panClock->elapsed());
+            port->setCamera(p.lat, p.lon, p.zoom, 0);
+        });
+        panTimer->start(16);
     }
 
     if (cli.isSet(exitAfterOpt)) QTimer::singleShot(exitAfterMs, &app, &QCoreApplication::quit);
