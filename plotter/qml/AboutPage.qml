@@ -1,7 +1,8 @@
 import QtQuick
 import QtQuick.Controls.Basic
 
-// App version, n2kd version (from its hello), the packs in use and the refused packs with reasons.
+// App version, n2kd version (from its hello), the packs shown, merged or single per kind, every pack
+// notice line, and the refused packs with reasons.
 Item {
     id: page
     required property QtObject appInfo // AppInfo
@@ -14,6 +15,10 @@ Item {
     function packLine(p) {
         return p.kind === undefined ? "" : p.kind + " " + p.region + " " + p.version
     }
+    // "Charts: merged" or "Bathy: single" for each kind with a pack shown.
+    readonly property var modeLines: [["charts", "Charts"], ["bathy", "Bathy"]]
+        .filter(k => appInfo.packModes[k[0]] !== undefined)
+        .map(k => k[1] + ": " + (appInfo.packModes[k[0]].startsWith("merged") ? "merged" : "single"))
 
     BigButton {
         id: backButton
@@ -62,11 +67,25 @@ Item {
                 Line {
                     required property var modelData
                     objectName: "aboutPackLine"
-                    text: page.packLine(modelData)
+                    text: page.packLine(modelData) + (modelData.onDisk === false ? " (pack removed)" : "")
                 }
             }
-
-            Line { objectName: "aboutPackNotice"; visible: text !== ""; text: page.appInfo.packNotice }
+            Repeater {
+                model: page.modeLines
+                Line {
+                    required property var modelData
+                    objectName: "aboutPackMode"
+                    text: modelData
+                }
+            }
+            Repeater {
+                model: page.appInfo.packNotices
+                Line {
+                    required property var modelData
+                    objectName: "aboutPackNotice"
+                    text: modelData
+                }
+            }
 
             Heading { text: "Refused packs" }
             Line { visible: page.refused.length === 0; text: "None" }

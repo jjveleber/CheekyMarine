@@ -2,6 +2,7 @@
 #include "core/ChartController.h"
 #include "core/Geo.h"
 #include "core/Overlays.h"
+#include "core/PackMerge.h"
 #include "core/Settings.h"
 #include "core/Store.h"
 #include "core/Tracks.h"
@@ -11,6 +12,7 @@
 #include <QFile>
 #include <QJsonArray>
 #include <QJsonDocument>
+#include <QJsonObject>
 #include <QSet>
 #include <QSqlDatabase>
 #include <QSqlQuery>
@@ -191,6 +193,7 @@ struct Rig {
         const QString charts = tmp.path() + "/packs/charts-puget-north-1.0.0";
         const QString bathyDir = tmp.path() + "/packs/bathy-puget-north-1.0.0";
         if (!copyStyles(charts) || !copyStyles(bathyDir)) return;
+        if (!writeManifest(charts) || !writeManifest(bathyDir)) return;
         PackInfo c;
         c.kind = "charts";
         c.region = "puget-north";
@@ -218,7 +221,7 @@ struct Rig {
     QString addPack(const QString& kind, const QString& region, const QVersionNumber& version, int minZoom = -1,
                     int maxZoom = -1, const QList<LegendEntry>& legend = {}) {
         const QString dir = packsDir() + "/" + kind + "-" + region + "-" + version.toString();
-        if (!copyStyles(dir)) return {};
+        if (!copyStyles(dir) || !writeManifest(dir)) return {};
         PackInfo p;
         p.kind = kind;
         p.region = region;
@@ -231,10 +234,50 @@ struct Rig {
         packs << p;
         return dir;
     }
-    // Writes packs/merged/<kind>/<file> for each file, recording `members` (pack directory names).
-    bool writeMerged(const QString& kind, const QStringList& files, const QStringList& members) {
+    // A manifest.json naming the pack dir, so each pack's manifest hash differs.
+    static bool writeManifest(const QString& dir, const QByteArray& extra = {}) {
+        QFile f(dir + "/manifest.json");
+        return f.open(QIODevice::WriteOnly | QIODevice::Truncate)
+            && f.write("{\"dir\": \"" + QFileInfo(dir).fileName().toUtf8() + "\"" + extra + "}") > 0;
+    }
+    // Writes packs/merged/<kind>/<file> for each file, recording `members` (pack directory names, each
+    // with the SHA-256 of its manifest.json now, or of nothing when it has none) and `schema`.
+    // `oldFormat` records the members as a plain array of names, as before #97.
+    // Charts files also record `valdco`, or when it is empty the union over the listed packs in `packs`.
+    bool writeMerged(const QString& kind, const QStringList& files, const QStringList& members,
+                     int schema = PLOTTER_PACK_SCHEMA_MIN, bool oldFormat = false, QList<double> valdco = {}) {
+        if (valdco.isEmpty())
+            for (const PackInfo& p : packs)
+                if (members.contains(QFileInfo(p.dir).fileName()))
+                    for (double v : p.valdco)
+                        if (!valdco.contains(v)) valdco.append(v);
+        std::sort(valdco.begin(), valdco.end());
+        QJsonArray valdcoJson;
+        for (double v : valdco) valdcoJson.append(v);
+        // zooms and legend: the union over the listed packs, as mergePacks writes them
+        int minZ = -1, maxZ = -1;
+        QJsonArray legendJson;
+        QSet<QPair<QString, QString>> seen;
+        for (const PackInfo& p : packs)
+            if (members.contains(QFileInfo(p.dir).fileName())) {
+                if (p.minZoom >= 0) minZ = minZ < 0 ? p.minZoom : std::min(minZ, p.minZoom);
+                maxZ = std::max(maxZ, p.maxZoom);
+                for (const LegendEntry& e : p.legend)
+                    if (!seen.contains({e.abbr, e.kind})) {
+                        seen.insert({e.abbr, e.kind});
+                        legendJson.append(QJsonObject{{"abbr", e.abbr}, {"meaning", e.meaning}, {"kind", e.kind}});
+                    }
+            }
         const QString dir = packsDir() + "/merged/" + kind;
         if (!QDir().mkpath(dir)) return false;
+        QJsonArray list;
+        for (const QString& m : members) {
+            QFile mf(packsDir() + "/" + m + "/manifest.json");
+            const QByteArray bytes = mf.open(QIODevice::ReadOnly) ? mf.readAll() : QByteArray();
+            list.append(oldFormat ? QJsonValue(m)
+                                  : QJsonObject{{"dir", m},
+                                                {"manifest_sha256", QString::fromLatin1(QCryptographicHash::hash(bytes, QCryptographicHash::Sha256).toHex())}});
+        }
         for (const QString& f : files) {
             const QString conn = "merged-" + kind + f;
             bool ok = false;
@@ -244,8 +287,21 @@ struct Rig {
                 QSqlQuery q(db);
                 ok = db.open() && q.exec("CREATE TABLE metadata (name TEXT, value TEXT)");
                 if (ok) {
-                    q.prepare("INSERT INTO metadata VALUES ('cheekymarine:members', ?)");
-                    q.addBindValue(QString::fromUtf8(QJsonDocument(QJsonArray::fromStringList(members)).toJson(QJsonDocument::Compact)));
+                    q.prepare("INSERT INTO metadata VALUES ('cheekymarine:members', ?), ('cheekymarine:schema', ?)");
+                    q.addBindValue(QString::fromUtf8(QJsonDocument(list).toJson(QJsonDocument::Compact)));
+                    q.addBindValue(QString::number(schema));
+                    ok = q.exec();
+                }
+                if (ok && kind == "charts") {
+                    q.prepare("INSERT INTO metadata VALUES ('cheekymarine:valdco', ?), ('cheekymarine:legend', ?)");
+                    q.addBindValue(QString::fromUtf8(QJsonDocument(valdcoJson).toJson(QJsonDocument::Compact)));
+                    q.addBindValue(QString::fromUtf8(QJsonDocument(legendJson).toJson(QJsonDocument::Compact)));
+                    ok = q.exec();
+                }
+                if (ok && kind == "charts" && maxZ >= 0) {
+                    q.prepare("INSERT INTO metadata VALUES ('minzoom', ?), ('maxzoom', ?)");
+                    q.addBindValue(QString::number(minZ));
+                    q.addBindValue(QString::number(maxZ));
                     ok = q.exec();
                 }
             }
@@ -253,6 +309,26 @@ struct Rig {
             if (!ok) return false;
         }
         return true;
+    }
+    // Sets metadata `name` of packs/merged/<kind>/<file> to `value`.
+    bool setMergedMeta(const QString& kind, const QString& file, const QString& name, const QString& value) {
+        const QString conn = "meta-" + kind + file;
+        bool ok = false;
+        {
+            QSqlDatabase db = QSqlDatabase::addDatabase("QSQLITE", conn);
+            db.setDatabaseName(packsDir() + "/merged/" + kind + "/" + file);
+            QSqlQuery q(db);
+            ok = db.open();
+            q.prepare("DELETE FROM metadata WHERE name = ?");
+            q.addBindValue(name);
+            ok = ok && q.exec();
+            q.prepare("INSERT INTO metadata VALUES (?, ?)");
+            q.addBindValue(name);
+            q.addBindValue(value);
+            ok = ok && q.exec();
+        }
+        QSqlDatabase::removeDatabase(conn);
+        return ok;
     }
     ChartController& make() {
         ctrl = std::make_unique<ChartController>(map, *settings, vessel, ais, packs, packsDir());
@@ -349,7 +425,7 @@ private slots:
         QVERIFY(r.writeMerged("bathy", bathyFiles(), bm));
         r.make();
         QCOMPARE(encUrl(r.map.styles[0]), "mbtiles://" + r.packsDir() + "/merged/charts/enc.mbtiles");
-        QVERIFY(r.ctrl->packNotice().isEmpty());
+        QVERIFY(r.ctrl->packNotices().isEmpty());
         r.map.loaded();
         r.ctrl->setMode("fish");
         for (const QString& f : bathyFiles())
@@ -359,33 +435,347 @@ private slots:
         QVERIFY(r.ctrl->fishAvailable());
     }
 
-    void staleMergeFallsBackWithNotice() {
+    static QVariantMap modes(const char* charts, const char* bathy) {
+        return {{"charts", QString::fromLatin1(charts)}, {"bathy", QString::fromLatin1(bathy)}};
+    }
+    static QStringList inUse(const ChartController& c) {
+        QStringList out;
+        for (const PackInfo& p : c.packsInUse())
+            out << p.kind + " " + p.region + " " + p.version.toString() + (p.onDisk ? "" : " gone");
+        return out;
+    }
+
+    void mergedMatchingHasNoNotice() {
+        Rig r;
+        QVERIFY(r.settings);
+        QVERIFY(!r.addPack("charts", "san-juan", QVersionNumber(1, 0, 0)).isEmpty());
+        QVERIFY(!r.addPack("bathy", "san-juan", QVersionNumber(1, 0, 0)).isEmpty());
+        QVERIFY(r.writeMerged("charts", {"enc.mbtiles"}, {"charts-puget-north-1.0.0", "charts-san-juan-1.0.0"}));
+        QVERIFY(r.writeMerged("bathy", bathyFiles(), {"bathy-puget-north-1.0.0", "bathy-san-juan-1.0.0"}));
+        r.make();
+        QCOMPARE(encUrl(r.map.styles[0]), "mbtiles://" + r.packsDir() + "/merged/charts/enc.mbtiles");
+        QCOMPARE(r.ctrl->packModes(), modes("merged", "merged"));
+        QCOMPARE(r.ctrl->packNotices(), QStringList());
+    }
+
+    void newerPackKeepsMergedWithNotice() {
+        Rig r;
+        QVERIFY(r.settings);
+        QVERIFY(!r.addPack("charts", "san-juan", QVersionNumber(1, 0, 0)).isEmpty());
+        QVERIFY(!r.addPack("charts", "san-juan", QVersionNumber(1, 1, 0)).isEmpty());
+        QVERIFY(r.writeMerged("charts", {"enc.mbtiles"}, {"charts-puget-north-1.0.0", "charts-san-juan-1.0.0"}));
+        const QString text = "Charts: san-juan shows 1.0.0, 1.1.0 is installed. Run sudo cheekymarine install again.";
+        QTest::ignoreMessage(QtWarningMsg, qPrintable("ChartController: " + text));
+        r.make();
+        QCOMPARE(encUrl(r.map.styles[0]), "mbtiles://" + r.packsDir() + "/merged/charts/enc.mbtiles");
+        QCOMPARE(r.ctrl->packModes(), modes("merged-stale", "single"));
+        QCOMPARE(r.ctrl->packNotices(), QStringList{text});
+        QCOMPARE(inUse(*r.ctrl), (QStringList{"charts puget-north 1.0.0", "charts san-juan 1.0.0", "bathy puget-north 1.0.0"}));
+    }
+
+    void unmergedPackKeepsMergedWithNotice() {
+        Rig r;
+        QVERIFY(r.settings);
+        QVERIFY(!r.addPack("charts", "san-juan", QVersionNumber(1, 0, 0)).isEmpty());
+        QVERIFY(!r.addPack("charts", "strait", QVersionNumber(1, 0, 0)).isEmpty());
+        QVERIFY(r.writeMerged("charts", {"enc.mbtiles"}, {"charts-puget-north-1.0.0", "charts-san-juan-1.0.0"}));
+        r.make();
+        QCOMPARE(encUrl(r.map.styles[0]), "mbtiles://" + r.packsDir() + "/merged/charts/enc.mbtiles");
+        QCOMPARE(r.ctrl->packModes(), modes("merged-stale", "single"));
+        QCOMPARE(r.ctrl->packNotices(),
+                 QStringList{"Charts: strait is installed but not merged, so it is not shown. Run sudo cheekymarine install again."});
+    }
+
+    void refusedPackNotInMergedNotice() {
+        Rig r;
+        QVERIFY(r.settings);
+        QVERIFY(!r.addPack("charts", "san-juan", QVersionNumber(1, 0, 0)).isEmpty());
+        QVERIFY(!r.addPack("charts", "strait", QVersionNumber(1, 0, 0)).isEmpty());
+        r.packs.last().refused = "schema 1 not supported";
+        // a refused pack in the merged files: its tiles are shown, no notice
+        QVERIFY(!r.addPack("charts", "admiralty", QVersionNumber(1, 0, 0)).isEmpty());
+        r.packs.last().refused = "styles missing";
+        QVERIFY(r.writeMerged("charts", {"enc.mbtiles"},
+                              {"charts-admiralty-1.0.0", "charts-puget-north-1.0.0", "charts-san-juan-1.0.0"}));
+        r.make();
+        QCOMPARE(encUrl(r.map.styles[0]), "mbtiles://" + r.packsDir() + "/merged/charts/enc.mbtiles");
+        QCOMPARE(r.ctrl->packModes(), modes("merged-stale", "single"));
+        QCOMPARE(r.ctrl->packNotices(),
+                 QStringList{"Charts: strait 1.0.0 was refused (schema 1 not supported). Remove it or install a newer set."});
+        QCOMPARE(inUse(*r.ctrl), (QStringList{"charts admiralty 1.0.0", "charts puget-north 1.0.0", "charts san-juan 1.0.0",
+                                              "bathy puget-north 1.0.0"}));
+    }
+
+    void memberGoneIsShownNotFlagged() {
+        Rig r;
+        QVERIFY(r.settings);
+        QVERIFY(!r.addPack("charts", "san-juan", QVersionNumber(1, 0, 0)).isEmpty());
+        // a member whose dir is gone: region with a dash, version from the last part of the name
+        QVERIFY(r.writeMerged("charts", {"enc.mbtiles"},
+                              {"charts-gone-strait-2.10.3", "charts-puget-north-1.0.0", "charts-san-juan-1.0.0"}));
+        r.make();
+        QCOMPARE(encUrl(r.map.styles[0]), "mbtiles://" + r.packsDir() + "/merged/charts/enc.mbtiles");
+        QCOMPARE(r.ctrl->packModes(), modes("merged", "single"));
+        QCOMPARE(r.ctrl->packNotices(), QStringList());
+        QCOMPARE(inUse(*r.ctrl), (QStringList{"charts gone-strait 2.10.3 gone", "charts puget-north 1.0.0",
+                                              "charts san-juan 1.0.0", "bathy puget-north 1.0.0"}));
+    }
+
+    void changedManifestIsADifference() {
+        Rig r;
+        QVERIFY(r.settings);
+        const QString sj = r.addPack("charts", "san-juan", QVersionNumber(1, 0, 0));
+        QVERIFY(!sj.isEmpty());
+        QVERIFY(r.writeMerged("charts", {"enc.mbtiles"}, {"charts-puget-north-1.0.0", "charts-san-juan-1.0.0"}));
+        QVERIFY(Rig::writeManifest(sj, ", \"rebuilt\": true")); // same name and version, changed in place
+        r.make();
+        QCOMPARE(encUrl(r.map.styles[0]), "mbtiles://" + r.packsDir() + "/merged/charts/enc.mbtiles");
+        QCOMPARE(r.ctrl->packModes(), modes("merged-stale", "single"));
+        QCOMPARE(r.ctrl->packNotices(),
+                 QStringList{"Charts: san-juan 1.0.0 changed after it was merged. Run sudo cheekymarine install again."});
+    }
+
+    void missingMergedFallsBackToSingle() {
         Rig r;
         QVERIFY(r.settings);
         const QString newest = r.addPack("charts", "san-juan", QVersionNumber(1, 1, 0));
         QVERIFY(!newest.isEmpty());
         r.packs.last().valdco = {0, 4};
-        QVERIFY(!r.addPack("bathy", "san-juan", QVersionNumber(1, 1, 0)).isEmpty());
+        QVERIFY(!r.addPack("bathy", "san-juan", QVersionNumber(1, 0, 0)).isEmpty());
         QVERIFY(r.settings->setDepths(1.0, 1.9, 12.0));
-        // the merged members name a pack that is not installed
-        QVERIFY(r.writeMerged("charts", {"enc.mbtiles"}, {"charts-gone-1.0.0", "charts-puget-north-1.0.0"}));
-        QVERIFY(r.writeMerged("bathy", bathyFiles(), {"bathy-puget-north-1.0.0", "bathy-san-juan-1.1.0"}));
+        // no charts merge; the bathy merge lacks one of its four files
+        QVERIFY(r.writeMerged("bathy", bathyFiles().mid(0, 3), {"bathy-puget-north-1.0.0", "bathy-san-juan-1.0.0"}));
         r.make();
-        const QString text = "Chart packs are not merged. Run sudo cheekymarine install again.";
+        const QStringList text{
+            "Charts: merged files are missing or damaged. Showing san-juan only; other areas are blank. Run sudo cheekymarine install again.",
+            "Bathy: merged files are missing or damaged. Showing puget-north only; other areas have no depth. Run sudo cheekymarine install again."};
         QCOMPARE(encUrl(r.map.styles[0]), "mbtiles://" + newest + "/enc.mbtiles");
-        QCOMPARE(r.ctrl->packNotice(), text);
-        QCOMPARE(r.ctrl->packsInUse().size(), 3); // one charts pack, both merged bathy packs
+        QCOMPARE(r.ctrl->packModes(), modes("single-fallback", "single-fallback"));
+        QCOMPARE(r.ctrl->packNotices(), text);
+        QCOMPARE(inUse(*r.ctrl), (QStringList{"charts san-juan 1.1.0", "bathy puget-north 1.0.0"}));
         r.map.loaded();
         // the one drawn charts pack has {0, 4}: the other pack's 3.6 is not on screen
         QCOMPARE(r.map.filters.value("depcnt-safety"), json(R"(["==",["to-number",["get","VALDCO"]],4])"));
-        r.ctrl->setPalette("dusk");
-        QCOMPARE(r.map.styles.size(), 2);
-        QCOMPARE(r.ctrl->packNotice(), text);
+        r.ctrl->setMode("fish");
+        QCOMPARE(srcUrl(r.map.styles[1], "bathy"), "mbtiles://" + r.packsDir() + "/bathy-puget-north-1.0.0/bathy.mbtiles");
         QCOMPARE(encUrl(r.map.styles[1]), "mbtiles://" + newest + "/enc.mbtiles");
+    }
+
+    void badSchemaMergedFallsBack() {
+        Rig r;
+        QVERIFY(r.settings);
+        QVERIFY(!r.addPack("charts", "san-juan", QVersionNumber(1, 0, 0)).isEmpty());
+        QVERIFY(r.writeMerged("charts", {"enc.mbtiles"}, {"charts-puget-north-1.0.0", "charts-san-juan-1.0.0"},
+                              PLOTTER_PACK_SCHEMA_MAX + 1));
+        r.make();
+        QCOMPARE(encUrl(r.map.styles[0]), "mbtiles://" + r.chartsDir() + "/enc.mbtiles");
+        QCOMPARE(r.ctrl->packModes(), modes("single-fallback", "single"));
+        QCOMPARE(r.ctrl->packNotices(),
+                 QStringList{"Charts: merged files are missing or damaged. Showing puget-north only; other areas are blank. Run sudo cheekymarine install again."});
+    }
+
+    void oldMembersFormatFallsBack() {
+        Rig r;
+        QVERIFY(r.settings);
+        QVERIFY(!r.addPack("charts", "san-juan", QVersionNumber(1, 0, 0)).isEmpty());
+        QVERIFY(r.writeMerged("charts", {"enc.mbtiles"}, {"charts-puget-north-1.0.0", "charts-san-juan-1.0.0"},
+                              PLOTTER_PACK_SCHEMA_MIN, true));
+        r.make();
+        QCOMPARE(encUrl(r.map.styles[0]), "mbtiles://" + r.chartsDir() + "/enc.mbtiles");
+        QCOMPARE(r.ctrl->packModes(), modes("single-fallback", "single"));
+        QCOMPARE(r.ctrl->packNotices(),
+                 QStringList{"Charts: merged files are missing or damaged. Showing puget-north only; other areas are blank. Run sudo cheekymarine install again."});
+    }
+
+    void membersDisagreeFallsBack() {
+        Rig r;
+        QVERIFY(r.settings);
+        QVERIFY(!r.addPack("bathy", "san-juan", QVersionNumber(1, 0, 0)).isEmpty());
+        QVERIFY(!r.addPack("bathy", "strait", QVersionNumber(1, 0, 0)).isEmpty());
+        // two of the four bathy files list other members
+        QVERIFY(r.writeMerged("bathy", bathyFiles().mid(0, 2), {"bathy-puget-north-1.0.0", "bathy-san-juan-1.0.0", "bathy-strait-1.0.0"}));
+        QVERIFY(r.writeMerged("bathy", bathyFiles().mid(2), {"bathy-puget-north-1.0.0", "bathy-san-juan-1.0.0"}));
+        r.make();
+        QCOMPARE(r.ctrl->packModes(), modes("single", "single-fallback"));
+        QCOMPARE(r.ctrl->packNotices(),
+                 QStringList{"Bathy: merged files are missing or damaged. Showing puget-north only; other areas have no depth. Run sudo cheekymarine install again."});
+    }
+
+    void wrongKindMemberFallsBack() {
+        Rig r;
+        QVERIFY(r.settings);
+        QVERIFY(!r.addPack("charts", "san-juan", QVersionNumber(1, 0, 0)).isEmpty());
+        QVERIFY(r.writeMerged("charts", {"enc.mbtiles"}, {"bathy-puget-north-1.0.0", "charts-san-juan-1.0.0"}));
+        r.make();
+        QCOMPARE(encUrl(r.map.styles[0]), "mbtiles://" + r.chartsDir() + "/enc.mbtiles");
+        QCOMPARE(r.ctrl->packModes(), modes("single-fallback", "single"));
+    }
+
+    void fallbackAlsoNamesRefused() {
+        Rig r;
+        QVERIFY(r.settings);
+        QVERIFY(!r.addPack("charts", "san-juan", QVersionNumber(1, 0, 0)).isEmpty());
+        QVERIFY(!r.addPack("charts", "strait", QVersionNumber(1, 0, 0)).isEmpty());
+        r.packs.last().refused = "schema 1 not supported";
+        r.make();
+        QCOMPARE(r.ctrl->packModes(), modes("single-fallback", "single"));
+        QCOMPARE(r.ctrl->packNotices(),
+                 (QStringList{"Charts: merged files are missing or damaged. Showing puget-north only; other areas are blank. Run sudo cheekymarine install again.",
+                              "Charts: strait 1.0.0 was refused (schema 1 not supported). Remove it or install a newer set."}));
+    }
+
+    void twoInstalledOneRefusedKeepsMerged() {
+        {
+            // the refused pack is not in the merged files: merged kept, the refused pack named
+            Rig r;
+            QVERIFY(r.settings);
+            QVERIFY(!r.addPack("charts", "strait", QVersionNumber(1, 0, 0)).isEmpty());
+            r.packs.last().refused = "schema 1 not supported";
+            QVERIFY(r.writeMerged("charts", {"enc.mbtiles"}, {"charts-gone-1.0.0", "charts-puget-north-1.0.0"}));
+            r.make();
+            QCOMPARE(encUrl(r.map.styles[0]), "mbtiles://" + r.packsDir() + "/merged/charts/enc.mbtiles");
+            QCOMPARE(r.ctrl->packModes(), modes("merged-stale", "single"));
+            QCOMPARE(r.ctrl->packNotices(),
+                     QStringList{"Charts: strait 1.0.0 was refused (schema 1 not supported). Remove it or install a newer set."});
+        }
+        {
+            // the refused pack is in the merged files: its tiles are shown, no notice
+            Rig r;
+            QVERIFY(r.settings);
+            QVERIFY(!r.addPack("charts", "strait", QVersionNumber(1, 0, 0)).isEmpty());
+            r.packs.last().refused = "styles missing";
+            QVERIFY(r.writeMerged("charts", {"enc.mbtiles"}, {"charts-puget-north-1.0.0", "charts-strait-1.0.0"}));
+            r.make();
+            QCOMPARE(encUrl(r.map.styles[0]), "mbtiles://" + r.packsDir() + "/merged/charts/enc.mbtiles");
+            QCOMPARE(r.ctrl->packModes(), modes("merged", "single"));
+            QCOMPARE(r.ctrl->packNotices(), QStringList());
+        }
+    }
+
+    void twoInstalledOneRefusedNoMergeFallsBack() {
+        Rig r;
+        QVERIFY(r.settings);
+        QVERIFY(!r.addPack("bathy", "strait", QVersionNumber(1, 0, 0)).isEmpty());
+        r.packs.last().refused = "schema 1 not supported";
+        r.make();
+        QCOMPARE(r.ctrl->packModes(), modes("single", "single-fallback"));
+        QCOMPARE(r.ctrl->packNotices(),
+                 (QStringList{"Bathy: merged files are missing or damaged. Showing puget-north only; other areas have no depth. Run sudo cheekymarine install again.",
+                              "Bathy: strait 1.0.0 was refused (schema 1 not supported). Remove it or install a newer set."}));
+    }
+
+    void mergedZoomAndLegendFromMergedFile() {
+        Rig r(true, false, 6, 16);
+        QVERIFY(r.settings);
+        r.packs[0].legend = {{"Sand", "sand", "type"}};
+        QVERIFY(!r.addPack("charts", "san-juan", QVersionNumber(1, 0, 0), 10, 16).isEmpty());
+        QVERIFY(!r.addPack("charts", "deep", QVersionNumber(1, 0, 0), 3, 12).isEmpty()); // not merged, not shown
+        QVERIFY(r.writeMerged("charts", {"enc.mbtiles"}, {"charts-gone-1.0.0", "charts-puget-north-1.0.0", "charts-san-juan-1.0.0"}));
+        // the gone member reached zoom 18 and brought a legend entry
+        QVERIFY(r.setMergedMeta("charts", "enc.mbtiles", "maxzoom", "18"));
+        QVERIFY(r.setMergedMeta("charts", "enc.mbtiles", "cheekymarine:legend",
+                                R"([{"abbr":"Sand","meaning":"sand","kind":"type"},{"abbr":"Rk","meaning":"rock","kind":"type"}])"));
+        r.make();
+        QCOMPARE(r.ctrl->packModes(), modes("merged-stale", "single"));
+        QCOMPARE(r.ctrl->minZoom(), 6.0);  // not 3: the unmerged pack is not shown
+        QCOMPARE(r.ctrl->maxZoom(), 20.0); // 18 + overzoom
+        QCOMPARE(r.ctrl->legend().size(), 2);
+        QCOMPARE(r.ctrl->legend()[1].toMap().value("abbr").toString(), QString("Rk"));
+    }
+
+    void goneMemberValdcoDrivesSafety() {
+        Rig r;
+        QVERIFY(r.settings);
+        QVERIFY(!r.addPack("charts", "san-juan", QVersionNumber(1, 0, 0)).isEmpty());
+        // the gone member brought 2 into the merged file's valdco; the packs on disk have only kValdco
+        QList<double> merged = kValdco;
+        merged << 2;
+        QVERIFY(r.writeMerged("charts", {"enc.mbtiles"}, {"charts-gone-1.0.0", "charts-puget-north-1.0.0", "charts-san-juan-1.0.0"},
+                              PLOTTER_PACK_SCHEMA_MIN, false, merged));
+        QVERIFY(r.settings->setDepths(1.0, 1.9, 12.0));
+        r.make();
+        QCOMPARE(r.ctrl->packModes(), modes("merged", "single"));
         r.map.loaded();
-        r.ctrl->setMode("fish"); // bathy merge is current, charts are single: no mixing
-        QCOMPARE(srcUrl(r.map.styles[2], "bathy"), "mbtiles://" + r.packsDir() + "/merged/bathy/bathy.mbtiles");
-        QCOMPARE(encUrl(r.map.styles[2]), "mbtiles://" + newest + "/enc.mbtiles");
+        // kValdco alone would give 3.6
+        QCOMPARE(r.map.filters.value("depcnt-safety"), json(R"(["==",["to-number",["get","VALDCO"]],2])"));
+    }
+
+    void stylesFromNewestMemberOnDisk() {
+        {
+            Rig r;
+            QVERIFY(r.settings);
+            const QString sj = r.addPack("charts", "san-juan", QVersionNumber(1, 2, 0));
+            QVERIFY(!sj.isEmpty());
+            QVERIFY(!r.addPack("charts", "puget-north", QVersionNumber(1, 3, 0)).isEmpty()); // newest, not merged
+            QVERIFY(r.writeMerged("charts", {"enc.mbtiles"},
+                                  {"charts-puget-north-1.0.0", "charts-san-juan-1.2.0", "charts-strait-2.0.0"})); // strait gone
+            r.make();
+            QCOMPARE(encUrl(r.map.styles[0]), "mbtiles://" + r.packsDir() + "/merged/charts/enc.mbtiles");
+            QCOMPARE(spriteOf(r.map.styles[0]), "file://" + sj + "/sprites/nav");
+            QCOMPARE(r.ctrl->packNotices(),
+                     QStringList{"Charts: puget-north shows 1.0.0, 1.3.0 is installed. Run sudo cheekymarine install again."});
+        }
+        {
+            Rig r;
+            QVERIFY(r.settings);
+            const QString sj = r.addPack("charts", "san-juan", QVersionNumber(1, 1, 0));
+            QVERIFY(!sj.isEmpty());
+            QVERIFY(r.writeMerged("charts", {"enc.mbtiles"}, {"charts-x-1.0.0", "charts-y-1.0.0"})); // both gone
+            r.make();
+            QCOMPARE(encUrl(r.map.styles[0]), "mbtiles://" + r.packsDir() + "/merged/charts/enc.mbtiles");
+            QCOMPARE(spriteOf(r.map.styles[0]), "file://" + sj + "/sprites/nav"); // the newest usable pack
+            QCOMPARE(r.ctrl->packNotices(),
+                     (QStringList{"Charts: puget-north is installed but not merged, so it is not shown. Run sudo cheekymarine install again.",
+                                  "Charts: san-juan is installed but not merged, so it is not shown. Run sudo cheekymarine install again."}));
+            QCOMPARE(inUse(*r.ctrl), (QStringList{"charts x 1.0.0 gone", "charts y 1.0.0 gone", "bathy puget-north 1.0.0"}));
+        }
+    }
+
+    // As the installer runs it: mergePacks over the scan's usable packs, then the app starts.
+    void mergeThenStartHasNoNotice() {
+        Rig r;
+        QVERIFY(r.settings);
+        QVERIFY(QDir(r.chartsDir()).removeRecursively());
+        QVERIFY(QDir(r.packsDir() + "/bathy-puget-north-1.0.0").removeRecursively());
+        int col = 0;
+        auto tiles = [&](const QString& path) {
+            const QString conn = "tiles-" + path;
+            bool ok = false;
+            {
+                QSqlDatabase db = QSqlDatabase::addDatabase("QSQLITE", conn);
+                db.setDatabaseName(path);
+                QSqlQuery q(db);
+                ok = db.open() && q.exec("CREATE TABLE metadata (name TEXT, value TEXT)")
+                     && q.exec("INSERT INTO metadata VALUES ('format', 'pbf'), ('minzoom', '10'), ('maxzoom', '10')")
+                     && q.exec("CREATE TABLE tiles (zoom_level integer, tile_column integer, tile_row integer, tile_data blob)")
+                     && q.exec(QString("INSERT INTO tiles VALUES (10, %1, 1, x'00')").arg(++col));
+            }
+            QSqlDatabase::removeDatabase(conn);
+            return ok;
+        };
+        for (const QString& kind : {QString("charts"), QString("bathy")})
+            for (const QString& region : {QString("a"), QString("b")}) {
+                const QString dir = r.packsDir() + "/" + kind + "-" + region + "-1.0.0";
+                QVERIFY(copyStyles(dir));
+                QFile mf(dir + "/manifest.json");
+                QVERIFY(mf.open(QIODevice::WriteOnly));
+                mf.write(QJsonDocument(QJsonObject{{"pack", kind}, {"region", region}, {"version", "1.0.0"},
+                                                   {"schema", PLOTTER_PACK_SCHEMA_MIN}}).toJson());
+                mf.close();
+                for (const QString& f : kind == "charts" ? QStringList{"enc.mbtiles"} : bathyFiles())
+                    QVERIFY(tiles(dir + "/" + f));
+            }
+        const QList<PackInfo> scanned = PackCatalog::scan(r.packsDir());
+        for (const PackInfo& p : scanned) QVERIFY2(p.refused.isEmpty(), qPrintable(p.dir + ": " + p.refused));
+        const auto merged = mergePacks(PackCatalog::usable(scanned, u"charts") + PackCatalog::usable(scanned, u"bathy"),
+                                       r.packsDir() + "/merged");
+        QVERIFY2(merged.has_value(), qPrintable(merged.error()));
+        r.packs = scanned;
+        r.make();
+        QCOMPARE(r.ctrl->packModes(), modes("merged", "merged"));
+        QCOMPARE(r.ctrl->packNotices(), QStringList());
+        QCOMPARE(inUse(*r.ctrl), (QStringList{"charts a 1.0.0", "charts b 1.0.0", "bathy a 1.0.0", "bathy b 1.0.0"}));
+        QCOMPARE(encUrl(r.map.styles[0]), "mbtiles://" + r.packsDir() + "/merged/charts/enc.mbtiles");
     }
 
     void singlePackUsesOwnFiles() {
@@ -395,7 +785,8 @@ private slots:
         QVERIFY(r.writeMerged("charts", {"enc.mbtiles"}, {"charts-gone-1.0.0", "charts-puget-north-1.0.0"}));
         r.make();
         QCOMPARE(encUrl(r.map.styles[0]), "mbtiles://" + r.chartsDir() + "/enc.mbtiles");
-        QVERIFY(r.ctrl->packNotice().isEmpty());
+        QVERIFY(r.ctrl->packNotices().isEmpty());
+        QCOMPARE(r.ctrl->packModes(), modes("single", "single"));
         QCOMPARE(r.ctrl->packsInUse().size(), 2);
     }
 

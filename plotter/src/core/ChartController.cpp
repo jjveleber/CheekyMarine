@@ -16,6 +16,7 @@
 #include <QSet>
 #include <QJsonArray>
 #include <QJsonDocument>
+#include <QRegularExpression>
 #include <algorithm>
 #include <cmath>
 
@@ -152,37 +153,119 @@ const PackInfo& newestOf(const QList<PackInfo>& usable) {
     return *best;
 }
 
-// The tile files one pack kind's styles read, by source name, and the packs behind them.
+// Which files a kind shows (spec 5.4a).
+enum class Mode { Single, Merged, MergedStale, SingleFallback };
+
+QString modeName(Mode m) {
+    switch (m) {
+    case Mode::Single: return QStringLiteral("single");
+    case Mode::Merged: return QStringLiteral("merged");
+    case Mode::MergedStale: return QStringLiteral("merged-stale");
+    case Mode::SingleFallback: return QStringLiteral("single-fallback");
+    }
+    return {};
+}
+
+// The tile files one pack kind's styles read, by source name, what is shown, and why.
 struct KindFiles {
     QHash<QString, QString> files;
-    QList<PackInfo> inUse;
-    bool stale = false; // several packs, merged files missing or for other packs
+    QList<PackInfo> inUse;             // the merged members, or the one single pack
+    std::optional<PackInfo> stylePack; // styles, sprites and glyphs; none without a usable pack
+    Mode mode = Mode::Single;
+    QStringList notices;
 };
 
-// One usable pack: its own files. Several: the files in <packsDir>/merged/<kind>/ when every one lists
-// exactly these packs as members, else the newest single pack's (never a mix) and `stale` set.
-KindFiles kindFiles(const QList<PackInfo>& usable, const QString& kind, const QStringList& fileNames,
+// The members of the merged files in `mergedDir` when they are valid: every file is present, opens,
+// has its metadata, names members of `kind` in one list, and has a schema the plotter accepts.
+std::optional<QList<MergeMember>> validMembers(const QString& mergedDir, const QString& kind, const QStringList& fileNames) {
+    std::optional<QList<MergeMember>> out;
+    for (const QString& f : fileNames) {
+        const QString path = mergedDir + QLatin1Char('/') + f;
+        const QList<MergeMember> members = mergeMembers(path);
+        const std::optional<int> schema = mergeSchema(path);
+        if (members.isEmpty() || !schema || *schema < PLOTTER_PACK_SCHEMA_MIN || *schema > PLOTTER_PACK_SCHEMA_MAX
+            || (out && *out != members))
+            return std::nullopt;
+        for (const MergeMember& m : members)
+            if (packDirRe().match(m.dir).captured(1) != kind) return std::nullopt;
+        out = members;
+    }
+    return out;
+}
+
+// One installed pack, usable: its own files. Several installed: the merged files in <packsDir>/merged/<kind>/ when they
+// are valid, with a notice line per difference from the usable packs; else the newest single pack's
+// (never a mix) with a notice that other areas are blank. `all` is every pack, refused ones too.
+KindFiles kindFiles(const QList<PackInfo>& all, const QString& kind, const QStringList& fileNames,
                     const QString& packsDir) {
     KindFiles k;
+    const QList<PackInfo> usable = PackCatalog::usable(all, kind);
     if (usable.isEmpty()) return k;
-    const PackInfo& newest = newestOf(usable);
+    const bool charts = kind == QLatin1String("charts");
+    const QString label = charts ? QStringLiteral("Charts: ") : QStringLiteral("Bathy: ");
+    const QString again = QStringLiteral(" Run sudo cheekymarine install again.");
     const QString mergedDir = packsDir + QStringLiteral("/merged/") + kind;
-    bool merged = false;
-    if (usable.size() > 1) {
-        QStringList want;
-        for (const PackInfo& p : usable) want << QFileInfo(p.dir).fileName();
-        want.sort();
-        merged = true;
-        for (const QString& f : fileNames) {
-            QStringList have = mergeMembers(mergedDir + QLatin1Char('/') + f);
-            have.sort();
-            if (have != want) merged = false;
+    const auto name = [](const PackInfo& p) { return QFileInfo(p.dir).fileName(); };
+    const auto refusedNotices = [&](const QStringList& memberDirs) {
+        for (const PackInfo& p : all)
+            if (p.kind == kind && !p.refused.isEmpty() && !memberDirs.contains(name(p)))
+                k.notices << label + p.region + QLatin1Char(' ') + p.version.toString() + QStringLiteral(" was refused (")
+                                 + p.refused + QStringLiteral("). Remove it or install a newer set.");
+    };
+    // Rule 1 only for one installed pack; with more (refused ones count) the merged files decide.
+    const bool onePack = std::count_if(all.begin(), all.end(), [&](const PackInfo& p) { return p.kind == kind; }) == 1;
+    const std::optional<QList<MergeMember>> members = onePack ? std::nullopt : validMembers(mergedDir, kind, fileNames);
+    if (!members) {
+        const PackInfo& newest = newestOf(usable);
+        k.mode = onePack ? Mode::Single : Mode::SingleFallback;
+        if (k.mode == Mode::SingleFallback) {
+            k.notices << label + QStringLiteral("merged files are missing or damaged. Showing ") + newest.region
+                             + QStringLiteral(" only; other areas ")
+                             + (charts ? QStringLiteral("are blank.") : QStringLiteral("have no depth.")) + again;
+            refusedNotices({});
         }
-        k.stale = !merged;
+        k.inUse = {newest};
+        k.stylePack = newest;
+        for (const QString& f : fileNames) k.files.insert(f.chopped(8), newest.dir + QLatin1Char('/') + f); // ".mbtiles"
+        return k;
     }
-    const QString base = merged ? mergedDir : newest.dir;
-    for (const QString& f : fileNames) k.files.insert(f.chopped(8), base + QLatin1Char('/') + f); // ".mbtiles"
-    k.inUse = merged ? usable : QList<PackInfo>{newest};
+    QStringList memberDirs, memberRegions;
+    QList<PackInfo> stylePacks; // members still on disk and not refused
+    for (const MergeMember& m : *members) {
+        const QRegularExpressionMatch match = packDirRe().match(m.dir);
+        const QString region = match.captured(2);
+        const QString version = match.captured(3);
+        memberDirs << m.dir;
+        memberRegions << region;
+        const auto disk = std::find_if(all.begin(), all.end(), [&](const PackInfo& p) { return p.kind == kind && name(p) == m.dir; });
+        if (disk != all.end()) {
+            k.inUse << *disk;
+            if (disk->refused.isEmpty()) stylePacks << *disk;
+        } else {
+            PackInfo gone;
+            gone.kind = kind;
+            gone.region = region;
+            gone.version = QVersionNumber::fromString(version);
+            gone.dir = packsDir + QLatin1Char('/') + m.dir;
+            gone.onDisk = false;
+            k.inUse << gone;
+        }
+        // A member with no usable pack of its region (gone or refused) is shown, not flagged.
+        const auto u = std::find_if(usable.begin(), usable.end(), [&](const PackInfo& p) { return p.region == region; });
+        if (u == usable.end()) continue;
+        if (name(*u) != m.dir)
+            k.notices << label + region + QStringLiteral(" shows ") + version + QStringLiteral(", ") + u->version.toString()
+                             + QStringLiteral(" is installed.") + again;
+        else if (manifestSha256(u->dir) != m.manifestSha256)
+            k.notices << label + region + QLatin1Char(' ') + version + QStringLiteral(" changed after it was merged.") + again;
+    }
+    for (const PackInfo& u : usable)
+        if (!memberRegions.contains(u.region))
+            k.notices << label + u.region + QStringLiteral(" is installed but not merged, so it is not shown.") + again;
+    refusedNotices(memberDirs);
+    k.mode = k.notices.isEmpty() ? Mode::Merged : Mode::MergedStale;
+    k.stylePack = newestOf(stylePacks.isEmpty() ? usable : stylePacks);
+    for (const QString& f : fileNames) k.files.insert(f.chopped(8), mergedDir + QLatin1Char('/') + f);
     return k;
 }
 } // namespace
@@ -197,36 +280,28 @@ ChartController::ChartController(ChartMap& map, Settings& settings, VesselModel&
         for (PackInfo& p : m_packs)
             if (p.dir == dir) p.refused = reason;
     };
-    QList<PackInfo> charts, chartsInUse;
-    bool stale = false;
-    // The newest bathy pack is picked for each charts candidate first: nav styles load with it too.
+    QList<PackInfo> charts;
+    KindFiles cf, bf;
+    // The bathy styles are picked for each charts candidate first: nav styles load with them too.
     for (;;) {
         charts = PackCatalog::usable(m_packs, u"charts");
         if (charts.isEmpty()) break;
-        m_charts = newestOf(charts);
-        const KindFiles cf = kindFiles(charts, QStringLiteral("charts"), kChartsFiles, m_packsDir);
-        chartsInUse = cf.inUse;
-        // The contours and the legend are those of the charts packs drawn (one pack in the stale fallback).
-        m_valdco.clear();
-        for (const PackInfo& c : cf.inUse)
-            for (double v : c.valdco)
-                if (!m_valdco.contains(v)) m_valdco.append(v);
-        std::sort(m_valdco.begin(), m_valdco.end());
+        cf = kindFiles(m_packs, QStringLiteral("charts"), kChartsFiles, m_packsDir);
+        m_charts = cf.stylePack;
+        // The contours of the charts shown: the merged file's valdco (the union over all its members, gone
+        // ones too), or the single pack's.
+        m_valdco = cf.mode == Mode::Merged || cf.mode == Mode::MergedStale
+                       ? mergeValdco(m_packsDir + QStringLiteral("/merged/charts/enc.mbtiles"))
+                       : cf.inUse.first().valdco;
         const auto withFiles = [&cf](const KindFiles& bathy) {
             QHash<QString, QString> files = cf.files;
             files.insert(bathy.files);
             return files;
         };
-        KindFiles bf;
         for (;;) {
-            const QList<PackInfo> bathy = PackCatalog::usable(m_packs, u"bathy");
-            if (bathy.isEmpty()) {
-                m_bathy.reset();
-                bf = {};
-                break;
-            }
-            m_bathy = newestOf(bathy);
-            bf = kindFiles(bathy, QStringLiteral("bathy"), kBathyFiles, m_packsDir);
+            bf = kindFiles(m_packs, QStringLiteral("bathy"), kBathyFiles, m_packsDir);
+            m_bathy = bf.stylePack;
+            if (!m_bathy) break;
             auto fish = readStyles(QStringLiteral("fish"), m_bathy->dir, withFiles(bf), m_valdco, depths);
             if (fish) {
                 m_styles.insert(*fish);
@@ -237,31 +312,44 @@ ChartController::ChartController(ChartMap& map, Settings& settings, VesselModel&
         auto nav = readStyles(QStringLiteral("nav"), m_charts->dir, withFiles(bf), m_valdco, depths);
         if (nav) {
             m_styles.insert(*nav);
-            m_inUse = cf.inUse + bf.inUse;
-            stale = cf.stale || bf.stale;
             break;
         }
         m_styles.clear(); // the refused charts pack's fish styles
         refuse(m_charts->dir, nav.error());
     }
     if (!charts.isEmpty()) {
+        m_inUse = cf.inUse + bf.inUse;
+        m_packNotices = cf.notices + bf.notices;
+        m_packModes.insert(QStringLiteral("charts"), modeName(cf.mode));
+        if (m_bathy) m_packModes.insert(QStringLiteral("bathy"), modeName(bf.mode));
+        for (const QString& line : m_packNotices) qWarning().noquote() << "ChartController:" << line;
+        // The legend and zoom range of the charts shown: from the merged file in merged modes (its members,
+        // gone ones too), else the legend of the single pack and the zoom union over every usable charts pack.
+        const bool merged = cf.mode == Mode::Merged || cf.mode == Mode::MergedStale;
+        const QString mergedEnc = m_packsDir + QStringLiteral("/merged/charts/enc.mbtiles");
         QSet<QPair<QString, QString>> seen;
+        for (const LegendEntry& e : merged ? mergeLegend(mergedEnc) : cf.inUse.first().legend)
+            if (!seen.contains({e.abbr, e.kind})) {
+                seen.insert({e.abbr, e.kind});
+                m_legend.append(QVariantMap{{QStringLiteral("abbr"), e.abbr},
+                                            {QStringLiteral("meaning"), e.meaning},
+                                            {QStringLiteral("kind"), e.kind}});
+            }
         int minZ = -1, maxZ = -1;
-        for (const PackInfo& c : chartsInUse)
-            for (const LegendEntry& e : c.legend)
-                if (!seen.contains({e.abbr, e.kind})) {
-                    seen.insert({e.abbr, e.kind});
-                    m_legend.append(QVariantMap{{QStringLiteral("abbr"), e.abbr},
-                                                {QStringLiteral("meaning"), e.meaning},
-                                                {QStringLiteral("kind"), e.kind}});
-                }
-        for (const PackInfo& c : charts) {
-            if (c.minZoom >= 0) minZ = minZ < 0 ? c.minZoom : std::min(minZ, c.minZoom);
-            if (c.maxZoom >= 0) maxZ = std::max(maxZ, c.maxZoom);
+        if (merged) {
+            bool okMin = false, okMax = false;
+            const int a = metadataValue(mergedEnc, QStringLiteral("minzoom")).value_or(QString()).toInt(&okMin);
+            const int b = metadataValue(mergedEnc, QStringLiteral("maxzoom")).value_or(QString()).toInt(&okMax);
+            if (okMin) minZ = a;
+            if (okMax) maxZ = b;
+        } else {
+            for (const PackInfo& c : charts) {
+                if (c.minZoom >= 0) minZ = minZ < 0 ? c.minZoom : std::min(minZ, c.minZoom);
+                if (c.maxZoom >= 0) maxZ = std::max(maxZ, c.maxZoom);
+            }
         }
         m_minZoom = minZ >= 0 ? minZ : kFallbackMinZoom;
         m_maxZoom = maxZ >= 0 ? maxZ + kOverzoom : kFallbackMaxZoom;
-        if (stale) m_packNotice = QStringLiteral("Chart packs are not merged. Run sudo cheekymarine install again.");
     } else {
         m_charts.reset();
         m_bathy.reset(); // the last refused charts pack's

@@ -116,12 +116,17 @@ void writeMb(const QString& path, const Mb& m) {
 }
 
 PackInfo pack(const QString& root, const QString& kind, const QString& region, const QString& version,
-              const QMap<QString, Mb>& files) {
+              const QMap<QString, Mb>& files, int schema = PLOTTER_PACK_SCHEMA_MIN) {
     PackInfo p;
     p.kind = kind;
     p.region = region;
     p.version = QVersionNumber::fromString(version);
     p.dir = root + "/" + kind + "-" + region + "-" + version;
+    QDir().mkpath(p.dir);
+    QFile mf(p.dir + "/manifest.json");
+    if (mf.open(QIODevice::WriteOnly))
+        mf.write(QJsonDocument(QJsonObject{{"pack", kind}, {"region", region}, {"version", version},
+                                           {"schema", schema}}).toJson());
     for (auto it = files.begin(); it != files.end(); ++it)
         writeMb(p.dir + "/" + it.key(), it.value());
     return p;
@@ -158,9 +163,95 @@ private slots:
         QCOMPARE(count(f, "SELECT count(*) FROM tiles"), 2);
         QCOMPARE(meta(f, "minzoom"), QString("10"));
         QCOMPARE(meta(f, "format"), QString("pbf"));
-        QCOMPARE(mergeMembers(f), (QStringList{"charts-a-1.0.0", "charts-b-1.0.0"}));
+        QCOMPARE(mergeMembers(f).size(), 2);
+        QCOMPARE(mergeMembers(f)[0].dir, QString("charts-a-1.0.0"));
+        QCOMPARE(mergeMembers(f)[1].dir, QString("charts-b-1.0.0"));
         QVERIFY(!QFileInfo::exists(f + ".tmp"));
         QVERIFY(QSqlDatabase::connectionNames().isEmpty());
+    }
+    void membersCarryManifestHash() {
+        QTemporaryDir t, o;
+        // b sorts before a-x by region, but members sort by dir name
+        const auto a = pack(t.path(), "charts", "a-x", "1.0.0", {{"enc.mbtiles", mb({{10, 1, 1, "A"}}, "10", "10")}});
+        const auto b = pack(t.path(), "charts", "a", "2.0.0", {{"enc.mbtiles", mb({{10, 2, 2, "B"}}, "10", "10")}});
+        const auto r = mergePacks({a, b}, o.path());
+        QVERIFY2(r.has_value(), qPrintable(r.error()));
+        auto sha = [](const PackInfo& p) {
+            QFile f(p.dir + "/manifest.json");
+            return f.open(QIODevice::ReadOnly) ? QString::fromLatin1(QCryptographicHash::hash(f.readAll(), QCryptographicHash::Sha256).toHex())
+                                               : QString();
+        };
+        const QString f = o.path() + "/charts/enc.mbtiles";
+        QCOMPARE(QJsonDocument::fromJson(meta(f, "cheekymarine:members").toUtf8()).array(),
+                 (QJsonArray{QJsonObject{{"dir", "charts-a-2.0.0"}, {"manifest_sha256", sha(b)}},
+                             QJsonObject{{"dir", "charts-a-x-1.0.0"}, {"manifest_sha256", sha(a)}}}));
+        QCOMPARE(mergeMembers(f), (QList<MergeMember>{{"charts-a-2.0.0", sha(b)}, {"charts-a-x-1.0.0", sha(a)}}));
+        QCOMPARE(manifestSha256(a.dir), sha(a));
+        QVERIFY(sha(a) != sha(b));
+    }
+    void mergedFileCarriesSchema() {
+        QTemporaryDir t, o;
+        const auto a = pack(t.path(), "bathy", "a", "1.0.0", bathyFiles({{"bathy.mbtiles", mb({{9, 1, 1, "x"}}, "9", "9")}}));
+        const auto b = pack(t.path(), "bathy", "b", "1.0.0", bathyFiles({{"bathy.mbtiles", mb({{9, 2, 2, "y"}}, "9", "9")}}));
+        const auto r = mergePacks({a, b}, o.path());
+        QVERIFY2(r.has_value(), qPrintable(r.error()));
+        for (const QString& f : kBathyFiles) {
+            QCOMPARE(meta(o.path() + "/bathy/" + f, "cheekymarine:schema"), QString::number(PLOTTER_PACK_SCHEMA_MIN));
+            QCOMPARE(mergeSchema(o.path() + "/bathy/" + f), std::optional<int>(PLOTTER_PACK_SCHEMA_MIN));
+        }
+    }
+    void memberSchemasMustAgree() {
+        QTemporaryDir t, o;
+        const auto a = pack(t.path(), "charts", "a", "1.0.0", {{"enc.mbtiles", mb({{10, 1, 1, "A"}}, "10", "10")}}, 2);
+        const auto b = pack(t.path(), "charts", "b", "1.0.0", {{"enc.mbtiles", mb({{10, 2, 2, "B"}}, "10", "10")}}, 3);
+        const auto r = mergePacks({a, b}, o.path());
+        QVERIFY(!r.has_value());
+        QCOMPARE(r.error(), QString("schema differs: charts-a-1.0.0 2, charts-b-1.0.0 3"));
+        QVERIFY(QDir(o.path() + "/charts").entryList({"*.mbtiles", "*.tmp"}, QDir::Files).isEmpty());
+    }
+    void mergedFileCarriesLegend() {
+        QTemporaryDir t, o;
+        auto a = pack(t.path(), "charts", "a", "1.0.0", {{"enc.mbtiles", mb({{10, 1, 1, "A"}}, "10", "10")}});
+        auto b = pack(t.path(), "charts", "b", "1.0.0", {{"enc.mbtiles", mb({{10, 2, 2, "B"}}, "10", "10")}});
+        a.legend = {{"Blds", "boulders", "type"}, {"Sand", "sand", "type"}};
+        b.legend = {{"Blds", "boulders again", "type"}, {"Blds", "boulders", "kind2"}};
+        const auto r = mergePacks({b, a}, o.path());
+        QVERIFY2(r.has_value(), qPrintable(r.error()));
+        const QString f = o.path() + "/charts/enc.mbtiles";
+        // first wins per abbr and kind, members in region order
+        QCOMPARE(QJsonDocument::fromJson(meta(f, "cheekymarine:legend").toUtf8()).array(),
+                 (QJsonArray{QJsonObject{{"abbr", "Blds"}, {"meaning", "boulders"}, {"kind", "type"}},
+                             QJsonObject{{"abbr", "Sand"}, {"meaning", "sand"}, {"kind", "type"}},
+                             QJsonObject{{"abbr", "Blds"}, {"meaning", "boulders"}, {"kind", "kind2"}}}));
+        const QList<LegendEntry> l = mergeLegend(f);
+        QCOMPARE(l.size(), 3);
+        QCOMPARE(l[2].kind, QString("kind2"));
+    }
+    void unreadableManifestFails() {
+        QTemporaryDir t, o;
+        const auto a = pack(t.path(), "charts", "a", "1.0.0", {{"enc.mbtiles", mb({{10, 1, 1, "A"}}, "10", "10")}});
+        const auto b = pack(t.path(), "charts", "b", "1.0.0", {{"enc.mbtiles", mb({{10, 2, 2, "B"}}, "10", "10")}});
+        QVERIFY(QFile::remove(b.dir + "/manifest.json"));
+        const auto r = mergePacks({a, b}, o.path());
+        QVERIFY(!r.has_value());
+        QCOMPARE(r.error(), QString("charts-b-1.0.0: cannot read manifest.json"));
+        QVERIFY(QDir(o.path() + "/charts").entryList({"*.mbtiles", "*.tmp"}, QDir::Files).isEmpty());
+    }
+    void oldMembersFormatIsNotValid() {
+        QTemporaryDir t;
+        Mb m = mb({}, "", "");
+        writeMb(t.path() + "/enc.mbtiles", m);
+        const QString conn = "old-members";
+        {
+            QSqlDatabase db = QSqlDatabase::addDatabase("QSQLITE", conn);
+            db.setDatabaseName(t.path() + "/enc.mbtiles");
+            QVERIFY(db.open());
+            QSqlQuery q(db);
+            QVERIFY(q.exec(R"(INSERT INTO metadata VALUES ('cheekymarine:members', '["charts-a-1.0.0","charts-b-1.0.0"]'))"));
+        }
+        QSqlDatabase::removeDatabase(conn);
+        QVERIFY(mergeMembers(t.path() + "/enc.mbtiles").isEmpty());
+        QCOMPARE(mergeSchema(t.path() + "/enc.mbtiles"), std::optional<int>());
     }
     void plainTilesMerge() {
         QTemporaryDir t, o;
@@ -193,6 +284,7 @@ private slots:
         QCOMPARE(meta(f, "bounds"), QString("-123,47,-121,49"));
         QCOMPARE(QJsonDocument::fromJson(meta(f, "cheekymarine:valdco").toUtf8()).array(),
                  (QJsonArray{5, 10, 20}));
+        QCOMPARE(mergeValdco(f), (QList<double>{5, 10, 20}));
         const QJsonArray layers = QJsonDocument::fromJson(meta(f, "json").toUtf8()).object()["vector_layers"].toArray();
         QCOMPARE(layers.size(), 2);
         QCOMPARE(layers[0].toObject()["id"].toString(), QString("depare"));

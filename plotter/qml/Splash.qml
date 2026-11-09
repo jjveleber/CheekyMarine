@@ -8,7 +8,7 @@ Rectangle {
     id: splash
     required property QtObject appInfo // AppInfo
     property int minimumMs: 5000
-    property bool noticeShown: true // the showChartNotice setting: off leaves the pack's own notice out here (not the not merged one)
+    property bool noticeShown: true // the showChartNotice setting: off leaves the pack's own notice out here (not the pack notices)
     // White over the logo by day and dusk; at night the logo is dimmed and the lines take the night red.
     readonly property color infoColor: Theme.palette === "night" ? Theme.text : "#ffffff"
     // The emblem (the round badge) spans the middle half of the 1408 px wide image and almost its full
@@ -29,14 +29,15 @@ Rectangle {
     // Touches during the splash go nowhere.
     MouseArea { anchors.fill: parent }
 
-    // The packs in use of one kind: one pack reads "Charts: region 1.0.0", several "Charts: 6 packs, 1.0.0"
-    // (the newest version).
+    // The packs shown of one kind: a single pack reads "Charts: single, region 1.0.0", merged files
+    // "Charts: merged, 6 packs, 1.0.0" (the newest version).
     function packText(kind, label, missing) {
         const ps = splash.appInfo.packsInUse.filter(p => p.kind === kind)
         if (ps.length === 0) return missing
-        if (ps.length === 1) return label + ": " + ps[0].region + " " + ps[0].version
+        const mode = splash.appInfo.packModes[kind]
+        if (mode === undefined || !mode.startsWith("merged")) return label + ": single, " + ps[0].region + " " + ps[0].version
         const newest = ps.map(p => p.version).reduce((a, b) => newer(b, a) ? b : a)
-        return label + ": " + ps.length + " packs, " + newest
+        return label + ": merged, " + ps.length + " packs, " + newest
     }
     function newer(a, b) {
         const x = a.split("."), y = b.split(".")
@@ -46,11 +47,13 @@ Rectangle {
         }
         return false
     }
-    // The first charts pack's notice (when the setting allows), then the not merged notice when set: that
-    // one is a fault to fix, not a disclaimer, so the setting does not hide it.
+    // The first charts pack's notice (when the setting allows; the first on disk that has one, as a gone
+    // merged member has none), then every pack notice line: those are faults to fix, not a disclaimer,
+    // so the setting does not hide them.
     readonly property string noticeText: {
-        const first = splash.appInfo.packsInUse.find(p => p.kind === "charts")
-        return [first !== undefined && splash.noticeShown ? first.notice : "", splash.appInfo.packNotice].filter(t => t !== "").join("\n")
+        const first = splash.appInfo.packsInUse.find(p => p.kind === "charts" && p.onDisk !== false && p.notice !== "")
+        return [first !== undefined && splash.noticeShown ? first.notice : ""].concat(splash.appInfo.packNotices)
+            .filter(t => t !== "").join("\n")
     }
 
     // The project logo fills the splash; the emblem is in the middle of the image, so the crop at

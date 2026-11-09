@@ -2,6 +2,7 @@
 #include "PackCatalog.h"
 #include <QObject>
 #include <QString>
+#include <QStringList>
 #include <QVariantList>
 #include <QVariantMap>
 
@@ -18,16 +19,18 @@ class AppInfo : public QObject {
     Q_PROPERTY(bool schemaMismatch READ schemaMismatch NOTIFY schemaMismatchChanged)
     // Every scanned pack: {kind, region, version, notice, refused, inUse}.
     Q_PROPERTY(QVariantList packs READ packs CONSTANT)
-    // The packs in use (the chart controller's choice): {kind, region, version, notice}, charts first,
-    // then bathy, then by region; empty if none.
+    // The packs shown (ChartController::packsInUse): {kind, region, version, notice, onDisk}, charts
+    // first, then bathy, then by region; empty if none. onDisk is false for a merged member whose dir is gone.
     Q_PROPERTY(QVariantList packsInUse READ packsInUse CONSTANT)
-    // ChartController::packNotice: set when the packs are not merged; empty otherwise.
-    Q_PROPERTY(QString packNotice READ packNotice CONSTANT)
+    // ChartController::packNotices: one line per difference between the installed packs and the files shown.
+    Q_PROPERTY(QStringList packNotices READ packNotices CONSTANT)
+    // ChartController::packModes: per kind "single", "merged", "merged-stale" or "single-fallback".
+    Q_PROPERTY(QVariantMap packModes READ packModes CONSTANT)
 
 public:
     // `scanned` is every pack found; `inUse` the ones the loaded styles read (ChartController::packsInUse).
     explicit AppInfo(const QList<PackInfo>& scanned, const QList<PackInfo>& inUse = {}, const QString& setVersion = {},
-                     const QString& packNotice = {}, QObject* parent = nullptr);
+                     const QStringList& packNotices = {}, const QVariantMap& packModes = {}, QObject* parent = nullptr);
 
     QString appVersion() const;
     QString setVersion() const { return m_setVersion; }
@@ -35,7 +38,8 @@ public:
     bool schemaMismatch() const { return m_schemaMismatch; }
     QVariantList packs() const { return m_packs; }
     QVariantList packsInUse() const { return m_inUse; }
-    QString packNotice() const { return m_packNotice; }
+    QStringList packNotices() const { return m_packNotices; }
+    QVariantMap packModes() const { return m_packModes; }
 
 public slots:
     // From N2kClient::daemonVersion (every hello). A new hello clears an earlier mismatch: the
@@ -54,7 +58,8 @@ private:
     bool m_schemaMismatch = false;
     QVariantList m_packs;
     QVariantList m_inUse;
-    QString m_packNotice;
+    QStringList m_packNotices;
+    QVariantMap m_packModes;
 };
 
 // The `set` of a cheekymarine.lock (installer/README.md, "Lock format"), or empty when the file is

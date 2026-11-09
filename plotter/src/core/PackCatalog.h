@@ -24,11 +24,17 @@ struct PackInfo {
     int maxZoom = -1;
     QList<LegendEntry> legend; // charts only, from legend.json; empty when absent, unreadable or schema != 1
     QString refused;
+    bool onDisk = true; // false: a merged member whose dir is gone (ChartController::packsInUse)
 };
 
 // The MBTiles files of each pack kind. Merging (PackMerge) writes one file of this name per kind.
 inline const QStringList kChartsFiles{"enc.mbtiles"};
 inline const QStringList kBathyFiles{"bathy.mbtiles", "dem.mbtiles", "bathy-coarse.mbtiles", "dem-coarse.mbtiles"};
+
+class QRegularExpression;
+
+// A pack directory name, <kind>-<region>-<x.y.z>: captures kind, region (may hold dashes) and version.
+const QRegularExpression& packDirRe();
 
 class PackCatalog {
 public:

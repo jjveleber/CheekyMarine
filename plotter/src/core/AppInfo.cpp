@@ -7,13 +7,14 @@
 
 namespace {
 QVariantMap summary(const PackInfo& p) {
-    return {{"kind", p.kind}, {"region", p.region}, {"version", p.version.toString()}, {"notice", p.notice}};
+    return {{"kind", p.kind}, {"region", p.region}, {"version", p.version.toString()}, {"notice", p.notice},
+            {"onDisk", p.onDisk}};
 }
 } // namespace
 
 AppInfo::AppInfo(const QList<PackInfo>& scanned, const QList<PackInfo>& inUse, const QString& setVersion,
-                 const QString& packNotice, QObject* parent)
-    : QObject(parent), m_setVersion(setVersion), m_packNotice(packNotice) {
+                 const QStringList& packNotices, const QVariantMap& packModes, QObject* parent)
+    : QObject(parent), m_setVersion(setVersion), m_packNotices(packNotices), m_packModes(packModes) {
     QList<PackInfo> sorted = inUse;
     std::stable_sort(sorted.begin(), sorted.end(), [](const PackInfo& a, const PackInfo& b) {
         if (a.kind != b.kind) return a.kind == QLatin1String("charts");

@@ -7,7 +7,9 @@
 #include <QJsonObject>
 #include <QList>
 #include <QObject>
+#include <QStringList>
 #include <QVariantList>
+#include <QVariantMap>
 #include <optional>
 
 struct Depths;
@@ -27,9 +29,13 @@ class ChartController : public QObject {
     Q_PROPERTY(bool follow READ follow WRITE setFollow NOTIFY followChanged)
     Q_PROPERTY(bool fishAvailable READ fishAvailable CONSTANT)
     Q_PROPERTY(QString notice READ notice NOTIFY noticeChanged)
-    // Set when several packs of a kind are installed but the merged files do not match them: the
-    // newest single pack is shown instead. Empty otherwise. Unlike `notice`, a style load never changes it.
-    Q_PROPERTY(QString packNotice READ packNotice CONSTANT)
+    // One line per difference between the installed packs and the files shown (spec 5.4a): merged
+    // files kept although packs differ, or a single pack shown because the merged files are missing
+    // or damaged. Empty after a normal install. Unlike `notice`, a style load never changes it.
+    Q_PROPERTY(QStringList packNotices READ packNotices CONSTANT)
+    // Per kind with a pack shown ("charts", "bathy"): "single", "merged", "merged-stale" (merged
+    // files kept, packs differ) or "single-fallback" (merged files missing or damaged).
+    Q_PROPERTY(QVariantMap packModes READ packModes CONSTANT)
     // The charts pack's legend: list of {abbr, meaning, kind}; empty without a pack or legend.json.
     Q_PROPERTY(QVariantList legend READ legend CONSTANT)
     // The legend for the current view (legendCategories() in Legend.h): AIS only without a pack,
@@ -61,7 +67,8 @@ public:
     void setFollow(bool follow);
     bool fishAvailable() const { return m_bathy.has_value(); } // any usable bathy pack
     QString notice() const { return m_notice; }
-    QString packNotice() const { return m_packNotice; }
+    QStringList packNotices() const { return m_packNotices; }
+    QVariantMap packModes() const { return m_packModes; }
     QVariantList legend() const { return m_legend; }
     QVariantList legendCategories() const { return m_legendCategories; }
     QString spriteBase() const { return m_spriteBase; }
@@ -71,8 +78,8 @@ public:
     // Every pack given, with `refused` set on a pack whose styles cannot be used (a depth filter error,
     // or a style that cannot be read or rewritten). The About page lists this, not the scan.
     QList<PackInfo> packs() const { return m_packs; }
-    // The packs whose files the loaded styles read: every usable pack of a kind when its merged files
-    // are used, else the one single pack of that kind.
+    // What is shown, charts then bathy: the merged files' members (region and version from the dir
+    // name; one whose dir is gone has `onDisk` false), or the one single pack of that kind.
     QList<PackInfo> packsInUse() const { return m_inUse; }
 
     // The own-ship line switches and COG line length from the settings.
@@ -138,10 +145,13 @@ private:
     AisModel& m_ais;
     QList<PackInfo> m_packs;
     QString m_packsDir;
-    std::optional<PackInfo> m_charts, m_bathy; // the newest usable pack of each kind: styles, sprites, glyphs
-    QList<double> m_valdco;                    // union over the usable charts packs
+    // Per kind, where styles, sprites and glyphs come from: the newest merged member still on disk,
+    // else the newest usable pack.
+    std::optional<PackInfo> m_charts, m_bathy;
+    QList<double> m_valdco;                    // of the charts shown: the merged file's, or the single pack's
     QList<PackInfo> m_inUse;
-    QString m_packNotice;
+    QStringList m_packNotices;
+    QVariantMap m_packModes;
     QString m_mode = QStringLiteral("nav");
     QString m_palette = QStringLiteral("day");
     bool m_follow = true;
