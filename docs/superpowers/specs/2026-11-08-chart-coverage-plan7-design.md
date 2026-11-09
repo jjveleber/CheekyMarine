@@ -103,7 +103,7 @@ The spike measures: install time to merge, disk use, memory, and frame time whil
 
 - `PackCatalog` keeps every usable pack per kind, not only the best one. The newest version of each region wins; packs with a schema the app does not accept are refused per pack, with the reason, as today.
 - Styles, sprites and glyphs come from the newest installed pack of each kind; all packs of one kind in a set must share the same `schema` (the set build checks this).
-- Zoom range, legend entries and the ENC `valdco` list (safety contour) are the union across the packs shown (merged files or the one single pack; details in 5.4a).
+- Legend entries and the ENC `valdco` list (safety contour) come from what is shown: the merged files, or the one single pack. The zoom range comes from the merged files in merged modes and is the union over the usable charts packs otherwise (details in 5.4a).
 - The About page lists every pack with region and version.
 - Fish mode is available wherever a bathy pack covers the view; the "no bathy pack for the charts region" fallback becomes per area.
 
