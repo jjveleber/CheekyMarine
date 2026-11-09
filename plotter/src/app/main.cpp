@@ -8,6 +8,7 @@
 #include "core/Geo.h"
 #include "core/N2kClient.h"
 #include "core/PackCatalog.h"
+#include "core/PackMerge.h"
 #include "core/PanPath.h"
 #include "core/PaletteController.h"
 #include "core/Recovery.h"
@@ -23,6 +24,7 @@
 #include "core/WindowOptions.h"
 
 #include <QCommandLineParser>
+#include <QCoreApplication>
 #include <QDateTime>
 #include <QDebug>
 #include <QElapsedTimer>
@@ -39,6 +41,7 @@
 #include <QStandardPaths>
 #include <QTimer>
 #include <csignal>
+#include <cstdio>
 #include <memory>
 #include <utility>
 
@@ -85,7 +88,38 @@ std::unique_ptr<Store> recover(QGuiApplication& app, const QString& dir, StoreEr
 
 } // namespace
 
+// `cheekyplotter --merge-packs DIR`: merges the usable packs under DIR (newest per region) into
+// DIR/merged and prints one line per written file. Runs without a display.
+static int mergePacksCli(int argc, char* argv[], const QString& dir) {
+    QCoreApplication app(argc, argv);
+    const QList<PackInfo> all = PackCatalog::scan(dir);
+    QList<PackInfo> use;
+    QStringList written;
+    for (const QString& kind : {QStringLiteral("charts"), QStringLiteral("bathy")}) {
+        const QList<PackInfo> k = PackCatalog::usable(all, kind);
+        use += k;
+        if (k.size() >= 2)
+            for (const QString& f : kind == QLatin1String("charts") ? kChartsFiles : kBathyFiles)
+                written << dir + QStringLiteral("/merged/") + kind + QLatin1Char('/') + f;
+    }
+    const auto r = mergePacks(use, dir + QStringLiteral("/merged"));
+    if (!r) {
+        fprintf(stderr, "merge failed: %s\n", qPrintable(r.error()));
+        return 1;
+    }
+    for (const QString& f : written)
+        printf("%s\n", qPrintable(f));
+    return 0;
+}
+
 int main(int argc, char* argv[]) {
+    for (int i = 1; i < argc; ++i) {
+        const QString a = QString::fromLocal8Bit(argv[i]);
+        if (a == QLatin1String("--merge-packs") && i + 1 < argc)
+            return mergePacksCli(argc, argv, QString::fromLocal8Bit(argv[i + 1]));
+        if (a.startsWith(QLatin1String("--merge-packs=")))
+            return mergePacksCli(argc, argv, a.mid(14));
+    }
     QElapsedTimer startTimer;
     startTimer.start();
     // The MapLibre library is built with the OpenGL renderer only.

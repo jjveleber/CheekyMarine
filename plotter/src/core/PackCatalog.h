@@ -1,5 +1,6 @@
 #pragma once
 #include <QList>
+#include <QStringList>
 #include <QString>
 #include <QStringView>
 #include <QVersionNumber>
@@ -25,6 +26,10 @@ struct PackInfo {
     QString refused;
 };
 
+// The MBTiles files of each pack kind. Merging (PackMerge) writes one file of this name per kind.
+inline const QStringList kChartsFiles{"enc.mbtiles"};
+inline const QStringList kBathyFiles{"bathy.mbtiles", "dem.mbtiles", "bathy-coarse.mbtiles", "dem-coarse.mbtiles"};
+
 class PackCatalog {
 public:
     // Scans `dir` for charts-<region>-<x.y.z> and bathy-<region>-<x.y.z> directories. A broken pack
@@ -32,4 +37,6 @@ public:
     static QList<PackInfo> scan(const QString& dir);
     // Highest version among non-refused packs of `kind` (and `region` when non-empty).
     static std::optional<PackInfo> best(const QList<PackInfo>& packs, QStringView kind, QStringView region = {});
+    // The newest non-refused version of each region among packs of `kind`, sorted by region.
+    static QList<PackInfo> usable(const QList<PackInfo>& packs, QStringView kind);
 };

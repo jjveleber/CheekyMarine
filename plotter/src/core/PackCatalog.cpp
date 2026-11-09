@@ -169,3 +169,18 @@ std::optional<PackInfo> PackCatalog::best(const QList<PackInfo>& packs, QStringV
     }
     return b;
 }
+
+QList<PackInfo> PackCatalog::usable(const QList<PackInfo>& packs, QStringView kind) {
+    QList<PackInfo> out;
+    for (const PackInfo& p : packs) {
+        if (!p.refused.isEmpty() || p.kind != kind)
+            continue;
+        auto it = std::find_if(out.begin(), out.end(), [&](const PackInfo& o) { return o.region == p.region; });
+        if (it == out.end())
+            out.append(p);
+        else if (p.version > it->version)
+            *it = p;
+    }
+    std::sort(out.begin(), out.end(), [](const PackInfo& a, const PackInfo& b) { return a.region < b.region; });
+    return out;
+}
