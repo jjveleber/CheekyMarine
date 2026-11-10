@@ -86,8 +86,10 @@ def test_build_enc_zoom_range_reaches_tippecanoe(tmp_path, fixtures_dir, regions
     (tmp_path / "cache" / "enc").mkdir(parents=True)
     shutil.copy(fixtures_dir / "US4WA1HK.zip", tmp_path / "cache" / "enc" / "US4WA1HK-1.3.zip")
     region = _grid_region(tmp_path, regions_dir)
-    if overview:
-        region.write_text("overview = true\n" + region.read_text().replace('sources = ["cudem", "crm"]', 'sources = ["crm"]'))
+    if overview:  # beside the grid's one region pack, whose owned tiles crop it
+        region = region.with_name("ov.toml")
+        region.write_text("overview = true\n" + (tmp_path / "regions" / "test-cell.toml").read_text()
+                          .replace('name = "test-cell"', 'name = "ov"').replace('sources = ["cudem", "crm"]', 'sources = ["crm"]'))
     cmds = []
     monkeypatch.setattr(tiles, "run", cmds.append)
     with pytest.raises(Exception):  # the patched run writes no mbtiles: only the commands matter
@@ -142,6 +144,39 @@ def test_build_enc_crops_band1_to_the_owned_tiles(tmp_path, fixtures_dir, region
               (tmp_path / "work" / "tippecanoe" / "depare.geojsonseq").read_text().splitlines()
               if json.loads(line)["properties"]["cell"] == "US1AAAAA"]
     assert depare and all(g.bounds[0] >= w - BLOCK_MARGIN_DEG - 1e-9 for g in depare)
+
+
+def test_build_enc_crops_the_overview_to_every_owned_tile(tmp_path, fixtures_dir, regions_dir, monkeypatch):
+    """The overview owns no zoom-10 tile, but its quilt output is cut to the union of every owned tile plus
+    BLOCK_MARGIN_DEG: a band 1 feature in Alaska does not reach tippecanoe."""
+    import json
+
+    from chartpack import cli
+    from chartpack.enc import tiles
+    from chartpack.enc.reader import CellMeta, Feature
+    from chartpack.grid import GRID_ZOOM, owned_tiles, tile_bounds
+    from chartpack.region import load_region
+    from shapely.geometry import box, mapping
+
+    (tmp_path / "cache" / "enc").mkdir(parents=True)
+    (tmp_path / "cache" / "enc" / "US1AAAAA-1.0.zip").touch()
+    pack = _grid_region(tmp_path, regions_dir)
+    overview = tmp_path / "regions" / "ov.toml"
+    overview.write_text("overview = true\n" + pack.read_text().replace('name = "test-cell"', 'name = "ov"')
+                        .replace('sources = ["cudem", "crm"]', 'sources = ["crm"]')
+                        .replace('band4 = ["US4WA1HK"]', 'band1 = ["US1AAAAA"]'))
+    w, s, e, n = tile_bounds(GRID_ZOOM, *min(owned_tiles(load_region(pack), pack.parent)))
+    points = {"inside": ((w + e) / 2, (s + n) / 2), "alaska": (-150.0, 61.0)}
+    band1 = (CellMeta("US1AAAAA", 1, 1, 0, "2026-01-01", mapping(box(-170, 10, -100, 65))),
+             [Feature("hazard", {"type": "Point", "coordinates": list(p)},
+                      {"cell": "US1AAAAA", "band": 1, "class": "OBSTRN", "OBJNAM": name}) for name, p in points.items()])
+    monkeypatch.setattr(cli, "read_cell", lambda path: band1)
+    monkeypatch.setattr(tiles, "run", lambda cmd: None)
+    with pytest.raises(Exception):  # the patched run writes no mbtiles: only the tippecanoe input matters
+        main(["build-enc", str(overview), str(tmp_path / "out"), "--cache", str(tmp_path / "cache"),
+              "--work", str(tmp_path / "work")])
+    hazards = [json.loads(line) for line in (tmp_path / "work" / "tippecanoe" / "hazard.geojsonseq").read_text().splitlines()]
+    assert {f["properties"]["OBJNAM"] for f in hazards} == {"inside"}
 
 
 def test_build_enc_uses_cached_zip(tmp_path, fixtures_dir, regions_dir):

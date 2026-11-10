@@ -40,7 +40,7 @@ from chartpack.enc.catalog import CATALOG_URL, cells_meeting, parse_catalog
 from chartpack.enc.fetch import fetch_cells
 from chartpack.enc.reader import read_cell
 from chartpack.enc.tiles import OVERVIEW_ZOOMS, REGION_ZOOMS, build_enc_mbtiles
-from chartpack.grid import GRID_ZOOM, content_tiles, keep_tiles, owned_tiles, tile_bounds, tiles_area
+from chartpack.grid import content_tiles, keep_tiles, owned_tiles, tiles_area
 from chartpack.pack.archive import archive_pack
 from chartpack.pack.assemble import BATHY_FILES, assemble_bathy_pack, assemble_charts_pack
 from chartpack.pack.check import check_pack
@@ -117,13 +117,13 @@ def _build_enc(args: argparse.Namespace) -> int:
     cells = [read_cell(_newest_cached_zip(args.cache, name)) for name in names]
     owned = owned_tiles(region, args.region.parent)  # before the slow build: a bad grid fails fast
     zooms = OVERVIEW_ZOOMS if region.overview else REGION_ZOOMS
-    # A region pack keeps the quilt output on its owned tiles plus a margin wider than tippecanoe's tile buffer
-    # (5 of 256 px, about 0.007 degrees at zoom 10), so a feature across an owned edge still renders over the seam.
-    area = None if owned is None else unary_union([
-        box(w - BLOCK_MARGIN_DEG, s - BLOCK_MARGIN_DEG, e + BLOCK_MARGIN_DEG, n + BLOCK_MARGIN_DEG)
-        for w, s, e, n in (tile_bounds(GRID_ZOOM, x, y) for x, y in owned)])
+    # The quilt output is kept on the owned tiles (the overview: every owned tile) plus a margin wider than
+    # tippecanoe's tile buffer (5 of 256 px, about 0.007 degrees at zoom 10), so a feature across an owned edge
+    # still renders over the seam, and a band 1 cell spanning far past wave 1 adds nothing beyond it.
+    area = tiles_area(content_tiles(region, args.region.parent), BLOCK_MARGIN_DEG)
     enc = build_enc_mbtiles(cells, args.work / "enc.mbtiles", region=region, work=args.work / "tippecanoe",
-                            seabed=_usgs_seabed(region, args.cache, area), zooms=zooms, area=area)
+                            seabed=_usgs_seabed(region, args.cache, None if owned is None else area), zooms=zooms,
+                            area=area)
     keep_tiles(enc, owned, minzoom=zooms[0], maxzoom=zooms[1])
     print(_finish(assemble_charts_pack(region, enc, args.out), region))
     return 0
