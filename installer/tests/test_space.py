@@ -93,6 +93,41 @@ class TestSpace(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertTrue(os.readlink(self.opt("/current")).startswith("sets/0.2.1."))
 
+    def test_fresh_install_credits_the_deleted_stage(self):
+        # The 0.3.0 shape: a kind that merges, nothing in the store. The stage (24 MiB of packs) is
+        # deleted before the merge writes its 16 MiB, so the need is the 24 MiB unpack, not 40.
+        packs = [("charts", "puget-north", "1.1.0"), ("charts", "sound-central", "1.0.0"),
+                 ("bathy", "puget-north", "1.1.0")]
+        rel = self.rig.make_set("0.2.0", "0.3.0", packs=packs, tiles_bytes=TILES)
+        self.avail(MARGIN + 30 * MIB)
+        r = self.rig.run("install", script=rel / "install-cheekymarine.sh")
+        self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_refusal_names_leftover_set_dirs(self):
+        a = self.rig.make_set("0.2.0", "0.3.0", tiles_bytes=TILES)
+        r = self.rig.run("install", script=a / "install-cheekymarine.sh")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.opt("/sets/0.2.1.20261101T000000Z").mkdir()  # left by a run that failed after unpack
+        b = self.rig.make_set("0.2.1", "0.3.1", tiles_bytes=TILES)
+        self.avail(1000)
+        r = self.rig.run("install", script=b / "install-cheekymarine.sh")
+        self.assertEqual(r.returncode, 1, r.stderr)
+        self.needed_mb(r.stderr)
+        self.assertIn("Set dirs left by failed runs (neither current nor previous uses them, safe to delete): "
+                      "/opt/cheekymarine/sets/0.2.1.20261101T000000Z", r.stderr)
+        self.assertNotIn(os.readlink(self.opt("/current"))[len("sets/"):], r.stderr)
+        self.assertTrue(self.opt("/sets/0.2.1.20261101T000000Z").is_dir())
+
+    def test_unreadable_free_space_refuses(self):
+        rel = self.rig.make_set("0.2.0", "0.3.0")
+        self.rig.state("df-avail-kb").write_text("")  # df prints no number in the Available column
+        r = self.rig.run("install", script=rel / "install-cheekymarine.sh")
+        self.assertEqual(r.returncode, 1, r.stderr)
+        self.assertIn("cheekymarine: cannot read the free disk space of /opt/cheekymarine; nothing was changed",
+                      r.stderr)
+        self.assertNotIn("integer expression", r.stderr)
+        self.assertFalse(self.opt("/current").is_symlink())
+
 
 if __name__ == "__main__":
     unittest.main()

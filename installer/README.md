@@ -18,7 +18,7 @@ Running the same set again repairs it; running a newer set upgrades.
 The script downloads every part and checks each against the SHA-256 in its lock. If a download,
 a check or the apt step fails, it stops with the running set untouched. After the downloads it
 checks that the disk holding `/opt/cheekymarine` has room for the unpacked parts and the merged
-packs (plus 10 % and 256 MiB); if not, it stops before changing anything and says how much space
+packs (plus 10% and 256 MiB); if not, it stops before changing anything and says how much space
 it needs and how much is free.
 
 Log out and back in after the first install. The first install adds you to the `cheekymarine`
