@@ -198,11 +198,14 @@ def _features(
 def _under_cells() -> int:
     """Coarse cells the coarse bands run on past the coarse cells that fine owns, under the fine bands, so at every
     zoom no point between them lacks a band. Each band edge stops at the last cell center of its zoom's
-    block-meaned grid, up to half a block short of the coarse data or past the CUDEM edge on the fine side, and
-    simplifying moves it up to its tolerance; the coarse bands draw their last range past its top zoom."""
+    block-meaned grid, up to half a block short of the coarse data or past the CUDEM edge on the fine side,
+    simplifying moves it up to its tolerance, and tippecanoe moves it up to 1.5 units of its 4096-unit tile (one
+    unit of its own simplification, half a unit of rounding to the grid) at the zoom of the tile drawn; the
+    coarse bands draw their last range past its top zoom."""
     def reach(res, bands, zoom):
         _, hi, target = next((b for b in bands if b[0] <= zoom <= b[1]), bands[-1])
-        return block_factor((0, res, 0, 0, 0, -res), target) * res / 2 + zoom_tolerance_deg(hi)
+        tile_units = 1.5 * 360 / 2 ** min(zoom, bands[-1][1]) / 4096
+        return block_factor((0, res, 0, 0, 0, -res), target) * res / 2 + zoom_tolerance_deg(hi) + tile_units
 
     zooms = range(BANDS[0][0], BANDS[-1][1] + 1)
     worst = max(reach(COARSE_RES_DEG, COARSE_BANDS, z) + reach(FINE_RES_DEG, BANDS, z) for z in zooms)
@@ -226,7 +229,8 @@ def build_block(
     Fine is the CUDEM-then-CRM merge; its features use the CUDEM cells (source index 1) only, its DEM the
     whole merge. Coarse is CRM on every coarse cell unless every fine cell in it holds CUDEM, decided per
     cell; its contours and coverage stop there, while its grid and bands keep _under_cells more coarse cells
-    under fine so the bands overlap instead of leaving a gap (the style draws coarse under fine). Cells
+    under fine so the bands overlap instead of leaving a gap (the style draws coarse under fine), each only
+    where its own fine cells include CUDEM water, so no CRM depth is drawn under dry CUDEM. Cells
     inside clip are nan in both grids before anything is drawn. A crm_path of None (no CRM in
     the region's sources) leaves the coarse outputs empty. A block that no CUDEM
     tile meets skips the fine merge: its fine outputs are empty and fine_grid is None. The grids (the DEMs)
@@ -254,19 +258,24 @@ def build_block(
     fine_out = ([], [], [])
     coarse_cells = None
     if fine is not None:
+        _clip(fine, clip)
+        cudem = (source == 1) & np.isfinite(fine.data)
+        fine_depth = _with_lakes(fine, datum)  # the depths the fine bands draw
         if coarse is not None:
             k = round(COARSE_RES_DEG / FINE_RES_DEG)
             rows, cols = coarse.data.shape
             owned = (source == 1).reshape(rows, k, cols, k).all(axis=(1, 3))
-            coarse.data[~binary_dilation(~owned, np.ones((3, 3), bool), iterations=_under_cells())] = np.nan
+            with np.errstate(invalid="ignore"):
+                wet = (cudem & (fine_depth.data > 0)).reshape(rows, k, cols, k).any(axis=(1, 3))
+            under = binary_dilation(~owned, np.ones((3, 3), bool), iterations=_under_cells()) & (~owned | wet)
+            coarse.data[~under] = np.nan
             coarse_cells = np.isfinite(coarse.data) & ~owned
-            del owned
-        _clip(fine, clip)
-        cudem = (source == 1) & np.isfinite(fine.data)
+            del owned, wet, under
         del source
         years = ",".join(sorted({str(t.year) for t in tiles_for_bbox(list(cudem_tiles), core)}))
         cudem_label = {"source": "cudem", "resolution_m": 3, "date": years}
-        fine_out = _features(_with_lakes(fine, datum), core, BANDS, fine=True, label=cudem_label, cells=cudem)
+        fine_out = _features(fine_depth, core, BANDS, fine=True, label=cudem_label, cells=cudem)
+        del fine_depth
     coarse_out = ([], [], []) if coarse is None else _features(
         _with_lakes(coarse, datum), core, COARSE_BANDS, fine=False, label=CRM_LABEL, cells=coarse_cells,
         band_cells=None if coarse_cells is None else np.isfinite(coarse.data), overzoomed=True)

@@ -219,6 +219,32 @@ def test_bands_leave_no_gap_at_the_cudem_edge(sources, test_region, elev, lines)
             assert line.difference(filled).length < 1e-9, (z, a)
 
 
+def test_coarse_bands_stay_off_dry_cudem(sources, test_region):
+    """A CUDEM patch whose rim is above MLLW (fine draws no band there) over CRM water: the coarse bands do not
+    run under the dry rim past the one partial coarse cell at each edge of it."""
+    elev = _cudem_elev(patch=PATCH)
+    lon = AREA[0] + (np.arange(2000) + 0.5) * 0.0005
+    lat = AREA[3] - (np.arange(2000) + 0.5) * 0.0005
+    w, s, e, n = PATCH
+    inner = (w + 0.005, s + 0.005, e - 0.005, n - 0.005)
+    rim = ((lon > w) & (lon < e))[None, :] & ((lat > s) & (lat < n))[:, None]
+    rim &= ~(((lon > inner[0]) & (lon < inner[2]))[None, :] & ((lat > inner[1]) & (lat < inner[3]))[:, None])
+    elev[rim] = 2.0
+    _, result = _build(NORTH, sources, test_region, elev)
+    dry = box(*PATCH).buffer(-COARSE, join_style="mitre").difference(box(*inner).buffer(COARSE, join_style="mitre"))
+    coarse = unary_union([shape(f["geometry"]) for f in result.coarse_bands])
+    assert coarse.intersection(dry).area < 1e-12
+    assert result.fine_bands and coarse.intersects(box(*PATCH))  # the partial cells still hold coarse bands
+
+
+def test_under_cells_at_the_real_resolutions():
+    """Per side at z10-11 (the worst zoom): half a block-meaned cell, the band simplify tolerance at z11 (4.6e-4
+    deg) and 1.5 tippecanoe tile units at z10 (1.29e-4 deg). Coarse: 6 cells of 1/3600 -> 8.33e-4 + 4.6e-4 +
+    1.29e-4 = 1.42e-3; fine: 52 cells of 1/32400 -> 8.02e-4 + 4.6e-4 + 1.29e-4 = 1.39e-3; together 10.1 coarse
+    cells, so 11."""
+    assert blocks._under_cells() == 11
+
+
 def test_crm_only_block_coarse_z12_has_every_level(sources, test_region):
     """A block with no CUDEM value: its coarse z12 band holds the 10 ft levels with min_zoom 13 and 14 (the
     style shows them on the overzoomed z12 tiles), e.g. 250 ft with minzoom 14."""
