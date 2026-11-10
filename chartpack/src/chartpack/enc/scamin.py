@@ -7,7 +7,7 @@ import numpy as np
 import shapely
 from shapely.geometry import shape
 
-BAND_ZOOMS = {2: (6, 10), 3: (6, 10), 4: (11, 12), 5: (13, 16)}
+BAND_ZOOMS = {1: (6, 10), 2: (6, 10), 3: (6, 10), 4: (11, 12), 5: (13, 16)}
 
 _MAX_ZOOM = 16
 # Scale denominator at zoom 0 for 256 px tiles at the equator. MapLibre GL draws a 512 px world, so its map
