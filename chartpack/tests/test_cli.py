@@ -25,11 +25,47 @@ def test_cells_and_fetch_enc(tmp_path, fixtures_dir, regions_dir, monkeypatch, c
         return dest
 
     monkeypatch.setattr(cli, "download", fake_download)
-    region = str(regions_dir / "test-cell.toml")
+    region = str(_grid_region(tmp_path, regions_dir))  # cells reads the grid beside the region file
     assert main(["cells", region, "--band", "4", "--cache", str(tmp_path)]) == 0
     assert "US4WA1HK" in capsys.readouterr().out.split()
     assert main(["fetch-enc", region, "--cache", str(tmp_path)]) == 0
     assert capsys.readouterr().out == "US4WA1HK 1.3 2026-09-09\n"
+
+
+def _fixture_catalog(monkeypatch, fixtures_dir):
+    """cli.download serves the catalog excerpt for the catalog url."""
+    from chartpack import cli
+
+    def fake_download(url, dest, *, expected_size=None, timeout=120):
+        assert url.endswith(".xml"), url
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy(fixtures_dir / "ENCProdCat_excerpt.xml", dest)
+        return dest
+
+    monkeypatch.setattr(cli, "download", fake_download)
+
+
+def test_cells_selects_over_the_owned_tiles(tmp_path, fixtures_dir, regions_dir, monkeypatch, capsys):
+    """A region box that is a sliver of its owned zoom-10 tile column: cells lists the cells meeting the owned tiles,
+    not only the box."""
+    _fixture_catalog(monkeypatch, fixtures_dir)
+    region = _grid_region(tmp_path, regions_dir)
+    region.write_text(region.read_text().replace("bbox = [-122.4, 47.7, -122.1, 48.0]", "bbox = [-122.4, 47.7, -122.39, 47.71]"))
+    assert main(["cells", str(region), "--band", "5", "--cache", str(tmp_path / "cache")]) == 0
+    assert "US5SEAEH" in capsys.readouterr().out.split()  # in the owned tile (163, 357), south of the box
+
+
+def test_cells_reproduces_the_wave1_lists(tmp_path, fixtures_dir, regions_dir, monkeypatch, capsys):
+    """The documented refresh (chartpack cells per region and band) gives the committed lists, the overview's over
+    every owned tile. The fixture holds every cell the regions name, so this holds against it."""
+    from chartpack.region import load_region
+
+    _fixture_catalog(monkeypatch, fixtures_dir)
+    for name in ["sound-south", "sound-central", "north-sound", "strait", "wa-coast", "overview"]:
+        path = regions_dir / f"{name}.toml"
+        for band, names in load_region(path).cells.items():
+            assert main(["cells", str(path), "--band", str(band), "--cache", str(tmp_path / "cache")]) == 0
+            assert capsys.readouterr().out.split() == names, (name, band)
 
 
 def _grid_region(tmp_path, regions_dir):

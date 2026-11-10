@@ -36,11 +36,11 @@ from chartpack.bathy.tiles import (
 )
 from chartpack.cache import download
 from chartpack.datum import geoid
-from chartpack.enc.catalog import CATALOG_URL, cells_in_bbox, parse_catalog
+from chartpack.enc.catalog import CATALOG_URL, cells_meeting, parse_catalog
 from chartpack.enc.fetch import fetch_cells
 from chartpack.enc.reader import read_cell
 from chartpack.enc.tiles import OVERVIEW_ZOOMS, REGION_ZOOMS, build_enc_mbtiles
-from chartpack.grid import GRID_ZOOM, keep_tiles, owned_tiles, tile_bounds
+from chartpack.grid import GRID_ZOOM, content_tiles, keep_tiles, owned_tiles, tile_bounds, tiles_area
 from chartpack.pack.archive import archive_pack
 from chartpack.pack.assemble import BATHY_FILES, assemble_bathy_pack, assemble_charts_pack
 from chartpack.pack.check import check_pack
@@ -68,8 +68,10 @@ def _fetch_enc(args: argparse.Namespace) -> int:
 
 
 def _cells(args: argparse.Namespace) -> int:
+    """The Active cells of the band meeting the region's owned zoom-10 tiles (the overview: every owned tile)."""
     region = load_region(args.region)
-    for name in cells_in_bbox(_load_catalog(args.cache), region.bbox, args.band):
+    area = tiles_area(content_tiles(region, args.region.parent))
+    for name in cells_meeting(_load_catalog(args.cache), area, args.band):
         print(name)
     return 0
 

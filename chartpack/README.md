@@ -42,7 +42,7 @@ scratch space, `OUT` is the directory the pack directory is created in. A build 
 
 ```bash
 R=regions/sound-central.toml
-chartpack cells $R --band 5 --cache cache                  # catalog cells meeting the bbox, for editing the region file
+chartpack cells $R --band 5 --cache cache                  # Active catalog cells meeting the owned zoom-10 tiles (overview: all)
 chartpack fetch-enc $R --cache cache                       # ENC zips, newest edition and updates
 chartpack fetch-seabed $R --cache cache                    # USGS bottom composition zips
 chartpack build-enc $R work/charts --cache cache --work work/tmp

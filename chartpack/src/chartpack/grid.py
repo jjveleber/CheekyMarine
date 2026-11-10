@@ -99,6 +99,23 @@ def owned_tiles(region: Region, regions_dir: Path) -> set[tuple[int, int]] | Non
     return {tile for tile, name in owner.items() if name == region.name}
 
 
+def content_tiles(region: Region, regions_dir: Path) -> set[tuple[int, int]]:
+    """The zoom-10 tiles a pack's content is selected and cropped over: a region pack's owned tiles
+    (owned_tiles); for the overview, every tile a region pack in grid.toml owns."""
+    owned = owned_tiles(region, regions_dir)
+    if owned is not None:
+        return owned
+    regions_dir = Path(regions_dir)
+    return set().union(*(owned_tiles(load_region(regions_dir / f"{name}.toml"), regions_dir)
+                         for name in load_grid(regions_dir / "grid.toml")))
+
+
+def tiles_area(tiles: set[tuple[int, int]], margin_deg: float = 0.0) -> shapely.Geometry:
+    """The union of the zoom-10 tiles, each grown by margin_deg."""
+    return shapely.union_all([box(w - margin_deg, s - margin_deg, e + margin_deg, n + margin_deg)
+                              for w, s, e, n in (tile_bounds(GRID_ZOOM, x, y) for x, y in tiles)])
+
+
 def keep_tiles(path: Path, owned: set[tuple[int, int]] | None, *, minzoom: int, maxzoom: int) -> None:
     """Prune an enc.mbtiles to the zoom range and, when `owned` is set, to the owned zoom-10 tiles and
     their descendants. Stored rows are TMS: flip to XYZ before taking the zoom-10 ancestor."""
