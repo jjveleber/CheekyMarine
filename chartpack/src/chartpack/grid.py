@@ -131,3 +131,44 @@ def keep_tiles(path: Path, owned: set[tuple[int, int]] | None, *, minzoom: int, 
         conn.execute("vacuum")
     finally:
         conn.close()
+
+
+Line = tuple[tuple[float, float], tuple[float, float]]
+
+
+def seams(owned: dict[str, set[tuple[int, int]]]) -> dict[tuple[str, str], list[Line]]:
+    """The zoom-10 tile edges each pair of regions shares, as straight lines ((W, S), (E, N)): along a tile row
+    S == N, along a column W == E. Runs of edges on one row or column are merged. `owned` maps region names to
+    their owned tiles (owned_tiles); a pair is keyed in the order the names come in `owned`."""
+    owner = {tile: name for name, tiles in owned.items() for tile in tiles}
+    rank = {name: i for i, name in enumerate(owned)}
+    rows: dict[tuple[str, str, int], set[int]] = {}  # (a, b, row edge y) -> x of each shared unit edge
+    cols: dict[tuple[str, str, int], set[int]] = {}  # (a, b, column edge x) -> y of each shared unit edge
+    for (x, y), a in owner.items():
+        for (nx, ny), edges, key, unit in (((x + 1, y), cols, x + 1, y), ((x, y + 1), rows, y + 1, x)):
+            b = owner.get((nx, ny))
+            if b is not None and b != a:
+                pair = (a, b) if rank[a] < rank[b] else (b, a)
+                edges.setdefault((*pair, key), set()).add(unit)
+
+    def lon(tx: int) -> float:  # west edge of tile column tx
+        return tile_bounds(GRID_ZOOM, tx, 0)[0]
+
+    def lat(ty: int) -> float:  # north edge of tile row ty
+        return tile_bounds(GRID_ZOOM, 0, ty)[3]
+
+    def runs(units: set[int]) -> list[tuple[int, int]]:
+        out = []
+        for u in sorted(units):
+            if out and out[-1][1] == u:
+                out[-1] = (out[-1][0], u + 1)
+            else:
+                out.append((u, u + 1))
+        return out
+
+    result: dict[tuple[str, str], list[Line]] = {}
+    for (a, b, y), xs in sorted(rows.items()):
+        result.setdefault((a, b), []).extend(((lon(x0), lat(y)), (lon(x1), lat(y))) for x0, x1 in runs(xs))
+    for (a, b, x), ys in sorted(cols.items()):
+        result.setdefault((a, b), []).extend(((lon(x), lat(y1)), (lon(x), lat(y0))) for y0, y1 in runs(ys))
+    return dict(sorted(result.items(), key=lambda kv: (rank[kv[0][0]], rank[kv[0][1]])))

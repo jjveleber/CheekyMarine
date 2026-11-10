@@ -41,20 +41,20 @@ scratch space, `OUT` is the directory the pack directory is created in. A build 
 `OUT/<pack>-<region>-<version>/`, so every later command takes that nested path.
 
 ```bash
-R=regions/puget-north.toml
+R=regions/sound-central.toml
 chartpack cells $R --band 5 --cache cache                  # catalog cells meeting the bbox, for editing the region file
 chartpack fetch-enc $R --cache cache                       # ENC zips, newest edition and updates
 chartpack fetch-seabed $R --cache cache                    # USGS bottom composition zips
 chartpack build-enc $R work/charts --cache cache --work work/tmp
 chartpack fetch-bathy $R --cache cache                     # CUDEM tile list, CRM for the bbox
 chartpack build-bathy $R work/bathy --cache cache --work work/tmp
-chartpack check work/charts/charts-puget-north-1.0.0 --enc-cache cache
-chartpack check work/bathy/bathy-puget-north-1.0.0
-chartpack manifest work/charts/charts-puget-north-1.0.0 --region $R   # rewrite manifest.json (builds already do this)
-chartpack restyle work/charts/charts-puget-north-1.0.0         # rewrite styles/ and sprites/ from the current palette, then manifest.json
-chartpack archive work/charts/charts-puget-north-1.0.0 dist           # dist/charts-puget-north-1.0.0.tar and SHA256SUMS
-chartpack archive work/bathy/bathy-puget-north-1.0.0 dist
-chartpack render work/charts/charts-puget-north-1.0.0 work/bathy/bathy-puget-north-1.0.0 --views $R --out renders
+chartpack check work/charts/charts-sound-central-1.0.0 --enc-cache cache
+chartpack check work/bathy/bathy-sound-central-1.0.0
+chartpack manifest work/charts/charts-sound-central-1.0.0 --region $R   # rewrite manifest.json (builds already do this)
+chartpack restyle work/charts/charts-sound-central-1.0.0         # rewrite styles/ and sprites/ from the current palette, then manifest.json
+chartpack archive work/charts/charts-sound-central-1.0.0 dist           # dist/charts-sound-central-1.0.0.tar and SHA256SUMS
+chartpack archive work/bathy/bathy-sound-central-1.0.0 dist
+chartpack render work/charts/charts-sound-central-1.0.0 work/bathy/bathy-sound-central-1.0.0 --views $R --out renders
 ```
 
 `render` takes one or more pack directories and draws the region's `[[render.views]]` with MapLibre in
@@ -79,13 +79,29 @@ Deep water stays black. Everything else (lines, other icons) stays red; text hal
 
 ## Region files
 
+Wave 1 (plan 7) has five region packs and an overview, one file each in `regions/`:
+
+| Region | Box (W, S, E, N) | ENC bands | Covers |
+|---|---|---|---|
+| `sound-south` | -123.25, 46.95, -122.1, 47.45 | 3 to 5 | Tacoma Narrows, Commencement Bay, Carr and Case inlets, Olympia, lower Hood Canal |
+| `sound-central` | -123.25, 47.45, -122.1, 48.2 | 3 to 5 | Seattle, Lake Union, Lake Washington, Possession bar, Everett, Admiralty Inlet |
+| `north-sound` | -123.35, 48.2, -122.25, 49.05 | 3 to 5 | San Juans, Rosario Strait, Deception Pass, Skagit and Padilla bays, Bellingham |
+| `strait` | -124.8, 47.95, -123.25, 48.6 | 1 to 5 | Strait of Juan de Fuca, US side: Port Angeles, Sekiu, Neah Bay |
+| `wa-coast` | -127.0, 46.15, -123.75, 48.6 | 1 to 5 | Columbia bar to Cape Flattery, out to about 100 mi |
+| `overview` | -127.0, 46.15, -122.1, 49.05 | 1 to 3 | zoom 9 and below over all of the above |
+
+Each region pack owns whole zoom-10 tiles: `regions/grid.toml` gives a tile meeting several boxes to the
+first region it lists, so pack edges follow the tile grid, not the box edges (`sound-south` owns up to
+47.5172 N, `sound-central` up to 48.2247 N). `chartpack.grid.seams` lists the lines where two packs meet.
+Tiles wholly inside `clip/canada-wa.geojson` belong to no pack. `test-cell.toml` is a small test region.
+
 `regions/<region>.toml`:
 
 ```toml
-name = "puget-north"
-charts_version = "1.0.0"          # tag charts-puget-north-v1.0.0
-bathy_version = "1.0.0"           # tag bathy-puget-north-v1.0.0
-bbox = [-122.9, 47.5, -122.1, 48.3]   # W, S, E, N
+name = "sound-central"
+charts_version = "1.0.0"          # tag charts-sound-central-v1.0.0
+bathy_version = "1.0.0"           # tag bathy-sound-central-v1.0.0
+bbox = [-123.25, 47.45, -122.1, 48.2]   # W, S, E, N
 clip = "clip/canada-wa.geojson"   # optional: polygon of water to remove from the bathy
 coarse_fallback = "crm"           # optional: "crm" (default) or "enc" for contours where CUDEM is absent
 
