@@ -20,7 +20,7 @@ from shapely.ops import unary_union
 
 from chartpack.bathy import blocks
 from chartpack.bathy.blocks import area_datum, build_block, iter_blocks
-from chartpack.bathy.crm import crm_path
+from chartpack.bathy.crm import crm_path, crm_wcs_url
 from chartpack.bathy.cudem import CudemTile, parse_urllist, tiles_for_bbox
 from chartpack.bathy.merge import COVERAGE_CELL_DEG
 from chartpack.datum import geoid
@@ -371,7 +371,9 @@ def _build_overview(tmp, mp):
     cache = tmp / "cache"
     (cache / "crm").mkdir(parents=True)
     bounds = blocks.overview_bounds((-122.6, 47.8, -122.4, 47.95))
-    _write_tif(crm_path(bounds, cache, blocks.OVERVIEW_RES_DEG), _crm_elev()[:60, :80], bounds)
+    cols, rows = round((bounds[2] - bounds[0]) * 3600), round((bounds[3] - bounds[1]) * 3600)
+    _write_tif(crm_path(bounds, cache), np.tile(np.linspace(-30.0, -300.0, cols, dtype=np.float32), (rows, 1)),
+               bounds)  # native 1 arc-second, as the WCS serves it
     reads = []
     real = blocks.read_window
     mp.setattr(blocks, "read_window", lambda src, bbox: reads.append(src) or real(src, bbox))
@@ -392,6 +394,34 @@ def test_overview_build_path(tmp_path, monkeypatch, zero_geoid):
     contours = _layer_features(root / "bathy-coarse.mbtiles", "contour")
     assert contours and all(f["properties"]["major"] for f in contours)
     assert _layer_features(root / "bathy-coarse.mbtiles", "coverage")
+    with MBTiles.open(root / "bathy-coarse.mbtiles") as m:
+        request = json.loads(m.metadata()["cheekymarine:sources"])["crm"]
+    assert request == crm_wcs_url(blocks.overview_bounds((-122.6, 47.8, -122.4, 47.95)))  # the native request
+    assert "width" not in request and request in (root / "NOTICE").read_text()
+
+
+def test_overview_block_means_native_crm(tmp_path, test_region, zero_geoid):
+    """The overview reads CRM at its native 1 arc-second and block-means it to 0.0025 degree (9 by 9 cells) on
+    the global grid. West of a step on an overview cell edge a checkerboard of 100 m and 200 m depths averages
+    to about 150 m in every cell (point sampling gives 100 or 200); east of it the depth is 300 m in every
+    cell, including the one next to the step (a wider resampling kernel would mix the two sides)."""
+    bbox = (-122.6, 47.8, -122.4, 47.95)
+    read = blocks.overview_bounds(bbox)
+    rows, cols = round((read[3] - read[1]) * 3600), round((read[2] - read[0]) * 3600)
+    step = cols // 2 // 9 * 9  # a whole number of overview cells from the read's west edge
+    elev = np.where((np.arange(rows)[:, None] + np.arange(cols)[None, :]) % 2 == 0, -100.0, -200.0)
+    elev[:, step:] = -300.0
+    crm = tmp_path / "crm.tif"
+    _write_tif(crm, elev.astype(np.float32), read)
+    datum = area_datum(test_region, Path("unused"))
+    grid = blocks.build_overview(bbox, crm, datum, None).coarse_grid
+    x0, dx, _, y0, _, dy = grid.transform
+    assert dx == pytest.approx(0.0025) and dy == pytest.approx(-0.0025)
+    assert (x0 + 180) / 0.0025 == pytest.approx(round((x0 + 180) / 0.0025), abs=1e-6)
+    assert (90 - y0) / 0.0025 == pytest.approx(round((90 - y0) / 0.0025), abs=1e-6)
+    depth = grid.data + datum("crm", grid.transform, grid.data.shape)
+    np.testing.assert_allclose(depth[:, : step // 9], 150.0, atol=100.0 / 81 + 1e-3)
+    np.testing.assert_allclose(depth[:, step // 9 :], 300.0, atol=1e-3)
 
 
 def test_overview_has_empty_fine_files(tmp_path, monkeypatch, zero_geoid):

@@ -11,7 +11,7 @@ import pytest
 from osgeo import gdal, osr
 from shapely.geometry import box, mapping
 
-from chartpack.bathy.blocks import OVERVIEW_RES_DEG, area_datum, build_overview, overview_bounds
+from chartpack.bathy.blocks import area_datum, build_overview, overview_bounds
 from chartpack.datum import geoid
 from chartpack.datum.offsets import Station, datum_provenance, load_datum, navd88_to_mllw_grid
 
@@ -147,7 +147,7 @@ def test_overview_applies_lake_rule(test_region, tmp_path, zero_geoid):
     """The overview path over a synthetic lake gives the lake depth, not the station path."""
     bbox = (-122.4, 47.5, -122.2, 47.7)
     read = overview_bounds(bbox)
-    cell = OVERVIEW_RES_DEG
+    cell = 1 / 3600  # native CRM, as the WCS serves it; the overview block-means it to OVERVIEW_RES_DEG
     rows, cols = round((read[3] - read[1]) / cell), round((read[2] - read[0]) / cell)
     crm = tmp_path / "crm.tif"
     srs = osr.SpatialReference()

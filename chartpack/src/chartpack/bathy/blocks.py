@@ -17,7 +17,7 @@ import shapely
 from shapely.geometry import box, mapping, shape
 
 from chartpack.bathy.bands import bands_by_zoom
-from chartpack.bathy.contours import BANDS, COARSE_BANDS, OVERVIEW_BANDS, contours_by_zoom
+from chartpack.bathy.contours import BANDS, COARSE_BANDS, OVERVIEW_BANDS, block_mean, contours_by_zoom
 from chartpack.bathy.cudem import CudemTile, Grid, read_window, tiles_for_bbox
 from chartpack.bathy.merge import clip_mask, coverage_polygons, fill_land, merge_to_mllw
 from chartpack.datum import SOURCE_VERTICAL, geoid, node_axes, resample
@@ -27,7 +27,7 @@ from chartpack.region import Region
 
 FINE_RES_DEG = 1 / 32400  # CUDEM, 1/9 arc-second
 COARSE_RES_DEG = 1 / 3600  # CRM, 1 arc-second
-OVERVIEW_RES_DEG = 0.0025  # the overview reads CRM resampled to this by the server
+OVERVIEW_RES_DEG = 0.0025  # the overview block-means native CRM to this (9 by 9 arc-second cells)
 BLOCK_MARGIN_DEG = 0.02  # each block is read this far past its tile
 CRM_LABEL = {"source": "crm", "resolution_m": 30, "date": "2025"}
 
@@ -196,10 +196,15 @@ def build_block(
 
 
 def build_overview(bbox, crm_path, datum: DatumFn, clip: shapely.Geometry | None) -> BlockResult:
-    """The overview's coarse outputs from one CRM read over overview_bounds(bbox) at OVERVIEW_RES_DEG, with
+    """The overview's coarse outputs from one native CRM read over overview_bounds(bbox), block-meaned to
+    OVERVIEW_RES_DEG on the global grid (the read is snapped to it, so every block is whole), with
     OVERVIEW_BANDS (major levels only). CUDEM adds no detail at 300 m cells, so there is no fine output."""
     read = overview_bounds(bbox)
-    grid, _ = merge_to_mllw([], read_window(str(crm_path), read), 0.0, 0.0, read, res_deg=OVERVIEW_RES_DEG)
+    native, _ = merge_to_mllw([], read_window(str(crm_path), read), 0.0, 0.0, read, res_deg=COARSE_RES_DEG)
+    mean, transform = block_mean(native.data, native.transform, round(OVERVIEW_RES_DEG / COARSE_RES_DEG))
+    grid = Grid(mean.astype(np.float32), float("nan"), transform, native.crs)
+    del native
+    del mean
     grid.data -= datum("crm", grid.transform, grid.data.shape)
     _clip(grid, clip)
     return BlockResult([], [], [], *_features(grid, None, OVERVIEW_BANDS, fine=False, label=CRM_LABEL),

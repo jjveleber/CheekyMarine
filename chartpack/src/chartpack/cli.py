@@ -14,7 +14,6 @@ from shapely.ops import unary_union
 from chartpack import __version__
 from chartpack.bathy.blocks import (
     BLOCK_MARGIN_DEG,
-    OVERVIEW_RES_DEG,
     area_datum,
     build_block,
     build_overview,
@@ -168,8 +167,8 @@ def _fetch_bathy(args: argparse.Namespace) -> int:
     region = load_region(args.region)
     owned = owned_tiles(region, args.region.parent)
     geoid.fetch_grids(args.cache / "proj")  # every build converts CRM (EGM2008 heights) through NAVD88
-    if owned is None:  # the overview: one CRM request at the overview cell, no CUDEM
-        print(fetch_crm(overview_bounds(region.bbox), args.cache, OVERVIEW_RES_DEG))
+    if owned is None:  # the overview: one native CRM request over the region, no CUDEM
+        print(fetch_crm(overview_bounds(region.bbox), args.cache))
         return 0
     # The tile list changes as NCEI adds tiles, so it is fetched on every run.
     tiles = parse_urllist(download(URLLIST, args.cache / "cudem" / "urllist8483.txt").read_text())
@@ -194,7 +193,7 @@ def _build_bathy(args: argparse.Namespace) -> int:
     owned = owned_tiles(region, args.region.parent)
     urllist = args.cache / "cudem" / "urllist8483.txt"
     if owned is None:
-        needed = [crm_path(overview_bounds(region.bbox), args.cache, OVERVIEW_RES_DEG)]
+        needed = [crm_path(overview_bounds(region.bbox), args.cache)]
     else:
         blocks = list(iter_blocks(owned))
         needed = [urllist] + [crm_path(read, args.cache) for _, _, read in blocks]
@@ -222,7 +221,7 @@ def _build_bathy(args: argparse.Namespace) -> int:
 
     used = {}
     if owned is None:
-        crm_request = crm_wcs_url(overview_bounds(region.bbox), OVERVIEW_RES_DEG)
+        crm_request = crm_wcs_url(overview_bounds(region.bbox))
         result = build_overview(region.bbox, needed[0], datum, clip)
         _append_layers(coarse_work, result.coarse_contours, result.coarse_bands, result.coarse_coverage)
         build_dem_mbtiles(result.coarse_grid.data, result.coarse_grid.transform, files["dem-coarse.mbtiles"],

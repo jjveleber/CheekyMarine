@@ -16,17 +16,16 @@ gdal.UseExceptions()
 WCS_BASE = "https://www.ngdc.noaa.gov/thredds/wcs/crm/cudem/crm_vol8_2025.nc"
 
 
-def crm_wcs_url(bbox, res_deg: float | None = None) -> str:
+def crm_wcs_url(bbox) -> str:
     """GetCoverage url for coverage z as Float32 GeoTIFF over bbox (W, S, E, N) in OGC:CRS84.
 
-    With res_deg the server resamples to cells of that size (WCS width and height from the bbox);
-    without it the coverage comes at its native 1 arc-second.
+    The coverage comes at its native 1 arc-second. The server ignores WCS width and height (checked
+    2026-11-10: a 40 by 40 request over 0.1 degree returns 361 by 361 cells), so none is sent.
     """
     w, s, e, n = bbox
-    size = f"&width={round((e - w) / res_deg)}&height={round((n - s) / res_deg)}" if res_deg else ""
     return (
         f"{WCS_BASE}?service=WCS&version=1.0.0&request=GetCoverage&coverage=z"
-        f"&crs=OGC:CRS84&bbox={w},{s},{e},{n}{size}&format=GeoTIFF_Float"
+        f"&crs=OGC:CRS84&bbox={w},{s},{e},{n}&format=GeoTIFF_Float"
     )
 
 
@@ -37,11 +36,10 @@ def crm_tile_requests(margin_deg: float) -> str:
             " snapped outward to 1 arc-second)")
 
 
-def crm_path(bbox, cache_dir: Path, res_deg: float | None = None) -> Path:
-    """Where fetch_crm caches the request for bbox (and res_deg)."""
+def crm_path(bbox, cache_dir: Path) -> Path:
+    """Where fetch_crm caches the request for bbox."""
     w, s, e, n = bbox
-    suffix = f"_{res_deg}" if res_deg else ""
-    return Path(cache_dir) / "crm" / f"crm_{w}_{s}_{e}_{n}{suffix}.tif"
+    return Path(cache_dir) / "crm" / f"crm_{w}_{s}_{e}_{n}.tif"
 
 
 def _check_float_tif(path: Path) -> None:
@@ -57,9 +55,9 @@ def _check_float_tif(path: Path) -> None:
         raise DownloadError(f"{path}: raster data is cut short: {e}") from e
 
 
-def fetch_crm(bbox, cache_dir: Path, res_deg: float | None = None) -> Path:
-    dest = crm_path(bbox, cache_dir, res_deg)
-    download(crm_wcs_url(bbox, res_deg), dest)
+def fetch_crm(bbox, cache_dir: Path) -> Path:
+    dest = crm_path(bbox, cache_dir)
+    download(crm_wcs_url(bbox), dest)
     try:
         _check_float_tif(dest)
     except DownloadError:

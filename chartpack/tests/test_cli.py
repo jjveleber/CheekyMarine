@@ -103,8 +103,8 @@ def test_fetch_bathy_prints_tiles_and_crm(tmp_path, fixtures_dir, regions_dir, m
 
     fetched = []
 
-    def fake_fetch_crm(bbox, cache_dir, res_deg=None):
-        fetched.append((bbox, res_deg))
+    def fake_fetch_crm(bbox, cache_dir):
+        fetched.append(bbox)
         return cache_dir / "crm" / f"crm_{len(fetched)}.tif"
 
     monkeypatch.setattr(cli, "download", fake_download)
@@ -118,17 +118,17 @@ def test_fetch_bathy_prints_tiles_and_crm(tmp_path, fixtures_dir, regions_dir, m
     assert (tmp_path / "cudem" / "urllist8483.txt").exists()
     assert "ncei19_n48x00_w122x50_2023v1" in lines
     owned = owned_tiles(load_region(region), region.parent)
-    assert fetched == [(read, None) for _, _, read in iter_blocks(owned)]  # one CRM request per owned tile
+    assert fetched == [read for _, _, read in iter_blocks(owned)]  # one CRM request per owned tile
     assert lines[-1] == str(tmp_path / "crm" / f"crm_{len(fetched)}.tif")
 
 
 def test_fetch_bathy_overview_reads_crm_once(tmp_path, regions_dir, monkeypatch, capsys):
     from chartpack import cli
-    from chartpack.bathy.blocks import OVERVIEW_RES_DEG, overview_bounds
+    from chartpack.bathy.blocks import overview_bounds
 
     fetched = []
     monkeypatch.setattr(cli, "download", lambda *a, **k: pytest.fail("the overview needs no CUDEM list"))
-    monkeypatch.setattr(cli, "fetch_crm", lambda bbox, cache, res_deg=None: fetched.append((bbox, res_deg)) or cache)
+    monkeypatch.setattr(cli, "fetch_crm", lambda bbox, cache: fetched.append(bbox) or cache)
     grids = []
     monkeypatch.setattr(geoid, "fetch_grids", grids.append)
     region = _grid_region(tmp_path, regions_dir)
@@ -136,7 +136,7 @@ def test_fetch_bathy_overview_reads_crm_once(tmp_path, regions_dir, monkeypatch,
     assert main(["fetch-bathy", str(region), "--cache", str(tmp_path)]) == 0
     assert grids == [tmp_path / "proj"]
     capsys.readouterr()
-    assert fetched == [(overview_bounds((-122.4, 47.7, -122.1, 48.0)), OVERVIEW_RES_DEG)]
+    assert fetched == [overview_bounds((-122.4, 47.7, -122.1, 48.0))]  # native: the WCS ignores width/height
 
 
 def _bathy_region(tmp_path, regions_dir):

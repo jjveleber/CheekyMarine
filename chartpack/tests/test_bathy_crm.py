@@ -73,9 +73,15 @@ def test_fetch_small_crm_box(tmp_path):
     assert ds.GetRasterBand(1).DataType == gdal.GDT_Float32
 
 
-def test_wcs_url_at_a_set_resolution(tmp_path):
+def test_wcs_url_has_no_size(tmp_path):
+    """The NCEI THREDDS WCS ignores width and height (it always serves native 1 arc-second), so no request
+    asks for them: the url and cache name record what the server sends."""
+    import inspect
+
     from chartpack.bathy.crm import crm_path
 
-    url = crm_wcs_url((-125.0, 47.0, -124.0, 47.5), 0.0025)
-    assert url.endswith("&bbox=-125.0,47.0,-124.0,47.5&width=400&height=200&format=GeoTIFF_Float")
-    assert crm_path((-125.0, 47.0, -124.0, 47.5), tmp_path, 0.0025) != crm_path((-125.0, 47.0, -124.0, 47.5), tmp_path)
+    url = crm_wcs_url((-125.0, 47.0, -124.0, 47.5))
+    assert url.endswith("&bbox=-125.0,47.0,-124.0,47.5&format=GeoTIFF_Float")
+    assert "width" not in url and "height" not in url
+    for fn in (crm_wcs_url, crm_path, fetch_crm):
+        assert "res_deg" not in inspect.signature(fn).parameters, fn.__name__
