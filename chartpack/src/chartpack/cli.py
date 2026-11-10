@@ -34,6 +34,7 @@ from chartpack.bathy.tiles import (
     tile_bathy,
 )
 from chartpack.cache import download
+from chartpack.datum import geoid
 from chartpack.enc.catalog import CATALOG_URL, cells_in_bbox, parse_catalog
 from chartpack.enc.fetch import fetch_cells
 from chartpack.enc.reader import read_cell
@@ -166,6 +167,7 @@ def _archive(args: argparse.Namespace) -> int:
 def _fetch_bathy(args: argparse.Namespace) -> int:
     region = load_region(args.region)
     owned = owned_tiles(region, args.region.parent)
+    geoid.fetch_grids(args.cache / "proj")  # every build converts CRM (EGM2008 heights) through NAVD88
     if owned is None:  # the overview: one CRM request at the overview cell, no CUDEM
         print(fetch_crm(overview_bounds(region.bbox), args.cache, OVERVIEW_RES_DEG))
         return 0
@@ -199,6 +201,8 @@ def _build_bathy(args: argparse.Namespace) -> int:
     for path in needed:
         if not path.exists():
             raise SystemExit(f"{path} not found; run fetch-bathy first")
+    if missing := geoid.missing_grids(args.cache / "proj"):
+        raise SystemExit(f"{missing[0]} missing or damaged; run fetch-bathy first")
     datum = area_datum(region, args.cache / "proj")
     clip = None
     if region.clip is not None:

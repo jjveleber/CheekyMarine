@@ -5,6 +5,7 @@ import pytest
 
 from chartpack import __version__
 from chartpack.cli import main
+from chartpack.datum import geoid
 
 
 def test_version(capsys):
@@ -108,8 +109,11 @@ def test_fetch_bathy_prints_tiles_and_crm(tmp_path, fixtures_dir, regions_dir, m
 
     monkeypatch.setattr(cli, "download", fake_download)
     monkeypatch.setattr(cli, "fetch_crm", fake_fetch_crm)
+    grids = []
+    monkeypatch.setattr(geoid, "fetch_grids", grids.append)
     region = _grid_region(tmp_path, regions_dir)
     assert main(["fetch-bathy", str(region), "--cache", str(tmp_path)]) == 0
+    assert grids == [tmp_path / "proj"]  # every build converts CRM from EGM2008
     lines = capsys.readouterr().out.splitlines()
     assert (tmp_path / "cudem" / "urllist8483.txt").exists()
     assert "ncei19_n48x00_w122x50_2023v1" in lines
@@ -125,9 +129,12 @@ def test_fetch_bathy_overview_reads_crm_once(tmp_path, regions_dir, monkeypatch,
     fetched = []
     monkeypatch.setattr(cli, "download", lambda *a, **k: pytest.fail("the overview needs no CUDEM list"))
     monkeypatch.setattr(cli, "fetch_crm", lambda bbox, cache, res_deg=None: fetched.append((bbox, res_deg)) or cache)
+    grids = []
+    monkeypatch.setattr(geoid, "fetch_grids", grids.append)
     region = _grid_region(tmp_path, regions_dir)
     region.write_text("overview = true\n" + region.read_text())
     assert main(["fetch-bathy", str(region), "--cache", str(tmp_path)]) == 0
+    assert grids == [tmp_path / "proj"]
     capsys.readouterr()
     assert fetched == [(overview_bounds((-122.4, 47.7, -122.1, 48.0)), OVERVIEW_RES_DEG)]
 
@@ -182,6 +189,15 @@ def test_build_bathy_needs_fetch_bathy_first(tmp_path, regions_dir):
             "--cache", str(tmp_path / "cache"), "--work", str(tmp_path / "work")]
     with pytest.raises(SystemExit, match="fetch-bathy"):
         main(args)
+
+
+def test_build_bathy_needs_the_geoid_grids(tmp_path, fixtures_dir, regions_dir, monkeypatch):
+    """CRM, CUDEM list and ENC cached, but no geoid grids: build-bathy stops before reading anything."""
+    region = _bathy_region(tmp_path, regions_dir)
+    cache = _bathy_cache(tmp_path, fixtures_dir, region, monkeypatch, ["https://example.test/ncei19_n48x00_w122x50_2023v1.tif"])
+    monkeypatch.setattr(geoid, "download", lambda *a, **k: pytest.fail("build-bathy must not download"))
+    with pytest.raises(SystemExit, match="us_nga_egm08_25.tif .*run fetch-bathy first"):
+        main(["build-bathy", str(region), str(tmp_path / "out"), "--cache", str(cache), "--work", str(tmp_path / "work")])
 
 
 def test_build_bathy_end_to_end(tmp_path, fixtures_dir, regions_dir, monkeypatch, capsys, zero_geoid):

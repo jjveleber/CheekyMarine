@@ -78,7 +78,7 @@ def test_crm_goes_through_navd88(dn, test_region, monkeypatch, tmp_path):
     from chartpack.datum import geoid
     from chartpack.datum.offsets import load_datum, navd88_to_mllw_grid
 
-    monkeypatch.setattr(geoid, "egm2008_to_navd88_m", lambda transform, shape, cache: np.full(shape, dn, np.float32))
+    monkeypatch.setattr(geoid, "egm2008_to_navd88_nodes", lambda lons, lats, cache: np.full((len(lats), len(lons)), dn))
     res = 1 / 3600
     transform, shape = (-122.3393 - 1.5 * res, res, 0.0, 47.6026 + 1.5 * res, 0.0, -res), (3, 3)
     datum = area_datum(test_region, tmp_path)

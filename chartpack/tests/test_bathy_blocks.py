@@ -301,7 +301,8 @@ def region_pack(tmp_path_factory):
     with pytest.MonkeyPatch.context() as mp:
         mp.setattr(blocks, "FINE_RES_DEG", FINE)
         mp.setattr(blocks, "COARSE_RES_DEG", COARSE)
-        mp.setattr(geoid, "egm2008_to_navd88_m", lambda transform, shape, cache: np.zeros(shape, np.float32))
+        mp.setattr(geoid, "egm2008_to_navd88_nodes", lambda lons, lats, cache: np.zeros((len(lats), len(lons))))
+        mp.setattr(geoid, "missing_grids", lambda cache: [])
         region = _region_dir(tmp)
         cache = tmp / "cache"
         (cache / "cudem").mkdir(parents=True)

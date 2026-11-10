@@ -64,12 +64,13 @@ def golden(request):
 
 @pytest.fixture
 def zero_geoid(monkeypatch):
-    """EGM2008 to NAVD88 as no change, so an offline build fetches no geoid grid."""
+    """EGM2008 to NAVD88 as no change, with the geoid grids taken as fetched, so an offline build reads none."""
     import numpy as np
 
     from chartpack.datum import geoid
 
-    monkeypatch.setattr(geoid, "egm2008_to_navd88_m", lambda transform, shape, cache: np.zeros(shape, np.float32))
+    monkeypatch.setattr(geoid, "egm2008_to_navd88_nodes", lambda lons, lats, cache: np.zeros((len(lats), len(lons))))
+    monkeypatch.setattr(geoid, "missing_grids", lambda cache: [])
 
 
 @pytest.fixture

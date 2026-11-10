@@ -49,7 +49,7 @@ def load_datum(path: Path) -> Datum:
     return Datum(stations, lakes)
 
 
-def _idw(stations: list[Station], lons: np.ndarray, lats: np.ndarray) -> np.ndarray:
+def navd88_to_mllw_nodes(stations: list[Station], lons: np.ndarray, lats: np.ndarray) -> np.ndarray:
     """The weighted offset at each node (lats by lons), by great-circle distance to every station."""
     lon, lat = (np.radians(a)[..., None] for a in np.meshgrid(lons, lats))
     s_lon = np.radians([s.lon for s in stations])
@@ -63,4 +63,4 @@ def _idw(stations: list[Station], lons: np.ndarray, lats: np.ndarray) -> np.ndar
 def navd88_to_mllw_grid(stations: list[Station], transform, shape: tuple[int, int]) -> np.ndarray:
     """How far NAVD88 zero lies above MLLW at each cell of the grid (float32, meters)."""
     lons, lats = node_axes(transform, shape)
-    return resample(_idw(stations, lons, lats), lons, lats, transform, shape)
+    return resample(navd88_to_mllw_nodes(stations, lons, lats), lons, lats, transform, shape)

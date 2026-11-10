@@ -46,8 +46,16 @@ jobs:
           export PATH="$HOME/.local/bin:$PATH"
           .venv/bin/pytest -q
 
-      # The datum check against NOAA VDatum fetches the PROJ geoid grids (about 97 MB) from cdn.proj.org, so
-      # only the datum online tests run here; the other online tests stay off in CI.
+      # The datum check against NOAA VDatum needs the PROJ geoid grids (about 97 MB) from cdn.proj.org, kept in
+      # chartpack/cache/proj between runs. The key names each grid and its sha256 (chartpack.datum.geoid.GRIDS);
+      # change it with GRIDS. A stale or damaged restore is caught by the sha256 check and fetched again.
+      - name: Cache the geoid grids
+        uses: actions/cache@v4
+        with:
+          path: chartpack/cache/proj
+          key: proj-grids-us_nga_egm08_25-4191d471eefebf24-us_noaa_g2018u0-fa9a407ac7ee3f5a
+
+      # Only the datum online tests run here; the other online tests stay off in CI.
       - name: Run datum online tests
         working-directory: chartpack
         env:
