@@ -11,9 +11,7 @@ sources = ["cudem", "crm"]
 dem_maxzoom = 14
 
 [datum]
-station = "9447130"
-navd88_to_mllw_m = 0.715
-msl_to_mllw_m = 2.02
+file = "datum/wa-stations.toml"
 
 [[render.views]]
 name = "possession-bar"

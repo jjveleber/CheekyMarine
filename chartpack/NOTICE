@@ -1,4 +1,5 @@
-chartpack Python dependencies (all permissive licences, no GPL or LGPL):
+chartpack Python dependencies (permissive licenses, or weak file-level copyleft for certifi (MPL-2.0);
+no GPL or LGPL):
 
   numpy 1.26.4              BSD-3-Clause (bundled parts: 0BSD, MIT, Zlib, CC0-1.0)
   contourpy 1.3.3           BSD-3-Clause
@@ -7,12 +8,14 @@ chartpack Python dependencies (all permissive licences, no GPL or LGPL):
   Pillow 13.0.0             MIT-CMU
   freetype-py 2.5.1         BSD
   mapbox-vector-tile 2.2.0  MIT
+  pyproj 3.8.0              MIT (the wheel bundles PROJ 9.8.1, MIT; libtiff, libtiff license (BSD-style);
+                            libcurl, curl license (MIT-style); nghttp2, MIT; SQLite, public domain)
   pytest 9.0.3 (dev)        MIT
   playwright 1.64.1 (render)      Apache-2.0
   maplibre-gl 6.14.0 (vendored in src/chartpack/render/vendor/, used by the render tool)  BSD-3-Clause
 
 Transitive dependencies of mapbox-vector-tile: protobuf (BSD-3-Clause),
-pyclipper (MIT).
+pyclipper (MIT). Of pyproj: certifi (MPL-2.0).
 
 System tools, not bundled:
 
@@ -48,6 +51,23 @@ Bottom composition data from the U.S. Geological Survey (fetch-seabed), licence 
     attribution. Please recognize and acknowledge the U.S. Geological Survey as the originator
     of the dataset and in products derived from these data."
   Each charts pack NOTICE that holds USGS features names these sources.
+
+Geoid grids (fetch-bathy fetches them from https://cdn.proj.org/ into the cache; used to convert CRM
+EGM2008 heights to NAVD88, never shipped in a pack). License read 2026-11-09 in the PROJ-data
+READMEs (https://github.com/OSGeo/PROJ-data, us_nga/us_nga_README.txt and us_noaa/us_noaa_README.txt):
+
+  us_nga_egm08_25.tif   EGM2008 geoid model, US National Geospatial-Intelligence Agency (NGA),
+                        2.5 minute grid produced with GeographicLib. License: Public Domain
+  us_noaa_g2018u0.tif   GEOID18, US National Geodetic Survey (NOAA NGS), conterminous US,
+                        NAD83(2011) to NAVD88. License: Public Domain
+
+Tide station datums (regions/datum/wa-stations.toml) are from the NOAA CO-OPS datums API, a US
+Government work.
+
+Lake Union and Lake Washington polygons (regions/datum/lakes.geojson) are derived from the NOAA ENC
+cells US5SEA* (M_SDAT areas, low water of the lakes), a US Government work (public domain); built by
+scripts/make-lakes.py. The lakes' managed low level (regions/datum/wa-stations.toml, [[lakes]]) is
+from US Army Corps of Engineers, Seattle District, publications, a US Government work (public domain).
 
 Bundled fonts (fonts/, used to render glyph ranges):
 

@@ -59,6 +59,38 @@ def test_to_mllw_depth_navd88():
     assert np.isnan(to_mllw_depth(np.array([np.nan], np.float32), float("nan"), 0.715)[0])
 
 
+def test_to_mllw_depth_array_offset():
+    elev = np.array([[-10.0, -10.0], [-9999.0, 2.0]], np.float32)
+    offset = np.array([[0.5, 1.5], [0.5, 0.5]], np.float32)
+    depth = to_mllw_depth(elev, -9999.0, offset)
+    assert depth.dtype == np.float32
+    np.testing.assert_allclose(depth[0], [9.5, 8.5])
+    assert np.isnan(depth[1, 0]) and depth[1, 1] == pytest.approx(-2.5)
+
+
+@pytest.mark.parametrize("dn", [0.0, 0.5])
+def test_crm_goes_through_navd88(dn, test_region, monkeypatch, tmp_path):
+    """CRM heights are EGM2008. Where NAVD88 zero lies dN below EGM2008 zero, a CRM height e is the NAVD88 height
+    e + dN; NAVD88 zero lies navd88_to_mllw above MLLW, so the MLLW height is e + dN + navd88_to_mllw and the
+    depth is -(that): a CRM elevation of -50 m is 50 - dN - navd88_to_mllw deep. A larger dN means a shallower
+    depth, so dN = 0.5 reads exactly 0.5 m less than dN = 0."""
+    from chartpack.bathy.blocks import area_datum
+    from chartpack.datum import geoid
+    from chartpack.datum.offsets import load_datum, navd88_to_mllw_grid
+
+    monkeypatch.setattr(geoid, "egm2008_to_navd88_nodes", lambda lons, lats, cache: np.full((len(lats), len(lons)), dn))
+    res = 1 / 3600
+    transform, shape = (-122.3393 - 1.5 * res, res, 0.0, 47.6026 + 1.5 * res, 0.0, -res), (3, 3)
+    datum = area_datum(test_region, tmp_path)
+    navd = navd88_to_mllw_grid(load_datum(test_region.datum_file).stations, transform, shape)
+    depth = to_mllw_depth(np.full(shape, -50.0, np.float32), NODATA, datum("crm", transform, shape))
+    np.testing.assert_allclose(depth, 50.0 - dn - navd, atol=1e-5)
+    baseline = to_mllw_depth(np.full(shape, -50.0, np.float32), NODATA, navd + 0.0)
+    np.testing.assert_allclose(baseline - depth, dn, atol=1e-5)
+    cudem = to_mllw_depth(np.full(shape, -50.0, np.float32), NODATA, datum("cudem", transform, shape))
+    np.testing.assert_allclose(cudem, 50.0 - navd, atol=1e-5)  # CUDEM is NAVD88 already: no geoid step
+
+
 def test_nodata_hole_filled_from_fallback(merged):
     depth, src = merged
     hole = np.zeros(src.shape, bool)

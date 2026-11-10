@@ -19,8 +19,9 @@ ogr.UseExceptions()
 COVERAGE_CELL_DEG = 1 / 120
 
 
-def to_mllw_depth(elev: np.ndarray, nodata: float, offset_m: float) -> np.ndarray:
-    """Depth in metres below MLLW: -elev - offset_m. NoData (and nan) become nan."""
+def to_mllw_depth(elev: np.ndarray, nodata: float, offset_m: np.ndarray | float) -> np.ndarray:
+    """Depth in metres below MLLW: -elev - offset_m, where offset_m (one value, or one per cell) is how far the
+    elevations' zero lies above MLLW. NoData (and nan) become nan."""
     bad = ~np.isfinite(elev) | (elev == nodata)
     depth = (-elev.astype(np.float32) - np.float32(offset_m)).astype(np.float32)
     depth[bad] = np.nan

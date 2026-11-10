@@ -16,10 +16,15 @@ PIXEL_DEG = 0.001
 BBOX = (-122.5, 47.8, -122.3, 48.0)  # W, S, E, N
 
 
-def make_ridge() -> np.ndarray:
-    x = np.arange(200) / 199
+def ridge_grid(rows: int, cols: int) -> np.ndarray:
+    """The north-south ridge alone at any size: -120 m at the west and east edges, -20 m at the center."""
+    x = np.arange(cols) / (cols - 1)
     row = -120.0 + 100.0 * np.sin(np.pi * x)
-    elev = np.tile(row, (200, 1)).astype(np.float32)
+    return np.tile(row, (rows, 1)).astype(np.float32)
+
+
+def make_ridge() -> np.ndarray:
+    elev = ridge_grid(200, 200)
     elev[:, 190:] = 5.0
     elev[50:60, 50:60] = NODATA
     return elev

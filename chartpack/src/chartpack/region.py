@@ -1,4 +1,4 @@
-"""Region definition: which cells, bathymetry sources and datum offsets make a pack."""
+"""Region definition: which cells, bathymetry sources and datum file make a pack."""
 
 import re
 import tomllib
@@ -33,9 +33,7 @@ class Region:
     coarse_fallback: str  # "crm": CRM contours where CUDEM is absent; "enc": ENC contours
     clip: Path | None  # polygon GeoJSON of water to remove
     dem_maxzoom: int
-    navd88_to_mllw_m: float
-    msl_to_mllw_m: float
-    datum_station: str
+    datum_file: Path  # the MLLW offsets per area (chartpack.datum.offsets), from [datum] file
     views: list[View]
     seabed_sources: tuple[str, ...] = ("enc",)
     cmecs_blocks: tuple[str, ...] = ()  # keys of seabed.cmecs.BLOCKS
@@ -81,6 +79,8 @@ def load_region(path: Path) -> Region:
     coarse_fallback = data.get("coarse_fallback", "crm")
     if coarse_fallback not in ("crm", "enc"):
         raise RegionError("coarse_fallback must be 'crm' or 'enc'")
+    if coarse_fallback == "enc" and "crm" in bathy.get("sources", []):
+        raise RegionError("coarse_fallback = 'enc' cannot be used with crm in bathy.sources (the coarse layers are CRM)")
 
     seabed = data.get("seabed", {})
     seabed_sources = tuple(seabed.get("sources", ["enc"]))
@@ -114,9 +114,7 @@ def load_region(path: Path) -> Region:
         coarse_fallback=coarse_fallback,
         clip=path.parent / clip if clip else None,
         dem_maxzoom=int(_need(bathy, "dem_maxzoom", "bathy.")),
-        navd88_to_mllw_m=float(_need(datum, "navd88_to_mllw_m", "datum.")),
-        msl_to_mllw_m=float(_need(datum, "msl_to_mllw_m", "datum.")),
-        datum_station=_need(datum, "station", "datum."),
+        datum_file=path.parent / _need(datum, "file", "datum."),
         views=views,
         seabed_sources=seabed_sources,
         cmecs_blocks=cmecs_blocks,

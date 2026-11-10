@@ -34,7 +34,7 @@ def test_band_attributes(ridge_depth):
     assert spans == {(0, 100), (100, 200), (200, 300), (300, None)}
     for f in feats:
         p = f["properties"]
-        assert p["minzoom"] == min_zoom(p["depth_max_ft"] or 600)
+        assert p["minzoom"] == min_zoom(p["depth_max_ft"] or 1000)
 
 
 def test_land_fill_is_outside_every_band(ridge_depth):
@@ -69,3 +69,12 @@ def test_bands_by_zoom_simplify_at_the_top_zoom_of_each_range(ridge_depth, monke
     monkeypatch.setattr(bands, "build_bands", lambda *a, **k: seen.append(k["simplify_deg"]) or real(*a, **k))
     bands.bands_by_zoom(ridge_depth, TRANSFORM)
     assert seen == [zoom_tolerance_deg(11), zoom_tolerance_deg(13), zoom_tolerance_deg(15)]
+
+
+def test_deepest_band_is_past_1000():
+    deep = np.tile(np.arange(200) * 2.5, (200, 1))  # 0 to 497 m
+    feats = build_bands(deep, TRANSFORM, levels_ft=DEPTHS_FT)
+    spans = {(f["properties"]["depth_min_ft"], f["properties"]["depth_max_ft"]) for f in feats}
+    assert (1000, None) in spans and (900, 1000) in spans
+    assert max(f["properties"]["depth_min_ft"] for f in feats) == 1000
+    assert {f["properties"]["minzoom"] for f in feats if f["properties"]["depth_min_ft"] == 1000} == {10}

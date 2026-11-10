@@ -1,4 +1,4 @@
-"""Build bathy.mbtiles: contour, band and coverage layers through tippecanoe and tile-join."""
+"""Build bathy.mbtiles and bathy-coarse.mbtiles: contour, band and coverage layers through tippecanoe and tile-join."""
 
 import json
 from collections.abc import Sequence
@@ -9,39 +9,46 @@ import shapely
 from shapely.geometry import mapping, shape
 
 from chartpack.bathy.contours import M_TO_FT
-from chartpack.bathy.crm import crm_wcs_url
 from chartpack.bathy.cudem import CudemTile
+from chartpack.datum.offsets import datum_provenance
 from chartpack.enc.quilt import quilt
 from chartpack.enc.reader import CellMeta, Feature
-from chartpack.enc.schema import SCHEMA_VERSION
+from chartpack.enc.schema import COARSE_OPTIONAL_LAYERS, SCHEMA_VERSION
 from chartpack.enc.tiles import run
 from chartpack.mbtiles import MBTiles
 from chartpack.region import Region
 
 BATHY_LAYERS = ("contour", "band", "coverage")
-MINZOOM, MAXZOOM = 10, 16
+MINZOOM, MAXZOOM = 10, 16  # the fine file
+COARSE_ZOOMS = (10, 12)  # bathy-coarse.mbtiles of a region pack: CRM capped at zoom 12
 
-_COMMON = ["-Z", str(MINZOOM), "-z", str(MAXZOOM), "-r1", "--no-feature-limit", "--no-tile-size-limit", "-P", "--force"]
+_COMMON = ["-r1", "--no-feature-limit", "--no-tile-size-limit", "-P", "--force"]
 _BAND_ONLY = ["--detect-shared-borders", "--no-tiny-polygon-reduction"]
 
 
-def enc_fallback_contours(enc_cells: list[tuple[CellMeta, list[Feature]]], uncovered: shapely.Geometry) -> list[dict]:
-    """ENC depcnt lines clipped to `uncovered`, as contour Features (one per simple line).
+def enc_depcnt(enc_cells: list[tuple[CellMeta, list[Feature]]]) -> list[tuple[shapely.Geometry, int, int, int]]:
+    """The cells' depcnt lines as (geometry, depth_ft, minzoom, maxzoom), quilted once for a whole build.
 
     The cells are quilted by usage band as in the charts pack, so overlapping bands never draw
     the same water twice at one zoom. Each line keeps its band's zoom range, clamped to the
-    bathy pack's MINZOOM..MAXZOOM; `minzoom` mirrors the tippecanoe minzoom.
+    bathy pack's MINZOOM..MAXZOOM.
     """
     depcnt = [(meta, [f for f in features if f.layer == "depcnt" and "VALDCO" in f.props]) for meta, features in enc_cells]
-    feats = []
+    lines = []
     for feature in quilt(depcnt):
         lo = max(feature.props["tippecanoe"]["minzoom"], MINZOOM)
         hi = min(feature.props["tippecanoe"]["maxzoom"], MAXZOOM)
-        if lo > hi:
-            continue
-        depth_ft = round(float(feature.props["VALDCO"]) * M_TO_FT)
-        clipped = shape(feature.geometry).intersection(uncovered)
-        for line in _lines(clipped):
+        if lo <= hi:
+            lines.append((shape(feature.geometry), round(float(feature.props["VALDCO"]) * M_TO_FT), lo, hi))
+    return lines
+
+
+def enc_fallback_contours(depcnt: list[tuple[shapely.Geometry, int, int, int]], uncovered: shapely.Geometry) -> list[dict]:
+    """enc_depcnt lines clipped to `uncovered`, as contour Features (one per simple line); `minzoom` mirrors
+    the tippecanoe minzoom."""
+    feats = []
+    for geom, depth_ft, lo, hi in depcnt:
+        for line in _lines(geom.intersection(uncovered)):
             feats.append({
                 "type": "Feature",
                 "geometry": mapping(line),
@@ -58,61 +65,77 @@ def _lines(geom) -> list:
     return [geom] if geom.geom_type == "LineString" and not geom.is_empty and geom.length > 0 else []
 
 
-def _write(features: list[dict], path: Path) -> None:
-    with path.open("w") as f:
+def append_features(features: list[dict], path: Path) -> None:
+    """Add features to a GeoJSONSeq layer file (created on first use), so a build can stream block by block."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a") as f:
         for feature in features:
             f.write(json.dumps(feature) + "\n")
 
 
-def _missing_error(names: list[str]) -> RuntimeError:
-    return RuntimeError(f"bathy.mbtiles has no features in layer(s): {', '.join(names)}")
+def _missing_error(name: str, layers: list[str]) -> RuntimeError:
+    return RuntimeError(f"{name} has no features in layer(s): {', '.join(layers)}")
 
 
-def build_bathy_mbtiles(
-    contours: list[dict], bands: list[dict], coverage: list[dict], out: Path, *, region: Region, work: Path,
-    cudem_tiles: Sequence[CudemTile] = (),
+def _has_features(path: Path) -> bool:
+    return path.is_file() and path.stat().st_size > 0
+
+
+def tile_bathy(
+    work: Path, out: Path, *, region: Region, crm_request: str, zooms: tuple[int, int] = (MINZOOM, MAXZOOM),
+    coarse: bool = False, cudem_tiles: Sequence[CudemTile] = (),
 ) -> Path:
-    out, work = Path(out), Path(work)
-    work.mkdir(parents=True, exist_ok=True)
-    out.parent.mkdir(parents=True, exist_ok=True)
-    layers = dict(zip(BATHY_LAYERS, (contours, bands, coverage)))
-    empty = [name for name, feats in layers.items() if not feats]
-    if empty:
-        raise _missing_error(empty)
+    """Tile the layer files work/<layer>.geojsonseq into out at zooms (min, max).
 
-    for name, feats in layers.items():
-        _write(feats, work / f"{name}.geojsonseq")
-    parts = []
-    for part, names, extra in (("lines", ("contour", "coverage"), []), ("bands", ("band",), _BAND_ONLY)):
-        path = work / f"{part}.mbtiles"
-        cmd = ["tippecanoe", "-o", str(path), *_COMMON, *extra]
-        cmd += [f"-L{name}:{work / f'{name}.geojsonseq'}" for name in names]
-        run(cmd)
-        parts.append(str(path))
-    run(["tile-join", "-o", str(out), "-pk", "-pC", "--force", *parts])
+    With no features in any layer the file is written with its metadata and no tiles (the overview's
+    fine file, a region with no CRM-only water). Otherwise every layer needs features, except that the
+    coarse file may lack contour and band (COARSE_OPTIONAL_LAYERS) when it has coverage. crm_request
+    records the CRM requests the build made.
+    """
+    out, work = Path(out), Path(work)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    name = out.name
+    files = {layer: work / f"{layer}.geojsonseq" for layer in BATHY_LAYERS}
+    empty = [layer for layer, path in files.items() if not _has_features(path)]
+    required = [layer for layer in BATHY_LAYERS if not (coarse and layer in COARSE_OPTIONAL_LAYERS)]
+    if len(empty) == len(files):
+        with MBTiles.create(out, fmt="pbf"):
+            pass
+    elif missing := [layer for layer in empty if layer in required]:
+        raise _missing_error(name, missing)
+    else:
+        zoom_args = ["-Z", str(zooms[0]), "-z", str(zooms[1])]
+        parts = []
+        for part, names, extra in (("lines", ("contour", "coverage"), []), ("bands", ("band",), _BAND_ONLY)):
+            names = [layer for layer in names if layer not in empty]
+            if not names:
+                continue
+            path = work / f"{part}.mbtiles"
+            cmd = ["tippecanoe", "-o", str(path), *zoom_args, *_COMMON, *extra]
+            cmd += [f"-L{layer}:{files[layer]}" for layer in names]
+            run(cmd)
+            parts.append(str(path))
+        run(["tile-join", "-o", str(out), "-pk", "-pC", "--force", *parts])
 
     with MBTiles.open(out) as m:
-        built = {l["id"] for l in json.loads(m.metadata()["json"])["vector_layers"]}
-        missing = [name for name in BATHY_LAYERS if name not in built]
-        if missing:
-            raise _missing_error(missing)
+        if len(empty) < len(files):
+            built = {l["id"] for l in json.loads(m.metadata()["json"])["vector_layers"]}
+            missing = [layer for layer in BATHY_LAYERS if layer not in built and layer not in empty]
+            if missing:
+                raise _missing_error(name, missing)
         sources = {
             "cudem": [{"name": t.name, "url": t.url, "year": t.year, "version": t.version} for t in cudem_tiles],
-            "crm": crm_wcs_url(region.bbox),
-            "datum": {
-                "station": region.datum_station,
-                "navd88_to_mllw_m": region.navd88_to_mllw_m,
-                "msl_to_mllw_m": region.msl_to_mllw_m,
-            },
+            "crm": crm_request,
+            "datum": datum_provenance(region.datum_file),
         }
         w, s, e, n = region.bbox
         m.set_metadata({
-            "name": f"bathy-{region.name}",
-            "description": f"CheekyMarine bathy pack {region.name}",
+            "name": f"bathy-coarse-{region.name}" if coarse else f"bathy-{region.name}",
+            "description": f"CheekyMarine bathy pack {region.name}" + (" (CRM only)" if coarse else ""),
             "format": "pbf",
             "bounds": f"{w},{s},{e},{n}",
-            "minzoom": str(MINZOOM),
-            "maxzoom": str(MAXZOOM),
+            "minzoom": str(zooms[0]),
+            "maxzoom": str(zooms[1]),
             "cheekymarine:schema": str(SCHEMA_VERSION),
             "cheekymarine:pack": "bathy",
             "cheekymarine:region": region.name,

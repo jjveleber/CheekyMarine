@@ -8,7 +8,7 @@ def test_load_test_cell_region(regions_dir):
     assert r.name == "test-cell"
     assert r.cells == {4: ["US4WA1HK"]}
     assert r.bbox == (-122.4, 47.7, -122.1, 48.0)
-    assert r.navd88_to_mllw_m == 0.715 and r.msl_to_mllw_m == 2.02
+    assert r.datum_file == regions_dir / "datum" / "wa-stations.toml"
     assert r.dem_maxzoom == 14 and r.coarse_fallback == "crm"
     assert r.charts_version == "0.1.0"
 
@@ -60,3 +60,12 @@ def test_overview_flag(tmp_path, regions_dir):
     path = tmp_path / "ov.toml"
     path.write_text("overview = true\n" + (regions_dir / "test-cell.toml").read_text())
     assert load_region(path).overview is True
+
+
+def test_enc_fallback_with_crm_is_error(tmp_path, regions_dir):
+    path = tmp_path / "r.toml"
+    path.write_text('coarse_fallback = "enc"\n' + (regions_dir / "test-cell.toml").read_text())
+    with pytest.raises(RegionError, match="coarse_fallback"):
+        load_region(path)
+    path.write_text(path.read_text().replace('sources = ["cudem", "crm"]', 'sources = ["cudem"]'))
+    assert load_region(path).coarse_fallback == "enc"

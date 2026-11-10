@@ -65,6 +65,8 @@ SAFETY_LAYERS = ("depare", "depcnt", "hazard", "navaid", "light", "coalne", "lnd
 
 # Schema layers a region may have no features in (ruling R21): the build and the pack check accept their absence.
 OPTIONAL_LAYERS: frozenset[str] = frozenset({"seabed"})
+# bathy-coarse.mbtiles may hold coverage alone: a region whose CRM-only cells are all land draws no line or band
+COARSE_OPTIONAL_LAYERS: frozenset[str] = frozenset({"contour", "band"})
 
 # The bathy.mbtiles layers (Task 13). Not S-57 classes: classes is empty.
 BATHY_LAYER_SPECS: tuple[LayerSpec, ...] = (

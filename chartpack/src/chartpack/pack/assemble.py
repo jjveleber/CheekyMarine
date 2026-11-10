@@ -109,6 +109,11 @@ def _bathy_notice(metadata: dict[str, str], name: str, version: str) -> str:
     sources = json.loads(metadata["cheekymarine:sources"])
     tiles = "\n".join(f"  {t['name']} ({t['year']} v{t['version']})" for t in sources["cudem"])
     datum = sources["datum"]
+    lakes = "" if "lakes_file" not in datum else (
+        "  In Lake Union and Lake Washington depths are below the lakes' managed low level\n"
+        "  (US Army Corps of Engineers, a US Government work), inside polygons from NOAA ENC\n"
+        "  (a US Government work) in "
+        f"{datum['lakes_file']} (sha256 {datum['lakes_sha256']}).\n")
     licences = (PROJECT / "NOTICE").read_text()
     fonts = _fonts_notice(licences)
     return f"""CheekyMarine bathy pack {name} {version}
@@ -127,27 +132,24 @@ Bathymetry:
 
 Boundaries: NOAA maritime boundaries (the water clip), a US Government work.
 
-Datum: elevations are converted to MLLW with NOAA CO-OPS station {datum["station"]}
-  (NAVD88 to MLLW {datum["navd88_to_mllw_m"]} m, MSL to MLLW {datum["msl_to_mllw_m"]} m).
+Datum: elevations are converted to MLLW with offsets interpolated between NOAA CO-OPS tide
+  stations (a US Government work), listed in {datum["file"]} (sha256 {datum["sha256"]}).
+{lakes}  CRM heights (EGM2008) go through NAVD88 with the NGA EGM2008 and NOAA GEOID18 geoid grids
+  (public domain, from cdn.proj.org) and PROJ.
 
 Where neither CUDEM nor CRM covers the water, contours come from NOAA ENC.
 
 """ + fonts + "\nSymbols are drawn in-house after US Chart No. 1 (public domain).\n"
 
 
-def assemble_bathy_pack(region: Region, bathy_mbtiles: Path, dem_mbtiles: Path, out_dir: Path) -> Path:
+def assemble_bathy_pack(region: Region, files: dict[str, Path], out_dir: Path) -> Path:
+    """The bathy pack directory from the four built files, keyed by their BATHY_FILES names."""
     root = Path(out_dir) / f"bathy-{region.name}-{region.bathy_version}"
     root.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(bathy_mbtiles, root / "bathy.mbtiles")
-    shutil.copyfile(dem_mbtiles, root / "dem.mbtiles")
-    with MBTiles.open(bathy_mbtiles) as m:
+    for name in BATHY_FILES:
+        shutil.copyfile(files[name], root / name)
+    with MBTiles.open(root / "bathy.mbtiles") as m:
         metadata = m.metadata()
-    # The coarse files are present but hold no tiles until the overview build fills them.
-    for fine, coarse in (("bathy.mbtiles", "bathy-coarse.mbtiles"), ("dem.mbtiles", "dem-coarse.mbtiles")):
-        with MBTiles.open(root / fine) as src:
-            meta = src.metadata()
-        with MBTiles.create(root / coarse, fmt=meta.get("format", "pbf")) as dst:
-            dst.set_metadata(meta)
 
     write_styles(root, "bathy")
 
