@@ -36,6 +36,7 @@ from chartpack.bathy.tiles import (
 )
 from chartpack.cache import download
 from chartpack.datum import geoid
+from chartpack.datum.offsets import load_datum
 from chartpack.enc.catalog import CATALOG_URL, cells_meeting, parse_catalog
 from chartpack.enc.fetch import fetch_cells
 from chartpack.enc.reader import read_cell
@@ -221,6 +222,9 @@ def _build_bathy(args: argparse.Namespace) -> int:
     if region.clip is not None:
         data = json.loads(region.clip.read_text())
         clip = shape(data.get("geometry", data))
+    # Lakes with no datum rule are left out like the clipped water: their bottoms are not on a tidal datum.
+    if mask := load_datum(region.datum_file).lake_mask:
+        clip = unary_union(([] if clip is None else [clip]) + [shape(g) for g in mask])
 
     files = {name: args.work / name for name in BATHY_FILES}
     fine_work, coarse_work = args.work / "tippecanoe", args.work / "tippecanoe-coarse"

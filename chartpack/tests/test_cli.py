@@ -464,6 +464,88 @@ def test_build_bathy_enc_fallback_leaves_out_the_clip(tmp_path, fixtures_dir, re
     assert all(line.intersection(clip).length < 1e-9 for line in enc)
 
 
+def _mask_lake(region, lake):
+    """Make the lake mask file of the region's datum file (a copy of regions/datum) hold the polygon `lake` alone."""
+    import json
+    import tomllib
+
+    from shapely.geometry import mapping
+
+    datum = region.parent / "datum" / "wa-stations.toml"
+    with datum.open("rb") as f:
+        mask = datum.parent / tomllib.load(f)["lake_mask_file"]
+    mask.write_text(json.dumps({"type": "FeatureCollection", "features": [
+        {"type": "Feature", "properties": {"name": "Test Lake"}, "geometry": mapping(lake)}]}))
+
+
+@pytest.mark.parametrize("work_dir", ["tippecanoe", "tippecanoe-coarse"])
+def test_build_bathy_masks_lakes_without_a_datum_rule(tmp_path, fixtures_dir, regions_dir, monkeypatch, capsys,
+                                                      zero_geoid, work_dir):
+    """A contour crossing a lake of the datum file's lake mask keeps only the part outside it, in the fine and the
+    coarse layers, and no band reaches inside. The coarse case has no CUDEM, so CRM draws the lake. (Coverage is
+    polygonized at COVERAGE_CELL_DEG, wider than this lake, so it follows the mask only to that size, as for the
+    clip: test_clip_removes_water_in_block.)"""
+    import json
+
+    from shapely.geometry import box, shape
+
+    from chartpack.bathy import blocks
+
+    lake = box(-122.382, 47.898, -122.378, 47.902)  # the middle of the fixture
+    region = _bathy_region(tmp_path, regions_dir)
+    fine = work_dir == "tippecanoe"
+    if not fine:
+        region.write_text(region.read_text().replace('sources = ["cudem", "crm"]', 'sources = ["crm"]'))
+    cache = _bathy_cache(tmp_path, fixtures_dir, region, monkeypatch,
+                         ["https://example.test/ncei19_n48x00_w122x50_2023v1.tif"] if fine else [])
+    monkeypatch.setattr(blocks, "read_window", lambda src, bbox: _fixture_window(fixtures_dir, bbox))
+
+    def build(work):
+        assert main(["build-bathy", str(region), str(tmp_path / work), "--cache", str(cache), "--work",
+                     str(tmp_path / work / "work")]) == 0
+        capsys.readouterr()
+        return {layer: [shape(json.loads(line)["geometry"]) for line in
+                        (tmp_path / work / "work" / work_dir / f"{layer}.geojsonseq").read_text().splitlines()]
+                for layer in ("contour", "band")}
+
+    before = build("before")
+    assert any(g.intersection(lake).length > 0 for g in before["contour"])  # the lake has contours unmasked
+    _mask_lake(region, lake)
+    after = build("after")
+    inner = lake.buffer(-0.0005)  # a cell or two in from the edge, past the grids' cell placement
+    assert after["contour"] and any(g.intersects(lake.buffer(0.0005)) for g in after["contour"])
+    for layer, geoms in after.items():
+        assert all(g.intersection(inner).is_empty for g in geoms), layer
+
+
+def test_build_bathy_masks_lakes_in_the_overview(tmp_path, regions_dir, monkeypatch, zero_geoid):
+    """The overview's one CRM read is cut by the same lake mask as the region packs."""
+    from shapely.geometry import box
+
+    from chartpack import cli
+    from chartpack.bathy.blocks import overview_bounds
+    from chartpack.bathy.crm import crm_path
+
+    region = _bathy_region(tmp_path, regions_dir)
+    region.write_text("overview = true\n" + region.read_text().replace('sources = ["cudem", "crm"]', 'sources = ["crm"]'))
+    lake = box(-122.382, 47.898, -122.378, 47.902)
+    _mask_lake(region, lake)
+    path = crm_path(overview_bounds((-122.3846, 47.8954, -122.3754, 47.9046)), tmp_path / "cache")
+    path.parent.mkdir(parents=True)
+    path.touch()
+    clips = []
+
+    def fake_overview(bbox, crm, datum, clip):
+        clips.append(clip)
+        raise RuntimeError("stop")
+
+    monkeypatch.setattr(cli, "build_overview", fake_overview)
+    with pytest.raises(RuntimeError, match="stop"):
+        main(["build-bathy", str(region), str(tmp_path / "out"), "--cache", str(tmp_path / "cache"),
+              "--work", str(tmp_path / "work")])
+    assert clips[0] is not None and clips[0].covers(lake)
+
+
 def test_build_bathy_crm_only_writes_no_fine_layers(tmp_path, fixtures_dir, regions_dir, monkeypatch, capsys,
                                                     zero_geoid):
     """sources = ["crm"], no CUDEM list in the cache: the fine layer files stay absent, all four bathy files exist."""
