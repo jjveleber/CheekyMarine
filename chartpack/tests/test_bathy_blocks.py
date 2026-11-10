@@ -155,8 +155,9 @@ def test_fine_and_coarse_split_by_source(sources, test_region):
     tol = 4 * FINE  # the 150 m band averages 4 by 4 fine cells
     for name in ("fine_contours", "fine_bands"):
         assert _coords(getattr(result, name))[:, 0].max() <= SPLIT_LON + tol, name
-    for name in ("coarse_contours", "coarse_bands"):
-        assert _coords(getattr(result, name))[:, 0].min() >= SPLIT_LON - tol, name
+    assert _coords(result.coarse_contours)[:, 0].min() >= SPLIT_LON - tol
+    under = blocks._under_cells() * COARSE  # the coarse bands run this far under the fine ones
+    assert SPLIT_LON - tol - under <= _coords(result.coarse_bands)[:, 0].min() < SPLIT_LON - tol
     assert _coords(result.fine_coverage)[:, 0].max() <= SPLIT_LON + COVERAGE_CELL_DEG
     assert _coords(result.coarse_coverage)[:, 0].min() >= SPLIT_LON - COVERAGE_CELL_DEG
     assert {f["properties"]["source"] for f in result.fine_contours} == {"cudem"}
@@ -171,10 +172,15 @@ def test_coarse_fills_per_cell(sources, test_region):
     lat = grid.transform[3] + (np.arange(grid.data.shape[0]) + 0.5) * grid.transform[5]
     w, s, e, n = patch
     margin = COARSE  # a coarse cell partly over the patch keeps its CRM value (coarse is drawn under fine)
-    inside = ((lon > w + margin) & (lon < e - margin))[None, :] & ((lat > s + margin) & (lat < n - margin))[:, None]
+    under = blocks._under_cells() * COARSE  # and so do the cells this far in, under the fine bands
+    inside = ((lon > w + margin + under) & (lon < e - margin - under))[None, :] & (
+        (lat > s + margin + under) & (lat < n - margin - under))[:, None]
+    assert inside.any() and np.isnan(grid.data[inside]).all()
+    ring = ((lon > w) & (lon < e))[None, :] & ((lat > s) & (lat < n))[:, None]
+    ring &= ~(((lon > w + under) & (lon < e - under))[None, :] & ((lat > s + under) & (lat < n - under))[:, None])
     outside = ~(((lon > w - margin) & (lon < e + margin))[None, :] & ((lat > s - margin) & (lat < n + margin))[:, None])
     outside &= ((lon > core[0]) & (lon < core[2]))[None, :] & ((lat > core[1]) & (lat < core[3]))[:, None]
-    assert inside.any() and np.isnan(grid.data[inside]).all()
+    assert ring.any() and np.isfinite(grid.data[ring]).all()
     assert np.isfinite(grid.data[outside]).all()
     cudem = result.fine_cudem
     assert cudem.sum() > 0 and cudem.mean() < 0.01
@@ -182,8 +188,61 @@ def test_coarse_fills_per_cell(sources, test_region):
     cells = cudem.reshape(grid.data.shape[0], k, grid.data.shape[1], k)
     partly = cells.any(axis=(1, 3)) & ~cells.all(axis=(1, 3))
     assert partly.any() and np.isfinite(grid.data[partly]).all()
-    assert np.isnan(grid.data[cells.all(axis=(1, 3))]).all()
+    assert np.isnan(grid.data[cells.all(axis=(1, 3))]).any()
     assert result.coarse_contours and result.fine_contours
+    pts = _coords(result.coarse_contours)  # the coarse contours stop at the cells fine owns: no doubled lines
+    assert not ((pts[:, 0] > w + margin) & (pts[:, 0] < e - margin) & (pts[:, 1] > s + margin)
+                & (pts[:, 1] < n - margin)).any()
+
+
+PATCH = (-122.5507, 47.8503, -122.5297, 47.8697)  # edges off the coarse cells
+
+
+@pytest.mark.parametrize("elev, lines", [
+    (dict(west_of=SPLIT_LON), [((SPLIT_LON - 0.01, lat), (SPLIT_LON + 0.01, lat)) for lat in (47.8, 47.87, 47.95)]),
+    (dict(patch=PATCH), [((PATCH[0] - 0.01, 47.86), (PATCH[2] + 0.01, 47.86)),
+                         ((-122.54, PATCH[1] - 0.01), (-122.54, PATCH[3] + 0.01))]),
+])
+def test_bands_leave_no_gap_at_the_cudem_edge(sources, test_region, elev, lines):
+    """At every zoom the coarse bands (overzoomed past 12) and the fine bands together fill every point of a
+    line across the CUDEM edge: the coarse bands run under the fine ones instead of stopping short of them."""
+    _, result = _build(NORTH, sources, test_region, _cudem_elev(**elev))
+
+    def drawn(features, z):
+        return unary_union([shape(f["geometry"]) for f in features
+                            if f["tippecanoe"]["minzoom"] <= z <= f["tippecanoe"]["maxzoom"]])
+
+    for z in range(10, 17):
+        filled = drawn(result.fine_bands, z).union(drawn(result.coarse_bands, min(z, 12)))
+        for a, b in lines:
+            line = shapely.LineString([a, b])
+            assert line.difference(filled).length < 1e-9, (z, a)
+
+
+def test_coarse_bands_stay_off_dry_cudem(sources, test_region):
+    """A CUDEM patch whose rim is above MLLW (fine draws no band there) over CRM water: the coarse bands do not
+    run under the dry rim past the one partial coarse cell at each edge of it."""
+    elev = _cudem_elev(patch=PATCH)
+    lon = AREA[0] + (np.arange(2000) + 0.5) * 0.0005
+    lat = AREA[3] - (np.arange(2000) + 0.5) * 0.0005
+    w, s, e, n = PATCH
+    inner = (w + 0.005, s + 0.005, e - 0.005, n - 0.005)
+    rim = ((lon > w) & (lon < e))[None, :] & ((lat > s) & (lat < n))[:, None]
+    rim &= ~(((lon > inner[0]) & (lon < inner[2]))[None, :] & ((lat > inner[1]) & (lat < inner[3]))[:, None])
+    elev[rim] = 2.0
+    _, result = _build(NORTH, sources, test_region, elev)
+    dry = box(*PATCH).buffer(-COARSE, join_style="mitre").difference(box(*inner).buffer(COARSE, join_style="mitre"))
+    coarse = unary_union([shape(f["geometry"]) for f in result.coarse_bands])
+    assert coarse.intersection(dry).area < 1e-12
+    assert result.fine_bands and coarse.intersects(box(*PATCH))  # the partial cells still hold coarse bands
+
+
+def test_under_cells_at_the_real_resolutions():
+    """Per side at z10-11 (the worst zoom): half a block-meaned cell, the band simplify tolerance at z11 (4.6e-4
+    deg) and 1.5 tippecanoe tile units at z10 (1.29e-4 deg). Coarse: 6 cells of 1/3600 -> 8.33e-4 + 4.6e-4 +
+    1.29e-4 = 1.42e-3; fine: 52 cells of 1/32400 -> 8.02e-4 + 4.6e-4 + 1.29e-4 = 1.39e-3; together 10.1 coarse
+    cells, so 11."""
+    assert blocks._under_cells() == 11
 
 
 def test_crm_only_block_coarse_z12_has_every_level(sources, test_region):

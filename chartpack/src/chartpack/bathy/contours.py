@@ -142,16 +142,21 @@ def block_mean(depth_m: np.ndarray, transform, block: int):
     return out, (x0 - lead_c * dx, dx * block, rx, y0 - lead_r * dy, ry, dy * block)
 
 
+def block_factor(transform, target: float) -> int:
+    """The block-mean factor zoom_grids uses to reach a target cell size in meters (0 = native) from this grid."""
+    _, dx, _, _, _, dy = transform
+    cell_m = (abs(dx) * np.cos(np.radians(REF_LAT)) + abs(dy)) * M_PER_DEG / 2
+    return max(1, round(target / cell_m)) if target else 1
+
+
 def zoom_grids(depth_m: np.ndarray, transform, bands=BANDS):
     """(minzoom, maxzoom, target, grid, transform) per entry of `bands`, block-mean downsampled to target.
 
     The block factor is the target over the cell size at REF_LAT, not at the grid's own latitude, so
     neighboring blocks downsample alike.
     """
-    _, dx, _, _, _, dy = transform
-    cell_m = (abs(dx) * np.cos(np.radians(REF_LAT)) + abs(dy)) * M_PER_DEG / 2
     for lo, hi, target in bands:
-        block = max(1, round(target / cell_m)) if target else 1
+        block = block_factor(transform, target)
         grid, tr = block_mean(depth_m, transform, block) if block > 1 else (depth_m, transform)
         yield lo, hi, target, grid, tr
 
