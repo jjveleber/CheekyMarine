@@ -159,6 +159,8 @@ def test_band2_clipped_by_band3():
     assert len(low) == 1 and shape(low[0].geometry).equals(box(1, 0, 2, 1))
     mid = _in(out, "depare", 2, (11, 12))
     assert len(mid) == 1 and shape(mid[0].geometry).equals(box(1, 0, 2, 1))
+    far = _in(out, "depare", 2, (13, 16))  # survives outside higher coverage up to the top zoom
+    assert len(far) == 1 and shape(far[0].geometry).equals(box(1, 0, 2, 1))
 
 
 def test_band1_clipped_by_band2_and_3():
@@ -168,6 +170,9 @@ def test_band1_clipped_by_band2_and_3():
     out = quilt([(c1, [_depare(1, "US1AAAAA", (0, 0, 3, 1))]), (c2, []), (c3, [])])
     low = _in(out, "depare", 1, (6, 10))
     assert len(low) == 1 and shape(low[0].geometry).equals(box(2, 0, 3, 1))
+    for rng in ((11, 12), (13, 16)):  # survives outside higher coverage up to the top zoom
+        (f,) = _in(out, "depare", 1, rng)
+        assert shape(f.geometry).equals(box(2, 0, 3, 1))
     # with band 2 coverage alone, band 1 is still clipped by it
     only2 = quilt([(c1, [_depare(1, "US1AAAAA", (0, 0, 3, 1))]), (c2, [])])
     (f,) = _in(only2, "depare", 1, (6, 10))
