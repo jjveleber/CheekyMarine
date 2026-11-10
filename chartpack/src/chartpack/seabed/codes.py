@@ -165,8 +165,9 @@ def cmecs_label(name: str) -> str | None:
 
 
 def split_codes(value: str | None) -> list[str]:
-    """A GDAL comma list split into its items; empty items are kept (a NATQUA position with no quality)."""
-    return value.split(",") if value else []
+    """A GDAL comma list split into its items; empty items are kept (a NATQUA position with no quality).
+    The items of every layer of a layered value ("4,1/9") are listed, surface layer first."""
+    return value.replace("/", ",").split(",") if value else []
 
 
 def _abbr(table: dict, name: str, code: str) -> str:
@@ -176,16 +177,27 @@ def _abbr(table: dict, name: str, code: str) -> str:
         raise ValueError(f"{name} {code} is not in the S-57 attribute catalogue") from None
 
 
-def label(natsur: str | None, natqua: str | None) -> str | None:
-    """The chart label of a seabed area: "4,1" + "1" -> "fS.M" (US Chart No. 1 J 12.2: main constituent
-    first, each qualifier written before the type in the same list position). A quality with no type
-    ("10" alone) is labelled on its own; qualifiers beyond the last type go before the last type."""
+def _layer_label(natsur: str, natqua: str) -> str:
     types = [_abbr(NATSUR, "NATSUR", c) for c in split_codes(natsur) if c]
     quals = [_abbr(NATQUA, "NATQUA", c) if c else "" for c in split_codes(natqua)]
     if not types:
-        return ".".join(q for q in quals if q) or None
+        return ".".join(q for q in quals if q)
     last = len(types) - 1
     return ".".join("".join(quals[i:] if i == last else quals[i:i + 1]) + t for i, t in enumerate(types))
+
+
+def label(natsur: str | None, natqua: str | None) -> str | None:
+    """The chart label of a seabed area: "4,1" + "1" -> "fS.M" (US Chart No. 1 J 12.2: main constituent
+    first, each qualifier written before the type in the same list position). A quality with no type
+    ("10" alone) is labelled on its own; qualifiers beyond the last type go before the last type.
+    A layered seabed (S-57 Use of the Object Catalogue: "/" between layers, surface first, NATQUA layers
+    lined up with NATSUR layers) is labelled layer by layer and joined with "/": "4,1/9" + "1,/" ->
+    "fS.M/Rk". A layer with no NATQUA layer has no qualifiers."""
+    surs = natsur.split("/") if natsur else []
+    quas = natqua.split("/") if natqua else []
+    layers = [_layer_label(surs[i] if i < len(surs) else "", quas[i] if i < len(quas) else "")
+              for i in range(max(len(surs), len(quas)))]
+    return "/".join(layers) if any(layers) else None
 
 
 def weed_label(catwed: int | None) -> str:

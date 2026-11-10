@@ -29,14 +29,19 @@ def test_build_legend_merges_sources():
     assert legend["entries"] == [{"abbr": "S", "meaning": "sand", "kind": "type", "sources": ["enc", "usseabed"]}]
 
 
+def test_build_legend_lists_every_layer():
+    legend = build_legend([{"src": "enc", "class": "SBDARE", "NATSUR": "4,1/9", "NATQUA": "1,/10"}])
+    assert {e["abbr"] for e in legend["entries"]} == {"S", "M", "Rk", "f", "h"}
+
+
 def test_build_legend_empty():
     assert build_legend([]) == {"schema": 1, "entries": []}
 
 
 def _split(label, types, qualifiers):
-    """The abbreviations in a chart label such as "fS.M" or "fsoS", read against the legend."""
+    """The abbreviations in a chart label such as "fS.M", "fsoS" or "fS/Rk", read against the legend."""
     out = []
-    for part in label.split("."):
+    for part in label.replace("/", ".").split("."):
         type_ = next((t for t in sorted(types, key=len, reverse=True) if part.endswith(t)), "")
         out.append(type_)
         rest = part[: len(part) - len(type_)]
