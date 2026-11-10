@@ -47,10 +47,13 @@ MIN_AREA_KM2 = 0.05
 PAGE = 200
 ENC_URL = "https://www.charts.noaa.gov/ENCs/{cell}.zip"
 BANDS = (3, 4, 5)
-TIDAL = {  # NHD Permanent_Identifier: tidal or tide-gated water NOAA does not chart (PR #105, round 2)
+TIDAL = {  # NHD Permanent_Identifier: tidal or tide-gated water NOAA does not chart (PR #105, rounds 2 and 3)
     "155195574": "Crockett Lake, tide-gated behind Keystone",
     "152293421": "Old Channel, a slough off Padilla Bay",
     "147684000": "pond at Alder and Tansy creeks, Chinook",
+    "{363F4F32-27A1-4295-AAE1-6DE16987E7C7}": "Keyport Lagoon, tidal",
+    "4a04fc42-32f6-4e5a-b188-06f9c23f9295": "Little Clam Bay, tidal",
+    "155197835": "Whiteman Cove, diked behind a tide gate",
 }
 SIMPLIFY_DEG = 0.00005
 PRECISION_DEG = 0.000001

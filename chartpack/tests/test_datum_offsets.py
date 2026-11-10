@@ -218,7 +218,8 @@ MASKED = {"Lake Sammamish": (-122.09, 47.59), "Lake Whatcom": (-122.308, 48.719)
 TIDAL = {"Crescent Harbor": (-122.614, 48.302), "Port Angeles lagoon": (-123.469, 48.133),
          "Crockett Lake": (-122.662, 48.1667), "Blind Slough": (-122.501, 48.448), "Old Channel": (-122.5079, 48.448),
          "Joe Leary Slough": (-122.474, 48.518), "Alder Creek": (-123.927, 46.181), "Tansy Creek": (-123.926, 46.186),
-         "Jetty Lagoon": (-123.987, 46.214)}
+         "Jetty Lagoon": (-123.987, 46.214), "Keyport Lagoon": (-122.6206, 47.6959),
+         "Little Clam Bay": (-122.5477, 47.5638), "Whiteman Cove": (-122.8039, 47.2202)}
 
 
 def test_wave1_lake_mask_holds_the_inland_lakes_not_tidal_water(wa):
