@@ -295,6 +295,39 @@ def test_build_bathy_enc_fallback_drops_crm_contours(tmp_path, fixtures_dir, reg
     assert not (work / "tippecanoe-coarse" / "contour.geojsonseq").exists()  # no coarse layers on the ENC path
 
 
+def test_build_bathy_enc_fallback_leaves_out_the_clip(tmp_path, fixtures_dir, regions_dir, monkeypatch, capsys,
+                                                      zero_geoid):
+    """A region clip over part of the ENC-fallback half (#16): no ENC fallback contour reaches into the clip."""
+    import json
+
+    from shapely.geometry import box, mapping, shape
+
+    from chartpack.bathy import blocks
+
+    region = _bathy_region(tmp_path, regions_dir)
+    clip = box(-122.45, 47.85, -122.383, 47.95)  # the west edge of the CUDEM-free half and the water past it
+    (tmp_path / "regions" / "clip.geojson").write_text(json.dumps({"type": "Feature", "properties": {},
+                                                                   "geometry": mapping(clip)}))
+    region.write_text('coarse_fallback = "enc"\nclip = "clip.geojson"\n'
+                      + region.read_text().replace('sources = ["cudem", "crm"]', 'sources = ["cudem"]'))
+    cache = _bathy_cache(tmp_path, fixtures_dir, region, monkeypatch, ["https://example.test/ncei19_n48x00_w122x50_2023v1.tif"])
+    shutil.rmtree(cache / "crm")
+
+    def fake_read_window(src, bbox):
+        grid = _fixture_window(fixtures_dir, bbox)
+        grid.data[:, : grid.data.shape[1] // 2] = grid.nodata  # the CUDEM tile covers only the east half
+        return grid
+
+    monkeypatch.setattr(blocks, "read_window", fake_read_window)
+    work = tmp_path / "work"
+    assert main(["build-bathy", str(region), str(tmp_path / "out"), "--cache", str(cache), "--work", str(work)]) == 0
+    capsys.readouterr()
+    contours = [json.loads(line) for line in (work / "tippecanoe" / "contour.geojsonseq").read_text().splitlines()]
+    enc = [shape(f["geometry"]) for f in contours if f["properties"]["source"] == "enc"]
+    assert enc  # ENC lines still fall outside the clip
+    assert all(line.intersection(clip).length < 1e-9 for line in enc)
+
+
 def test_build_bathy_crm_only_writes_no_fine_layers(tmp_path, fixtures_dir, regions_dir, monkeypatch, capsys,
                                                     zero_geoid):
     """sources = ["crm"], no CUDEM list in the cache: the fine layer files stay absent, all four bathy files exist."""
