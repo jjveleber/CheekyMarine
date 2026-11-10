@@ -13,8 +13,7 @@ from tilemath import tile_of
 
 def _region(name, bbox, overview=False):
     return Region(name=name, charts_version="0.1.0", bathy_version="0.1.0", bbox=bbox, cells={}, bathy_sources=[],
-                  coarse_fallback="crm", clip=None, dem_maxzoom=14, navd88_to_mllw_m=0.0, msl_to_mllw_m=0.0,
-                  datum_station="x", views=[], overview=overview)
+                  coarse_fallback="crm", clip=None, dem_maxzoom=14, datum_file=Path("x.toml"), views=[], overview=overview)
 
 
 def test_tile_bounds_round_trip():

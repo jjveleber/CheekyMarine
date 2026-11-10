@@ -81,7 +81,7 @@ def test_bathy_pack_layout(test_region, tmp_path):
     with MBTiles.create(tmp_path / "bathy.mbtiles", fmt="pbf") as m:
         m.set_metadata({"cheekymarine:sources": json.dumps({
             "cudem": [{"name": "t1", "url": "u", "year": 2023, "version": 1}], "crm": "https://crm.test",
-            "datum": {"station": "9447130", "navd88_to_mllw_m": 0.715, "msl_to_mllw_m": 2.02}})})
+            "datum": {"file": "wa-stations.toml", "sha256": "ab12"}})})
     shutil.copy(tmp_path / "bathy.mbtiles", tmp_path / "bathy-coarse.mbtiles")
     for name in ("dem.mbtiles", "dem-coarse.mbtiles"):
         build_dem_mbtiles(np.full((40, 40), 20.0, np.float32), (-122.3, 0.001, 0, 47.9, 0, -0.001), tmp_path / name,
@@ -104,4 +104,5 @@ def test_bathy_pack_layout(test_region, tmp_path):
         assert check_style_sprites_glyphs(style, sprite, fonts) == []
     notice = (root / "NOTICE").read_text()
     assert "10.25921/ds9v-ky35" in notice and "Coastal Relief Model" in notice and "SIL Open Font License" in notice
+    assert "wa-stations.toml (sha256 ab12)" in notice and "GEOID18" in notice and "approximate MLLW" in notice
     assert "Pack contract" in (root / "README.md").read_text()

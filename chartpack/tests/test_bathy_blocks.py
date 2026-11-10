@@ -7,6 +7,8 @@ whole zoom-10 tile stays small; the coarse cell stays a whole number of fine cel
 
 import json
 import math
+import shutil
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -17,10 +19,11 @@ from shapely.geometry import box, shape
 from shapely.ops import unary_union
 
 from chartpack.bathy import blocks
-from chartpack.bathy.blocks import build_block, iter_blocks, region_datum
+from chartpack.bathy.blocks import area_datum, build_block, iter_blocks
 from chartpack.bathy.crm import crm_path
 from chartpack.bathy.cudem import CudemTile, parse_urllist, tiles_for_bbox
 from chartpack.bathy.merge import COVERAGE_CELL_DEG
+from chartpack.datum import geoid
 from chartpack.grid import tile_bounds
 from chartpack.mbtiles import MBTiles, decode_pbf
 
@@ -88,7 +91,7 @@ def small_grids(monkeypatch):
 
 
 @pytest.fixture
-def sources(tmp_path, monkeypatch, small_grids):
+def sources(tmp_path, monkeypatch, small_grids, zero_geoid):
     """write(cudem elevation) -> (cudem tiles, crm path); CUDEM urls read from the local file."""
     cudem_tif, crm_tif = tmp_path / "cudem.tif", tmp_path / "crm.tif"
     _write_tif(crm_tif, _crm_elev(), AREA)
@@ -110,7 +113,8 @@ def _block(tile):
 def _build(tile, sources_write, test_region, elev, clip=None):
     tiles, crm = sources_write(elev)
     _, core, read = _block(tile)
-    return core, build_block(core, read, tiles_for_bbox(tiles, read), crm, region_datum(test_region), clip)
+    datum = area_datum(test_region, Path("unused"))  # zero_geoid: no grid is read
+    return core, build_block(core, read, tiles_for_bbox(tiles, read), crm, datum, clip)
 
 
 def _coords(features) -> np.ndarray:
@@ -259,6 +263,7 @@ def test_adjacent_blocks_contours_meet(sources, test_region, kind, band_lo):
 def _region_dir(tmp_path, *, overview=False):
     regions = tmp_path / "regions"
     regions.mkdir()
+    shutil.copytree(Path(__file__).parent.parent / "regions" / "datum", regions / "datum")
     (regions / "grid.toml").write_text('zoom = 10\norder = ["blk"]\n')
     (regions / "blk.toml").write_text(("overview = true\n" if overview else "") + """name = "blk"
 charts_version = "0.1.0"
@@ -272,9 +277,7 @@ sources = ["cudem", "crm"]
 dem_maxzoom = 12
 
 [datum]
-station = "9447130"
-navd88_to_mllw_m = 0.715
-msl_to_mllw_m = 2.02
+file = "datum/wa-stations.toml"
 """)
     return regions / "blk.toml"
 
@@ -298,6 +301,7 @@ def region_pack(tmp_path_factory):
     with pytest.MonkeyPatch.context() as mp:
         mp.setattr(blocks, "FINE_RES_DEG", FINE)
         mp.setattr(blocks, "COARSE_RES_DEG", COARSE)
+        mp.setattr(geoid, "egm2008_to_navd88_m", lambda transform, shape, cache: np.zeros(shape, np.float32))
         region = _region_dir(tmp)
         cache = tmp / "cache"
         (cache / "cudem").mkdir(parents=True)
@@ -363,7 +367,7 @@ def _build_overview(tmp, mp):
     return root, reads
 
 
-def test_overview_build_path(tmp_path, monkeypatch):
+def test_overview_build_path(tmp_path, monkeypatch, zero_geoid):
     root, reads = _build_overview(tmp_path, monkeypatch)
     assert len(reads) == 1 and not reads[0].startswith("/vsicurl/")  # one CRM read, no CUDEM
     for name in ("bathy-coarse.mbtiles", "dem-coarse.mbtiles"):
@@ -376,7 +380,7 @@ def test_overview_build_path(tmp_path, monkeypatch):
     assert _layer_features(root / "bathy-coarse.mbtiles", "coverage")
 
 
-def test_overview_has_empty_fine_files(tmp_path, monkeypatch):
+def test_overview_has_empty_fine_files(tmp_path, monkeypatch, zero_geoid):
     root, _ = _build_overview(tmp_path, monkeypatch)
     for name in ("bathy.mbtiles", "dem.mbtiles"):
         assert _zooms(root / name) == set(), name
@@ -385,7 +389,7 @@ def test_overview_has_empty_fine_files(tmp_path, monkeypatch):
         assert "maxzoom" in md and md["cheekymarine:pack"] == "bathy", name
 
 
-def test_all_cudem_water_region_builds(tmp_path, monkeypatch):
+def test_all_cudem_water_region_builds(tmp_path, monkeypatch, zero_geoid):
     """Water all CUDEM, CRM only on land: bathy-coarse holds coverage alone (no contour, no band) and the pack
     passes check."""
     from chartpack.cli import main

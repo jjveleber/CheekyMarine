@@ -15,11 +15,11 @@ from chartpack import __version__
 from chartpack.bathy.blocks import (
     BLOCK_MARGIN_DEG,
     OVERVIEW_RES_DEG,
+    area_datum,
     build_block,
     build_overview,
     iter_blocks,
     overview_bounds,
-    region_datum,
 )
 from chartpack.bathy.crm import crm_path, crm_tile_requests, crm_wcs_url, fetch_crm
 from chartpack.bathy.cudem import URLLIST, parse_urllist, tiles_for_bbox
@@ -199,7 +199,7 @@ def _build_bathy(args: argparse.Namespace) -> int:
     for path in needed:
         if not path.exists():
             raise SystemExit(f"{path} not found; run fetch-bathy first")
-    datum = region_datum(region)
+    datum = area_datum(region, args.cache / "proj")
     clip = None
     if region.clip is not None:
         data = json.loads(region.clip.read_text())

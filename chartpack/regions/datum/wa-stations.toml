@@ -1,0 +1,146 @@
+# NAVD88 to MLLW offsets at NOAA CO-OPS tide stations, for the bathy datum of every Washington region
+# (plan 7, #88). Each station's navd88_to_mllw_m is how far NAVD88 zero lies above MLLW: NAVD88 minus MLLW,
+# both relative to the station datum (navd88_m and mllw_m, meters), from the CO-OPS datums API at `source`.
+# All are on the 1983-2001 National Tidal Datum Epoch. The build interpolates between the stations
+# (inverse distance weighting, chartpack.datum.offsets).
+#
+# Station list (2026-11-09): the plan's list, confirmed against the API. Port Townsend 9444900 and
+# Friday Harbor 9449880 publish MLLW but no NAVD88, so NAS Whidbey Island 9447973 stands in for both.
+# Everett 9447659 is added. See each station's note.
+
+[[stations]]
+id = "9447130"
+name = "Seattle"
+lat = 47.60264
+lon = -122.3393
+navd88_m = 3.134
+mllw_m = 2.419
+navd88_to_mllw_m = 0.715
+epoch = "1983-2001"
+source = "https://api.tidesandcurrents.noaa.gov/mdapi/prod/webapi/stations/9447130/datums.json?units=metric"
+retrieved = 2026-11-09
+
+[[stations]]
+id = "9446484"
+name = "Tacoma"
+lat = 47.2667
+lon = -122.4133
+navd88_m = 0.918
+mllw_m = 0.189
+navd88_to_mllw_m = 0.729
+epoch = "1983-2001"
+source = "https://api.tidesandcurrents.noaa.gov/mdapi/prod/webapi/stations/9446484/datums.json?units=metric"
+retrieved = 2026-11-09
+
+[[stations]]
+id = "9446969"
+name = "OLYMPIA, BUD INLET, PUGET SOUND"
+lat = 47.06
+lon = -122.903
+navd88_m = 0.962
+mllw_m = -0.265
+navd88_to_mllw_m = 1.227
+epoch = "1983-2001"
+source = "https://api.tidesandcurrents.noaa.gov/mdapi/prod/webapi/stations/9446969/datums.json?units=metric"
+retrieved = 2026-11-09
+
+[[stations]]
+id = "9447659"
+name = "EVERETT"
+lat = 47.98
+lon = -122.223
+navd88_m = 0.54
+mllw_m = -0.08
+navd88_to_mllw_m = 0.62
+epoch = "1983-2001"
+source = "https://api.tidesandcurrents.noaa.gov/mdapi/prod/webapi/stations/9447659/datums.json?units=metric"
+retrieved = 2026-11-09
+note = "Added: Everett, the home port, between Seattle and Whidbey Island."
+
+[[stations]]
+id = "9447973"
+name = "NAS Whidbey Island"
+lat = 48.3428
+lon = -122.6858
+navd88_m = 10.548
+mllw_m = 10.448
+navd88_to_mllw_m = 0.1
+epoch = "1983-2001"
+source = "https://api.tidesandcurrents.noaa.gov/mdapi/prod/webapi/stations/9447973/datums.json?units=metric"
+retrieved = 2026-11-09
+note = "Substitute for Port Townsend 9444900 and Friday Harbor 9449880, which publish no NAVD88: the nearest station with NAVD88 to both (about 26 km and 33 km), on the Strait side of Whidbey Island."
+
+[[stations]]
+id = "9449211"
+name = "BELLINGHAM"
+lat = 48.745
+lon = -122.495
+navd88_m = 5.035
+mllw_m = 4.888
+navd88_to_mllw_m = 0.147
+epoch = "1983-2001"
+source = "https://api.tidesandcurrents.noaa.gov/mdapi/prod/webapi/stations/9449211/datums.json?units=metric"
+retrieved = 2026-11-09
+
+[[stations]]
+id = "9444090"
+name = "Port Angeles"
+lat = 48.125
+lon = -123.44
+navd88_m = 9.369
+mllw_m = 9.24
+navd88_to_mllw_m = 0.129
+epoch = "1983-2001"
+source = "https://api.tidesandcurrents.noaa.gov/mdapi/prod/webapi/stations/9444090/datums.json?units=metric"
+retrieved = 2026-11-09
+
+[[stations]]
+id = "9443090"
+name = "Neah Bay"
+lat = 48.370724
+lon = -124.601585
+navd88_m = 0.866
+mllw_m = 0.61
+navd88_to_mllw_m = 0.256
+epoch = "1983-2001"
+source = "https://api.tidesandcurrents.noaa.gov/mdapi/prod/webapi/stations/9443090/datums.json?units=metric"
+retrieved = 2026-11-09
+
+[[stations]]
+id = "9442396"
+name = "La Push, Quillayute River"
+lat = 47.912838
+lon = -124.63574
+navd88_m = 2.017
+mllw_m = 1.577
+navd88_to_mllw_m = 0.44
+epoch = "1983-2001"
+source = "https://api.tidesandcurrents.noaa.gov/mdapi/prod/webapi/stations/9442396/datums.json?units=metric"
+retrieved = 2026-11-09
+
+[[stations]]
+id = "9441102"
+name = "Westport"
+lat = 46.90431
+lon = -124.10508
+navd88_m = 1.257
+mllw_m = 0.914
+navd88_to_mllw_m = 0.343
+epoch = "1983-2001"
+source = "https://api.tidesandcurrents.noaa.gov/mdapi/prod/webapi/stations/9441102/datums.json?units=metric"
+retrieved = 2026-11-09
+note = "Westport, chosen over Toke Point 9440910: on the open coast at the Grays Harbor entrance."
+
+[[stations]]
+id = "9440581"
+name = "Cape Disappointment"
+lat = 46.28103
+lon = -124.04628
+navd88_m = 16.073
+mllw_m = 15.932
+navd88_to_mllw_m = 0.141
+epoch = "1983-2001"
+source = "https://api.tidesandcurrents.noaa.gov/mdapi/prod/webapi/stations/9440581/datums.json?units=metric"
+retrieved = 2026-11-09
+note = "Columbia mouth: Cape Disappointment, chosen over Astoria 9439040, which is about 20 km up the river."
+

@@ -10,6 +10,7 @@ the same cells along their shared edge.
 import math
 from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass
+from pathlib import Path
 
 import numpy as np
 import shapely
@@ -19,6 +20,8 @@ from chartpack.bathy.bands import bands_by_zoom
 from chartpack.bathy.contours import BANDS, COARSE_BANDS, OVERVIEW_BANDS, contours_by_zoom
 from chartpack.bathy.cudem import CudemTile, Grid, read_window, tiles_for_bbox
 from chartpack.bathy.merge import clip_mask, coverage_polygons, fill_land, merge_to_mllw
+from chartpack.datum import SOURCE_VERTICAL, geoid
+from chartpack.datum.offsets import load_datum, navd88_to_mllw_grid
 from chartpack.grid import GRID_ZOOM, tile_bounds
 from chartpack.region import Region
 
@@ -51,10 +54,18 @@ class BlockResult:
     fine_cudem: np.ndarray | None = None  # bool, the fine grid's shape
 
 
-def region_datum(region: Region) -> DatumFn:
-    """The region's constant offsets as a DatumFn: NAVD88 to MLLW for CUDEM, MSL to MLLW for CRM."""
-    offsets = {"cudem": region.navd88_to_mllw_m, "crm": region.msl_to_mllw_m}
-    return lambda source, transform, shape: np.full(shape, offsets[source], np.float32)
+def area_datum(region: Region, cache: Path) -> DatumFn:
+    """The region's datum file as a DatumFn: the NAVD88 to MLLW offset per area for every source, plus the
+    EGM2008 to NAVD88 height change for EGM2008 sources (CRM), whose geoid grids are fetched into cache."""
+    stations = load_datum(region.datum_file).stations
+
+    def datum(source: str, transform, shape: tuple[int, int]) -> np.ndarray:
+        offset = navd88_to_mllw_grid(stations, transform, shape)
+        if SOURCE_VERTICAL[source] == "egm2008":  # NAVD88 height = EGM2008 height + the change
+            offset += geoid.egm2008_to_navd88_m(transform, shape, cache)
+        return offset
+
+    return datum
 
 
 def snap_out(bbox, cell: float) -> tuple[float, float, float, float]:

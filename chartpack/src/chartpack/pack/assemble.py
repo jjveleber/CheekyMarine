@@ -127,8 +127,10 @@ Bathymetry:
 
 Boundaries: NOAA maritime boundaries (the water clip), a US Government work.
 
-Datum: elevations are converted to MLLW with NOAA CO-OPS station {datum["station"]}
-  (NAVD88 to MLLW {datum["navd88_to_mllw_m"]} m, MSL to MLLW {datum["msl_to_mllw_m"]} m).
+Datum: elevations are converted to MLLW with offsets interpolated between NOAA CO-OPS tide
+  stations (a US Government work), listed in {datum["file"]} (sha256 {datum["sha256"]}).
+  CRM heights (EGM2008) go through NAVD88 with the NGA EGM2008 and NOAA GEOID18 geoid grids
+  (public domain, from cdn.proj.org) and PROJ.
 
 Where neither CUDEM nor CRM covers the water, contours come from NOAA ENC.
 

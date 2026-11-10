@@ -16,6 +16,7 @@ dependencies = [
     "Pillow==13.0.0",
     "freetype-py==2.5.1",
     "mapbox-vector-tile==2.2.0",
+    "pyproj==3.8.0",
 ]
 
 [project.optional-dependencies]

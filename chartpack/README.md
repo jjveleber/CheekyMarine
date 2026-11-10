@@ -96,10 +96,8 @@ band4 = ["US4WA1HK"]
 sources = ["cudem", "crm"]
 dem_maxzoom = 14
 
-[datum]                           # NOAA CO-OPS station and offsets to approximate MLLW, in metres
-station = "9447130"
-navd88_to_mllw_m = 0.715
-msl_to_mllw_m = 2.02
+[datum]                           # MLLW offsets per area from NOAA CO-OPS stations, relative to regions/
+file = "datum/wa-stations.toml"
 
 [seabed]                          # optional: sources enc (always), usseabed, usgs-cmecs
 sources = ["enc", "usseabed", "usgs-cmecs"]

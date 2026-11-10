@@ -63,6 +63,16 @@ def golden(request):
 
 
 @pytest.fixture
+def zero_geoid(monkeypatch):
+    """EGM2008 to NAVD88 as no change, so an offline build fetches no geoid grid."""
+    import numpy as np
+
+    from chartpack.datum import geoid
+
+    monkeypatch.setattr(geoid, "egm2008_to_navd88_m", lambda transform, shape, cache: np.zeros(shape, np.float32))
+
+
+@pytest.fixture
 def fixtures_dir() -> Path:
     return ROOT / "tests" / "fixtures"
 

@@ -46,6 +46,14 @@ jobs:
           export PATH="$HOME/.local/bin:$PATH"
           .venv/bin/pytest -q
 
+      # The datum check against NOAA VDatum fetches the PROJ geoid grids (about 97 MB) from cdn.proj.org, so
+      # only the datum online tests run here; the other online tests stay off in CI.
+      - name: Run datum online tests
+        working-directory: chartpack
+        env:
+          CHARTPACK_ONLINE: "1"
+        run: .venv/bin/pytest -q -m online tests/test_datum_geoid.py
+
       # CI-only tool (ISC licence), not shipped. Checks the generated styles against the MapLibre style
       # spec, which the unit tests do not do. The 26.4.4 release is pinned exactly.
       - uses: actions/setup-node@v4

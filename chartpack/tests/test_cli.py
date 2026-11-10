@@ -1,3 +1,4 @@
+import shutil
 from pathlib import Path
 
 import pytest
@@ -136,6 +137,7 @@ def _bathy_region(tmp_path, regions_dir):
         "bbox = [-122.4, 47.7, -122.1, 48.0]", "bbox = [-122.3846, 47.8954, -122.3754, 47.9046]"
     ).replace("dem_maxzoom = 14", "dem_maxzoom = 12")
     (tmp_path / "regions").mkdir()
+    shutil.copytree(regions_dir / "datum", tmp_path / "regions" / "datum")
     (tmp_path / "regions" / "grid.toml").write_text('zoom = 10\norder = ["test-cell"]\n')
     path = tmp_path / "regions" / "bathy-test.toml"
     path.write_text(toml)
@@ -182,7 +184,7 @@ def test_build_bathy_needs_fetch_bathy_first(tmp_path, regions_dir):
         main(args)
 
 
-def test_build_bathy_end_to_end(tmp_path, fixtures_dir, regions_dir, monkeypatch, capsys):
+def test_build_bathy_end_to_end(tmp_path, fixtures_dir, regions_dir, monkeypatch, capsys, zero_geoid):
     import json
 
     from chartpack.bathy import blocks
@@ -211,7 +213,8 @@ def test_build_bathy_end_to_end(tmp_path, fixtures_dir, regions_dir, monkeypatch
         assert any(True for _ in m.tiles_at(12))
 
 
-def test_build_bathy_enc_fallback_drops_crm_contours(tmp_path, fixtures_dir, regions_dir, monkeypatch, capsys):
+def test_build_bathy_enc_fallback_drops_crm_contours(tmp_path, fixtures_dir, regions_dir, monkeypatch, capsys,
+                                                     zero_geoid):
     """coarse_fallback = "enc" on a CUDEM-only region: where CUDEM is absent the ENC lines are the only contours."""
     import json
 

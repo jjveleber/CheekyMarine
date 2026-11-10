@@ -1,5 +1,6 @@
 """Build bathy.mbtiles and bathy-coarse.mbtiles: contour, band and coverage layers through tippecanoe and tile-join."""
 
+import hashlib
 import json
 from collections.abc import Sequence
 from datetime import datetime, timezone
@@ -126,9 +127,8 @@ def tile_bathy(
             "cudem": [{"name": t.name, "url": t.url, "year": t.year, "version": t.version} for t in cudem_tiles],
             "crm": crm_request,
             "datum": {
-                "station": region.datum_station,
-                "navd88_to_mllw_m": region.navd88_to_mllw_m,
-                "msl_to_mllw_m": region.msl_to_mllw_m,
+                "file": region.datum_file.name,
+                "sha256": hashlib.sha256(region.datum_file.read_bytes()).hexdigest(),
             },
         }
         w, s, e, n = region.bbox
