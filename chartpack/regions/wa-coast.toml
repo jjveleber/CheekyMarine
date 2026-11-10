@@ -1,10 +1,13 @@
 # Washington coast from the Columbia bar to Cape Flattery, out to about 100 mi (spec 4), minus the strait
 # tiles (grid.toml order). Past -126 W only ENC bands 1 and 2 exist (spec 7); CRM-only water is the
-# coarse layer (spec 5.3a). Tiles beyond the US boundary claim off Cape Flattery are clipped.
+# coarse layer (spec 5.3a). Tiles beyond the US boundary claim off Cape Flattery are clipped. The east edge is the
+# zoom-10 column line at -123.3984 W, the west edge of sound-south and sound-central (spec 4 has -123.75 W), so
+# the column between them is not left to no pack: Raymond on the Willapa River, the Chehalis above Cosmopolis,
+# the Columbia to Skamokawa and the west half of Puget Island.
 name = "wa-coast"
 charts_version = "1.0.0"
 bathy_version = "1.0.0"
-bbox = [-127.0, 46.15, -123.75, 48.6]
+bbox = [-127.0, 46.15, -123.3984375, 48.6]
 clip = "clip/canada-wa.geojson"
 
 # Every Active cell of bands 1 to 5 whose catalog polygon meets the owned tiles (zoom-10 tiles,
@@ -12,16 +15,17 @@ clip = "clip/canada-wa.geojson"
 [enc]
 band1 = ["US1GLBDD"]
 band2 = ["US2PACWX", "US2PACWY"]
-band3 = ["US3WA1CD", "US3WA1CE", "US3WA1DD", "US3WA1DE", "US3WA1ED"]
+band3 = ["US3WA1CD", "US3WA1CE", "US3WA1CF", "US3WA1DD", "US3WA1DE", "US3WA1DF", "US3WA1ED"]
 band4 = [
-    "US4OR1NC", "US4OR1ND", "US4OR1NE", "US4WA1CD", "US4WA1CE", "US4WA1CF", "US4WA1DD", "US4WA1DE", "US4WA1DF",
-    "US4WA1ED", "US4WA1EE", "US4WA1EF", "US4WA1FD", "US4WA1GC", "US4WA1GD", "US4WA1HC", "US4WA1HD", "US4WA1IA",
-    "US4WA1IB", "US4WA1JA", "US4WA1JB",
+    "US4OR1NC", "US4OR1ND", "US4OR1NE", "US4OR1NF", "US4WA1CD", "US4WA1CE", "US4WA1CF", "US4WA1CG", "US4WA1DD",
+    "US4WA1DE", "US4WA1DF", "US4WA1ED", "US4WA1EE", "US4WA1EF", "US4WA1EG", "US4WA1FD", "US4WA1GC", "US4WA1GD",
+    "US4WA1HC", "US4WA1HD", "US4WA1IA", "US4WA1IB", "US4WA1JA", "US4WA1JB",
 ]
 band5 = [
     "US5GHCCD", "US5GHCCE", "US5PDXNB", "US5PDXNC", "US5PDXND", "US5PDXNE", "US5PDXNF", "US5PDXNG", "US5PDXNH",
-    "US5PDXNI", "US5PDXOB", "US5PDXOC", "US5PDXOD", "US5PDXOE", "US5PDXOF", "US5PDXOG", "US5PDXOH", "US5PDXOI",
-    "US5PDXPD", "US5PDXPE", "US5PDXPF", "US5PDXPG", "US5WA2BJ",
+    "US5PDXNI", "US5PDXNJ", "US5PDXNK", "US5PDXNL", "US5PDXNM", "US5PDXOB", "US5PDXOC", "US5PDXOD", "US5PDXOE",
+    "US5PDXOF", "US5PDXOG", "US5PDXOH", "US5PDXOI", "US5PDXOJ", "US5PDXOK", "US5PDXOL", "US5PDXOM", "US5PDXPD",
+    "US5PDXPE", "US5PDXPF", "US5PDXPG", "US5WA2BJ",
 ]
 
 [bathy]

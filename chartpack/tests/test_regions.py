@@ -180,3 +180,17 @@ def test_every_crm_request_meets_crm(regions_dir):
     cw, cs, ce, cn = CRM_VOL8
     for w, s, e, n in reads:
         assert w < ce and e > cw and s < cn and n > cs, (w, s, e, n)
+
+
+def test_wa_coast_reaches_the_sound_column(regions_dir):
+    """wa-coast's east edge is the -123.3984 W column line, the west edge of sound-south and sound-central, so
+    the column from -123.75 W to it south of the strait is wa-coast: Raymond on the Willapa River, the Chehalis
+    above Cosmopolis and the Columbia at Skamokawa."""
+    owned = _owned(regions_dir)
+    for lon, lat in ((-123.73, 46.686), (-123.70, 46.97), (-123.455, 46.27)):
+        assert _tile_of(lon, lat) in owned["wa-coast"], (lon, lat)
+    south = _area(owned["sound-south"]).bounds  # W, S, E, N
+    assert load_region(regions_dir / "wa-coast.toml").bbox[2] == south[0]
+    got = seams(owned)
+    assert got[("sound-south", "wa-coast")] == [((south[0], south[1]), (south[0], south[3]))]
+    assert ("sound-central", "wa-coast") in got

@@ -87,7 +87,7 @@ Wave 1 (plan 7) has five region packs and an overview, one file each in `regions
 | `sound-central` | -123.25, 47.45, -122.1, 48.2 | 3 to 5 | Seattle, Lake Union, Lake Washington, Possession bar, Everett, Admiralty Inlet |
 | `north-sound` | -123.35, 48.2, -122.25, 49.05 | 3 to 5 | San Juans, Rosario Strait, Deception Pass, Skagit and Padilla bays, Bellingham |
 | `strait` | -124.8, 47.95, -123.25, 48.6 | 1 to 5 | Strait of Juan de Fuca, US side: Port Angeles, Sekiu, Neah Bay |
-| `wa-coast` | -127.0, 46.15, -123.75, 48.6 | 1 to 5 | Columbia bar to Cape Flattery, out to about 100 mi |
+| `wa-coast` | -127.0, 46.15, -123.3984375, 48.6 | 1 to 5 | Columbia bar to Cape Flattery, out to about 100 mi |
 | `overview` | -127.265625, 46.0732, -121.9921875, 49.153 | 1 to 3 | zoom 9 and below over all of the above |
 
 Each region pack owns whole zoom-10 tiles: `regions/grid.toml` gives a tile meeting several boxes to the
