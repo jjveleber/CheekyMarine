@@ -107,7 +107,19 @@ def assemble_charts_pack(region: Region, enc_mbtiles: Path, out_dir: Path) -> Pa
 
 def _bathy_notice(metadata: dict[str, str], name: str, version: str) -> str:
     sources = json.loads(metadata["cheekymarine:sources"])
-    tiles = "\n".join(f"  {t['name']} ({t['year']} v{t['version']})" for t in sources["cudem"])
+    cudem = "" if "cudem" not in sources else (
+        "  NOAA NCEI Continuously Updated Digital Elevation Model (CUDEM) 1/9 arc-second tiles,\n"
+        "  DOI 10.25921/ds9v-ky35, a US Government work.\n  CUDEM tiles used:\n"
+        + "".join(f"  {t['name']} ({t['year']} v{t['version']})\n" for t in sources["cudem"]))
+    crm = "" if "crm" not in sources else (
+        "  NOAA NCEI Coastal Relief Model (CRM) volume 8, 2025, a US Government work.\n"
+        f"  Request: {sources['crm']}\n")
+    geoid = "" if "crm" not in sources else (
+        "  CRM heights (EGM2008) go through NAVD88 with the NGA EGM2008 and NOAA GEOID18 geoid grids\n"
+        "  (public domain, from cdn.proj.org) and PROJ.\n")
+    # ENC contours fill only water a CUDEM region's sources leave uncovered (a CRM-only build draws none).
+    fallback = "" if "cudem" not in sources else "\n{} the water, contours come from NOAA ENC.\n".format(
+        "Where neither CUDEM nor CRM covers" if "crm" in sources else "Where CUDEM does not cover")
     datum = sources["datum"]
     lakes = "" if "lakes_file" not in datum else (
         "  In Lake Union and Lake Washington depths are below the lakes' managed low level\n"
@@ -123,22 +135,12 @@ It is not certified for navigation. Do not rely on it as the only means of navig
 Depths are survey depths converted to approximate MLLW.
 
 Bathymetry:
-  NOAA NCEI Continuously Updated Digital Elevation Model (CUDEM) 1/9 arc-second tiles,
-  DOI 10.25921/ds9v-ky35, a US Government work.
-  NOAA NCEI Coastal Relief Model (CRM) volume 8, 2025, a US Government work.
-  Request: {sources["crm"]}
-  CUDEM tiles used:
-{tiles}
-
+{cudem}{crm}
 Boundaries: NOAA maritime boundaries (the water clip), a US Government work.
 
 Datum: elevations are converted to MLLW with offsets interpolated between NOAA CO-OPS tide
   stations (a US Government work), listed in {datum["file"]} (sha256 {datum["sha256"]}).
-{lakes}  CRM heights (EGM2008) go through NAVD88 with the NGA EGM2008 and NOAA GEOID18 geoid grids
-  (public domain, from cdn.proj.org) and PROJ.
-
-Where neither CUDEM nor CRM covers the water, contours come from NOAA ENC.
-
+{lakes}{geoid}{fallback}
 """ + fonts + "\nSymbols are drawn in-house after US Chart No. 1 (public domain).\n"
 
 

@@ -239,7 +239,7 @@ def _build_bathy(args: argparse.Namespace) -> int:
     else:
         all_tiles = parse_urllist(urllist.read_text()) if has_cudem else []
         enc_fallback = region.coarse_fallback == "enc"  # ENC lines where CUDEM is absent; no coarse layers
-        crm_request = crm_tile_requests(BLOCK_MARGIN_DEG)
+        crm_request = crm_tile_requests(BLOCK_MARGIN_DEG) if has_crm else None
         cells = [read_cell(_newest_cached_zip(args.cache, name)) for band in sorted(region.cells) for name in region.cells[band]]
         depcnt = enc_depcnt(cells)  # quilted once; each block clips it to its uncovered water
         del cells

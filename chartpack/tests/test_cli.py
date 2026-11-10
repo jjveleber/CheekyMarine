@@ -262,6 +262,24 @@ def _fixture_window(fixtures_dir, bbox):
     return read_window(str(fixtures_dir / "cudem_possession_bar.tif"), (max(w, fw), max(s, fs), min(e, fe), min(n, fn)))
 
 
+def _assert_bathy_sources(root, listed):
+    """The pack's bathy metadata, manifest and NOTICE record only the listed bathy sources."""
+    import json
+
+    from chartpack.mbtiles import MBTiles
+
+    for name in ("bathy.mbtiles", "bathy-coarse.mbtiles"):
+        with MBTiles.open(root / name) as m:
+            assert set(json.loads(m.metadata()["cheekymarine:sources"])) == set(listed) | {"datum"}, name
+    manifest = {s["source"] for s in json.loads((root / "manifest.json").read_text())["sources"]}
+    assert manifest <= set(listed) | {"datum"} and "datum" in manifest
+    assert ("crm" in manifest) == ("crm" in listed)
+    notice = (root / "NOTICE").read_text()
+    assert ("Coastal Relief Model" in notice) == ("crm" in listed)
+    assert ("CRM" in notice) == ("crm" in listed)
+    assert ("CUDEM" in notice) == ("cudem" in listed)
+
+
 def test_build_bathy_needs_fetch_bathy_first(tmp_path, regions_dir):
     args = ["build-bathy", str(_bathy_region(tmp_path, regions_dir)), str(tmp_path / "out"),
             "--cache", str(tmp_path / "cache"), "--work", str(tmp_path / "work")]
@@ -305,6 +323,7 @@ def test_build_bathy_end_to_end(tmp_path, fixtures_dir, regions_dir, monkeypatch
         md = m.metadata()
         assert [t["year"] for t in json.loads(md["cheekymarine:sources"])["cudem"]] == [2023]
         assert any(True for _ in m.tiles_at(12))
+    _assert_bathy_sources(root, ["cudem", "crm"])
 
 
 def test_build_bathy_enc_fallback_drops_crm_contours(tmp_path, fixtures_dir, regions_dir, monkeypatch, capsys,
@@ -338,6 +357,7 @@ def test_build_bathy_enc_fallback_drops_crm_contours(tmp_path, fixtures_dir, reg
     west = box(-122.3846, 47.8954, -122.382, 47.9046)  # well inside the CRM-only half
     assert any(shape(f["geometry"]).intersects(west) for f in contours if f["properties"]["source"] == "enc")
     assert not (work / "tippecanoe-coarse" / "contour.geojsonseq").exists()  # no coarse layers on the ENC path
+    _assert_bathy_sources(tmp_path / "out" / "bathy-test-cell-0.1.0", ["cudem"])
 
 
 def test_build_bathy_enc_fallback_leaves_out_the_clip(tmp_path, fixtures_dir, regions_dir, monkeypatch, capsys,
@@ -393,6 +413,7 @@ def test_build_bathy_crm_only_writes_no_fine_layers(tmp_path, fixtures_dir, regi
     assert (work / "tippecanoe-coarse" / "contour.geojsonseq").stat().st_size > 0
     for name in ("bathy.mbtiles", "bathy-coarse.mbtiles", "dem.mbtiles", "dem-coarse.mbtiles"):
         assert (work / name).is_file(), name
+    _assert_bathy_sources(out / "bathy-test-cell-0.1.0", ["crm"])
 
 
 def test_manifest_and_archive_commands(charts_pack_root_copy, regions_dir, tmp_path, capsys):
