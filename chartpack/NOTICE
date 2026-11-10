@@ -64,6 +64,11 @@ READMEs (https://github.com/OSGeo/PROJ-data, us_nga/us_nga_README.txt and us_noa
 Tide station datums (regions/datum/wa-stations.toml) are from the NOAA CO-OPS datums API, a US
 Government work.
 
+Lake Union and Lake Washington polygons (regions/datum/lakes.geojson) are derived from the NOAA ENC
+cells US5SEA* (M_SDAT areas, low water of the lakes), a US Government work (public domain); built by
+scripts/make-lakes.py. The lakes' managed low level (regions/datum/wa-stations.toml, [[lakes]]) is
+from US Army Corps of Engineers, Seattle District, publications, a US Government work (public domain).
+
 Bundled fonts (fonts/, used to render glyph ranges):
 
   Noto Sans v2.015 (Regular, Bold)  SIL Open Font License 1.1 (fonts/OFL.txt)

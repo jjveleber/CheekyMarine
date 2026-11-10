@@ -1,6 +1,5 @@
 """Build bathy.mbtiles and bathy-coarse.mbtiles: contour, band and coverage layers through tippecanoe and tile-join."""
 
-import hashlib
 import json
 from collections.abc import Sequence
 from datetime import datetime, timezone
@@ -11,6 +10,7 @@ from shapely.geometry import mapping, shape
 
 from chartpack.bathy.contours import M_TO_FT
 from chartpack.bathy.cudem import CudemTile
+from chartpack.datum.offsets import datum_provenance
 from chartpack.enc.quilt import quilt
 from chartpack.enc.reader import CellMeta, Feature
 from chartpack.enc.schema import COARSE_OPTIONAL_LAYERS, SCHEMA_VERSION
@@ -126,10 +126,7 @@ def tile_bathy(
         sources = {
             "cudem": [{"name": t.name, "url": t.url, "year": t.year, "version": t.version} for t in cudem_tiles],
             "crm": crm_request,
-            "datum": {
-                "file": region.datum_file.name,
-                "sha256": hashlib.sha256(region.datum_file.read_bytes()).hexdigest(),
-            },
+            "datum": datum_provenance(region.datum_file),
         }
         w, s, e, n = region.bbox
         m.set_metadata({

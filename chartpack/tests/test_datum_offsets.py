@@ -13,7 +13,7 @@ from shapely.geometry import box, mapping
 
 from chartpack.bathy.blocks import OVERVIEW_RES_DEG, area_datum, build_overview, overview_bounds
 from chartpack.datum import geoid
-from chartpack.datum.offsets import Station, load_datum, navd88_to_mllw_grid
+from chartpack.datum.offsets import Station, datum_provenance, load_datum, navd88_to_mllw_grid
 
 KM_PER_DEG_LAT = 6371.0088 * math.pi / 180
 
@@ -91,6 +91,37 @@ def _lake_region(test_region, tmp_path, lake: dict):
         '[[stations]]\nid = "1"\nname = "a"\nlat = 47.6\nlon = -122.5\nnavd88_to_mllw_m = 0.7\n\n'
         '[[lakes]]\nname = "Pond"\nlow_level_navd88_m = 6.0\nsource = "test"\n')
     return dataclasses.replace(test_region, datum_file=tmp_path / "datum.toml")
+
+
+@pytest.mark.parametrize("polygons, listed", [(["Pond", "Other"], ["Pond"]), (["Pond"], ["Pond", "Other"])])
+def test_lake_names_must_match(polygons, listed, tmp_path):
+    """A polygon with no [[lakes]] entry, or a [[lakes]] entry with no polygon, is an error."""
+    square = mapping(box(-122.3, 47.6, -122.29, 47.61))
+    (tmp_path / "pond.geojson").write_text(json.dumps({"type": "FeatureCollection", "features": [
+        {"type": "Feature", "properties": {"name": name}, "geometry": square} for name in polygons]}))
+    lakes = "".join(f'[[lakes]]\nname = "{name}"\nlow_level_navd88_m = 6.0\nsource = "test"\n\n' for name in listed)
+    (tmp_path / "datum.toml").write_text(
+        'lakes_file = "pond.geojson"\n\n'
+        '[[stations]]\nid = "1"\nname = "a"\nlat = 47.6\nlon = -122.5\nnavd88_to_mllw_m = 0.7\n\n' + lakes)
+    with pytest.raises(ValueError, match="do not match"):
+        load_datum(tmp_path / "datum.toml")
+
+
+def test_provenance_changes_with_the_lakes_file_alone(test_region, tmp_path):
+    """The pack records both files: an edit to the lake polygons alone changes the recorded lakes hash."""
+    region = _lake_region(test_region, tmp_path, mapping(box(-122.3, 47.6, -122.29, 47.61)))
+    before = datum_provenance(region.datum_file)
+    assert set(before) == {"file", "sha256", "lakes_file", "lakes_sha256"}
+    assert (before["file"], before["lakes_file"]) == ("datum.toml", "pond.geojson")
+    _lake_region(test_region, tmp_path, mapping(box(-122.3, 47.6, -122.28, 47.61)))
+    after = datum_provenance(region.datum_file)
+    assert after["sha256"] == before["sha256"] and after["lakes_sha256"] != before["lakes_sha256"]
+
+
+def test_provenance_without_lakes(tmp_path):
+    (tmp_path / "datum.toml").write_text(
+        '[[stations]]\nid = "1"\nname = "a"\nlat = 47.6\nlon = -122.5\nnavd88_to_mllw_m = 0.7\n')
+    assert set(datum_provenance(tmp_path / "datum.toml")) == {"file", "sha256"}
 
 
 @pytest.mark.parametrize("source, change", [("cudem", 0.0), ("crm", 1.0)])

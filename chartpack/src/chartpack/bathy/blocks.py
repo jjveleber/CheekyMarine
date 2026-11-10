@@ -68,22 +68,22 @@ def area_datum(region: Region, cache: Path) -> DatumFn:
     lakes = [(lake.low_level_navd88_m, datum_file.lake_areas[lake.name], shape(datum_file.lake_areas[lake.name]))
              for lake in datum_file.lakes]
 
-    def datum(source: str, transform, shape: tuple[int, int]) -> np.ndarray:
-        lons, lats = node_axes(transform, shape)
+    def datum(source: str, transform, grid_shape: tuple[int, int]) -> np.ndarray:
+        lons, lats = node_axes(transform, grid_shape)
         change = geoid.egm2008_to_navd88_nodes(lons, lats, cache) if SOURCE_VERTICAL[source] == "egm2008" else None
         nodes = navd88_to_mllw_nodes(stations, lons, lats)
         if change is not None:  # NAVD88 height = EGM2008 height + the change
             nodes += change
-        offset = resample(nodes, lons, lats, transform, shape)
+        offset = resample(nodes, lons, lats, transform, grid_shape)
         x0, dx, _, y0, _, dy = transform
-        grid = box(x0, y0 + shape[0] * dy, x0 + shape[1] * dx, y0)
+        grid = box(x0, y0 + grid_shape[0] * dy, x0 + grid_shape[1] * dx, y0)
         change_cells = None
         for low, area, polygon in lakes:
             if not polygon.intersects(grid):
                 continue
-            inside = clip_mask(transform, shape, area)
+            inside = clip_mask(transform, grid_shape, area)
             if change is not None and change_cells is None:
-                change_cells = resample(change, lons, lats, transform, shape)
+                change_cells = resample(change, lons, lats, transform, grid_shape)
             offset[inside] = -low if change_cells is None else change_cells[inside] - low
             del inside
         return offset

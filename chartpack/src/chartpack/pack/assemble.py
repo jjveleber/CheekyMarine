@@ -109,6 +109,11 @@ def _bathy_notice(metadata: dict[str, str], name: str, version: str) -> str:
     sources = json.loads(metadata["cheekymarine:sources"])
     tiles = "\n".join(f"  {t['name']} ({t['year']} v{t['version']})" for t in sources["cudem"])
     datum = sources["datum"]
+    lakes = "" if "lakes_file" not in datum else (
+        "  In Lake Union and Lake Washington depths are below the lakes' managed low level\n"
+        "  (US Army Corps of Engineers, a US Government work), inside polygons from NOAA ENC\n"
+        "  (a US Government work) in "
+        f"{datum['lakes_file']} (sha256 {datum['lakes_sha256']}).\n")
     licences = (PROJECT / "NOTICE").read_text()
     fonts = _fonts_notice(licences)
     return f"""CheekyMarine bathy pack {name} {version}
@@ -129,7 +134,7 @@ Boundaries: NOAA maritime boundaries (the water clip), a US Government work.
 
 Datum: elevations are converted to MLLW with offsets interpolated between NOAA CO-OPS tide
   stations (a US Government work), listed in {datum["file"]} (sha256 {datum["sha256"]}).
-  CRM heights (EGM2008) go through NAVD88 with the NGA EGM2008 and NOAA GEOID18 geoid grids
+{lakes}  CRM heights (EGM2008) go through NAVD88 with the NGA EGM2008 and NOAA GEOID18 geoid grids
   (public domain, from cdn.proj.org) and PROJ.
 
 Where neither CUDEM nor CRM covers the water, contours come from NOAA ENC.

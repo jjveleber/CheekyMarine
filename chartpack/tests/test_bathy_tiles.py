@@ -100,7 +100,9 @@ def test_sources_metadata(bathy_pack, test_region):
     ]
     assert src["crm"].startswith("https://www.ngdc.noaa.gov/thredds/wcs/crm/cudem/crm_vol8_2025.nc")
     sha256 = hashlib.sha256(test_region.datum_file.read_bytes()).hexdigest()
-    assert src["datum"] == {"file": "wa-stations.toml", "sha256": sha256}
+    lakes = hashlib.sha256((test_region.datum_file.parent / "lakes.geojson").read_bytes()).hexdigest()
+    assert src["datum"] == {"file": "wa-stations.toml", "sha256": sha256, "lakes_file": "lakes.geojson",
+                            "lakes_sha256": lakes}
 
 
 def test_contour_sources(bathy_pack):

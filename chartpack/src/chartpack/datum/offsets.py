@@ -5,6 +5,7 @@ where the nearest set would change. Far offshore the nearest coastal station dom
 nearest station offshore; this is continuous instead (tests/test_datum_offsets.py bounds the difference).
 """
 
+import hashlib
 import json
 import tomllib
 from dataclasses import dataclass, field
@@ -58,6 +59,19 @@ def load_datum(path: Path) -> Datum:
         names = sorted(lake.name for lake in lakes)
         raise ValueError(f"{path}: lake polygons {sorted(areas)} do not match [[lakes]] {names}")
     return Datum(stations, lakes, areas)
+
+
+def datum_provenance(path: Path) -> dict:
+    """The datum file's name and sha256, plus its lakes_file's name and sha256 when it has one, for the pack
+    metadata: both files change depths."""
+    path = Path(path)
+    with path.open("rb") as f:
+        lakes_file = tomllib.load(f).get("lakes_file")
+    out = {"file": path.name, "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
+    if lakes_file is not None:
+        lakes = path.parent / lakes_file
+        out |= {"lakes_file": lakes.name, "lakes_sha256": hashlib.sha256(lakes.read_bytes()).hexdigest()}
+    return out
 
 
 def navd88_to_mllw_nodes(stations: list[Station], lons: np.ndarray, lats: np.ndarray) -> np.ndarray:
