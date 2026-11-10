@@ -122,6 +122,39 @@ def test_fetch_bathy_prints_tiles_and_crm(tmp_path, fixtures_dir, regions_dir, m
     assert lines[-1] == str(tmp_path / "crm" / f"crm_{len(fetched)}.tif")
 
 
+def test_crm_only_region_fetches_no_cudem(tmp_path, regions_dir, monkeypatch, capsys):
+    from chartpack import cli
+
+    monkeypatch.setattr(cli, "download", lambda *a, **k: pytest.fail("a CRM-only region needs no CUDEM list"))
+    fetched = []
+    monkeypatch.setattr(cli, "fetch_crm", lambda bbox, cache: fetched.append(bbox) or cache)
+    monkeypatch.setattr(geoid, "fetch_grids", lambda p: None)
+    region = _grid_region(tmp_path, regions_dir)
+    region.write_text(region.read_text().replace('sources = ["cudem", "crm"]', 'sources = ["crm"]'))
+    assert main(["fetch-bathy", str(region), "--cache", str(tmp_path)]) == 0
+    capsys.readouterr()
+    assert fetched
+
+
+def test_cudem_only_region_fetches_no_crm(tmp_path, fixtures_dir, regions_dir, monkeypatch, capsys):
+    import shutil
+
+    from chartpack import cli
+
+    def fake_download(url, dest, *, expected_size=None, timeout=120):
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy(fixtures_dir / "cudem_urllist_excerpt.txt", dest)
+        return dest
+
+    monkeypatch.setattr(cli, "download", fake_download)
+    monkeypatch.setattr(cli, "fetch_crm", lambda *a, **k: pytest.fail("a CUDEM-only region needs no CRM"))
+    monkeypatch.setattr(geoid, "fetch_grids", lambda p: None)
+    region = _grid_region(tmp_path, regions_dir)
+    region.write_text('coarse_fallback = "enc"\n' + region.read_text().replace('sources = ["cudem", "crm"]', 'sources = ["cudem"]'))
+    assert main(["fetch-bathy", str(region), "--cache", str(tmp_path)]) == 0
+    assert "ncei19_n48x00_w122x50_2023v1" in capsys.readouterr().out.splitlines()
+
+
 def test_fetch_bathy_overview_reads_crm_once(tmp_path, regions_dir, monkeypatch, capsys):
     from chartpack import cli
     from chartpack.bathy.blocks import overview_bounds
@@ -241,10 +274,12 @@ def test_build_bathy_enc_fallback_drops_crm_contours(tmp_path, fixtures_dir, reg
     region = _bathy_region(tmp_path, regions_dir)
     region.write_text('coarse_fallback = "enc"\n' + region.read_text().replace('sources = ["cudem", "crm"]', 'sources = ["cudem"]'))
     cache = _bathy_cache(tmp_path, fixtures_dir, region, monkeypatch, ["https://example.test/ncei19_n48x00_w122x50_2023v1.tif"])
+    shutil.rmtree(cache / "crm")  # a CUDEM-only region needs no CRM files
 
     def fake_read_window(src, bbox):
+        assert src.startswith("/vsicurl/"), src  # CRM is never read
         grid = _fixture_window(fixtures_dir, bbox)
-        if src.startswith("/vsicurl/"):  # the CUDEM tile covers only the east half; CRM is everywhere
+        if src.startswith("/vsicurl/"):  # the CUDEM tile covers only the east half
             grid.data[:, : grid.data.shape[1] // 2] = grid.nodata
         return grid
 

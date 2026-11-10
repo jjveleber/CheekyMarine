@@ -5,6 +5,7 @@ import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 
+from chartpack.datum import SOURCE_VERTICAL
 from chartpack.seabed.cmecs import BLOCKS
 
 SEABED_SOURCES = ("enc", "usseabed", "usgs-cmecs")  # spec 6.10
@@ -82,6 +83,13 @@ def load_region(path: Path) -> Region:
     if coarse_fallback == "enc" and "crm" in bathy.get("sources", []):
         raise RegionError("coarse_fallback = 'enc' cannot be used with crm in bathy.sources (the coarse layers are CRM)")
 
+    bathy_sources = list(_need(bathy, "sources", "bathy."))
+    if not bathy_sources:
+        raise RegionError("bathy.sources must list at least one source")
+    for source in bathy_sources:
+        if source not in SOURCE_VERTICAL:
+            raise RegionError(f"unknown bathy source: {source}")
+
     seabed = data.get("seabed", {})
     seabed_sources = tuple(seabed.get("sources", ["enc"]))
     cmecs_blocks = tuple(seabed.get("cmecs_blocks", []))
@@ -110,7 +118,7 @@ def load_region(path: Path) -> Region:
         bathy_version=bathy_version,
         bbox=bbox,
         cells=cells,
-        bathy_sources=list(_need(bathy, "sources", "bathy.")),
+        bathy_sources=bathy_sources,
         coarse_fallback=coarse_fallback,
         clip=path.parent / clip if clip else None,
         dem_maxzoom=int(_need(bathy, "dem_maxzoom", "bathy.")),

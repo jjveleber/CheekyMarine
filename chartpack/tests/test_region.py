@@ -69,3 +69,21 @@ def test_enc_fallback_with_crm_is_error(tmp_path, regions_dir):
         load_region(path)
     path.write_text(path.read_text().replace('sources = ["cudem", "crm"]', 'sources = ["cudem"]'))
     assert load_region(path).coarse_fallback == "enc"
+
+
+def _with_sources(tmp_path, regions_dir, sources):
+    text = (regions_dir / "test-cell.toml").read_text()
+    path = tmp_path / "r.toml"
+    path.write_text(text.replace('sources = ["cudem", "crm"]', f"sources = {sources}"))
+    assert f"sources = {sources}" in path.read_text()
+    return path
+
+
+def test_unknown_bathy_source_is_error(tmp_path, regions_dir):
+    with pytest.raises(RegionError, match="unknown bathy source: gebco"):
+        load_region(_with_sources(tmp_path, regions_dir, '["cudem", "gebco"]'))
+
+
+def test_empty_bathy_sources_is_error(tmp_path, regions_dir):
+    with pytest.raises(RegionError, match="bathy.sources"):
+        load_region(_with_sources(tmp_path, regions_dir, "[]"))

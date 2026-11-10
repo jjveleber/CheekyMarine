@@ -43,9 +43,12 @@ def enc_depcnt(enc_cells: list[tuple[CellMeta, list[Feature]]]) -> list[tuple[sh
     return lines
 
 
-def enc_fallback_contours(depcnt: list[tuple[shapely.Geometry, int, int, int]], uncovered: shapely.Geometry) -> list[dict]:
-    """enc_depcnt lines clipped to `uncovered`, as contour Features (one per simple line); `minzoom` mirrors
-    the tippecanoe minzoom."""
+def enc_fallback_contours(depcnt: list[tuple[shapely.Geometry, int, int, int]], uncovered: shapely.Geometry,
+                         clip: shapely.Geometry | None) -> list[dict]:
+    """enc_depcnt lines clipped to `uncovered` less `clip` (the region's water to leave out), as contour
+    Features (one per simple line); `minzoom` mirrors the tippecanoe minzoom."""
+    if clip is not None:
+        uncovered = uncovered.difference(clip)
     feats = []
     for geom, depth_ft, lo, hi in depcnt:
         for line in _lines(geom.intersection(uncovered)):

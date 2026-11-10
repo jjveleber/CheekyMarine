@@ -58,7 +58,7 @@ def built(test_region, tmp_path_factory):
     bands = bands_by_zoom(grid.data, transform)
     coverage = coverage_polygons(source, transform, LABELS)
     uncovered = uncovered_area(source, transform, treat_fallback_as_uncovered=False)
-    enc = enc_fallback_contours(enc_depcnt([read_cell(fixtures_dir / "US4WA1HK.zip")]), uncovered)
+    enc = enc_fallback_contours(enc_depcnt([read_cell(fixtures_dir / "US4WA1HK.zip")]), uncovered, None)
     tiles = [CudemTile("ncei19_n47x85_w122x50_2023v1", "https://example.test/a.tif", 47.85, -122.5, 2023, 1)]
     out = build_bathy_mbtiles(
         contours + enc, bands, coverage, base / "bathy.mbtiles", region=test_region, work=base / "work",
@@ -153,7 +153,7 @@ def test_enc_fallback_quilts_overlapping_bands():
         geometry = {"type": "LineString", "coordinates": [[x, y] for x, _ in line["coordinates"]]}
         return meta, [Feature("depcnt", geometry, {"VALDCO": "9.1"}), Feature("depare", geometry, {})]
 
-    feats = enc_fallback_contours(enc_depcnt([cell("US4X", 4, 47.75), cell("US5X", 5, 47.751)]), square)
+    feats = enc_fallback_contours(enc_depcnt([cell("US4X", 4, 47.75), cell("US5X", 5, 47.751)]), square, None)
     assert feats and all(f["properties"]["source"] == "enc" for f in feats)
     for z in range(10, 17):
         drawn = [f for f in feats if f["tippecanoe"]["minzoom"] <= z <= f["tippecanoe"]["maxzoom"]]
@@ -213,3 +213,20 @@ def test_missing_layer_is_named(test_region, tmp_path):
     }
     with pytest.raises(RuntimeError, match="coverage"):
         build_bathy_mbtiles([line], [], [], tmp_path / "o.mbtiles", region=test_region, work=tmp_path / "w")
+
+
+def test_fallback_contours_clipped():
+    """An ENC line crossing the clip keeps only the part outside it (issue #16)."""
+    square = box(-122.4, 47.7, -122.3, 47.8)
+    meta = CellMeta("US4X", 4, 1, 0, "20260101", mapping(square))
+    geometry = {"type": "LineString", "coordinates": [[-122.39, 47.75], [-122.31, 47.75]]}
+    depcnt = enc_depcnt([(meta, [Feature("depcnt", geometry, {"VALDCO": "9.1"})])])
+    clip = box(-122.36, 47.7, -122.34, 47.8)
+    feats = enc_fallback_contours(depcnt, square, clip)
+    xs = sorted(x for f in feats for x, _ in f["geometry"]["coordinates"])
+    assert xs[0] == -122.39 and xs[-1] == -122.31
+    assert all(not clip.intersects(shape(f["geometry"])) or clip.intersection(shape(f["geometry"])).length == 0 for f in feats)
+    assert {tuple(f["geometry"]["coordinates"]) for f in feats} == {
+        ((-122.39, 47.75), (-122.36, 47.75)), ((-122.34, 47.75), (-122.31, 47.75))}
+    assert {tuple(f["geometry"]["coordinates"]) for f in enc_fallback_contours(depcnt, square, None)} == {
+        ((-122.39, 47.75), (-122.31, 47.75))}
