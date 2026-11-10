@@ -51,7 +51,7 @@ def test_build_enc_zoom_range_reaches_tippecanoe(tmp_path, fixtures_dir, regions
     shutil.copy(fixtures_dir / "US4WA1HK.zip", tmp_path / "cache" / "enc" / "US4WA1HK-1.3.zip")
     region = _grid_region(tmp_path, regions_dir)
     if overview:
-        region.write_text("overview = true\n" + region.read_text())
+        region.write_text("overview = true\n" + region.read_text().replace('sources = ["cudem", "crm"]', 'sources = ["crm"]'))
     cmds = []
     monkeypatch.setattr(tiles, "run", cmds.append)
     with pytest.raises(Exception):  # the patched run writes no mbtiles: only the commands matter
@@ -210,7 +210,7 @@ def test_fetch_bathy_overview_reads_crm_once(tmp_path, regions_dir, monkeypatch,
     grids = []
     monkeypatch.setattr(geoid, "fetch_grids", grids.append)
     region = _grid_region(tmp_path, regions_dir)
-    region.write_text("overview = true\n" + region.read_text())
+    region.write_text("overview = true\n" + region.read_text().replace('sources = ["cudem", "crm"]', 'sources = ["crm"]'))
     assert main(["fetch-bathy", str(region), "--cache", str(tmp_path)]) == 0
     assert grids == [tmp_path / "proj"]
     capsys.readouterr()

@@ -327,7 +327,7 @@ bbox = [-122.6, 47.8, -122.4, 47.95]
 [enc]
 
 [bathy]
-sources = ["cudem", "crm"]
+sources = {'["crm"]' if overview else '["cudem", "crm"]'}
 dem_maxzoom = {dem_maxzoom}
 
 [datum]

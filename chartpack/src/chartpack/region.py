@@ -92,6 +92,9 @@ def load_region(path: Path) -> Region:
 
     if coarse_fallback == "crm" and "crm" not in bathy_sources:
         raise RegionError("coarse_fallback = 'crm' needs crm in bathy.sources (set coarse_fallback = 'enc' for CUDEM only)")
+    overview = _overview(data)
+    if overview and bathy_sources != ["crm"]:
+        raise RegionError('an overview region needs bathy.sources = ["crm"]: it is built from one CRM read')
 
     seabed = data.get("seabed", {})
     seabed_sources = tuple(seabed.get("sources", ["enc"]))
@@ -129,5 +132,5 @@ def load_region(path: Path) -> Region:
         views=views,
         seabed_sources=seabed_sources,
         cmecs_blocks=cmecs_blocks,
-        overview=_overview(data),
+        overview=overview,
     )
