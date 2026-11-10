@@ -6,7 +6,7 @@ clip = "clip/canada-wa.geojson"
 
 # Every Active cell of bands 3 to 5 whose catalog polygon meets the bbox (`chartpack cells`, catalog of
 # 2026-10-29). Bands 1 and 2 (US1GLBDD, US2PACWY) also meet it but are left out: band 3 covers the whole
-# bbox, so the quilt would clip band 2 away everywhere, and band 1 has no zoom range.
+# bbox, and the quilt clips bands 1 and 2 under band 3 at every zoom, so they would be clipped away everywhere.
 [enc]
 band3 = ["US3WA1DF", "US3WA1DG", "US3WA1EF", "US3WA1EG"]
 band4 = ["US4WA1GI", "US4WA1GJ", "US4WA1GK", "US4WA1HI", "US4WA1HJ", "US4WA1HK", "US4WA1II", "US4WA1IJ", "US4WA1IK", "US4WA1JI", "US4WA1JJ"]
