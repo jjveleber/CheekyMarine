@@ -102,7 +102,7 @@ def _band_zooms(metadata: dict) -> set[int]:
     limited to the file's own minzoom..maxzoom so a region pack is not asked for the overview's zooms."""
     zooms = set()
     for source in json.loads(metadata["cheekymarine:sources"]):
-        band = min(max(int(source["cell"][2]), 3), 5)  # as the quilt treats bands 1 to 3
+        band = min(max(int(source["cell"][2]), 3), 5)  # bands 1 and 2 share band 3's zoom range (BAND_ZOOMS)
         zooms.update(range(BAND_ZOOMS[band][0], BAND_ZOOMS[band][1] + 1))
     return {z for z in zooms if int(metadata["minzoom"]) <= z <= int(metadata["maxzoom"])}
 

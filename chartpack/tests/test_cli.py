@@ -51,7 +51,7 @@ def test_build_enc_zoom_range_reaches_tippecanoe(tmp_path, fixtures_dir, regions
     shutil.copy(fixtures_dir / "US4WA1HK.zip", tmp_path / "cache" / "enc" / "US4WA1HK-1.3.zip")
     region = _grid_region(tmp_path, regions_dir)
     if overview:
-        region.write_text("overview = true\n" + region.read_text())
+        region.write_text("overview = true\n" + region.read_text().replace('sources = ["cudem", "crm"]', 'sources = ["crm"]'))
     cmds = []
     monkeypatch.setattr(tiles, "run", cmds.append)
     with pytest.raises(Exception):  # the patched run writes no mbtiles: only the commands matter
@@ -61,6 +61,51 @@ def test_build_enc_zoom_range_reaches_tippecanoe(tmp_path, fixtures_dir, regions
     assert tippecanoe
     for c in tippecanoe:
         assert (c[c.index("-Z") + 1], c[c.index("-z") + 1]) == zooms
+
+
+def test_build_enc_crops_band1_to_the_owned_tiles(tmp_path, fixtures_dir, regions_dir, monkeypatch):
+    """A band 1 cell spans far past the region: the quilt output reaching tippecanoe is cut to the owned
+    zoom-10 tiles plus BLOCK_MARGIN_DEG, so a feature across an owned edge still renders over the seam."""
+    import json
+
+    from chartpack import cli
+    from chartpack.bathy.blocks import BLOCK_MARGIN_DEG
+    from chartpack.enc import tiles
+    from chartpack.enc.reader import CellMeta, Feature
+    from chartpack.grid import GRID_ZOOM, owned_tiles, tile_bounds
+    from chartpack.region import load_region
+    from shapely.geometry import box, mapping, shape
+
+    # The margin covers tippecanoe's default tile buffer (5 of 256 px) at the region's lowest zoom.
+    assert BLOCK_MARGIN_DEG >= 5 / 256 * 360 / 2**tiles.REGION_ZOOMS[0]
+    (tmp_path / "cache" / "enc").mkdir(parents=True)
+    shutil.copy(fixtures_dir / "US4WA1HK.zip", tmp_path / "cache" / "enc" / "US4WA1HK-1.3.zip")
+    (tmp_path / "cache" / "enc" / "US1AAAAA-1.0.zip").touch()
+    region = _grid_region(tmp_path, regions_dir)
+    region.write_text(region.read_text().replace('[enc]\n', '[enc]\nband1 = ["US1AAAAA"]\n'))
+    owned = owned_tiles(load_region(region), region.parent)
+    x, y = min(owned)  # the west column: nothing owned past its west edge
+    w, s, e, n = tile_bounds(GRID_ZOOM, x, y)
+    points = {"inside": ((w + e) / 2, (s + n) / 2), "edge": (w - BLOCK_MARGIN_DEG / 2, (s + n) / 2),
+              "far": (-140.0, 30.0)}
+    band1 = (CellMeta("US1AAAAA", 1, 1, 0, "2026-01-01", mapping(box(-170, 10, -100, 60))),
+             [Feature("hazard", {"type": "Point", "coordinates": list(p)},
+                      {"cell": "US1AAAAA", "band": 1, "class": "OBSTRN", "OBJNAM": name})
+              for name, p in points.items()]
+             + [Feature("depare", mapping(box(w - 5, s, e, n)),  # reaches 5 degrees west of the owned tiles
+                        {"cell": "US1AAAAA", "band": 1, "class": "DEPARE", "DRVAL1": "0.0", "DRVAL2": "5.5"})])
+    read_cell = cli.read_cell
+    monkeypatch.setattr(cli, "read_cell", lambda path: band1 if path.name.startswith("US1") else read_cell(path))
+    monkeypatch.setattr(tiles, "run", lambda cmd: None)
+    with pytest.raises(Exception):  # the patched run writes no mbtiles: only the tippecanoe input matters
+        main(["build-enc", str(region), str(tmp_path / "out"), "--cache", str(tmp_path / "cache"),
+              "--work", str(tmp_path / "work")])
+    hazards = [json.loads(line) for line in (tmp_path / "work" / "tippecanoe" / "hazard.geojsonseq").read_text().splitlines()]
+    assert {f["properties"]["OBJNAM"] for f in hazards if f["properties"].get("cell") == "US1AAAAA"} == {"inside", "edge"}
+    depare = [shape(json.loads(line)["geometry"]) for line in
+              (tmp_path / "work" / "tippecanoe" / "depare.geojsonseq").read_text().splitlines()
+              if json.loads(line)["properties"]["cell"] == "US1AAAAA"]
+    assert depare and all(g.bounds[0] >= w - BLOCK_MARGIN_DEG - 1e-9 for g in depare)
 
 
 def test_build_enc_uses_cached_zip(tmp_path, fixtures_dir, regions_dir):
@@ -122,6 +167,39 @@ def test_fetch_bathy_prints_tiles_and_crm(tmp_path, fixtures_dir, regions_dir, m
     assert lines[-1] == str(tmp_path / "crm" / f"crm_{len(fetched)}.tif")
 
 
+def test_crm_only_region_fetches_no_cudem(tmp_path, regions_dir, monkeypatch, capsys):
+    from chartpack import cli
+
+    monkeypatch.setattr(cli, "download", lambda *a, **k: pytest.fail("a CRM-only region needs no CUDEM list"))
+    fetched = []
+    monkeypatch.setattr(cli, "fetch_crm", lambda bbox, cache: fetched.append(bbox) or cache)
+    monkeypatch.setattr(geoid, "fetch_grids", lambda p: None)
+    region = _grid_region(tmp_path, regions_dir)
+    region.write_text(region.read_text().replace('sources = ["cudem", "crm"]', 'sources = ["crm"]'))
+    assert main(["fetch-bathy", str(region), "--cache", str(tmp_path)]) == 0
+    capsys.readouterr()
+    assert fetched
+
+
+def test_cudem_only_region_fetches_no_crm(tmp_path, fixtures_dir, regions_dir, monkeypatch, capsys):
+    import shutil
+
+    from chartpack import cli
+
+    def fake_download(url, dest, *, expected_size=None, timeout=120):
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy(fixtures_dir / "cudem_urllist_excerpt.txt", dest)
+        return dest
+
+    monkeypatch.setattr(cli, "download", fake_download)
+    monkeypatch.setattr(cli, "fetch_crm", lambda *a, **k: pytest.fail("a CUDEM-only region needs no CRM"))
+    monkeypatch.setattr(geoid, "fetch_grids", lambda p: None)
+    region = _grid_region(tmp_path, regions_dir)
+    region.write_text('coarse_fallback = "enc"\n' + region.read_text().replace('sources = ["cudem", "crm"]', 'sources = ["cudem"]'))
+    assert main(["fetch-bathy", str(region), "--cache", str(tmp_path)]) == 0
+    assert "ncei19_n48x00_w122x50_2023v1" in capsys.readouterr().out.splitlines()
+
+
 def test_fetch_bathy_overview_reads_crm_once(tmp_path, regions_dir, monkeypatch, capsys):
     from chartpack import cli
     from chartpack.bathy.blocks import overview_bounds
@@ -132,7 +210,7 @@ def test_fetch_bathy_overview_reads_crm_once(tmp_path, regions_dir, monkeypatch,
     grids = []
     monkeypatch.setattr(geoid, "fetch_grids", grids.append)
     region = _grid_region(tmp_path, regions_dir)
-    region.write_text("overview = true\n" + region.read_text())
+    region.write_text("overview = true\n" + region.read_text().replace('sources = ["cudem", "crm"]', 'sources = ["crm"]'))
     assert main(["fetch-bathy", str(region), "--cache", str(tmp_path)]) == 0
     assert grids == [tmp_path / "proj"]
     capsys.readouterr()
@@ -184,6 +262,24 @@ def _fixture_window(fixtures_dir, bbox):
     return read_window(str(fixtures_dir / "cudem_possession_bar.tif"), (max(w, fw), max(s, fs), min(e, fe), min(n, fn)))
 
 
+def _assert_bathy_sources(root, listed):
+    """The pack's bathy metadata, manifest and NOTICE record only the listed bathy sources."""
+    import json
+
+    from chartpack.mbtiles import MBTiles
+
+    for name in ("bathy.mbtiles", "bathy-coarse.mbtiles"):
+        with MBTiles.open(root / name) as m:
+            assert set(json.loads(m.metadata()["cheekymarine:sources"])) == set(listed) | {"datum"}, name
+    manifest = {s["source"] for s in json.loads((root / "manifest.json").read_text())["sources"]}
+    assert manifest <= set(listed) | {"datum"} and "datum" in manifest
+    assert ("crm" in manifest) == ("crm" in listed)
+    notice = (root / "NOTICE").read_text()
+    assert ("Coastal Relief Model" in notice) == ("crm" in listed)
+    assert ("CRM" in notice) == ("crm" in listed)
+    assert ("CUDEM" in notice) == ("cudem" in listed)
+
+
 def test_build_bathy_needs_fetch_bathy_first(tmp_path, regions_dir):
     args = ["build-bathy", str(_bathy_region(tmp_path, regions_dir)), str(tmp_path / "out"),
             "--cache", str(tmp_path / "cache"), "--work", str(tmp_path / "work")]
@@ -227,6 +323,7 @@ def test_build_bathy_end_to_end(tmp_path, fixtures_dir, regions_dir, monkeypatch
         md = m.metadata()
         assert [t["year"] for t in json.loads(md["cheekymarine:sources"])["cudem"]] == [2023]
         assert any(True for _ in m.tiles_at(12))
+    _assert_bathy_sources(root, ["cudem", "crm"])
 
 
 def test_build_bathy_enc_fallback_drops_crm_contours(tmp_path, fixtures_dir, regions_dir, monkeypatch, capsys,
@@ -241,10 +338,12 @@ def test_build_bathy_enc_fallback_drops_crm_contours(tmp_path, fixtures_dir, reg
     region = _bathy_region(tmp_path, regions_dir)
     region.write_text('coarse_fallback = "enc"\n' + region.read_text().replace('sources = ["cudem", "crm"]', 'sources = ["cudem"]'))
     cache = _bathy_cache(tmp_path, fixtures_dir, region, monkeypatch, ["https://example.test/ncei19_n48x00_w122x50_2023v1.tif"])
+    shutil.rmtree(cache / "crm")  # a CUDEM-only region needs no CRM files
 
     def fake_read_window(src, bbox):
+        assert src.startswith("/vsicurl/"), src  # CRM is never read
         grid = _fixture_window(fixtures_dir, bbox)
-        if src.startswith("/vsicurl/"):  # the CUDEM tile covers only the east half; CRM is everywhere
+        if src.startswith("/vsicurl/"):  # the CUDEM tile covers only the east half
             grid.data[:, : grid.data.shape[1] // 2] = grid.nodata
         return grid
 
@@ -258,6 +357,63 @@ def test_build_bathy_enc_fallback_drops_crm_contours(tmp_path, fixtures_dir, reg
     west = box(-122.3846, 47.8954, -122.382, 47.9046)  # well inside the CRM-only half
     assert any(shape(f["geometry"]).intersects(west) for f in contours if f["properties"]["source"] == "enc")
     assert not (work / "tippecanoe-coarse" / "contour.geojsonseq").exists()  # no coarse layers on the ENC path
+    _assert_bathy_sources(tmp_path / "out" / "bathy-test-cell-0.1.0", ["cudem"])
+
+
+def test_build_bathy_enc_fallback_leaves_out_the_clip(tmp_path, fixtures_dir, regions_dir, monkeypatch, capsys,
+                                                      zero_geoid):
+    """A region clip over part of the ENC-fallback half (#16): no ENC fallback contour reaches into the clip."""
+    import json
+
+    from shapely.geometry import box, mapping, shape
+
+    from chartpack.bathy import blocks
+
+    region = _bathy_region(tmp_path, regions_dir)
+    clip = box(-122.45, 47.85, -122.383, 47.95)  # the west edge of the CUDEM-free half and the water past it
+    (tmp_path / "regions" / "clip.geojson").write_text(json.dumps({"type": "Feature", "properties": {},
+                                                                   "geometry": mapping(clip)}))
+    region.write_text('coarse_fallback = "enc"\nclip = "clip.geojson"\n'
+                      + region.read_text().replace('sources = ["cudem", "crm"]', 'sources = ["cudem"]'))
+    cache = _bathy_cache(tmp_path, fixtures_dir, region, monkeypatch, ["https://example.test/ncei19_n48x00_w122x50_2023v1.tif"])
+    shutil.rmtree(cache / "crm")
+
+    def fake_read_window(src, bbox):
+        grid = _fixture_window(fixtures_dir, bbox)
+        grid.data[:, : grid.data.shape[1] // 2] = grid.nodata  # the CUDEM tile covers only the east half
+        return grid
+
+    monkeypatch.setattr(blocks, "read_window", fake_read_window)
+    work = tmp_path / "work"
+    assert main(["build-bathy", str(region), str(tmp_path / "out"), "--cache", str(cache), "--work", str(work)]) == 0
+    capsys.readouterr()
+    contours = [json.loads(line) for line in (work / "tippecanoe" / "contour.geojsonseq").read_text().splitlines()]
+    enc = [shape(f["geometry"]) for f in contours if f["properties"]["source"] == "enc"]
+    assert enc  # ENC lines still fall outside the clip
+    assert all(line.intersection(clip).length < 1e-9 for line in enc)
+
+
+def test_build_bathy_crm_only_writes_no_fine_layers(tmp_path, fixtures_dir, regions_dir, monkeypatch, capsys,
+                                                    zero_geoid):
+    """sources = ["crm"], no CUDEM list in the cache: the fine layer files stay absent, all four bathy files exist."""
+    from chartpack.bathy import blocks
+
+    region = _bathy_region(tmp_path, regions_dir)
+    region.write_text(region.read_text().replace('sources = ["cudem", "crm"]', 'sources = ["crm"]'))
+    cache = _bathy_cache(tmp_path, fixtures_dir, region, monkeypatch, [])
+    (cache / "cudem" / "urllist8483.txt").unlink()
+    monkeypatch.setattr(blocks, "read_window", lambda src, bbox: (
+        pytest.fail(f"CUDEM read: {src}") if src.startswith("/vsicurl/") else _fixture_window(fixtures_dir, bbox)))
+    work, out = tmp_path / "work", tmp_path / "out"
+    assert main(["build-bathy", str(region), str(out), "--cache", str(cache), "--work", str(work)]) == 0
+    capsys.readouterr()
+    for layer in ("contour", "band", "coverage"):
+        fine = work / "tippecanoe" / f"{layer}.geojsonseq"
+        assert not fine.exists() or fine.stat().st_size == 0, layer
+    assert (work / "tippecanoe-coarse" / "contour.geojsonseq").stat().st_size > 0
+    for name in ("bathy.mbtiles", "bathy-coarse.mbtiles", "dem.mbtiles", "dem-coarse.mbtiles"):
+        assert (work / name).is_file(), name
+    _assert_bathy_sources(out / "bathy-test-cell-0.1.0", ["crm"])
 
 
 def test_manifest_and_archive_commands(charts_pack_root_copy, regions_dir, tmp_path, capsys):

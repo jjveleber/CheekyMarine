@@ -43,9 +43,12 @@ def enc_depcnt(enc_cells: list[tuple[CellMeta, list[Feature]]]) -> list[tuple[sh
     return lines
 
 
-def enc_fallback_contours(depcnt: list[tuple[shapely.Geometry, int, int, int]], uncovered: shapely.Geometry) -> list[dict]:
-    """enc_depcnt lines clipped to `uncovered`, as contour Features (one per simple line); `minzoom` mirrors
-    the tippecanoe minzoom."""
+def enc_fallback_contours(depcnt: list[tuple[shapely.Geometry, int, int, int]], uncovered: shapely.Geometry,
+                         clip: shapely.Geometry | None) -> list[dict]:
+    """enc_depcnt lines clipped to `uncovered` less `clip` (the region's water to leave out), as contour
+    Features (one per simple line); `minzoom` mirrors the tippecanoe minzoom."""
+    if clip is not None:
+        uncovered = uncovered.difference(clip)
     feats = []
     for geom, depth_ft, lo, hi in depcnt:
         for line in _lines(geom.intersection(uncovered)):
@@ -82,7 +85,7 @@ def _has_features(path: Path) -> bool:
 
 
 def tile_bathy(
-    work: Path, out: Path, *, region: Region, crm_request: str, zooms: tuple[int, int] = (MINZOOM, MAXZOOM),
+    work: Path, out: Path, *, region: Region, crm_request: str | None, zooms: tuple[int, int] = (MINZOOM, MAXZOOM),
     coarse: bool = False, cudem_tiles: Sequence[CudemTile] = (),
 ) -> Path:
     """Tile the layer files work/<layer>.geojsonseq into out at zooms (min, max).
@@ -90,7 +93,8 @@ def tile_bathy(
     With no features in any layer the file is written with its metadata and no tiles (the overview's
     fine file, a region with no CRM-only water). Otherwise every layer needs features, except that the
     coarse file may lack contour and band (COARSE_OPTIONAL_LAYERS) when it has coverage. crm_request
-    records the CRM requests the build made.
+    records the CRM requests the build made (None when crm is not in the region's bathy.sources). Only the
+    listed bathy sources are recorded.
     """
     out, work = Path(out), Path(work)
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -123,11 +127,12 @@ def tile_bathy(
             missing = [layer for layer in BATHY_LAYERS if layer not in built and layer not in empty]
             if missing:
                 raise _missing_error(name, missing)
-        sources = {
-            "cudem": [{"name": t.name, "url": t.url, "year": t.year, "version": t.version} for t in cudem_tiles],
-            "crm": crm_request,
-            "datum": datum_provenance(region.datum_file),
-        }
+        sources = {}  # only the region's listed bathy sources, then the datum
+        if "cudem" in region.bathy_sources:
+            sources["cudem"] = [{"name": t.name, "url": t.url, "year": t.year, "version": t.version} for t in cudem_tiles]
+        if "crm" in region.bathy_sources:
+            sources["crm"] = crm_request
+        sources["datum"] = datum_provenance(region.datum_file)
         w, s, e, n = region.bbox
         m.set_metadata({
             "name": f"bathy-coarse-{region.name}" if coarse else f"bathy-{region.name}",

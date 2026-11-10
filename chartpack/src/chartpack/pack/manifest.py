@@ -53,10 +53,10 @@ def describe_pack(pack_root: Path) -> tuple[str, list[dict], str]:
         metadata = m.metadata()
     pack = metadata["cheekymarine:pack"]
     sources = json.loads(metadata["cheekymarine:sources"])
-    if pack == "bathy":  # a dict of provenance blocks, flattened to a list
+    if pack == "bathy":  # a dict of provenance blocks (the listed sources), flattened to a list
         sources = [
-            *({"source": "cudem", **tile} for tile in sources["cudem"]),
-            {"source": "crm", "request": sources["crm"]},
+            *({"source": "cudem", **tile} for tile in sources.get("cudem", [])),
+            *([{"source": "crm", "request": sources["crm"]}] if "crm" in sources else []),
             {"source": "datum", **sources["datum"]},
         ]
     style = json.loads(sorted((root / "styles").glob("*-day.json"))[0].read_text())

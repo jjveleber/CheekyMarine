@@ -14,6 +14,7 @@ from pathlib import Path
 
 import numpy as np
 import shapely
+from osgeo import osr
 from shapely.geometry import box, mapping, shape
 
 from chartpack.bathy.bands import bands_by_zoom
@@ -51,7 +52,7 @@ class BlockResult:
     coarse_bands: list[dict]
     coarse_coverage: list[dict]
     fine_grid: Grid | None  # None for the overview and for a block no CUDEM tile meets: no fine output
-    coarse_grid: Grid
+    coarse_grid: Grid | None  # None when the region has no CRM source
     fine_cudem: np.ndarray | None = None  # bool, the fine grid's shape
 
 
@@ -183,48 +184,61 @@ def _features(
     return contours, polygons, _coverage(valid, grid.transform, core, label)
 
 
+def _no_data(bbox) -> Grid:
+    """A two by two all-nan grid over bbox: the CRM stand-in for a region without CRM in its sources."""
+    w, s, e, n = bbox
+    srs = osr.SpatialReference()
+    srs.ImportFromEPSG(4326)
+    return Grid(np.full((2, 2), np.nan, np.float32), float("nan"), (w, (e - w) / 2, 0.0, n, 0.0, (s - n) / 2),
+                srs.ExportToWkt())
+
+
 def build_block(
-    core, read, cudem_tiles: Sequence[CudemTile], crm_path, datum: AreaDatum, clip: shapely.Geometry | None
+    core, read, cudem_tiles: Sequence[CudemTile], crm_path: Path | None, datum: AreaDatum, clip: shapely.Geometry | None
 ) -> BlockResult:
     """Fine and coarse outputs of one block: features clipped to core, grids over read.
 
     Fine is the CUDEM-then-CRM merge; its features use the CUDEM cells (source index 1) only, its DEM the
     whole merge. Coarse is CRM on every coarse cell unless every fine cell in it holds CUDEM, decided per
     cell, so coarse overlaps fine by under one coarse cell instead of leaving a gap (the style draws coarse
-    under fine). Cells inside clip are nan in both grids before anything is drawn. A block that no CUDEM
+    under fine). Cells inside clip are nan in both grids before anything is drawn. A crm_path of None (no CRM in
+    the region's sources) leaves the coarse outputs empty. A block that no CUDEM
     tile meets skips the fine merge: its fine outputs are empty and fine_grid is None. The grids (the DEMs)
     are depth by the station path; the features add the lake rule (_with_lakes).
     """
     has_cudem = bool(tiles_for_bbox(list(cudem_tiles), read))
     meeting = cudem_tiles if has_cudem else []
     primary = [(read_window("/vsicurl/" + t.url, _overlap(t.bounds, read)), t.name) for t in meeting]
-    crm = read_window(str(crm_path), read)
+    crm = None if crm_path is None else read_window(str(crm_path), read)
     fine = source = cudem = None
     if has_cudem:
-        fine, source = merge_to_mllw(primary, crm, 0.0, 0.0, read, res_deg=FINE_RES_DEG)
+        fine, source = merge_to_mllw(primary, _no_data(read) if crm is None else crm, 0.0, 0.0, read, res_deg=FINE_RES_DEG)
         del primary
-        for index, name in ((1, "cudem"), (2, "crm")):
+        for index, name in ((1, "cudem"), (2, "crm")) if crm is not None else ((1, "cudem"),):
             take = source == index
             fine.data[take] -= datum(name, fine.transform, fine.data.shape, lakes=False)[take]
             del take
 
-    coarse, _ = merge_to_mllw([], crm, 0.0, 0.0, read, res_deg=COARSE_RES_DEG)
-    del crm
-    coarse.data -= datum("crm", coarse.transform, coarse.data.shape, lakes=False)
-    _clip(coarse, clip)
+    coarse = None
+    if crm is not None:
+        coarse, _ = merge_to_mllw([], crm, 0.0, 0.0, read, res_deg=COARSE_RES_DEG)
+        del crm
+        coarse.data -= datum("crm", coarse.transform, coarse.data.shape, lakes=False)
+        _clip(coarse, clip)
     fine_out = ([], [], [])
     if fine is not None:
-        k = round(COARSE_RES_DEG / FINE_RES_DEG)
-        rows, cols = coarse.data.shape
-        coarse.data[(source == 1).reshape(rows, k, cols, k).all(axis=(1, 3))] = np.nan
+        if coarse is not None:
+            k = round(COARSE_RES_DEG / FINE_RES_DEG)
+            rows, cols = coarse.data.shape
+            coarse.data[(source == 1).reshape(rows, k, cols, k).all(axis=(1, 3))] = np.nan
         _clip(fine, clip)
         cudem = (source == 1) & np.isfinite(fine.data)
         del source
         years = ",".join(sorted({str(t.year) for t in tiles_for_bbox(list(cudem_tiles), core)}))
         cudem_label = {"source": "cudem", "resolution_m": 3, "date": years}
         fine_out = _features(_with_lakes(fine, datum), core, BANDS, fine=True, label=cudem_label, cells=cudem)
-    coarse_out = _features(_with_lakes(coarse, datum), core, COARSE_BANDS, fine=False, label=CRM_LABEL,
-                           overzoomed=True)
+    coarse_out = ([], [], []) if coarse is None else _features(
+        _with_lakes(coarse, datum), core, COARSE_BANDS, fine=False, label=CRM_LABEL, overzoomed=True)
     return BlockResult(*fine_out, *coarse_out, fine_grid=fine, coarse_grid=coarse, fine_cudem=cudem)
 
 

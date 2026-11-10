@@ -15,8 +15,8 @@ _RANGES = tuple((BAND_ZOOMS[band], band) for band in (3, 4, 5))
 
 
 def _band(band: int) -> int:
-    """Band 2 (and anything coarser) is treated as band 3; the tile schema has no coarser range."""
-    return min(max(band, 3), 5)
+    """The clipping rank: bands 1 and 2 stay below band 3; anything coarser than 1 ranks as 1, finer than 5 as 5."""
+    return min(max(band, 1), 5)
 
 
 def _parts(geom):
@@ -57,7 +57,7 @@ def quilt(cells: list[tuple[CellMeta, list[Feature]]]) -> list[Feature]:
             for feature in features:
                 minzoom = lo
                 if feature.layer in THINNED_LAYERS:
-                    minzoom = max(minzoom_for_scamin(feature.props.get("SCAMIN"), band), lo)
+                    minzoom = max(minzoom_for_scamin(feature.props.get("SCAMIN"), max(band, 2)), lo)
                     if "extent" in feature.props:  # seabed areas and lines: from about 48 px across (R37)
                         minzoom = max(minzoom, minzoom_for_extent(feature.props["extent"]))
                     if minzoom > hi:

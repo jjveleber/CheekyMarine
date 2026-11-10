@@ -40,7 +40,7 @@ from chartpack.enc.catalog import CATALOG_URL, cells_in_bbox, parse_catalog
 from chartpack.enc.fetch import fetch_cells
 from chartpack.enc.reader import read_cell
 from chartpack.enc.tiles import OVERVIEW_ZOOMS, REGION_ZOOMS, build_enc_mbtiles
-from chartpack.grid import keep_tiles, owned_tiles
+from chartpack.grid import GRID_ZOOM, keep_tiles, owned_tiles, tile_bounds
 from chartpack.pack.archive import archive_pack
 from chartpack.pack.assemble import BATHY_FILES, assemble_bathy_pack, assemble_charts_pack
 from chartpack.pack.check import check_pack
@@ -113,8 +113,13 @@ def _build_enc(args: argparse.Namespace) -> int:
     cells = [read_cell(_newest_cached_zip(args.cache, name)) for name in names]
     owned = owned_tiles(region, args.region.parent)  # before the slow build: a bad grid fails fast
     zooms = OVERVIEW_ZOOMS if region.overview else REGION_ZOOMS
+    # A region pack keeps the quilt output on its owned tiles plus a margin wider than tippecanoe's tile buffer
+    # (5 of 256 px, about 0.007 degrees at zoom 10), so a feature across an owned edge still renders over the seam.
+    area = None if owned is None else unary_union([
+        box(w - BLOCK_MARGIN_DEG, s - BLOCK_MARGIN_DEG, e + BLOCK_MARGIN_DEG, n + BLOCK_MARGIN_DEG)
+        for w, s, e, n in (tile_bounds(GRID_ZOOM, x, y) for x, y in owned)])
     enc = build_enc_mbtiles(cells, args.work / "enc.mbtiles", region=region, work=args.work / "tippecanoe",
-                            seabed=_usgs_seabed(region, args.cache), zooms=zooms)
+                            seabed=_usgs_seabed(region, args.cache), zooms=zooms, area=area)
     keep_tiles(enc, owned, minzoom=zooms[0], maxzoom=zooms[1])
     print(_finish(assemble_charts_pack(region, enc, args.out), region))
     return 0
@@ -168,17 +173,19 @@ def _archive(args: argparse.Namespace) -> int:
 def _fetch_bathy(args: argparse.Namespace) -> int:
     region = load_region(args.region)
     owned = owned_tiles(region, args.region.parent)
-    geoid.fetch_grids(args.cache / "proj")  # every build converts CRM (EGM2008 heights) through NAVD88
+    geoid.fetch_grids(args.cache / "proj")  # CRM (EGM2008 heights) converts through NAVD88; kept for every region
     if owned is None:  # the overview: one native CRM request over the region, no CUDEM
         print(fetch_crm(overview_bounds(region.bbox), args.cache))
         return 0
-    # The tile list changes as NCEI adds tiles, so it is fetched on every run.
-    tiles = parse_urllist(download(URLLIST, args.cache / "cudem" / "urllist8483.txt").read_text())
     blocks = list(iter_blocks(owned))
-    for name in sorted({t.name for _, _, read in blocks for t in tiles_for_bbox(tiles, read)}):
-        print(name)
-    for _, _, read in blocks:  # one CRM request per owned tile, over its read bounds
-        print(fetch_crm(read, args.cache))
+    if "cudem" in region.bathy_sources:
+        # The tile list changes as NCEI adds tiles, so it is fetched on every run.
+        tiles = parse_urllist(download(URLLIST, args.cache / "cudem" / "urllist8483.txt").read_text())
+        for name in sorted({t.name for _, _, read in blocks for t in tiles_for_bbox(tiles, read)}):
+            print(name)
+    if "crm" in region.bathy_sources:
+        for _, _, read in blocks:  # one CRM request per owned tile, over its read bounds
+            print(fetch_crm(read, args.cache))
     return 0
 
 
@@ -194,11 +201,12 @@ def _build_bathy(args: argparse.Namespace) -> int:
     region = load_region(args.region)
     owned = owned_tiles(region, args.region.parent)
     urllist = args.cache / "cudem" / "urllist8483.txt"
+    has_cudem, has_crm = "cudem" in region.bathy_sources, "crm" in region.bathy_sources
     if owned is None:
         needed = [crm_path(overview_bounds(region.bbox), args.cache)]
     else:
         blocks = list(iter_blocks(owned))
-        needed = [urllist] + [crm_path(read, args.cache) for _, _, read in blocks]
+        needed = ([urllist] if has_cudem else []) + [crm_path(read, args.cache) for _, _, read in blocks if has_crm]
     for path in needed:
         if not path.exists():
             raise SystemExit(f"{path} not found; run fetch-bathy first")
@@ -229,26 +237,28 @@ def _build_bathy(args: argparse.Namespace) -> int:
         build_dem_mbtiles(result.coarse_grid.data, result.coarse_grid.transform, files["dem-coarse.mbtiles"],
                           minzoom=OVERVIEW_ZOOMS[0], maxzoom=OVERVIEW_ZOOMS[1], skip_empty=True)
     else:
-        all_tiles = parse_urllist(urllist.read_text())
+        all_tiles = parse_urllist(urllist.read_text()) if has_cudem else []
         enc_fallback = region.coarse_fallback == "enc"  # ENC lines where CUDEM is absent; no coarse layers
-        crm_request = crm_tile_requests(BLOCK_MARGIN_DEG)
+        crm_request = crm_tile_requests(BLOCK_MARGIN_DEG) if has_crm else None
         cells = [read_cell(_newest_cached_zip(args.cache, name)) for band in sorted(region.cells) for name in region.cells[band]]
         depcnt = enc_depcnt(cells)  # quilted once; each block clips it to its uncovered water
         del cells
         for tile, core, read in blocks:
             tiles = tiles_for_bbox(all_tiles, read)
             used.update((t.name, t) for t in tiles_for_bbox(tiles, core))  # the tiles drawn in the owned tile
-            r = build_block(core, read, tiles, crm_path(read, args.cache), datum, clip)
+            r = build_block(core, read, tiles, crm_path(read, args.cache) if has_crm else None, datum, clip)
             covered = r.fine_coverage + ([] if enc_fallback else r.coarse_coverage)
             uncovered = box(*core).difference(unary_union([shape(f["geometry"]) for f in covered]))
-            _append_layers(fine_work, r.fine_contours + enc_fallback_contours(depcnt, uncovered), r.fine_bands,
-                           r.fine_coverage)
-            # One DEM source per place per zoom, decided per zoom-12 tile: the fine DEM (the whole merge, so no
-            # cliff at the CUDEM edge) where a zoom-12 tile holds CUDEM, the coarse DEM elsewhere.
+            # A region without CUDEM writes no fine layers (a fine file with contours alone fails tile_bathy).
+            enc_lines = enc_fallback_contours(depcnt, uncovered, clip) if has_cudem else []
+            _append_layers(fine_work, r.fine_contours + enc_lines, r.fine_bands, r.fine_coverage)
+            # One DEM source per place per zoom, decided per zoom-12 tile: the fine DEM where a zoom-12 tile holds
+            # CUDEM, the coarse DEM elsewhere. With crm listed the fine DEM is the whole merge, so CRM fills past
+            # the CUDEM edge and there is no cliff; a CUDEM-only fine DEM is nan past that edge.
             owned12 = set() if r.fine_grid is None else fine_owned_z12(r.fine_cudem, r.fine_grid.transform, tile)
             fine_tiles, coarse_tiles = dem_tiles(owned12, tile, region.dem_maxzoom)
             outputs = [(r.fine_grid, fine_tiles, False, "dem.mbtiles")]
-            if not enc_fallback:
+            if has_crm and not enc_fallback:
                 _append_layers(coarse_work, r.coarse_contours, r.coarse_bands, r.coarse_coverage)
                 outputs.append((r.coarse_grid, coarse_tiles, True, "dem-coarse.mbtiles"))
             for grid, dem, skip_empty, name in outputs:

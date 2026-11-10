@@ -7,7 +7,10 @@ from collections.abc import Sequence
 from datetime import datetime, timezone
 from pathlib import Path
 
-from chartpack.enc.quilt import quilt
+import shapely
+from shapely.geometry import mapping, shape
+
+from chartpack.enc.quilt import _parts, quilt
 from chartpack.enc.reader import CellMeta, Feature
 from chartpack.enc.schema import LAYERS, OPTIONAL_LAYERS, SAFETY_LAYERS, SCHEMA_VERSION
 from chartpack.mbtiles import MBTiles
@@ -55,6 +58,21 @@ def _write_geojsonseq(features: list[Feature], path: Path) -> None:
             }) + "\n")
 
 
+def _crop(features: list[Feature], area) -> list[Feature]:
+    """The features cut to `area` (a prepared geometry): points outside it are dropped, lines and polygons are
+    cut, and the cut keeps only parts of the feature's own dimension."""
+    out = []
+    for feature in features:
+        geom = shape(feature.geometry)
+        if shapely.covers(area, geom):
+            out.append(feature)
+        elif geom.geom_type != "Point" and shapely.intersects(area, geom):
+            dim = shapely.get_dimensions(geom)
+            out += [Feature(feature.layer, mapping(part), feature.props)
+                    for part in _parts(geom.intersection(area)) if shapely.get_dimensions(part) == dim]
+    return out
+
+
 def _tippecanoe(out: Path, layer_files: list[tuple[str, Path]], extra: list[str], zooms: tuple[int, int]) -> None:
     cmd = ["tippecanoe", "-o", str(out), "-Z", str(zooms[0]), "-z", str(zooms[1]), *_COMMON, *extra]
     cmd += [f"-L{name}:{path}" for name, path in layer_files]
@@ -63,16 +81,22 @@ def _tippecanoe(out: Path, layer_files: list[tuple[str, Path]], extra: list[str]
 
 def build_enc_mbtiles(
     cells: list[tuple[CellMeta, list[Feature]]], out: Path, *, region: Region, work: Path,
-    seabed: Sequence[Feature] = (), zooms: tuple[int, int],
+    seabed: Sequence[Feature] = (), zooms: tuple[int, int], area: shapely.Geometry | None = None,
 ) -> Path:
     """`seabed`: USGS survey features (seabed/usseabed.py, seabed/cmecs.py) that already carry their
     tippecanoe zooms; they join the seabed layer as they are, not quilted (spec 6.10).
-    `zooms`: (minzoom, maxzoom) of the tippecanoe run, REGION_ZOOMS or OVERVIEW_ZOOMS."""
+    `zooms`: (minzoom, maxzoom) of the tippecanoe run, REGION_ZOOMS or OVERVIEW_ZOOMS.
+    `area`: where the quilt output is kept (a region pack's owned tiles plus a margin), so a cell spanning far
+    past the region does not fill tippecanoe's top zooms over its whole extent; None keeps it all."""
     out, work = Path(out), Path(work)
     work.mkdir(parents=True, exist_ok=True)
     out.parent.mkdir(parents=True, exist_ok=True)
     by_layer: dict[str, list[Feature]] = {spec.name: [] for spec in LAYERS}
-    for feature in quilt(cells):
+    features = quilt(cells)
+    if area is not None:
+        shapely.prepare(area)
+        features = _crop(features, area)
+    for feature in features:
         by_layer[feature.layer].append(feature)
     by_layer["seabed"].extend(seabed)
 
