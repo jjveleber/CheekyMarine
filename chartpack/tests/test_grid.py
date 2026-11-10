@@ -113,6 +113,21 @@ def test_overview_keeps_only_low_zooms(tmp_path):
     assert md["cheekymarine:owned"] == "null" and md["minzoom"] == "6" and md["maxzoom"] == "9"
 
 
+
+def test_overview_records_content_tiles(tmp_path):
+    path = _mbtiles(tmp_path / "a.mbtiles", [(9, 81, 178)])
+    keep_tiles(path, None, minzoom=6, maxzoom=9, content={(164, 356), (163, 356)})
+    _, md = _left(path)
+    assert md["cheekymarine:owned"] == "null"
+    assert json.loads(md["cheekymarine:content"]) == [[163, 356], [164, 356]]
+
+
+def test_region_pack_has_no_content_key(tmp_path):
+    path = _mbtiles(tmp_path / "a.mbtiles", [(10, 163, 356)])
+    keep_tiles(path, {(163, 356)}, minzoom=10, maxzoom=16)
+    _, md = _left(path)
+    assert "cheekymarine:content" not in md
+
 WAVE1 = {
     "sound-south": (-123.25, 46.95, -122.1, 47.45),
     "sound-central": (-123.25, 47.45, -122.1, 48.2),

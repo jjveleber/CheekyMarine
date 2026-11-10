@@ -116,9 +116,12 @@ def tiles_area(tiles: set[tuple[int, int]], margin_deg: float = 0.0) -> shapely.
                               for w, s, e, n in (tile_bounds(GRID_ZOOM, x, y) for x, y in tiles)])
 
 
-def keep_tiles(path: Path, owned: set[tuple[int, int]] | None, *, minzoom: int, maxzoom: int) -> None:
+def keep_tiles(path: Path, owned: set[tuple[int, int]] | None, *, minzoom: int, maxzoom: int,
+               content: set[tuple[int, int]] | None = None) -> None:
     """Prune an enc.mbtiles to the zoom range and, when `owned` is set, to the owned zoom-10 tiles and
-    their descendants. Stored rows are TMS: flip to XYZ before taking the zoom-10 ancestor."""
+    their descendants. Stored rows are TMS: flip to XYZ before taking the zoom-10 ancestor. For the overview
+    (`owned` None), `content` (its content_tiles) is recorded as cheekymarine:content, the area the pack
+    check compares against the source cells."""
     if owned is not None and not owned:
         raise RegionError("no owned zoom-10 tiles: the region box is empty or entirely clipped")
     conn = sqlite3.connect(path)
@@ -137,6 +140,8 @@ def keep_tiles(path: Path, owned: set[tuple[int, int]] | None, *, minzoom: int, 
             )
         meta = {"minzoom": str(minzoom), "maxzoom": str(maxzoom),
                 "cheekymarine:owned": json.dumps(None if owned is None else sorted([x, y] for x, y in owned))}
+        if owned is None and content is not None:
+            meta["cheekymarine:content"] = json.dumps(sorted([x, y] for x, y in content))
         if owned is not None:
             boxes = [tile_bounds(GRID_ZOOM, x, y) for x, y in owned]
             meta["bounds"] = ",".join(str(v) for v in (

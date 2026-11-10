@@ -269,6 +269,43 @@ def test_sources_clipped_to_owned_tiles(charts_pack_root_copy, fixtures_dir, tes
                     for z in (11, 12) for layer in ("hazard", "navaid", "light")], errs
 
 
+def _hazard_z10_tile(pack):
+    """A zoom-10 tile with a hazard in its zoom-16 tiles."""
+    from chartpack.mbtiles import MBTiles, decode_pbf
+
+    with MBTiles.open(pack / "enc.mbtiles") as m:
+        return next((x >> 6, y >> 6) for x, y, data in m.tiles_at(16) if decode_pbf(data).get("hazard"))
+
+
+def _as_overview(pack, test_region, content):
+    """Prune to the content tiles, then mark the pack as the overview (owned null) over them."""
+    from chartpack.grid import keep_tiles
+
+    keep_tiles(pack / "enc.mbtiles", content, minzoom=10, maxzoom=16)
+    keep_tiles(pack / "enc.mbtiles", None, minzoom=10, maxzoom=16, content=content)
+    _refresh(pack, test_region)
+
+
+def test_overview_sources_clipped_to_content_tiles(charts_pack_root_copy, fixtures_dir, test_region):
+    """The overview (owned null) is checked over its content tiles, not the whole cells: hazards and
+    coverage of the cell outside them are not reported (#85)."""
+    tile = _hazard_z10_tile(charts_pack_root_copy)
+    assert len(_z10_tiles(charts_pack_root_copy)) > 1
+    _as_overview(charts_pack_root_copy, test_region, {tile})
+    errs = check_pack(charts_pack_root_copy, enc_zips=[fixtures_dir / "US4WA1HK.zip"])
+    assert not [e for e in errs if "missing at zoom" in e or "cover" in e], errs
+
+
+def test_overview_catches_a_missing_hazard_in_content_tiles(charts_pack_root_copy, fixtures_dir, test_region):
+    tile = _hazard_z10_tile(charts_pack_root_copy)
+    _as_overview(charts_pack_root_copy, test_region, {tile})
+    _rewrite_tiles(charts_pack_root_copy / "enc.mbtiles", 16,
+                   lambda layers: [layer for layer in layers if layer["name"] != "hazard"])
+    _refresh(charts_pack_root_copy, test_region)
+    errs = check_pack(charts_pack_root_copy, enc_zips=[fixtures_dir / "US4WA1HK.zip"])
+    assert any("missing at zoom 16" in e for e in errs), errs
+
+
 def test_tile_hazard_outside_owned_area_is_ignored(charts_pack_root_copy, fixtures_dir, test_region):
     """A hazard 20 tile pixels across the owned edge, in the buffer of the boundary tile, is not 'not in the
     source cells'."""

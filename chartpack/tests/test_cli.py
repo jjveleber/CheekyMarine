@@ -101,6 +101,34 @@ def test_build_enc_zoom_range_reaches_tippecanoe(tmp_path, fixtures_dir, regions
         assert (c[c.index("-Z") + 1], c[c.index("-z") + 1]) == zooms
 
 
+def test_build_enc_records_the_overview_content_tiles(tmp_path, fixtures_dir, regions_dir, monkeypatch):
+    """The overview's enc.mbtiles keeps owned null and records every owned tile of the grid as its content (#85)."""
+    import shutil
+
+    from chartpack import cli
+    from chartpack.grid import owned_tiles
+    from chartpack.region import load_region
+
+    (tmp_path / "cache" / "enc").mkdir(parents=True)
+    shutil.copy(fixtures_dir / "US4WA1HK.zip", tmp_path / "cache" / "enc" / "US4WA1HK-1.3.zip")
+    pack = _grid_region(tmp_path, regions_dir)
+    region = pack.with_name("ov.toml")
+    region.write_text("overview = true\n" + pack.read_text()
+                      .replace('name = "test-cell"', 'name = "ov"').replace('sources = ["cudem", "crm"]', 'sources = ["crm"]'))
+    calls = []
+
+    def keep(path, owned, **kw):
+        calls.append((owned, kw))
+        raise RuntimeError("stop")
+
+    monkeypatch.setattr(cli, "build_enc_mbtiles", lambda *a, **kw: tmp_path / "enc.mbtiles")
+    monkeypatch.setattr(cli, "keep_tiles", keep)
+    with pytest.raises(RuntimeError, match="stop"):
+        main(["build-enc", str(region), str(tmp_path / "out"), "--cache", str(tmp_path / "cache"),
+              "--work", str(tmp_path / "work")])
+    assert calls == [(None, {"minzoom": 6, "maxzoom": 9, "content": owned_tiles(load_region(pack), pack.parent)})]
+
+
 def test_build_enc_crops_band1_to_the_owned_tiles(tmp_path, fixtures_dir, regions_dir, monkeypatch):
     """A band 1 cell spans far past the region: the quilt output reaching tippecanoe is cut to the owned
     zoom-10 tiles plus BLOCK_MARGIN_DEG, so a feature across an owned edge still renders over the seam."""
