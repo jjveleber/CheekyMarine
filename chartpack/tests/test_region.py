@@ -60,3 +60,12 @@ def test_overview_flag(tmp_path, regions_dir):
     path = tmp_path / "ov.toml"
     path.write_text("overview = true\n" + (regions_dir / "test-cell.toml").read_text())
     assert load_region(path).overview is True
+
+
+def test_enc_fallback_with_crm_is_error(tmp_path, regions_dir):
+    path = tmp_path / "r.toml"
+    path.write_text('coarse_fallback = "enc"\n' + (regions_dir / "test-cell.toml").read_text())
+    with pytest.raises(RegionError, match="coarse_fallback"):
+        load_region(path)
+    path.write_text(path.read_text().replace('sources = ["cudem", "crm"]', 'sources = ["cudem"]'))
+    assert load_region(path).coarse_fallback == "enc"

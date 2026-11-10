@@ -155,3 +155,9 @@ def test_majors_offshore():
     assert min_zoom(500) == 10 and min_zoom(450) == 12
     assert all(min_zoom(d) == 10 for d in (400, 600, 800, 1000))
     assert all(min_zoom(d) == 12 for d in (350, 550, 700, 900))
+
+
+def test_coarse_and_overview_bands():
+    from chartpack.bathy.contours import COARSE_BANDS, OVERVIEW_BANDS
+
+    assert COARSE_BANDS == ((10, 11, 150.0), (12, 12, 30.0)) and OVERVIEW_BANDS == ((6, 9, 300.0),)

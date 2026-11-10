@@ -13,7 +13,7 @@ from chartpack.bathy.bands import bands_by_zoom
 from chartpack.bathy.contours import MAJOR_FT, contours_by_zoom
 from chartpack.bathy.cudem import CudemTile, Grid
 from chartpack.bathy.merge import COVERAGE_CELL_DEG, coverage_polygons, merge_to_mllw, tag_source, uncovered_area
-from chartpack.bathy.tiles import BATHY_LAYERS, build_bathy_mbtiles, enc_fallback_contours
+from chartpack.bathy.tiles import BATHY_LAYERS, append_features, enc_fallback_contours, tile_bathy
 from chartpack.enc.reader import CellMeta, Feature, read_cell
 from chartpack.mbtiles import MBTiles, decode_pbf
 
@@ -26,6 +26,13 @@ LABELS = {
     1: {"source": "cudem", "resolution_m": 3, "date": "2023"},
     2: {"source": "crm", "resolution_m": 30, "date": "2025"},
 }
+
+
+def build_bathy_mbtiles(contours, bands, coverage, out, *, region, work, cudem_tiles=()):
+    """The layer files written as one build-bathy run writes them, then tiled at zoom 10 to 16."""
+    for name, feats in zip(BATHY_LAYERS, (contours, bands, coverage)):
+        append_features(feats, work / f"{name}.geojsonseq")
+    return tile_bathy(work, out, region=region, cudem_tiles=cudem_tiles)
 
 
 def _wkt() -> str:

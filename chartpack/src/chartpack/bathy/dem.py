@@ -35,16 +35,41 @@ def terrarium_decode(rgb: np.ndarray) -> np.ndarray:
     return (r * 256 + g + b / 256 - 32768).astype(np.float32)
 
 
+def _metadata(minzoom: int, maxzoom: int, bounds) -> dict[str, str]:
+    return {
+        "name": "dem",
+        "type": "baselayer",
+        "minzoom": str(minzoom),
+        "maxzoom": str(maxzoom),
+        "bounds": ",".join(str(round(v, 6)) for v in bounds),
+        "cheekymarine:encoding": "terrarium",
+        "cheekymarine:pack": "bathy",
+        "cheekymarine:schema": str(SCHEMA_VERSION),
+    }
+
+
+def empty_dem_mbtiles(out: Path, *, minzoom: int, maxzoom: int, bounds) -> Path:
+    """A dem.mbtiles with the metadata and no tiles (a pack file with nothing to draw)."""
+    with MBTiles.create(out, fmt="png") as m:
+        m.set_metadata(_metadata(minzoom, maxzoom, bounds))
+    return Path(out)
+
+
 def build_dem_mbtiles(
-    depth_m: np.ndarray, transform, out: Path, *, minzoom: int = 10, maxzoom: int = 14, tile_size: int = 256
+    depth_m: np.ndarray, transform, out: Path, *, minzoom: int = 10, maxzoom: int = 14, tile_size: int = 256,
+    skip_empty: bool = False, within=None, append: bool = False,
 ) -> Path:
-    """Write a complete terrarium PNG pyramid over the grid's bbox.
+    """Write a terrarium PNG pyramid over the grid's bbox.
 
     Elevation is -depth (nan becomes 0 so hillshade is flat there). The grid is warped to
     EPSG:3857 once per zoom over the bbox snapped outward to tile edges, so memory is one
     zoom-level raster (about 2 GB at z14 for a 26k by 26k region); blocking by tile rows is
     not done. Resampling is bilinear, switching to average when the zoom's pixel is more than
     2x the grid's native pixel (bilinear would alias when decimating that much).
+
+    skip_empty: a tile whose source cells are all nan is not written. within (W, S, E, N): only the
+    tiles meeting its interior are written, while the grid around it still feeds the resampling (a
+    block's core inside its read bounds). append: add to an existing file instead of replacing it.
     """
     elev = -np.nan_to_num(depth_m.astype(np.float32), nan=0.0)
     h, w = elev.shape
@@ -53,10 +78,12 @@ def build_dem_mbtiles(
     srs = osr.SpatialReference()
     srs.ImportFromEPSG(4326)
     srs.SetAxisMappingStrategy(osr.OAMS_TRADITIONAL_GIS_ORDER)
-    src = gdal.GetDriverByName("MEM").Create("", w, h, 1, gdal.GDT_Float32)
+    src = gdal.GetDriverByName("MEM").Create("", w, h, 2 if skip_empty else 1, gdal.GDT_Float32)
     src.SetGeoTransform(transform)
     src.SetProjection(srs.ExportToWkt())
     src.GetRasterBand(1).WriteArray(elev)
+    if skip_empty:
+        src.GetRasterBand(2).WriteArray(np.isfinite(depth_m).astype(np.float32))  # > 0 where a source cell feeds
 
     def to_m(lon, lat):
         return (
@@ -64,39 +91,33 @@ def build_dem_mbtiles(
             math.log(math.tan(math.pi / 4 + math.radians(lat) / 2)) * 6378137,
         )
 
-    (x0, y0), (x1, y1) = to_m(west, south), to_m(east, north)
+    tw, ts, te, tn = within if within is not None else (west, south, east, north)
+    (x0, y0), (x1, y1) = to_m(tw, ts), to_m(te, tn)
     native_m = abs(dy) * _M_PER_DEG
+    eps = 1e-6 if within is not None else 0.0  # a core edge on a tile edge, within float noise, adds no tile
 
-    with MBTiles.create(out, fmt="png") as m:
+    with MBTiles.open(out) if append and Path(out).exists() else MBTiles.create(out, fmt="png") as m:
         for z in range(minzoom, maxzoom + 1):
             span = _EARTH_CIRC / 2**z  # metres per tile
             res = span / tile_size
-            tx0, tx1 = math.floor((x0 + _ORIGIN) / span), math.ceil((x1 + _ORIGIN) / span)
-            ty0, ty1 = math.floor((_ORIGIN - y1) / span), math.ceil((_ORIGIN - y0) / span)
+            tx0, tx1 = math.floor((x0 + _ORIGIN) / span + eps), math.ceil((x1 + _ORIGIN) / span - eps)
+            ty0, ty1 = math.floor((_ORIGIN - y1) / span + eps), math.ceil((_ORIGIN - y0) / span - eps)
             bounds = (tx0 * span - _ORIGIN, _ORIGIN - ty1 * span, tx1 * span - _ORIGIN, _ORIGIN - ty0 * span)
             warped = gdal.Warp(
                 "", src, format="MEM", dstSRS="EPSG:3857", xRes=res, yRes=res, outputBounds=bounds,
                 resampleAlg="average" if res > 2 * native_m else "bilinear", outputType=gdal.GDT_Float32,
             )
             arr = warped.GetRasterBand(1).ReadAsArray()
+            fed = warped.GetRasterBand(2).ReadAsArray() if skip_empty else None
             for ty in range(ty0, ty1):
                 for tx in range(tx0, tx1):
                     r, c = (ty - ty0) * tile_size, (tx - tx0) * tile_size
+                    if fed is not None and not fed[r : r + tile_size, c : c + tile_size].any():
+                        continue
                     buf = io.BytesIO()
                     Image.fromarray(terrarium_encode(arr[r : r + tile_size, c : c + tile_size])).save(
                         buf, "PNG", optimize=False
                     )
                     m.put_tile(z, tx, ty, buf.getvalue())
-        m.set_metadata(
-            {
-                "name": "dem",
-                "type": "baselayer",
-                "minzoom": str(minzoom),
-                "maxzoom": str(maxzoom),
-                "bounds": ",".join(str(round(v, 6)) for v in (west, south, east, north)),
-                "cheekymarine:encoding": "terrarium",
-                "cheekymarine:pack": "bathy",
-                "cheekymarine:schema": str(SCHEMA_VERSION),
-            }
-        )
+        m.set_metadata(_metadata(minzoom, maxzoom, (west, south, east, north)))
     return Path(out)

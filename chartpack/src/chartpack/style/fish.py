@@ -89,8 +89,19 @@ def _pick(layers: list[dict], *ids: str) -> list[dict]:
     return [l for l in layers if l["id"] in ids]
 
 
+def _with_coarse(layers: list[dict]) -> list[dict]:
+    """The layers with a -coarse twin of every bathy and dem layer, on the coarse sources, all placed
+    directly below the first fine one: the CRM-only depth is drawn under the CUDEM depth."""
+    fine = [l for l in layers if l.get("source") in ("bathy", "dem")]
+    twins = [{**l, "id": f"{l['id']}-coarse", "source": f"{l['source']}-coarse"} for l in fine]
+    first = layers.index(fine[0])
+    return layers[:first] + twins + layers[first:]
+
+
 def fish_style(palette: str, depths: Depths = Depths(), *, colors: dict | None = None) -> dict:
-    """A complete MapLibre style v8 dict over the enc, bathy and dem sources."""
+    """A complete MapLibre style v8 dict over the enc, bathy, dem, bathy-coarse and dem-coarse sources.
+
+    The layer list is fixed: it does not depend on which packs are installed."""
     p = colors or PALETTES[palette]
     hillshade = {
         "id": "hillshade", "type": "hillshade", "source": "dem",
@@ -99,7 +110,7 @@ def fish_style(palette: str, depths: Depths = Depths(), *, colors: dict | None =
     }
     water_base = {"id": "water-base", "type": "fill", "source": "enc", "source-layer": "depare",
                   "paint": {"fill-color": p["DEPMD"]}}
-    layers = [
+    layers = _with_coarse([
         {"id": "background", "type": "background", "paint": {"background-color": p["NODTA"]}},
         water_base,
         _band(p),
@@ -110,7 +121,7 @@ def fish_style(palette: str, depths: Depths = Depths(), *, colors: dict | None =
         *seabed_layers(p),
         *_pick(_navaids_and_lights(p), "light"),
         *_hazards(p, palette, depths),
-    ]
+    ])
     return {
         "version": 8,
         "name": f"CheekyMarine fish {palette}",
@@ -125,6 +136,8 @@ def fish_style(palette: str, depths: Depths = Depths(), *, colors: dict | None =
             "enc": {"type": "vector", "url": "mbtiles://enc"},
             "bathy": {"type": "vector", "url": "mbtiles://bathy"},
             "dem": {"type": "raster-dem", "url": "mbtiles://dem", "encoding": "terrarium", "tileSize": 256},
+            "bathy-coarse": {"type": "vector", "url": "mbtiles://bathy-coarse"},
+            "dem-coarse": {"type": "raster-dem", "url": "mbtiles://dem-coarse", "encoding": "terrarium", "tileSize": 256},
         },
         "sprite": "pack://sprites/fish",
         "glyphs": "pack://glyphs/{fontstack}/{range}.pbf",

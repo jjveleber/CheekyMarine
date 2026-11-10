@@ -71,3 +71,11 @@ def test_fetch_small_crm_box(tmp_path):
     ds = gdal.Open(str(path))
     assert ds.RasterCount == 1
     assert ds.GetRasterBand(1).DataType == gdal.GDT_Float32
+
+
+def test_wcs_url_at_a_set_resolution(tmp_path):
+    from chartpack.bathy.crm import crm_path
+
+    url = crm_wcs_url((-125.0, 47.0, -124.0, 47.5), 0.0025)
+    assert url.endswith("&bbox=-125.0,47.0,-124.0,47.5&width=400&height=200&format=GeoTIFF_Float")
+    assert crm_path((-125.0, 47.0, -124.0, 47.5), tmp_path, 0.0025) != crm_path((-125.0, 47.0, -124.0, 47.5), tmp_path)

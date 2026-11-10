@@ -135,19 +135,14 @@ Where neither CUDEM nor CRM covers the water, contours come from NOAA ENC.
 """ + fonts + "\nSymbols are drawn in-house after US Chart No. 1 (public domain).\n"
 
 
-def assemble_bathy_pack(region: Region, bathy_mbtiles: Path, dem_mbtiles: Path, out_dir: Path) -> Path:
+def assemble_bathy_pack(region: Region, files: dict[str, Path], out_dir: Path) -> Path:
+    """The bathy pack directory from the four built files, keyed by their BATHY_FILES names."""
     root = Path(out_dir) / f"bathy-{region.name}-{region.bathy_version}"
     root.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(bathy_mbtiles, root / "bathy.mbtiles")
-    shutil.copyfile(dem_mbtiles, root / "dem.mbtiles")
-    with MBTiles.open(bathy_mbtiles) as m:
+    for name in BATHY_FILES:
+        shutil.copyfile(files[name], root / name)
+    with MBTiles.open(root / "bathy.mbtiles") as m:
         metadata = m.metadata()
-    # The coarse files are present but hold no tiles until the overview build fills them.
-    for fine, coarse in (("bathy.mbtiles", "bathy-coarse.mbtiles"), ("dem.mbtiles", "dem-coarse.mbtiles")):
-        with MBTiles.open(root / fine) as src:
-            meta = src.metadata()
-        with MBTiles.create(root / coarse, fmt=meta.get("format", "pbf")) as dst:
-            dst.set_metadata(meta)
 
     write_styles(root, "bathy")
 

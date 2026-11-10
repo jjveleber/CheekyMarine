@@ -83,3 +83,25 @@ def test_nan_is_sea_level(tmp_path):
         for _, _, data in m.tiles_at(12):
             dec = terrarium_decode(np.asarray(Image.open(io.BytesIO(data)).convert("RGB")))
             assert np.all(dec == 0)
+
+
+def test_dem_skip_empty(tmp_path):
+    """A tile whose source cells are all nan (the north-east quarter) is not written with skip_empty."""
+    from shapely.geometry import box
+
+    from chartpack.grid import tile_bounds
+
+    w, n, px = -122.8, 48.1, 0.01
+    depth = np.full((30, 40), 50.0, np.float32)
+    depth[:15, 20:] = np.nan
+    transform = (w, px, 0.0, n, 0.0, -px)
+    full = build_dem_mbtiles(depth, transform, tmp_path / "full.mbtiles", minzoom=12, maxzoom=12)
+    skip = build_dem_mbtiles(depth, transform, tmp_path / "skip.mbtiles", minzoom=12, maxzoom=12, skip_empty=True)
+    with MBTiles.open(full) as m:
+        every = {(x, y) for x, y, _ in m.tiles_at(12)}
+    with MBTiles.open(skip) as m:
+        kept = {(x, y) for x, y, _ in m.tiles_at(12)}
+        assert m.metadata()["maxzoom"] == "12"
+    empty = box(w + 21 * px, n - 14 * px, w + 1, n + 1)  # the nan quarter and past the grid, one cell in from the data
+    inside = {t for t in every if empty.contains(box(*tile_bounds(12, *t)))}
+    assert inside and kept == every - inside

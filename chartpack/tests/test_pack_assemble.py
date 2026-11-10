@@ -73,18 +73,25 @@ def test_notice_without_usgs_seabed(test_region, enc_pack_path, tmp_path):
 def test_bathy_pack_layout(test_region, tmp_path):
     import numpy as np
 
+    import shutil
+
     from chartpack.bathy.dem import build_dem_mbtiles
-    from chartpack.pack.assemble import assemble_bathy_pack
+    from chartpack.pack.assemble import BATHY_FILES, assemble_bathy_pack
 
     with MBTiles.create(tmp_path / "bathy.mbtiles", fmt="pbf") as m:
         m.set_metadata({"cheekymarine:sources": json.dumps({
             "cudem": [{"name": "t1", "url": "u", "year": 2023, "version": 1}], "crm": "https://crm.test",
             "datum": {"station": "9447130", "navd88_to_mllw_m": 0.715, "msl_to_mllw_m": 2.02}})})
-    dem = tmp_path / "dem.mbtiles"
-    build_dem_mbtiles(np.full((40, 40), 20.0, np.float32), (-122.3, 0.001, 0, 47.9, 0, -0.001), dem, maxzoom=11)
-    root = assemble_bathy_pack(test_region, tmp_path / "bathy.mbtiles", dem, tmp_path / "out")
+    shutil.copy(tmp_path / "bathy.mbtiles", tmp_path / "bathy-coarse.mbtiles")
+    for name in ("dem.mbtiles", "dem-coarse.mbtiles"):
+        build_dem_mbtiles(np.full((40, 40), 20.0, np.float32), (-122.3, 0.001, 0, 47.9, 0, -0.001), tmp_path / name,
+                          maxzoom=11)
+    files = {name: tmp_path / name for name in BATHY_FILES}
+    root = assemble_bathy_pack(test_region, files, tmp_path / "out")
     assert root == tmp_path / "out" / "bathy-test-cell-0.1.0"
     names = sorted(str(p.relative_to(root)) for p in root.rglob("*") if p.is_file())
+    for name in BATHY_FILES:
+        assert (root / name).read_bytes() == files[name].read_bytes()
     for want in ("bathy.mbtiles", "dem.mbtiles", "styles/fish-day.json", "styles/fish-dusk.json", "styles/fish-night.json",
                  "sprites/fish.json", "sprites/fish.png", "sprites/fish@2x.json", "sprites/fish@2x.png",
                  "glyphs/Noto Sans Bold/0-255.pbf", "README.md", "NOTICE", "OFL.txt"):

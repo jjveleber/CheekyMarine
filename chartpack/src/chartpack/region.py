@@ -81,6 +81,8 @@ def load_region(path: Path) -> Region:
     coarse_fallback = data.get("coarse_fallback", "crm")
     if coarse_fallback not in ("crm", "enc"):
         raise RegionError("coarse_fallback must be 'crm' or 'enc'")
+    if coarse_fallback == "enc" and "crm" in bathy.get("sources", []):
+        raise RegionError("coarse_fallback = 'enc' cannot be used with crm in bathy.sources (the coarse layers are CRM)")
 
     seabed = data.get("seabed", {})
     seabed_sources = tuple(seabed.get("sources", ["enc"]))
