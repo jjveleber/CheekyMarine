@@ -210,4 +210,23 @@ def test_wave1_lake_mask(wa, regions_dir):
                           for n in load_grid(regions_dir / "grid.toml")))
     assert not mask.intersects(datum_lakes)
     assert tiles_area(owned).buffer(1e-6).covers(mask)
-    assert mask.intersection(shape(clip["geometry"])).area < 1e-10
+    assert mask.intersection(shape(clip["geometry"])).area < 1e-8  # about 100 m2: float noise along the border
+
+
+MASKED = {"Lake Sammamish": (-122.09, 47.59), "Lake Whatcom": (-122.308, 48.719), "Lake Crescent": (-123.783, 48.072),
+          "Ozette Lake": (-124.63, 48.10), "Lake Quinault": (-123.86, 47.47)}
+TIDAL = {"Crescent Harbor": (-122.614, 48.302), "Port Angeles lagoon": (-123.469, 48.133),
+         "Crockett Lake": (-122.662, 48.1667), "Blind Slough": (-122.501, 48.448), "Old Channel": (-122.5079, 48.448),
+         "Joe Leary Slough": (-122.474, 48.518), "Alder Creek": (-123.927, 46.181), "Tansy Creek": (-123.926, 46.186),
+         "Jetty Lagoon": (-123.987, 46.214)}
+
+
+def test_wave1_lake_mask_holds_the_inland_lakes_not_tidal_water(wa):
+    """The review's inland lakes are masked; tidal water charted or ruled as such (PR #105) is not."""
+    from shapely.geometry import Point
+
+    mask = shapely.union_all([shape(g) for g in wa.lake_mask])
+    for name, (lon, lat) in MASKED.items():
+        assert mask.contains(Point(lon, lat)), name
+    for name, (lon, lat) in TIDAL.items():
+        assert not mask.intersects(Point(lon, lat).buffer(0.0005)), name

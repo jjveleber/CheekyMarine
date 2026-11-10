@@ -15,8 +15,8 @@
 # lake depths on the low end of the managed range, the datum the NOAA charts use for soundings in the lakes.
 #
 # Other lakes (PR #105): no datum rule, so the build draws no bathy inside a polygon of lake_mask_file, as for
-# the clipped water. It holds the ENC lake areas of the wave 1 cells (scripts/make-lake-mask.py, provenance in the
-# file). Lakes past the ENC's inland edge (Sammamish, Whatcom, Crescent, Ozette, Quinault) are not in it.
+# the clipped water. It holds the USGS NHD lakes and ponds of 0.05 km2 or more over the wave 1 owned tiles, less
+# water NOAA charts depths in and ruled tidal water (scripts/make-lake-mask.py, provenance in the file).
 
 lakes_file = "lakes.geojson"
 lake_mask_file = "lake-mask.geojson"
