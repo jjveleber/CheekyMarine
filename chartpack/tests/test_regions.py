@@ -163,3 +163,20 @@ def test_overview_bbox_holds_every_owned_tile(regions_dir):
     w, s, e, n = load_region(regions_dir / "overview.toml").bbox
     tw, ts, te, tn = _area(set().union(*_owned(regions_dir).values())).bounds
     assert w <= tw and s <= ts and e >= te and n >= tn, ((w, s, e, n), (tw, ts, te, tn))
+
+
+CRM_VOL8 = (-127.0, 44.0, -121.75, 49.0)  # W, S, E, N: what CRM volume 8 fills (spec 7)
+
+
+def test_every_crm_request_meets_crm(regions_dir):
+    """Every CRM request of wave 1 (one per owned tile, over its read bounds, and the overview's one read) overlaps
+    CRM volume 8, so none is wholly outside it: read_window raises on a window wholly outside its file. Some reach
+    past -127 W or 49 N; that part reads as nodata (test_read_window_past_the_file_edge_is_nodata)."""
+    from chartpack.bathy.blocks import iter_blocks, overview_bounds
+
+    owned = _owned(regions_dir)
+    reads = [read for tiles in owned.values() for _, _, read in iter_blocks(tiles)]
+    reads.append(overview_bounds(load_region(regions_dir / "overview.toml").bbox))
+    cw, cs, ce, cn = CRM_VOL8
+    for w, s, e, n in reads:
+        assert w < ce and e > cw and s < cn and n > cs, (w, s, e, n)

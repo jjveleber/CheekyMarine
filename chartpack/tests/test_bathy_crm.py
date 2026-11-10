@@ -73,6 +73,19 @@ def test_fetch_small_crm_box(tmp_path):
     assert ds.GetRasterBand(1).DataType == gdal.GDT_Float32
 
 
+@pytest.mark.online
+def test_fetch_crm_past_the_coverage_edge(tmp_path):
+    """A request reaching past CRM volume 8's -127 W and 49 N edges, as wave 1's x=150 column, north-sound's top row
+    and the overview read do: the WCS must answer with a readable file, and read_window must read the request."""
+    import numpy as np
+
+    from chartpack.bathy.cudem import read_window
+
+    bbox = (-127.03, 48.97, -126.99, 49.01)
+    g = read_window(str(fetch_crm(bbox, tmp_path)), bbox)
+    assert np.isfinite(g.data).any() and (g.data != g.nodata).any()
+
+
 def test_wcs_url_has_no_size(tmp_path):
     """The NCEI THREDDS WCS ignores width and height (it always serves native 1 arc-second), so no request
     asks for them: the url and cache name record what the server sends."""
