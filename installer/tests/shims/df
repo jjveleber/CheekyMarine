@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# `df -Pk PATH` reports $STATE/df-avail-kb (default 100 GiB) as the KiB available on PATH's
+# filesystem, so tests never depend on the real disk; anything else runs the real df.
+. "$(dirname "$0")/_shim.sh"
+if [ "$#" -eq 2 ] && [ "$1" = -Pk ]; then
+  avail=104857600
+  [ ! -f "$STATE/df-avail-kb" ] || avail=$(cat "$STATE/df-avail-kb")
+  printf 'Filesystem 1024-blocks Used Available Capacity Mounted on\n'
+  printf 'fakefs 209715200 1000 %s 1%% /\n' "$avail"
+  exit 0
+fi
+PATH=$(real_path) exec df "$@"

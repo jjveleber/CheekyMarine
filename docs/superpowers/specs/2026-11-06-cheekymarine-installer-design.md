@@ -244,7 +244,12 @@ Either way no mix of sets runs.
 3. It downloads every part named in the lock from its fixed release URL into a staging directory
    and checks each against the SHA-256 in the lock (the lock is the single source of truth). A pack
    is skipped when its store dir exists and its `.sha256` file equals the lock's SHA-256. Any
-   mismatch or failed download stops the script with the active set untouched.
+   mismatch or failed download stops the script with the active set untouched. Then it checks free
+   space on the filesystem that holds `/opt/cheekymarine` (#96): the unpacked n2kd and plotter, each
+   downloaded pack at its tar size, and the merged copy of every kind with two or more packs (store
+   packs count here, at their unpacked size) less the staged downloads, which are deleted before the
+   merge; plus 10 % and 256 MiB. Too little stops the script before apt or any unpack, naming the
+   space needed and free.
 4. It installs the run-time apt packages (waiting up to 10 minutes for the apt lock, so a running
    unattended-upgrade does not fail the run). Failure stops the script with the active set
    untouched. When `dpkg-query` reports every package installed, it skips apt entirely, so a
