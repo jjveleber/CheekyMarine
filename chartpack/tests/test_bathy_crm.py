@@ -116,7 +116,7 @@ def test_request_is_cut_to_crm_coverage(tmp_path):
 
 
 def test_fetch_crm_fixes_the_west_edge_answer(tmp_path, monkeypatch):
-    """At CRM's west edge the WCS (checked 2026-11-10) labels longitude from 0 to 360 (232.9999 for -127.0001)
+    """At CRM's west edge the WCS (checked 2026-11-09) labels longitude from 0 to 360 (232.9999 for -127.0001)
     and its first column, the node on -127 W, holds junk heights. fetch_crm moves the file to -180 to 180 and
     blanks that column, so a read of the whole request is the overlap with nan past it."""
     import numpy as np

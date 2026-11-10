@@ -40,7 +40,7 @@ def crm_tile_requests(margin_deg: float) -> str:
 
 def crm_request(bbox) -> tuple[float, float, float, float] | None:
     """What is asked of the WCS for bbox: its overlap with CRM_BOUNDS, or None when bbox is wholly outside.
-    Past the coverage the WCS answers with a file that does not cover the request (checked 2026-11-10), so
+    Past the coverage the WCS answers with a file that does not cover the request (checked 2026-11-09), so
     nothing past it is asked for; a read of the whole bbox gets nan there."""
     w, s, e, n = bbox
     cw, cs, ce, cn = CRM_BOUNDS
@@ -59,7 +59,7 @@ def crm_path(bbox, cache_dir: Path) -> Path | None:
 
 def _fix_west_edge(path: Path) -> None:
     """At CRM's west edge the WCS labels longitude from 0 to 360 and its first column, the node on CRM's west
-    edge, holds junk heights (checked 2026-11-10 at -127 W). Move such a file to -180 to 180 and set every column
+    edge, holds junk heights (checked 2026-11-09 at -127 W). Move such a file to -180 to 180 and set every column
     whose center is at or west of the edge to nodata."""
     ds = gdal.Open(str(path), gdal.GA_Update)
     x0, dx, rx, y0, ry, dy = ds.GetGeoTransform()
