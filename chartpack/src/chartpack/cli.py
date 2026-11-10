@@ -23,6 +23,7 @@ from chartpack.bathy.blocks import (
     overview_bounds,
 )
 from chartpack.bathy.crm import crm_path, crm_tile_requests, crm_wcs_url, fetch_crm
+from chartpack.bathy.crm import crm_request as crm_request_bounds  # crm_request names the metadata string below
 from chartpack.bathy.cudem import URLLIST, parse_urllist, tiles_for_bbox
 from chartpack.bathy.dem import build_dem_mbtiles, empty_dem_mbtiles
 from chartpack.bathy.tiles import (
@@ -189,8 +190,9 @@ def _fetch_bathy(args: argparse.Namespace) -> int:
         for name in sorted({t.name for _, _, read in blocks for t in tiles_for_bbox(tiles, read)}):
             print(name)
     if "crm" in region.bathy_sources:
-        for _, _, read in blocks:  # one CRM request per owned tile, over its read bounds
-            print(fetch_crm(read, args.cache))
+        for _, _, read in blocks:  # one CRM request per owned tile, over its read bounds cut to CRM's coverage
+            if (path := fetch_crm(read, args.cache)) is not None:  # None: the tile is wholly outside CRM
+                print(path)
     return 0
 
 
@@ -211,7 +213,8 @@ def _build_bathy(args: argparse.Namespace) -> int:
         needed = [crm_path(overview_bounds(region.bbox), args.cache)]
     else:
         blocks = list(iter_blocks(owned))
-        needed = ([urllist] if has_cudem else []) + [crm_path(read, args.cache) for _, _, read in blocks if has_crm]
+        needed = ([urllist] if has_cudem else []) + [
+            path for _, _, read in blocks if has_crm and (path := crm_path(read, args.cache)) is not None]
     for path in needed:
         if not path.exists():
             raise SystemExit(f"{path} not found; run fetch-bathy first")
@@ -239,7 +242,7 @@ def _build_bathy(args: argparse.Namespace) -> int:
 
     used = {}
     if owned is None:
-        crm_request = crm_wcs_url(overview_bounds(region.bbox))
+        crm_request = crm_wcs_url(crm_request_bounds(overview_bounds(region.bbox)))
         result = build_overview(region.bbox, needed[0], datum, clip)
         _append_layers(coarse_work, result.coarse_contours, result.coarse_bands, result.coarse_coverage)
         build_dem_mbtiles(result.coarse_grid.data, result.coarse_grid.transform, files["dem-coarse.mbtiles"],
@@ -270,7 +273,7 @@ def _build_bathy(args: argparse.Namespace) -> int:
                 _append_layers(coarse_work, r.coarse_contours, r.coarse_bands, r.coarse_coverage)
                 outputs.append((r.coarse_grid, coarse_tiles, True, "dem-coarse.mbtiles"))
             for grid, dem, skip_empty, name in outputs:
-                if dem:
+                if dem and grid is not None:  # no coarse grid where the tile is wholly outside CRM
                     build_dem_mbtiles(grid.data, grid.transform, files[name], minzoom=zooms[name][0],
                                       maxzoom=zooms[name][1], skip_empty=skip_empty, tiles=dem, within=core,
                                       append=True)

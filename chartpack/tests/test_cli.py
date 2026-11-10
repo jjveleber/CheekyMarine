@@ -546,6 +546,33 @@ def test_build_bathy_masks_lakes_in_the_overview(tmp_path, regions_dir, monkeypa
     assert clips[0] is not None and clips[0].covers(lake)
 
 
+def test_build_bathy_tile_outside_crm_has_no_coarse_layer(tmp_path, fixtures_dir, regions_dir, monkeypatch, capsys,
+                                                           zero_geoid):
+    """A tile wholly outside CRM's coverage: fetch-bathy asks nothing for it and build-bathy draws its CUDEM fine
+    layers, with no coarse layer instead of an error."""
+    import json
+
+    from chartpack import cli
+    from chartpack.bathy import blocks, crm
+
+    region = _bathy_region(tmp_path, regions_dir)
+    cache = _bathy_cache(tmp_path, fixtures_dir, region, monkeypatch, ["https://example.test/ncei19_n48x00_w122x50_2023v1.tif"])
+    shutil.rmtree(cache / "crm")
+    monkeypatch.setattr(crm, "CRM_BOUNDS", (-127.0, 44.0, -126.0, 45.0))  # far from the test tile
+    monkeypatch.setattr(crm, "download", lambda *a, **k: pytest.fail("nothing is asked of CRM"))
+    monkeypatch.setattr(cli, "download", lambda url, dest, **k: dest)  # the cached CUDEM list
+    monkeypatch.setattr(geoid, "fetch_grids", lambda p: None)
+    assert main(["fetch-bathy", str(region), "--cache", str(cache)]) == 0
+    monkeypatch.setattr(blocks, "read_window", lambda src, bbox: (
+        _fixture_window(fixtures_dir, bbox) if src.startswith("/vsicurl/") else pytest.fail(f"CRM read: {src}")))
+    work = tmp_path / "work"
+    assert main(["build-bathy", str(region), str(tmp_path / "out"), "--cache", str(cache), "--work", str(work)]) == 0
+    capsys.readouterr()
+    assert (work / "tippecanoe" / "contour.geojsonseq").stat().st_size > 0
+    coarse = work / "tippecanoe-coarse" / "contour.geojsonseq"
+    assert not coarse.exists() or not [json.loads(line) for line in coarse.read_text().splitlines()]
+
+
 def test_build_bathy_crm_only_writes_no_fine_layers(tmp_path, fixtures_dir, regions_dir, monkeypatch, capsys,
                                                     zero_geoid):
     """sources = ["crm"], no CUDEM list in the cache: the fine layer files stay absent, all four bathy files exist."""

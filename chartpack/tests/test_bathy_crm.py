@@ -98,3 +98,54 @@ def test_wcs_url_has_no_size(tmp_path):
     assert "width" not in url and "height" not in url
     for fn in (crm_wcs_url, crm_path, fetch_crm):
         assert "res_deg" not in inspect.signature(fn).parameters, fn.__name__
+
+
+EDGE = (-127.03, 48.97, -126.99, 49.01)  # past CRM volume 8's west and north edges
+
+
+def test_request_is_cut_to_crm_coverage(tmp_path):
+    """A request is cut to CRM's coverage before it is sent, and one wholly outside sends nothing."""
+    from chartpack.bathy.crm import crm_path, crm_request
+
+    assert crm_request(EDGE) == (-127.0, 48.97, -126.99, 49.0)
+    assert crm_request(BBOX) == BBOX
+    assert crm_request((-127.3, 48.0, -127.1, 48.1)) is None
+    assert crm_path(EDGE, tmp_path) == tmp_path / "crm" / "crm_-127.0_48.97_-126.99_49.0.tif"
+    assert crm_path((-127.3, 48.0, -127.1, 48.1), tmp_path) is None
+    assert fetch_crm((-127.3, 48.0, -127.1, 48.1), tmp_path) is None
+
+
+def test_fetch_crm_fixes_the_west_edge_answer(tmp_path, monkeypatch):
+    """At CRM's west edge the WCS (checked 2026-11-10) labels longitude from 0 to 360 (232.9999 for -127.0001)
+    and its first column, the node on -127 W, holds junk heights. fetch_crm moves the file to -180 to 180 and
+    blanks that column, so a read of the whole request is the overlap with nan past it."""
+    import numpy as np
+
+    from chartpack.bathy.cudem import read_window
+
+    res = 1 / 3600
+    sent = []
+
+    def fake(url, dest, **kw):  # 37 by 108 cells: smaller than the request, labeled the WCS way
+        sent.append(url)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        ds = gdal.GetDriverByName("GTiff").Create(str(dest), 37, 108, 1, gdal.GDT_Float32)
+        ds.SetGeoTransform((360 - 127.0 - res / 2, res, 0, 49.0, 0, -res))
+        data = np.full((108, 37), -1000.0, np.float32)
+        data[:, 0] = 1500.0  # the junk edge column
+        ds.GetRasterBand(1).WriteArray(data)
+        ds.GetRasterBand(1).SetNoDataValue(-1001.0)
+        ds = None
+        return dest
+
+    monkeypatch.setattr("chartpack.bathy.crm.download", fake)
+    path = fetch_crm(EDGE, tmp_path)
+    assert sent == [crm_wcs_url((-127.0, 48.97, -126.99, 49.0))]
+    g = read_window(str(path), EDGE)
+    assert g.transform[0] == pytest.approx(-127.03, abs=res) and g.transform[3] == pytest.approx(49.01, abs=res)
+    lon = g.transform[0] + (np.arange(g.data.shape[1]) + 0.5) * g.transform[1]
+    lat = g.transform[3] + (np.arange(g.data.shape[0]) + 0.5) * g.transform[5]
+    data = np.where(g.data == g.nodata, np.nan, g.data)
+    assert np.isnan(data[:, lon < -127.0 + res / 2]).all() and np.isnan(data[lat > 49.0, :]).all()
+    inside = data[np.ix_(lat < 48.999, lon > -126.9995)]
+    assert inside.size and (inside == -1000.0).all()
