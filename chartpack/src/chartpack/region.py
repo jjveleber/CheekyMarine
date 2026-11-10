@@ -90,6 +90,9 @@ def load_region(path: Path) -> Region:
         if source not in SOURCE_VERTICAL:
             raise RegionError(f"unknown bathy source: {source}")
 
+    if coarse_fallback == "crm" and "crm" not in bathy_sources:
+        raise RegionError("coarse_fallback = 'crm' needs crm in bathy.sources (set coarse_fallback = 'enc' for CUDEM only)")
+
     seabed = data.get("seabed", {})
     seabed_sources = tuple(seabed.get("sources", ["enc"]))
     cmecs_blocks = tuple(seabed.get("cmecs_blocks", []))

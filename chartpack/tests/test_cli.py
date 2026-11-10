@@ -295,6 +295,28 @@ def test_build_bathy_enc_fallback_drops_crm_contours(tmp_path, fixtures_dir, reg
     assert not (work / "tippecanoe-coarse" / "contour.geojsonseq").exists()  # no coarse layers on the ENC path
 
 
+def test_build_bathy_crm_only_writes_no_fine_layers(tmp_path, fixtures_dir, regions_dir, monkeypatch, capsys,
+                                                    zero_geoid):
+    """sources = ["crm"], no CUDEM list in the cache: the fine layer files stay absent, all four bathy files exist."""
+    from chartpack.bathy import blocks
+
+    region = _bathy_region(tmp_path, regions_dir)
+    region.write_text(region.read_text().replace('sources = ["cudem", "crm"]', 'sources = ["crm"]'))
+    cache = _bathy_cache(tmp_path, fixtures_dir, region, monkeypatch, [])
+    (cache / "cudem" / "urllist8483.txt").unlink()
+    monkeypatch.setattr(blocks, "read_window", lambda src, bbox: (
+        pytest.fail(f"CUDEM read: {src}") if src.startswith("/vsicurl/") else _fixture_window(fixtures_dir, bbox)))
+    work, out = tmp_path / "work", tmp_path / "out"
+    assert main(["build-bathy", str(region), str(out), "--cache", str(cache), "--work", str(work)]) == 0
+    capsys.readouterr()
+    for layer in ("contour", "band", "coverage"):
+        fine = work / "tippecanoe" / f"{layer}.geojsonseq"
+        assert not fine.exists() or fine.stat().st_size == 0, layer
+    assert (work / "tippecanoe-coarse" / "contour.geojsonseq").stat().st_size > 0
+    for name in ("bathy.mbtiles", "bathy-coarse.mbtiles", "dem.mbtiles", "dem-coarse.mbtiles"):
+        assert (work / name).is_file(), name
+
+
 def test_manifest_and_archive_commands(charts_pack_root_copy, regions_dir, tmp_path, capsys):
     (charts_pack_root_copy / "manifest.json").unlink()
     assert main(["check", str(charts_pack_root_copy)]) == 1

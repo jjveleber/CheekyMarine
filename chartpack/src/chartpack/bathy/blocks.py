@@ -212,15 +212,15 @@ def build_block(
     crm = None if crm_path is None else read_window(str(crm_path), read)
     fine = source = cudem = None
     if has_cudem:
-        fine, source = merge_to_mllw(primary, crm or _no_data(read), 0.0, 0.0, read, res_deg=FINE_RES_DEG)
+        fine, source = merge_to_mllw(primary, _no_data(read) if crm is None else crm, 0.0, 0.0, read, res_deg=FINE_RES_DEG)
         del primary
-        for index, name in ((1, "cudem"), (2, "crm")) if crm else ((1, "cudem"),):
+        for index, name in ((1, "cudem"), (2, "crm")) if crm is not None else ((1, "cudem"),):
             take = source == index
             fine.data[take] -= datum(name, fine.transform, fine.data.shape, lakes=False)[take]
             del take
 
     coarse = None
-    if crm:
+    if crm is not None:
         coarse, _ = merge_to_mllw([], crm, 0.0, 0.0, read, res_deg=COARSE_RES_DEG)
         del crm
         coarse.data -= datum("crm", coarse.transform, coarse.data.shape, lakes=False)

@@ -244,8 +244,9 @@ def _build_bathy(args: argparse.Namespace) -> int:
             r = build_block(core, read, tiles, crm_path(read, args.cache) if has_crm else None, datum, clip)
             covered = r.fine_coverage + ([] if enc_fallback else r.coarse_coverage)
             uncovered = box(*core).difference(unary_union([shape(f["geometry"]) for f in covered]))
-            _append_layers(fine_work, r.fine_contours + enc_fallback_contours(depcnt, uncovered, clip), r.fine_bands,
-                           r.fine_coverage)
+            # A region without CUDEM writes no fine layers (a fine file with contours alone fails tile_bathy).
+            enc_lines = enc_fallback_contours(depcnt, uncovered, clip) if has_cudem else []
+            _append_layers(fine_work, r.fine_contours + enc_lines, r.fine_bands, r.fine_coverage)
             # One DEM source per place per zoom, decided per zoom-12 tile: the fine DEM (the whole merge, so no
             # cliff at the CUDEM edge) where a zoom-12 tile holds CUDEM, the coarse DEM elsewhere.
             owned12 = set() if r.fine_grid is None else fine_owned_z12(r.fine_cudem, r.fine_grid.transform, tile)

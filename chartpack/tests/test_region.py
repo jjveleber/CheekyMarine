@@ -87,3 +87,8 @@ def test_unknown_bathy_source_is_error(tmp_path, regions_dir):
 def test_empty_bathy_sources_is_error(tmp_path, regions_dir):
     with pytest.raises(RegionError, match="bathy.sources"):
         load_region(_with_sources(tmp_path, regions_dir, "[]"))
+
+
+def test_crm_fallback_without_crm_is_error(tmp_path, regions_dir):
+    with pytest.raises(RegionError, match="coarse_fallback"):
+        load_region(_with_sources(tmp_path, regions_dir, '["cudem"]'))
