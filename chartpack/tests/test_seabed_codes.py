@@ -35,6 +35,10 @@ def test_layered_seabed():
     assert label("4,1/9", "1,/") == "fS.M/Rk"
     assert label("4/9", "1") == "fS/Rk"  # no NATQUA layer for the rock: no qualifier
     assert label("4/9", "/10") == "S/hRk"
+    assert label("4", "1/10") == "fS/h"  # NATQUA has more layers than NATSUR: the quality alone
+    assert label(None, "/10") == "h"  # an empty layer adds no bare slash
+    assert label("4/", None) == "S"
+    assert label("4//9", None) == "S/Rk"
     with pytest.raises(ValueError, match="NATSUR 99"):
         label("4/99", None)
 

@@ -122,6 +122,13 @@ def test_overview_records_content_tiles(tmp_path):
     assert json.loads(md["cheekymarine:content"]) == [[163, 356], [164, 356]]
 
 
+def test_overview_with_no_content_tiles_fails(tmp_path):
+    """An empty content area would let the pack check compare nothing and pass."""
+    path = _mbtiles(tmp_path / "a.mbtiles", [(9, 81, 178)])
+    with pytest.raises(RegionError, match="content"):
+        keep_tiles(path, None, minzoom=6, maxzoom=9, content=set())
+
+
 def test_region_pack_has_no_content_key(tmp_path):
     path = _mbtiles(tmp_path / "a.mbtiles", [(10, 163, 356)])
     keep_tiles(path, {(163, 356)}, minzoom=10, maxzoom=16)

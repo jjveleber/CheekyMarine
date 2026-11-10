@@ -192,12 +192,12 @@ def label(natsur: str | None, natqua: str | None) -> str | None:
     ("10" alone) is labelled on its own; qualifiers beyond the last type go before the last type.
     A layered seabed (S-57 Use of the Object Catalogue: "/" between layers, surface first, NATQUA layers
     lined up with NATSUR layers) is labelled layer by layer and joined with "/": "4,1/9" + "1,/" ->
-    "fS.M/Rk". A layer with no NATQUA layer has no qualifiers."""
+    "fS.M/Rk". A layer with no NATQUA layer has no qualifiers; an empty layer is left out (no bare "/")."""
     surs = natsur.split("/") if natsur else []
     quas = natqua.split("/") if natqua else []
     layers = [_layer_label(surs[i] if i < len(surs) else "", quas[i] if i < len(quas) else "")
               for i in range(max(len(surs), len(quas)))]
-    return "/".join(layers) if any(layers) else None
+    return "/".join(text for text in layers if text) or None
 
 
 def weed_label(catwed: int | None) -> str:

@@ -122,6 +122,8 @@ def keep_tiles(path: Path, owned: set[tuple[int, int]] | None, *, minzoom: int, 
     their descendants. Stored rows are TMS: flip to XYZ before taking the zoom-10 ancestor. For the overview
     (`owned` None), `content` (its content_tiles) is recorded as cheekymarine:content, the area the pack
     check compares against the source cells."""
+    if owned is None and content is not None and not content:
+        raise RegionError("no content zoom-10 tiles: no region pack in the grid order owns a tile")
     if owned is not None and not owned:
         raise RegionError("no owned zoom-10 tiles: the region box is empty or entirely clipped")
     conn = sqlite3.connect(path)
