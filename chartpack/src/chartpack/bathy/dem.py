@@ -57,7 +57,7 @@ def empty_dem_mbtiles(out: Path, *, minzoom: int, maxzoom: int, bounds) -> Path:
 
 def build_dem_mbtiles(
     depth_m: np.ndarray, transform, out: Path, *, minzoom: int = 10, maxzoom: int = 14, tile_size: int = 256,
-    skip_empty: bool = False, mask: np.ndarray | None = None, within=None, append: bool = False,
+    skip_empty: bool = False, tiles: set[tuple[int, int, int]] | None = None, within=None, append: bool = False,
 ) -> Path:
     """Write a terrarium PNG pyramid over the grid's bbox.
 
@@ -67,8 +67,8 @@ def build_dem_mbtiles(
     not done. Resampling is bilinear, switching to average when the zoom's pixel is more than
     2x the grid's native pixel (bilinear would alias when decimating that much).
 
-    skip_empty: a tile whose source cells are all nan (or all False in `mask`, when given) is not
-    written. within (W, S, E, N): only the
+    skip_empty: a tile whose source cells are all nan is not written. tiles: only these (z, x, y) are
+    written (a zoom with none of them is not warped). within (W, S, E, N): only the
     tiles meeting its interior are written, while the grid around it still feeds the resampling (a
     block's core inside its read bounds). append: add to an existing file instead of replacing it.
     """
@@ -88,7 +88,7 @@ def build_dem_mbtiles(
         fed_src = gdal.GetDriverByName("MEM").Create("", w, h, 1, gdal.GDT_Byte)
         fed_src.SetGeoTransform(transform)
         fed_src.SetProjection(srs.ExportToWkt())
-        fed_src.GetRasterBand(1).WriteArray((np.isfinite(depth_m) if mask is None else mask).astype(np.uint8))
+        fed_src.GetRasterBand(1).WriteArray(np.isfinite(depth_m).astype(np.uint8))
 
     def to_m(lon, lat):
         return (
@@ -107,6 +107,8 @@ def build_dem_mbtiles(
             res = span / tile_size
             tx0, tx1 = math.floor((x0 + _ORIGIN) / span + eps), math.ceil((x1 + _ORIGIN) / span - eps)
             ty0, ty1 = math.floor((_ORIGIN - y1) / span + eps), math.ceil((_ORIGIN - y0) / span - eps)
+            if tiles is not None and not any(t[0] == z for t in tiles):
+                continue
             bounds = (tx0 * span - _ORIGIN, _ORIGIN - ty1 * span, tx1 * span - _ORIGIN, _ORIGIN - ty0 * span)
             warped = gdal.Warp(
                 "", src, format="MEM", dstSRS="EPSG:3857", xRes=res, yRes=res, outputBounds=bounds,
@@ -120,6 +122,8 @@ def build_dem_mbtiles(
                 fed = fed_ds.GetRasterBand(1).ReadAsArray()  # keep the dataset alive while its band is read
             for ty in range(ty0, ty1):
                 for tx in range(tx0, tx1):
+                    if tiles is not None and (z, tx, ty) not in tiles:
+                        continue
                     r, c = (ty - ty0) * tile_size, (tx - tx0) * tile_size
                     if fed is not None and not fed[r : r + tile_size, c : c + tile_size].any():
                         continue

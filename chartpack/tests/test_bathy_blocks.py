@@ -257,7 +257,7 @@ def test_clip_removes_water_in_block(sources, test_region):
 
 def test_fine_dem_has_no_false_cliff(sources, test_region, tmp_path):
     """The fine DEM is the CUDEM-over-CRM merge: a z12 tile across the CUDEM edge has no 0 m cells where CRM has
-    depth, and a tile with no CUDEM cell is not written."""
+    depth, and a z12 tile with no CUDEM cell is not written."""
     import io
 
     from PIL import Image
@@ -266,8 +266,9 @@ def test_fine_dem_has_no_false_cliff(sources, test_region, tmp_path):
 
     core, result = _build(NORTH, sources, test_region, _cudem_elev(west_of=SPLIT_LON))
     grid = result.fine_grid
+    fine_tiles, _ = blocks.dem_tiles(blocks.fine_owned_z12(result.fine_cudem, grid.transform, NORTH), NORTH, 12)
     out = build_dem_mbtiles(grid.data, grid.transform, tmp_path / "dem.mbtiles", minzoom=12, maxzoom=12,
-                            skip_empty=True, mask=result.fine_cudem, within=core)
+                            tiles=fine_tiles, within=core)
 
     def tile_at(lon, lat):
         n = 2**12
@@ -313,12 +314,12 @@ def test_adjacent_blocks_contours_meet(sources, test_region, kind, band_lo):
         assert any(d == depth and abs(lon - x) <= tol and abs(lat - y) <= tol for d, x, y in b), (depth, lon)
 
 
-def _region_dir(tmp_path, *, overview=False):
+def _region_dir(tmp_path, *, overview=False, dem_maxzoom=12):
     regions = tmp_path / "regions"
     regions.mkdir()
     shutil.copytree(Path(__file__).parent.parent / "regions" / "datum", regions / "datum")
     (regions / "grid.toml").write_text('zoom = 10\norder = ["blk"]\n')
-    (regions / "blk.toml").write_text(("overview = true\n" if overview else "") + """name = "blk"
+    (regions / "blk.toml").write_text(("overview = true\n" if overview else "") + f"""name = "blk"
 charts_version = "0.1.0"
 bathy_version = "0.1.0"
 bbox = [-122.6, 47.8, -122.4, 47.95]
@@ -327,7 +328,7 @@ bbox = [-122.6, 47.8, -122.4, 47.95]
 
 [bathy]
 sources = ["cudem", "crm"]
-dem_maxzoom = 12
+dem_maxzoom = {dem_maxzoom}
 
 [datum]
 file = "datum/wa-stations.toml"
@@ -397,7 +398,8 @@ def test_coarse_maxzoom_is_12(region_pack):
         with MBTiles.open(region_pack / name) as m:
             md = m.metadata()
         assert (md["minzoom"], md["maxzoom"]) == ("10", "12"), name
-        assert _zooms(region_pack / name) == {10, 11, 12}, name
+        # the owned zoom-10 tile holds CUDEM, so its z10 DEM tile is the fine DEM's (one source per tile)
+        assert _zooms(region_pack / name) == ({11, 12} if name.startswith("dem") else {10, 11, 12}), name
         assert json.loads(md["cheekymarine:owned"]) == [list(NORTH)]
     assert max(_zooms(region_pack / "bathy.mbtiles")) == 16
     with MBTiles.open(region_pack / "dem.mbtiles") as m:
@@ -525,3 +527,95 @@ def test_block_without_cudem_tile_writes_no_fine_dem(tmp_path, monkeypatch, zero
     assert _zooms(root / "dem.mbtiles") == set() and _zooms(root / "bathy.mbtiles") == set()
     assert _zooms(root / "dem-coarse.mbtiles") == {10, 11, 12}
     assert _layer_features(root / "bathy-coarse.mbtiles", "contour")
+
+
+def _tile_at(z, lon, lat):
+    n = 2**z
+    return int((lon + 180) / 360 * n), int((1 - math.asinh(math.tan(math.radians(lat))) / math.pi) / 2 * n)
+
+
+@pytest.fixture(scope="module")
+def dem_pack(tmp_path_factory):
+    """build-bathy of NORTH to dem_maxzoom 14: CUDEM west of SPLIT_LON, so of the zoom-12 columns 652 to 655
+    of the tile, 652 is all CUDEM, 653 straddles the CUDEM edge and 654 and 655 are CRM only."""
+    from chartpack.cli import main
+
+    tmp = tmp_path_factory.mktemp("dem")
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(blocks, "FINE_RES_DEG", FINE)
+        mp.setattr(blocks, "COARSE_RES_DEG", COARSE)
+        mp.setattr(geoid, "egm2008_to_navd88_nodes", lambda lons, lats, cache: np.zeros((len(lats), len(lons))))
+        mp.setattr(geoid, "missing_grids", lambda cache: [])
+        region = _region_dir(tmp, dem_maxzoom=14)
+        cache = tmp / "cache"
+        (cache / "cudem").mkdir(parents=True)
+        (cache / "crm").mkdir()
+        (cache / "cudem" / "urllist8483.txt").write_text(_urllist())
+        cudem_tif = tmp / "cudem.tif"
+        _write_tif(cudem_tif, _cudem_elev(west_of=SPLIT_LON), AREA)
+        for _, _, read in iter_blocks({NORTH}):
+            _write_tif(crm_path(read, cache), _crm_elev(), AREA)
+        real = blocks.read_window
+        mp.setattr(blocks, "read_window",
+                   lambda src, bbox: real(str(cudem_tif) if src.startswith("/vsicurl/") else src, bbox))
+        assert main(["build-bathy", str(region), str(tmp / "out"), "--cache", str(cache), "--work", str(tmp / "work")]) == 0
+        root = tmp / "out" / "bathy-blk-0.1.0"
+        assert main(["check", str(root)]) == 0
+    with MBTiles.open(root / "dem.mbtiles") as m:
+        fine = {(z, x, y) for z in range(10, 15) for x, y, _ in m.tiles_at(z)}
+    with MBTiles.open(root / "dem-coarse.mbtiles") as m:
+        coarse = {(z, x, y) for z in range(10, 13) for x, y, _ in m.tiles_at(z)}
+    return fine, coarse
+
+
+def test_dem_one_source_per_tile(dem_pack):
+    """No (z, x, y) at z10 to 12 is in both DEM files, and together they cover the whole owned tile there."""
+    fine, coarse = dem_pack
+    assert fine and coarse and not fine & coarse
+    for z in (10, 11, 12):
+        k = 2 ** (z - 10)
+        whole = {(z, x, y) for x in range(NORTH[0] * k, (NORTH[0] + 1) * k) for y in range(NORTH[1] * k, (NORTH[1] + 1) * k)}
+        assert {t for t in fine | coarse if t[0] == z} == whole, z
+
+
+def test_fine_dem_below_z12_only_under_fine_owned_tiles(dem_pack):
+    """Every z13 and z14 fine tile has a fine-owned z12 ancestor, and every fine-owned z12 tile has all its
+    descendants to dem_maxzoom (CRM parts included: the fine DEM is the whole merge)."""
+    fine, _ = dem_pack
+    owned12 = {(x, y) for z, x, y in fine if z == 12}
+    deep = {t for t in fine if t[0] > 12}
+    assert deep and all((x >> (z - 12), y >> (z - 12)) in owned12 for z, x, y in deep)
+    for z in (13, 14):
+        k = 2 ** (z - 12)
+        assert {(x, y) for zz, x, y in deep if zz == z} == {
+            (x * k + i, y * k + j) for x, y in owned12 for i in range(k) for j in range(k)}, z
+
+
+def test_dem_ownership_by_cudem_cells(dem_pack):
+    """A z12 tile straddling the CUDEM edge is fine only (with its z10 and z11 ancestors); a CRM-only z12 tile
+    (and the z11 tile holding only CRM-only z12 tiles) is coarse only."""
+    fine, coarse = dem_pack
+    lat = 47.9
+    x_edge, y = _tile_at(12, SPLIT_LON, lat)
+    assert x_edge == 653
+    assert (12, 653, y) in fine and (12, 653, y) not in coarse
+    assert (12, 652, y) in fine
+    for x in (654, 655):
+        assert (12, x, y) in coarse and (12, x, y) not in fine
+    assert (11, 326, y >> 1) in fine and (11, 327, y >> 1) in coarse
+    assert (10, *NORTH) in fine and (10, *NORTH) not in coarse
+
+
+def test_fine_ownership_decided_by_the_owning_block(sources, test_region):
+    """A CUDEM patch inside SOUTH's core, but within NORTH's read margin: SOUTH owns its z12 tile and NORTH owns
+    no z12 tile at all, so the two blocks give one answer for the tile they both read."""
+    _, south_core, _ = _block(SOUTH)
+    w, s, e, n = south_core
+    patch = (w + 0.05, n - 0.015, w + 0.08, n - 0.005)
+    elev = _cudem_elev(patch=patch)
+    _, north = _build(NORTH, sources, test_region, elev)
+    _, south = _build(SOUTH, sources, test_region, elev)
+    assert north.fine_cudem.any()  # NORTH reads the patch in its margin
+    assert blocks.fine_owned_z12(north.fine_cudem, north.fine_grid.transform, NORTH) == set()
+    tile = _tile_at(12, (patch[0] + patch[2]) / 2, (patch[1] + patch[3]) / 2)
+    assert blocks.fine_owned_z12(south.fine_cudem, south.fine_grid.transform, SOUTH) == {tile}

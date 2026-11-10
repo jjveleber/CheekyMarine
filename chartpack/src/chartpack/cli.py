@@ -17,6 +17,8 @@ from chartpack.bathy.blocks import (
     area_datum,
     build_block,
     build_overview,
+    dem_tiles,
+    fine_owned_z12,
     iter_blocks,
     overview_bounds,
 )
@@ -233,7 +235,7 @@ def _build_bathy(args: argparse.Namespace) -> int:
         cells = [read_cell(_newest_cached_zip(args.cache, name)) for band in sorted(region.cells) for name in region.cells[band]]
         depcnt = enc_depcnt(cells)  # quilted once; each block clips it to its uncovered water
         del cells
-        for _, core, read in blocks:
+        for tile, core, read in blocks:
             tiles = tiles_for_bbox(all_tiles, read)
             used.update((t.name, t) for t in tiles_for_bbox(tiles, core))  # the tiles drawn in the owned tile
             r = build_block(core, read, tiles, crm_path(read, args.cache), datum, clip)
@@ -241,14 +243,19 @@ def _build_bathy(args: argparse.Namespace) -> int:
             uncovered = box(*core).difference(unary_union([shape(f["geometry"]) for f in covered]))
             _append_layers(fine_work, r.fine_contours + enc_fallback_contours(depcnt, uncovered), r.fine_bands,
                            r.fine_coverage)
-            # The fine DEM is the whole merge (no cliff at the CUDEM edge), written only where CUDEM is.
-            outputs = [] if r.fine_grid is None else [(r.fine_grid, r.fine_cudem, "dem.mbtiles")]
+            # One DEM source per place per zoom, decided per zoom-12 tile: the fine DEM (the whole merge, so no
+            # cliff at the CUDEM edge) where a zoom-12 tile holds CUDEM, the coarse DEM elsewhere.
+            owned12 = set() if r.fine_grid is None else fine_owned_z12(r.fine_cudem, r.fine_grid.transform, tile)
+            fine_tiles, coarse_tiles = dem_tiles(owned12, tile, region.dem_maxzoom)
+            outputs = [(r.fine_grid, fine_tiles, False, "dem.mbtiles")]
             if not enc_fallback:
                 _append_layers(coarse_work, r.coarse_contours, r.coarse_bands, r.coarse_coverage)
-                outputs.append((r.coarse_grid, None, "dem-coarse.mbtiles"))
-            for grid, mask, name in outputs:
-                build_dem_mbtiles(grid.data, grid.transform, files[name], minzoom=zooms[name][0],
-                                  maxzoom=zooms[name][1], skip_empty=True, mask=mask, within=core, append=True)
+                outputs.append((r.coarse_grid, coarse_tiles, True, "dem-coarse.mbtiles"))
+            for grid, dem, skip_empty, name in outputs:
+                if dem:
+                    build_dem_mbtiles(grid.data, grid.transform, files[name], minzoom=zooms[name][0],
+                                      maxzoom=zooms[name][1], skip_empty=skip_empty, tiles=dem, within=core,
+                                      append=True)
             del r
 
     cudem_tiles = [used[name] for name in sorted(used)]

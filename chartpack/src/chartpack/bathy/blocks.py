@@ -20,6 +20,7 @@ from chartpack.bathy.bands import bands_by_zoom
 from chartpack.bathy.contours import BANDS, COARSE_BANDS, OVERVIEW_BANDS, block_mean, contours_by_zoom
 from chartpack.bathy.cudem import CudemTile, Grid, read_window, tiles_for_bbox
 from chartpack.bathy.merge import clip_mask, coverage_polygons, fill_land, merge_to_mllw
+from chartpack.bathy.tiles import COARSE_ZOOMS
 from chartpack.datum import SOURCE_VERTICAL, geoid, node_axes, resample
 from chartpack.datum.offsets import load_datum, navd88_to_mllw_nodes
 from chartpack.grid import GRID_ZOOM, tile_bounds
@@ -30,6 +31,7 @@ COARSE_RES_DEG = 1 / 3600  # CRM, 1 arc-second
 OVERVIEW_RES_DEG = 0.0025  # the overview block-means native CRM to this (9 by 9 arc-second cells)
 BLOCK_MARGIN_DEG = 0.02  # each block is read this far past its tile
 CRM_LABEL = {"source": "crm", "resolution_m": 30, "date": "2025"}
+DEM_OWNER_ZOOM = COARSE_ZOOMS[1]  # DEM tile ownership is decided per tile of the coarse max zoom
 
 
 @dataclass
@@ -38,7 +40,8 @@ class BlockResult:
     station path, without the lake rule the features use (AreaDatum).
 
     fine_grid is the whole CUDEM-over-CRM merge so the fine DEM has no false cliff at the CUDEM edge;
-    fine_cudem marks its CUDEM cells, the only ones the fine features and the fine DEM's skip_empty use.
+    fine_cudem marks its CUDEM cells, the only ones the fine features use and the ones that decide which
+    zoom-12 tiles the fine DEM owns (fine_owned_z12).
     """
 
     fine_contours: list[dict]
@@ -223,6 +226,51 @@ def build_block(
     coarse_out = _features(_with_lakes(coarse, datum), core, COARSE_BANDS, fine=False, label=CRM_LABEL,
                            overzoomed=True)
     return BlockResult(*fine_out, *coarse_out, fine_grid=fine, coarse_grid=coarse, fine_cudem=cudem)
+
+
+def fine_owned_z12(cudem: np.ndarray, transform, tile: tuple[int, int]) -> set[tuple[int, int]]:
+    """The zoom-12 tiles (x, y) of the owned zoom-10 tile that hold a CUDEM cell (cudem: bool over the fine
+    grid, after the clip), each cell placed by its center. Only the tile's own zoom-12 tiles are decided, and
+    from the global cell index, so the block that owns a zoom-12 tile is the only one that decides it and a
+    patch in another block's read margin never counts."""
+    zoom = DEM_OWNER_ZOOM
+    x0, dx, _, y0, _, dy = transform
+    rows, cols = cudem.shape
+    lon = -180 + (round((x0 + 180) / dx) + np.arange(cols) + 0.5) * dx
+    lat = 90 + (round((90 - y0) / -dy) + np.arange(rows) + 0.5) * dy
+    n = 2**zoom
+    tx = np.floor((lon + 180) / 360 * n).astype(np.int64)
+    ty = np.floor((1 - np.arcsinh(np.tan(np.radians(lat))) / np.pi) / 2 * n).astype(np.int64)
+    k = 2 ** (zoom - GRID_ZOOM)
+    owned = set()
+    for x in range(tile[0] * k, (tile[0] + 1) * k):
+        c = np.flatnonzero(tx == x)
+        for y in range(tile[1] * k, (tile[1] + 1) * k):
+            r = np.flatnonzero(ty == y)
+            if c.size and r.size and cudem[r[0] : r[-1] + 1, c[0] : c[-1] + 1].any():
+                owned.add((x, y))
+    return owned
+
+
+def dem_tiles(owned12: set[tuple[int, int]], tile: tuple[int, int], maxzoom: int
+              ) -> tuple[set[tuple[int, int, int]], set[tuple[int, int, int]]]:
+    """(fine, coarse) DEM tiles (z, x, y) of an owned zoom-10 tile, one source per place per zoom: the fine DEM
+    writes the fine-owned zoom-12 tiles, their zoom-10 and 11 ancestors and their descendants to maxzoom; the
+    coarse DEM writes the other zoom-10 to 12 tiles of the tile (the map overzooms its z12 tiles past 12)."""
+    fine = set()
+    for x, y in owned12:
+        for z in range(GRID_ZOOM, DEM_OWNER_ZOOM + 1):
+            shift = DEM_OWNER_ZOOM - z
+            fine.add((z, x >> shift, y >> shift))
+        for z in range(DEM_OWNER_ZOOM + 1, maxzoom + 1):
+            k = 2 ** (z - DEM_OWNER_ZOOM)
+            fine.update((z, x * k + i, y * k + j) for i in range(k) for j in range(k))
+    coarse = set()
+    for z in range(GRID_ZOOM, DEM_OWNER_ZOOM + 1):
+        k = 2 ** (z - GRID_ZOOM)
+        coarse.update((z, x, y) for x in range(tile[0] * k, (tile[0] + 1) * k)
+                      for y in range(tile[1] * k, (tile[1] + 1) * k) if (z, x, y) not in fine)
+    return {t for t in fine if t[0] <= maxzoom}, coarse
 
 
 def build_overview(bbox, crm_path, datum: AreaDatum, clip: shapely.Geometry | None) -> BlockResult:
