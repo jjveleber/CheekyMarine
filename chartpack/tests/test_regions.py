@@ -154,3 +154,12 @@ def test_seams_merges_runs_and_keys_pairs_in_order():
         ((w0, s0), (e1, s0)),  # under row 0: one run over two tiles
         ((e1, s0), (e1, n0)),  # a's tile (1, 0) against b's tile (2, 0)
     ])
+
+
+
+def test_overview_bbox_holds_every_owned_tile(regions_dir):
+    """The overview's one CRM read (overview_bounds of its bbox) covers every zoom-10 tile a region pack owns, so
+    no owned water has depth at zoom 10 but none at zoom 6 to 9."""
+    w, s, e, n = load_region(regions_dir / "overview.toml").bbox
+    tw, ts, te, tn = _area(set().union(*_owned(regions_dir).values())).bounds
+    assert w <= tw and s <= ts and e >= te and n >= tn, ((w, s, e, n), (tw, ts, te, tn))

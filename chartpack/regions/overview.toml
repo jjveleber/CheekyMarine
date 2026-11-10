@@ -1,8 +1,10 @@
 # The overview pack (spec 5.2): zoom 9 and below over all wave 1 regions, from bands 1 to 3 and one CRM read.
+# The bbox is the extent of every zoom-10 tile the region packs own (grid.toml), rounded outward, so the CRM
+# read covers all of them (spec 4 has -127.0, 46.15, -122.1, 49.05).
 name = "overview"
 charts_version = "1.0.0"
 bathy_version = "1.0.0"
-bbox = [-127.0, 46.15, -122.1, 49.05]
+bbox = [-127.265625, 46.0732, -121.9921875, 49.153]
 overview = true
 clip = "clip/canada-wa.geojson"
 
