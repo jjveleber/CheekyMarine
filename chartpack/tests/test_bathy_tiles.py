@@ -13,7 +13,8 @@ from chartpack.bathy.bands import bands_by_zoom
 from chartpack.bathy.contours import MAJOR_FT, contours_by_zoom
 from chartpack.bathy.cudem import CudemTile, Grid
 from chartpack.bathy.merge import COVERAGE_CELL_DEG, coverage_polygons, merge_to_mllw, tag_source, uncovered_area
-from chartpack.bathy.tiles import BATHY_LAYERS, append_features, enc_fallback_contours, tile_bathy
+from chartpack.bathy.crm import crm_wcs_url
+from chartpack.bathy.tiles import BATHY_LAYERS, append_features, enc_depcnt, enc_fallback_contours, tile_bathy
 from chartpack.enc.reader import CellMeta, Feature, read_cell
 from chartpack.mbtiles import MBTiles, decode_pbf
 
@@ -32,7 +33,7 @@ def build_bathy_mbtiles(contours, bands, coverage, out, *, region, work, cudem_t
     """The layer files written as one build-bathy run writes them, then tiled at zoom 10 to 16."""
     for name, feats in zip(BATHY_LAYERS, (contours, bands, coverage)):
         append_features(feats, work / f"{name}.geojsonseq")
-    return tile_bathy(work, out, region=region, cudem_tiles=cudem_tiles)
+    return tile_bathy(work, out, region=region, crm_request=crm_wcs_url(region.bbox), cudem_tiles=cudem_tiles)
 
 
 def _wkt() -> str:
@@ -57,7 +58,7 @@ def built(test_region, tmp_path_factory):
     bands = bands_by_zoom(grid.data, transform)
     coverage = coverage_polygons(source, transform, LABELS)
     uncovered = uncovered_area(source, transform, treat_fallback_as_uncovered=False)
-    enc = enc_fallback_contours([read_cell(fixtures_dir / "US4WA1HK.zip")], uncovered)
+    enc = enc_fallback_contours(enc_depcnt([read_cell(fixtures_dir / "US4WA1HK.zip")]), uncovered)
     tiles = [CudemTile("ncei19_n47x85_w122x50_2023v1", "https://example.test/a.tif", 47.85, -122.5, 2023, 1)]
     out = build_bathy_mbtiles(
         contours + enc, bands, coverage, base / "bathy.mbtiles", region=test_region, work=base / "work",
@@ -147,7 +148,7 @@ def test_enc_fallback_quilts_overlapping_bands():
         geometry = {"type": "LineString", "coordinates": [[x, y] for x, _ in line["coordinates"]]}
         return meta, [Feature("depcnt", geometry, {"VALDCO": "9.1"}), Feature("depare", geometry, {})]
 
-    feats = enc_fallback_contours([cell("US4X", 4, 47.75), cell("US5X", 5, 47.751)], square)
+    feats = enc_fallback_contours(enc_depcnt([cell("US4X", 4, 47.75), cell("US5X", 5, 47.751)]), square)
     assert feats and all(f["properties"]["source"] == "enc" for f in feats)
     for z in range(10, 17):
         drawn = [f for f in feats if f["tippecanoe"]["minzoom"] <= z <= f["tippecanoe"]["maxzoom"]]

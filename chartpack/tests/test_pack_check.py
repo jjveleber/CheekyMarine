@@ -288,3 +288,17 @@ def test_tile_hazard_outside_owned_area_is_ignored(charts_pack_root_copy, fixtur
     errs = check_pack(charts_pack_root_copy, enc_zips=[fixtures_dir / "US4WA1HK.zip"])
     assert errs == [f"enc.mbtiles: safety layer {layer} has no features at zoom {z}"
                     for z in (11, 12) for layer in ("hazard", "navaid", "light")], errs
+
+
+def test_coarse_file_may_lack_contour_and_band(tmp_path, test_region):
+    """bathy-coarse.mbtiles with only its coverage layer passes (a region whose CRM-only cells are land);
+    bathy.mbtiles keeps the three-layer rule."""
+    from chartpack.mbtiles import MBTiles
+
+    root = _bathy_pack(tmp_path, test_region, {"bathy.mbtiles", "bathy-coarse.mbtiles"})
+    for name in ("bathy.mbtiles", "bathy-coarse.mbtiles"):
+        with MBTiles.open(root / name) as m:
+            m.set_metadata({"json": json.dumps({"vector_layers": [{"id": "coverage"}]})})
+    write_manifest(root, pack="bathy", region=test_region, sources=[], notice="n", built=datetime.now(timezone.utc))
+    errs = check_pack(root)
+    assert errs == ["bathy.mbtiles: schema layer band missing", "bathy.mbtiles: schema layer contour missing"]

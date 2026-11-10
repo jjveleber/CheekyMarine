@@ -13,7 +13,14 @@ from shapely.validation import make_valid
 
 from chartpack.enc.reader import read_cell
 from chartpack.enc.scamin import BAND_ZOOMS
-from chartpack.enc.schema import BATHY_LAYER_SPECS, LAYERS, OPTIONAL_LAYERS, SAFETY_LAYERS, SCHEMA_VERSION
+from chartpack.enc.schema import (
+    BATHY_LAYER_SPECS,
+    COARSE_OPTIONAL_LAYERS,
+    LAYERS,
+    OPTIONAL_LAYERS,
+    SAFETY_LAYERS,
+    SCHEMA_VERSION,
+)
 from chartpack.enc.tiles import ENC_METADATA_KEYS
 from chartpack.grid import GRID_ZOOM, tile_bounds
 from chartpack.mbtiles import MBTiles, decode_pbf
@@ -79,13 +86,13 @@ def _check_files(root: Path, manifest: dict) -> list[str]:
     return errors
 
 
-def _check_vector_layers(name: str, metadata: dict, specs) -> list[str]:
+def _check_vector_layers(name: str, metadata: dict, specs, optional: frozenset[str] = OPTIONAL_LAYERS) -> list[str]:
     try:
         built = {layer["id"] for layer in json.loads(metadata["json"])["vector_layers"]}
     except (KeyError, ValueError):
         return [f"{name}: metadata json has no vector_layers"]
     expected = {spec.name for spec in specs}
-    errors = [f"{name}: schema layer {layer} missing" for layer in sorted(expected - OPTIONAL_LAYERS - built)]
+    errors = [f"{name}: schema layer {layer} missing" for layer in sorted(expected - optional - built)]
     errors += [f"{name}: layer {layer} is not in the schema" for layer in sorted(built - expected)]
     return errors
 
@@ -236,7 +243,10 @@ def check_pack(pack_root: Path, *, enc_zips: list[Path] | None = None) -> list[s
                     errors.append(f"{name}: schema {metadata['cheekymarine:schema']} is not {SCHEMA_VERSION}")
                 if name.startswith("dem") or missing or (name != "enc.mbtiles" and not _has_tiles(path)):
                     continue
-                errors += _check_vector_layers(name, metadata, LAYERS if name == "enc.mbtiles" else BATHY_LAYER_SPECS)
+                if name == "bathy-coarse.mbtiles":  # coverage alone is allowed (CRM-only cells all land)
+                    errors += _check_vector_layers(name, metadata, BATHY_LAYER_SPECS, OPTIONAL_LAYERS | COARSE_OPTIONAL_LAYERS)
+                else:
+                    errors += _check_vector_layers(name, metadata, LAYERS if name == "enc.mbtiles" else BATHY_LAYER_SPECS)
                 if name == "enc.mbtiles":
                     errors += _check_safety_layers(m, metadata)
                     if enc_zips:

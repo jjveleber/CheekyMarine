@@ -30,6 +30,13 @@ def crm_wcs_url(bbox, res_deg: float | None = None) -> str:
     )
 
 
+def crm_tile_requests(margin_deg: float) -> str:
+    """What a region build requests from CRM: one GetCoverage per owned zoom-10 tile, the url template."""
+    url = crm_wcs_url(("W", "S", "E", "N"))
+    return (f"{url} (one request per owned zoom-10 tile: W, S, E, N are the tile bounds plus {margin_deg} degree,"
+            " snapped outward to 1 arc-second)")
+
+
 def crm_path(bbox, cache_dir: Path, res_deg: float | None = None) -> Path:
     """Where fetch_crm caches the request for bbox (and res_deg)."""
     w, s, e, n = bbox

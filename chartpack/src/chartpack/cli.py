@@ -13,6 +13,7 @@ from shapely.ops import unary_union
 
 from chartpack import __version__
 from chartpack.bathy.blocks import (
+    BLOCK_MARGIN_DEG,
     OVERVIEW_RES_DEG,
     build_block,
     build_overview,
@@ -20,15 +21,15 @@ from chartpack.bathy.blocks import (
     overview_bounds,
     region_datum,
 )
-from chartpack.bathy.crm import crm_path, fetch_crm
+from chartpack.bathy.crm import crm_path, crm_tile_requests, crm_wcs_url, fetch_crm
 from chartpack.bathy.cudem import URLLIST, parse_urllist, tiles_for_bbox
 from chartpack.bathy.dem import build_dem_mbtiles, empty_dem_mbtiles
 from chartpack.bathy.tiles import (
     COARSE_ZOOMS,
     MAXZOOM,
     MINZOOM,
-    OVERVIEW_ZOOMS,
     append_features,
+    enc_depcnt,
     enc_fallback_contours,
     tile_bathy,
 )
@@ -217,6 +218,7 @@ def _build_bathy(args: argparse.Namespace) -> int:
 
     used = {}
     if owned is None:
+        crm_request = crm_wcs_url(overview_bounds(region.bbox), OVERVIEW_RES_DEG)
         result = build_overview(region.bbox, needed[0], datum, clip)
         _append_layers(coarse_work, result.coarse_contours, result.coarse_bands, result.coarse_coverage)
         build_dem_mbtiles(result.coarse_grid.data, result.coarse_grid.transform, files["dem-coarse.mbtiles"],
@@ -224,27 +226,33 @@ def _build_bathy(args: argparse.Namespace) -> int:
     else:
         all_tiles = parse_urllist(urllist.read_text())
         enc_fallback = region.coarse_fallback == "enc"  # ENC lines where CUDEM is absent; no coarse layers
+        crm_request = crm_tile_requests(BLOCK_MARGIN_DEG)
         cells = [read_cell(_newest_cached_zip(args.cache, name)) for band in sorted(region.cells) for name in region.cells[band]]
+        depcnt = enc_depcnt(cells)  # quilted once; each block clips it to its uncovered water
+        del cells
         for _, core, read in blocks:
             tiles = tiles_for_bbox(all_tiles, read)
-            used.update((t.name, t) for t in tiles)
+            used.update((t.name, t) for t in tiles_for_bbox(tiles, core))  # the tiles drawn in the owned tile
             r = build_block(core, read, tiles, crm_path(read, args.cache), datum, clip)
             covered = r.fine_coverage + ([] if enc_fallback else r.coarse_coverage)
             uncovered = box(*core).difference(unary_union([shape(f["geometry"]) for f in covered]))
-            _append_layers(fine_work, r.fine_contours + enc_fallback_contours(cells, uncovered), r.fine_bands,
+            _append_layers(fine_work, r.fine_contours + enc_fallback_contours(depcnt, uncovered), r.fine_bands,
                            r.fine_coverage)
-            outputs = [(r.fine_grid, "dem.mbtiles")] + ([] if enc_fallback else [(r.coarse_grid, "dem-coarse.mbtiles")])
+            # The fine DEM is the whole merge (no cliff at the CUDEM edge), written only where CUDEM is.
+            outputs = [(r.fine_grid, r.fine_cudem, "dem.mbtiles")]
             if not enc_fallback:
                 _append_layers(coarse_work, r.coarse_contours, r.coarse_bands, r.coarse_coverage)
-            for grid, name in outputs:
+                outputs.append((r.coarse_grid, None, "dem-coarse.mbtiles"))
+            for grid, mask, name in outputs:
                 build_dem_mbtiles(grid.data, grid.transform, files[name], minzoom=zooms[name][0],
-                                  maxzoom=zooms[name][1], skip_empty=True, within=core, append=True)
+                                  maxzoom=zooms[name][1], skip_empty=True, mask=mask, within=core, append=True)
             del r
 
     cudem_tiles = [used[name] for name in sorted(used)]
-    tile_bathy(fine_work, files["bathy.mbtiles"], region=region, zooms=zooms["bathy.mbtiles"], cudem_tiles=cudem_tiles)
-    tile_bathy(coarse_work, files["bathy-coarse.mbtiles"], region=region, zooms=zooms["bathy-coarse.mbtiles"],
-               coarse=True, cudem_tiles=cudem_tiles)
+    tile_bathy(fine_work, files["bathy.mbtiles"], region=region, crm_request=crm_request, zooms=zooms["bathy.mbtiles"],
+               cudem_tiles=cudem_tiles)
+    tile_bathy(coarse_work, files["bathy-coarse.mbtiles"], region=region, crm_request=crm_request,
+               zooms=zooms["bathy-coarse.mbtiles"], coarse=True, cudem_tiles=cudem_tiles)
     for name in ("dem.mbtiles", "dem-coarse.mbtiles"):
         if not files[name].exists():  # nothing to draw (the overview's fine DEM, the ENC path's coarse DEM)
             empty_dem_mbtiles(files[name], minzoom=zooms[name][0], maxzoom=zooms[name][1], bounds=region.bbox)

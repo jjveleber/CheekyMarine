@@ -57,7 +57,7 @@ def empty_dem_mbtiles(out: Path, *, minzoom: int, maxzoom: int, bounds) -> Path:
 
 def build_dem_mbtiles(
     depth_m: np.ndarray, transform, out: Path, *, minzoom: int = 10, maxzoom: int = 14, tile_size: int = 256,
-    skip_empty: bool = False, within=None, append: bool = False,
+    skip_empty: bool = False, mask: np.ndarray | None = None, within=None, append: bool = False,
 ) -> Path:
     """Write a terrarium PNG pyramid over the grid's bbox.
 
@@ -67,7 +67,8 @@ def build_dem_mbtiles(
     not done. Resampling is bilinear, switching to average when the zoom's pixel is more than
     2x the grid's native pixel (bilinear would alias when decimating that much).
 
-    skip_empty: a tile whose source cells are all nan is not written. within (W, S, E, N): only the
+    skip_empty: a tile whose source cells are all nan (or all False in `mask`, when given) is not
+    written. within (W, S, E, N): only the
     tiles meeting its interior are written, while the grid around it still feeds the resampling (a
     block's core inside its read bounds). append: add to an existing file instead of replacing it.
     """
@@ -78,12 +79,16 @@ def build_dem_mbtiles(
     srs = osr.SpatialReference()
     srs.ImportFromEPSG(4326)
     srs.SetAxisMappingStrategy(osr.OAMS_TRADITIONAL_GIS_ORDER)
-    src = gdal.GetDriverByName("MEM").Create("", w, h, 2 if skip_empty else 1, gdal.GDT_Float32)
+    src = gdal.GetDriverByName("MEM").Create("", w, h, 1, gdal.GDT_Float32)
     src.SetGeoTransform(transform)
     src.SetProjection(srs.ExportToWkt())
     src.GetRasterBand(1).WriteArray(elev)
-    if skip_empty:
-        src.GetRasterBand(2).WriteArray(np.isfinite(depth_m).astype(np.float32))  # > 0 where a source cell feeds
+    fed_src = None
+    if skip_empty:  # 1 where a source cell feeds, warped with max so any such cell keeps its tile
+        fed_src = gdal.GetDriverByName("MEM").Create("", w, h, 1, gdal.GDT_Byte)
+        fed_src.SetGeoTransform(transform)
+        fed_src.SetProjection(srs.ExportToWkt())
+        fed_src.GetRasterBand(1).WriteArray((np.isfinite(depth_m) if mask is None else mask).astype(np.uint8))
 
     def to_m(lon, lat):
         return (
@@ -108,7 +113,11 @@ def build_dem_mbtiles(
                 resampleAlg="average" if res > 2 * native_m else "bilinear", outputType=gdal.GDT_Float32,
             )
             arr = warped.GetRasterBand(1).ReadAsArray()
-            fed = warped.GetRasterBand(2).ReadAsArray() if skip_empty else None
+            fed = None
+            if fed_src is not None:
+                fed_ds = gdal.Warp("", fed_src, format="MEM", dstSRS="EPSG:3857", xRes=res, yRes=res,
+                                   outputBounds=bounds, resampleAlg="max", outputType=gdal.GDT_Byte)
+                fed = fed_ds.GetRasterBand(1).ReadAsArray()  # keep the dataset alive while its band is read
             for ty in range(ty0, ty1):
                 for tx in range(tx0, tx1):
                     r, c = (ty - ty0) * tile_size, (tx - tx0) * tile_size

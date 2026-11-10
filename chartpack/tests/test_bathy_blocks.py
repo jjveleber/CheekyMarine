@@ -6,6 +6,7 @@ whole zoom-10 tile stays small; the coarse cell stays a whole number of fine cel
 """
 
 import json
+import math
 
 import numpy as np
 import pytest
@@ -159,20 +160,25 @@ def test_fine_and_coarse_split_by_source(sources, test_region):
 
 
 def test_coarse_fills_per_cell(sources, test_region):
-    patch = (-122.55, 47.85, -122.53, 47.87)  # one small CUDEM patch in the block
+    patch = (-122.5507, 47.8503, -122.5297, 47.8697)  # one small CUDEM patch, edges off the coarse cells
     core, result = _build(NORTH, sources, test_region, _cudem_elev(patch=patch))
     grid = result.coarse_grid
     lon = grid.transform[0] + (np.arange(grid.data.shape[1]) + 0.5) * grid.transform[1]
     lat = grid.transform[3] + (np.arange(grid.data.shape[0]) + 0.5) * grid.transform[5]
     w, s, e, n = patch
-    margin = COARSE  # a coarse cell partly over the patch has a CUDEM value, so no CRM
+    margin = COARSE  # a coarse cell partly over the patch keeps its CRM value (coarse is drawn under fine)
     inside = ((lon > w + margin) & (lon < e - margin))[None, :] & ((lat > s + margin) & (lat < n - margin))[:, None]
     outside = ~(((lon > w - margin) & (lon < e + margin))[None, :] & ((lat > s - margin) & (lat < n + margin))[:, None])
     outside &= ((lon > core[0]) & (lon < core[2]))[None, :] & ((lat > core[1]) & (lat < core[3]))[:, None]
     assert inside.any() and np.isnan(grid.data[inside]).all()
     assert np.isfinite(grid.data[outside]).all()
-    fine = result.fine_grid
-    assert np.isfinite(fine.data).sum() > 0 and np.isfinite(fine.data).mean() < 0.01
+    cudem = result.fine_cudem
+    assert cudem.sum() > 0 and cudem.mean() < 0.01
+    k = round(COARSE / FINE)
+    cells = cudem.reshape(grid.data.shape[0], k, grid.data.shape[1], k)
+    partly = cells.any(axis=(1, 3)) & ~cells.all(axis=(1, 3))
+    assert partly.any() and np.isfinite(grid.data[partly]).all()
+    assert np.isnan(grid.data[cells.all(axis=(1, 3))]).all()
     assert result.coarse_contours and result.fine_contours
 
 
@@ -190,6 +196,32 @@ def test_clip_removes_water_in_block(sources, test_region):
         lat = grid.transform[3] + (np.arange(grid.data.shape[0]) + 0.5) * grid.transform[5]
         assert np.isnan(grid.data[lat < mid]).all()
         assert np.isfinite(grid.data[lat > mid]).any()
+
+
+def test_fine_dem_has_no_false_cliff(sources, test_region, tmp_path):
+    """The fine DEM is the CUDEM-over-CRM merge: a z12 tile across the CUDEM edge has no 0 m cells where CRM has
+    depth, and a tile with no CUDEM cell is not written."""
+    import io
+
+    from PIL import Image
+
+    from chartpack.bathy.dem import build_dem_mbtiles, terrarium_decode
+
+    core, result = _build(NORTH, sources, test_region, _cudem_elev(west_of=SPLIT_LON))
+    grid = result.fine_grid
+    out = build_dem_mbtiles(grid.data, grid.transform, tmp_path / "dem.mbtiles", minzoom=12, maxzoom=12,
+                            skip_empty=True, mask=result.fine_cudem, within=core)
+
+    def tile_at(lon, lat):
+        n = 2**12
+        return int((lon + 180) / 360 * n), int((1 - math.asinh(math.tan(math.radians(lat))) / math.pi) / 2 * n)
+
+    with MBTiles.open(out) as m:
+        across = m.get_tile(12, *tile_at(SPLIT_LON, 47.87))
+        assert across is not None
+        elev = terrarium_decode(np.asarray(Image.open(io.BytesIO(across)).convert("RGB")))
+        assert elev.max() < -1.0  # deep water on both sides of the CUDEM edge: no flat 0 m strip
+        assert m.get_tile(12, *tile_at(-122.40, 47.87)) is None  # CRM only: the coarse DEM draws it
 
 
 def _edge_ends(features, edge_lat, band_lo):
@@ -291,6 +323,17 @@ def test_each_output_has_coverage(region_pack):
     assert coarse and {f["properties"]["source"] for f in coarse} == {"crm"}
 
 
+def test_sources_record_the_real_requests(region_pack):
+    """CUDEM tiles meeting the owned tile (not only its read margin) and the per-tile CRM request."""
+    with MBTiles.open(region_pack / "bathy.mbtiles") as m:
+        src = json.loads(m.metadata()["cheekymarine:sources"])
+    _, core, _ = _block(NORTH)
+    assert [t["name"] for t in src["cudem"]] == [t.name for t in tiles_for_bbox(_cudem_tiles(), core)]
+    assert src["crm"].startswith("https://www.ngdc.noaa.gov/thredds/wcs/crm/cudem/crm_vol8_2025.nc")
+    assert "per owned zoom-10 tile" in src["crm"]
+    assert src["crm"] in (region_pack / "NOTICE").read_text()
+
+
 def test_coarse_maxzoom_is_12(region_pack):
     for name in ("bathy-coarse.mbtiles", "dem-coarse.mbtiles"):
         with MBTiles.open(region_pack / name) as m:
@@ -340,3 +383,30 @@ def test_overview_has_empty_fine_files(tmp_path, monkeypatch):
         with MBTiles.open(root / name) as m:
             md = m.metadata()
         assert "maxzoom" in md and md["cheekymarine:pack"] == "bathy", name
+
+
+def test_all_cudem_water_region_builds(tmp_path, monkeypatch):
+    """Water all CUDEM, CRM only on land: bathy-coarse holds coverage alone (no contour, no band) and the pack
+    passes check."""
+    from chartpack.cli import main
+
+    monkeypatch.setattr(blocks, "FINE_RES_DEG", FINE)
+    monkeypatch.setattr(blocks, "COARSE_RES_DEG", COARSE)
+    region = _region_dir(tmp_path)
+    cache = tmp_path / "cache"
+    (cache / "cudem").mkdir(parents=True)
+    (cache / "cudem" / "urllist8483.txt").write_text(_urllist())
+    cudem_tif = tmp_path / "cudem.tif"
+    _write_tif(cudem_tif, _cudem_elev(west_of=SPLIT_LON), AREA)
+    for _, _, read in iter_blocks({NORTH}):
+        dest = crm_path(read, cache)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        _write_tif(dest, np.full((400, 400), 5.0, np.float32), AREA)  # CRM: land everywhere
+    real = blocks.read_window
+    monkeypatch.setattr(blocks, "read_window",
+                        lambda src, bbox: real(str(cudem_tif) if src.startswith("/vsicurl/") else src, bbox))
+    assert main(["build-bathy", str(region), str(tmp_path / "out"), "--cache", str(cache), "--work", str(tmp_path / "work")]) == 0
+    root = tmp_path / "out" / "bathy-blk-0.1.0"
+    assert main(["check", str(root)]) == 0
+    assert _layer_features(root / "bathy-coarse.mbtiles", "coverage")
+    assert not _layer_features(root / "bathy-coarse.mbtiles", "contour")
