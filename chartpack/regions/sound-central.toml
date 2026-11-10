@@ -1,0 +1,81 @@
+# Puget Sound from 47.45 N to 48.2 N (spec 4), replacing puget-north: Seattle, Lake Union, Lake Washington,
+# Jeff Head, Possession bar, Everett, Admiralty Inlet, upper Hood Canal. Its tiles run from 47.5172 N
+# (sound-south owns the row below) to 48.2247 N, and west to -123.3984 W.
+name = "sound-central"
+charts_version = "1.0.0"
+bathy_version = "1.0.0"
+bbox = [-123.25, 47.45, -122.1, 48.2]
+clip = "clip/canada-wa.geojson"
+
+# Every Active cell of bands 3 to 5 whose catalog polygon meets the owned tiles (zoom-10 tiles,
+# grid.toml), from `chartpack cells` and the catalog of 2026-11-09.
+[enc]
+band3 = ["US3WA1DF", "US3WA1DG", "US3WA1EF", "US3WA1EG"]
+band4 = [
+    "US4WA1GH", "US4WA1GI", "US4WA1GJ", "US4WA1GK", "US4WA1HI", "US4WA1HJ", "US4WA1HK", "US4WA1IG", "US4WA1IH",
+    "US4WA1II", "US4WA1IJ", "US4WA1IK",
+]
+band5 = [
+    "US5SEAEH", "US5SEAEI", "US5SEAEJ", "US5SEAEK", "US5SEAEL", "US5SEAEM", "US5SEAEN", "US5SEAFG", "US5SEAFH",
+    "US5SEAFI", "US5SEAFJ", "US5SEAFK", "US5SEAFL", "US5SEAFM", "US5SEAFN", "US5SEAGE", "US5SEAGF", "US5SEAGG",
+    "US5SEAGH", "US5SEAGI", "US5SEAGJ", "US5SEAGK", "US5SEAGL", "US5SEAGM", "US5SEAGN", "US5SEAHE", "US5SEAHF",
+    "US5SEAHG", "US5SEAHH", "US5SEAHI", "US5SEAHJ", "US5SEAHK", "US5SEAHL", "US5SEAHM", "US5SEAHN", "US5SEAIE",
+    "US5SEAIF", "US5SEAIG", "US5SEAIH", "US5SEAII", "US5SEAIJ", "US5SEAIK", "US5SEAIL", "US5SEAJH", "US5SEAJI",
+    "US5SEAJJ", "US5SEAJK", "US5SEAJL", "US5SEAKG", "US5SEAKH", "US5SEAKI", "US5SEAKJ", "US5SEAKK", "US5SEAKL",
+    "US5SEAKM", "US5SEAKN", "US5SEAKO", "US5SEALF", "US5SEALG", "US5SEALH", "US5SEALI", "US5SEALJ", "US5SEALK",
+    "US5SEALL", "US5SEALN", "US5SEAMF", "US5SEAMG", "US5SEAMH", "US5SEAMI", "US5SEAMJ", "US5SEAMK", "US5SEANF",
+    "US5SEANG", "US5SEANH", "US5SEANI", "US5SEANJ", "US5WA1BF", "US5WA1BG",
+]
+
+[bathy]
+sources = ["cudem", "crm"]
+dem_maxzoom = 14
+
+[datum]
+file = "datum/wa-stations.toml"
+
+[seabed]
+sources = ["enc", "usseabed", "usgs-cmecs"]
+cmecs_blocks = ["admiralty-inlet", "seattle", "burien"]  # the DS 935 blocks meeting the bbox
+
+[[render.views]]
+name = "everett"
+lon = -122.23
+lat = 47.98
+zooms = [11, 13, 15]
+
+[[render.views]]
+name = "possession-bar"
+lon = -122.37
+lat = 47.90
+zooms = [11, 13, 15]
+
+[[render.views]]
+name = "point-no-point"
+lon = -122.52
+lat = 47.92
+zooms = [11, 13, 15]
+
+[[render.views]]
+name = "jeff-head"
+lon = -122.47
+lat = 47.75
+zooms = [11, 13, 15]
+
+[[render.views]]
+name = "admiralty-inlet"  # inside the USGS CMECS Admiralty Inlet block
+lon = -122.74
+lat = 48.13
+zooms = [11, 13, 15]
+
+[[render.views]]
+name = "corner"  # where sound-central, north-sound and strait meet (spec 11)
+lon = -123.3
+lat = 48.2
+zooms = [11, 13, 15]
+
+[[render.views]]
+name = "lake-washington"
+lon = -122.26
+lat = 47.62
+zooms = [11, 13, 15]

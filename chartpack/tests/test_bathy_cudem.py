@@ -75,6 +75,18 @@ def test_read_window_outside_raises(fixtures_dir):
         read_window(str(fixtures_dir / "cudem_possession_bar.tif"), (-100.0, 30.0, -99.9, 30.1))
 
 
+def test_read_window_past_the_file_edge_is_nodata(fixtures_dir):
+    """A window that runs past the file (a CRM request reaching past CRM's -127 W or 49 N edge, if the WCS answers
+    with the overlap only) reads the overlap and pads the rest with nodata, so the build sees no depth there."""
+    fw, fs, fe, fn = -122.3846, 47.8954, -122.3754, 47.9046  # the fixture's extent
+    g = read_window(str(fixtures_dir / "cudem_possession_bar.tif"), (fw - 0.005, fs, fe, fn + 0.005))
+    assert g.transform[0] == pytest.approx(fw - 0.005, abs=1e-4) and g.transform[3] == pytest.approx(fn + 0.005, abs=1e-4)
+    rows, cols = g.data.shape
+    past = round(0.005 / g.transform[1])
+    assert (g.data[:, : past - 1] == g.nodata).all() and (g.data[: past - 1, :] == g.nodata).all()
+    assert (g.data[past + 1 :, past + 1 :] != g.nodata).any()
+
+
 @pytest.mark.online
 def test_vsicurl_window_is_small(fixtures_dir):
     lon, lat = -122.38, 47.90

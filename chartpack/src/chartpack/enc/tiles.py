@@ -86,8 +86,9 @@ def build_enc_mbtiles(
     """`seabed`: USGS survey features (seabed/usseabed.py, seabed/cmecs.py) that already carry their
     tippecanoe zooms; they join the seabed layer as they are, not quilted (spec 6.10).
     `zooms`: (minzoom, maxzoom) of the tippecanoe run, REGION_ZOOMS or OVERVIEW_ZOOMS.
-    `area`: where the quilt output is kept (a region pack's owned tiles plus a margin), so a cell spanning far
-    past the region does not fill tippecanoe's top zooms over its whole extent; None keeps it all."""
+    `area`: where the quilt output is kept (the owned tiles plus a margin; the overview: every owned tile), so a
+    cell spanning far past the region does not fill tippecanoe's top zooms over its whole extent; None keeps it
+    all."""
     out, work = Path(out), Path(work)
     work.mkdir(parents=True, exist_ok=True)
     out.parent.mkdir(parents=True, exist_ok=True)

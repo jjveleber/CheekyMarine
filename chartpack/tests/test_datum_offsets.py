@@ -1,12 +1,14 @@
 """NAVD88 to MLLW offsets per area from NOAA CO-OPS stations (plan 7, Task 13, #88)."""
 
 import dataclasses
+import hashlib
 import datetime
 import json
 import math
 import tomllib
 
 import numpy as np
+import shapely
 import pytest
 from osgeo import gdal, osr
 from shapely.geometry import box, mapping, shape
@@ -179,3 +181,53 @@ def test_grid_is_window_independent(wa):
     part = navd88_to_mllw_grid(wa.stations, (-122.6 + 100 * res, res, 0.0, 48.0 - 50 * res, 0.0, -res), (40, 70))
     np.testing.assert_array_equal(part, whole[50:90, 100:170])
     assert whole.dtype == np.float32
+
+
+def test_provenance_records_the_lake_mask(test_region, tmp_path):
+    """The lake mask changes depths too (none drawn there): the pack records its name and hash."""
+    region = _lake_region(test_region, tmp_path, mapping(box(-122.3, 47.6, -122.29, 47.61)))
+    text = region.datum_file.read_text()
+    region.datum_file.write_text('lake_mask_file = "mask.geojson"\n' + text)
+    (tmp_path / "mask.geojson").write_text(json.dumps({"type": "FeatureCollection", "features": [
+        {"type": "Feature", "properties": {"name": "Other"}, "geometry": mapping(box(-122.2, 47.6, -122.19, 47.61))}]}))
+    got = datum_provenance(region.datum_file)
+    assert got["lake_mask_file"] == "mask.geojson"
+    assert got["lake_mask_sha256"] == hashlib.sha256((tmp_path / "mask.geojson").read_bytes()).hexdigest()
+    assert [shape(g) for g in load_datum(region.datum_file).lake_mask] == [box(-122.2, 47.6, -122.19, 47.61)]
+
+
+def test_wave1_lake_mask(wa, regions_dir):
+    """The shipped lake mask: polygons inside the owned tiles, outside the Canada clip, apart from the lakes that
+    keep a datum rule (lakes.geojson)."""
+    from chartpack.grid import load_grid, owned_tiles, tiles_area
+    from chartpack.region import load_region
+
+    assert wa.lake_mask
+    mask = shapely.union_all([shape(g) for g in wa.lake_mask])
+    datum_lakes = shapely.union_all([shape(g) for g in wa.lake_areas.values()])
+    clip = json.loads((regions_dir / "clip" / "canada-wa.geojson").read_text())
+    owned = set().union(*(owned_tiles(load_region(regions_dir / f"{n}.toml"), regions_dir)
+                          for n in load_grid(regions_dir / "grid.toml")))
+    assert not mask.intersects(datum_lakes)
+    assert tiles_area(owned).buffer(1e-6).covers(mask)
+    assert mask.intersection(shape(clip["geometry"])).area < 1e-8  # about 100 m2: float noise along the border
+
+
+MASKED = {"Lake Sammamish": (-122.09, 47.59), "Lake Whatcom": (-122.308, 48.719), "Lake Crescent": (-123.783, 48.072),
+          "Ozette Lake": (-124.63, 48.10), "Lake Quinault": (-123.86, 47.47)}
+TIDAL = {"Crescent Harbor": (-122.614, 48.302), "Port Angeles lagoon": (-123.469, 48.133),
+         "Crockett Lake": (-122.662, 48.1667), "Blind Slough": (-122.501, 48.448), "Old Channel": (-122.5079, 48.448),
+         "Joe Leary Slough": (-122.474, 48.518), "Alder Creek": (-123.927, 46.181), "Tansy Creek": (-123.926, 46.186),
+         "Jetty Lagoon": (-123.987, 46.214), "Keyport Lagoon": (-122.6206, 47.6959),
+         "Little Clam Bay": (-122.5477, 47.5638), "Whiteman Cove": (-122.8039, 47.2202)}
+
+
+def test_wave1_lake_mask_holds_the_inland_lakes_not_tidal_water(wa):
+    """The review's inland lakes are masked; tidal water charted or ruled as such (PR #105) is not."""
+    from shapely.geometry import Point
+
+    mask = shapely.union_all([shape(g) for g in wa.lake_mask])
+    for name, (lon, lat) in MASKED.items():
+        assert mask.contains(Point(lon, lat)), name
+    for name, (lon, lat) in TIDAL.items():
+        assert not mask.intersects(Point(lon, lat).buffer(0.0005)), name

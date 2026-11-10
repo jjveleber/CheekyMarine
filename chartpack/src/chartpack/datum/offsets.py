@@ -40,11 +40,13 @@ class Datum:
     stations: list[Station]
     lakes: list[Lake]
     lake_areas: dict[str, dict] = field(default_factory=dict)  # lake name -> GeoJSON geometry (lon/lat)
+    lake_mask: list[dict] = field(default_factory=list)  # GeoJSON geometries of the lakes with no datum rule
 
 
 def load_datum(path: Path) -> Datum:
     """The stations and lakes of a datum file such as regions/datum/wa-stations.toml. The lake polygons come
-    from the GeoJSON named by its lakes_file (relative to the datum file), one Feature per [[lakes]] name."""
+    from the GeoJSON named by its lakes_file (relative to the datum file), one Feature per [[lakes]] name. The
+    optional lake_mask_file names a GeoJSON of the lakes that have no datum rule: the build draws no depth there."""
     path = Path(path)
     with path.open("rb") as f:
         data = tomllib.load(f)
@@ -58,19 +60,24 @@ def load_datum(path: Path) -> Datum:
     if set(areas) != {lake.name for lake in lakes}:
         names = sorted(lake.name for lake in lakes)
         raise ValueError(f"{path}: lake polygons {sorted(areas)} do not match [[lakes]] {names}")
-    return Datum(stations, lakes, areas)
+    mask = []
+    if "lake_mask_file" in data:
+        with (path.parent / data["lake_mask_file"]).open() as f:
+            mask = [feat["geometry"] for feat in json.load(f)["features"]]
+    return Datum(stations, lakes, areas, mask)
 
 
 def datum_provenance(path: Path) -> dict:
-    """The datum file's name and sha256, plus its lakes_file's name and sha256 when it has one, for the pack
-    metadata: both files change depths."""
+    """The datum file's name and sha256, plus the name and sha256 of its lakes_file and lake_mask_file when it
+    has them, for the pack metadata: all three change depths."""
     path = Path(path)
     with path.open("rb") as f:
-        lakes_file = tomllib.load(f).get("lakes_file")
+        data = tomllib.load(f)
     out = {"file": path.name, "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
-    if lakes_file is not None:
-        lakes = path.parent / lakes_file
-        out |= {"lakes_file": lakes.name, "lakes_sha256": hashlib.sha256(lakes.read_bytes()).hexdigest()}
+    for key, prefix in (("lakes_file", "lakes"), ("lake_mask_file", "lake_mask")):
+        if key in data:
+            other = path.parent / data[key]
+            out |= {key: other.name, f"{prefix}_sha256": hashlib.sha256(other.read_bytes()).hexdigest()}
     return out
 
 

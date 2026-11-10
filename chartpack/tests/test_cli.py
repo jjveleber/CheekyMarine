@@ -25,11 +25,47 @@ def test_cells_and_fetch_enc(tmp_path, fixtures_dir, regions_dir, monkeypatch, c
         return dest
 
     monkeypatch.setattr(cli, "download", fake_download)
-    region = str(regions_dir / "test-cell.toml")
+    region = str(_grid_region(tmp_path, regions_dir))  # cells reads the grid beside the region file
     assert main(["cells", region, "--band", "4", "--cache", str(tmp_path)]) == 0
     assert "US4WA1HK" in capsys.readouterr().out.split()
     assert main(["fetch-enc", region, "--cache", str(tmp_path)]) == 0
     assert capsys.readouterr().out == "US4WA1HK 1.3 2026-09-09\n"
+
+
+def _fixture_catalog(monkeypatch, fixtures_dir):
+    """cli.download serves the catalog excerpt for the catalog url."""
+    from chartpack import cli
+
+    def fake_download(url, dest, *, expected_size=None, timeout=120):
+        assert url.endswith(".xml"), url
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy(fixtures_dir / "ENCProdCat_excerpt.xml", dest)
+        return dest
+
+    monkeypatch.setattr(cli, "download", fake_download)
+
+
+def test_cells_selects_over_the_owned_tiles(tmp_path, fixtures_dir, regions_dir, monkeypatch, capsys):
+    """A region box that is a sliver of its owned zoom-10 tile column: cells lists the cells meeting the owned tiles,
+    not only the box."""
+    _fixture_catalog(monkeypatch, fixtures_dir)
+    region = _grid_region(tmp_path, regions_dir)
+    region.write_text(region.read_text().replace("bbox = [-122.4, 47.7, -122.1, 48.0]", "bbox = [-122.4, 47.7, -122.39, 47.71]"))
+    assert main(["cells", str(region), "--band", "5", "--cache", str(tmp_path / "cache")]) == 0
+    assert "US5SEAEH" in capsys.readouterr().out.split()  # in the owned tile (163, 357), south of the box
+
+
+def test_cells_reproduces_the_wave1_lists(tmp_path, fixtures_dir, regions_dir, monkeypatch, capsys):
+    """The documented refresh (chartpack cells per region and band) gives the committed lists, the overview's over
+    every owned tile. The fixture holds every cell the regions name, so this holds against it."""
+    from chartpack.region import load_region
+
+    _fixture_catalog(monkeypatch, fixtures_dir)
+    for name in ["sound-south", "sound-central", "north-sound", "strait", "wa-coast", "overview"]:
+        path = regions_dir / f"{name}.toml"
+        for band, names in load_region(path).cells.items():
+            assert main(["cells", str(path), "--band", str(band), "--cache", str(tmp_path / "cache")]) == 0
+            assert capsys.readouterr().out.split() == names, (name, band)
 
 
 def _grid_region(tmp_path, regions_dir):
@@ -50,8 +86,10 @@ def test_build_enc_zoom_range_reaches_tippecanoe(tmp_path, fixtures_dir, regions
     (tmp_path / "cache" / "enc").mkdir(parents=True)
     shutil.copy(fixtures_dir / "US4WA1HK.zip", tmp_path / "cache" / "enc" / "US4WA1HK-1.3.zip")
     region = _grid_region(tmp_path, regions_dir)
-    if overview:
-        region.write_text("overview = true\n" + region.read_text().replace('sources = ["cudem", "crm"]', 'sources = ["crm"]'))
+    if overview:  # beside the grid's one region pack, whose owned tiles crop it
+        region = region.with_name("ov.toml")
+        region.write_text("overview = true\n" + (tmp_path / "regions" / "test-cell.toml").read_text()
+                          .replace('name = "test-cell"', 'name = "ov"').replace('sources = ["cudem", "crm"]', 'sources = ["crm"]'))
     cmds = []
     monkeypatch.setattr(tiles, "run", cmds.append)
     with pytest.raises(Exception):  # the patched run writes no mbtiles: only the commands matter
@@ -106,6 +144,39 @@ def test_build_enc_crops_band1_to_the_owned_tiles(tmp_path, fixtures_dir, region
               (tmp_path / "work" / "tippecanoe" / "depare.geojsonseq").read_text().splitlines()
               if json.loads(line)["properties"]["cell"] == "US1AAAAA"]
     assert depare and all(g.bounds[0] >= w - BLOCK_MARGIN_DEG - 1e-9 for g in depare)
+
+
+def test_build_enc_crops_the_overview_to_every_owned_tile(tmp_path, fixtures_dir, regions_dir, monkeypatch):
+    """The overview owns no zoom-10 tile, but its quilt output is cut to the union of every owned tile plus
+    BLOCK_MARGIN_DEG: a band 1 feature in Alaska does not reach tippecanoe."""
+    import json
+
+    from chartpack import cli
+    from chartpack.enc import tiles
+    from chartpack.enc.reader import CellMeta, Feature
+    from chartpack.grid import GRID_ZOOM, owned_tiles, tile_bounds
+    from chartpack.region import load_region
+    from shapely.geometry import box, mapping
+
+    (tmp_path / "cache" / "enc").mkdir(parents=True)
+    (tmp_path / "cache" / "enc" / "US1AAAAA-1.0.zip").touch()
+    pack = _grid_region(tmp_path, regions_dir)
+    overview = tmp_path / "regions" / "ov.toml"
+    overview.write_text("overview = true\n" + pack.read_text().replace('name = "test-cell"', 'name = "ov"')
+                        .replace('sources = ["cudem", "crm"]', 'sources = ["crm"]')
+                        .replace('band4 = ["US4WA1HK"]', 'band1 = ["US1AAAAA"]'))
+    w, s, e, n = tile_bounds(GRID_ZOOM, *min(owned_tiles(load_region(pack), pack.parent)))
+    points = {"inside": ((w + e) / 2, (s + n) / 2), "alaska": (-150.0, 61.0)}
+    band1 = (CellMeta("US1AAAAA", 1, 1, 0, "2026-01-01", mapping(box(-170, 10, -100, 65))),
+             [Feature("hazard", {"type": "Point", "coordinates": list(p)},
+                      {"cell": "US1AAAAA", "band": 1, "class": "OBSTRN", "OBJNAM": name}) for name, p in points.items()])
+    monkeypatch.setattr(cli, "read_cell", lambda path: band1)
+    monkeypatch.setattr(tiles, "run", lambda cmd: None)
+    with pytest.raises(Exception):  # the patched run writes no mbtiles: only the tippecanoe input matters
+        main(["build-enc", str(overview), str(tmp_path / "out"), "--cache", str(tmp_path / "cache"),
+              "--work", str(tmp_path / "work")])
+    hazards = [json.loads(line) for line in (tmp_path / "work" / "tippecanoe" / "hazard.geojsonseq").read_text().splitlines()]
+    assert {f["properties"]["OBJNAM"] for f in hazards} == {"inside"}
 
 
 def test_build_enc_uses_cached_zip(tmp_path, fixtures_dir, regions_dir):
@@ -393,6 +464,115 @@ def test_build_bathy_enc_fallback_leaves_out_the_clip(tmp_path, fixtures_dir, re
     assert all(line.intersection(clip).length < 1e-9 for line in enc)
 
 
+def _mask_lake(region, lake):
+    """Make the lake mask file of the region's datum file (a copy of regions/datum) hold the polygon `lake` alone."""
+    import json
+    import tomllib
+
+    from shapely.geometry import mapping
+
+    datum = region.parent / "datum" / "wa-stations.toml"
+    with datum.open("rb") as f:
+        mask = datum.parent / tomllib.load(f)["lake_mask_file"]
+    mask.write_text(json.dumps({"type": "FeatureCollection", "features": [
+        {"type": "Feature", "properties": {"name": "Test Lake"}, "geometry": mapping(lake)}]}))
+
+
+@pytest.mark.parametrize("work_dir", ["tippecanoe", "tippecanoe-coarse"])
+def test_build_bathy_masks_lakes_without_a_datum_rule(tmp_path, fixtures_dir, regions_dir, monkeypatch, capsys,
+                                                      zero_geoid, work_dir):
+    """A contour crossing a lake of the datum file's lake mask keeps only the part outside it, in the fine and the
+    coarse layers, and no band reaches inside. The coarse case has no CUDEM, so CRM draws the lake. (Coverage is
+    polygonized at COVERAGE_CELL_DEG, wider than this lake, so it follows the mask only to that size, as for the
+    clip: test_clip_removes_water_in_block.)"""
+    import json
+
+    from shapely.geometry import box, shape
+
+    from chartpack.bathy import blocks
+
+    lake = box(-122.382, 47.898, -122.378, 47.902)  # the middle of the fixture
+    region = _bathy_region(tmp_path, regions_dir)
+    fine = work_dir == "tippecanoe"
+    if not fine:
+        region.write_text(region.read_text().replace('sources = ["cudem", "crm"]', 'sources = ["crm"]'))
+    cache = _bathy_cache(tmp_path, fixtures_dir, region, monkeypatch,
+                         ["https://example.test/ncei19_n48x00_w122x50_2023v1.tif"] if fine else [])
+    monkeypatch.setattr(blocks, "read_window", lambda src, bbox: _fixture_window(fixtures_dir, bbox))
+
+    def build(work):
+        assert main(["build-bathy", str(region), str(tmp_path / work), "--cache", str(cache), "--work",
+                     str(tmp_path / work / "work")]) == 0
+        capsys.readouterr()
+        return {layer: [shape(json.loads(line)["geometry"]) for line in
+                        (tmp_path / work / "work" / work_dir / f"{layer}.geojsonseq").read_text().splitlines()]
+                for layer in ("contour", "band")}
+
+    before = build("before")
+    assert any(g.intersection(lake).length > 0 for g in before["contour"])  # the lake has contours unmasked
+    _mask_lake(region, lake)
+    after = build("after")
+    inner = lake.buffer(-0.0005)  # a cell or two in from the edge, past the grids' cell placement
+    assert after["contour"] and any(g.intersects(lake.buffer(0.0005)) for g in after["contour"])
+    for layer, geoms in after.items():
+        assert all(g.intersection(inner).is_empty for g in geoms), layer
+
+
+def test_build_bathy_masks_lakes_in_the_overview(tmp_path, regions_dir, monkeypatch, zero_geoid):
+    """The overview's one CRM read is cut by the same lake mask as the region packs."""
+    from shapely.geometry import box
+
+    from chartpack import cli
+    from chartpack.bathy.blocks import overview_bounds
+    from chartpack.bathy.crm import crm_path
+
+    region = _bathy_region(tmp_path, regions_dir)
+    region.write_text("overview = true\n" + region.read_text().replace('sources = ["cudem", "crm"]', 'sources = ["crm"]'))
+    lake = box(-122.382, 47.898, -122.378, 47.902)
+    _mask_lake(region, lake)
+    path = crm_path(overview_bounds((-122.3846, 47.8954, -122.3754, 47.9046)), tmp_path / "cache")
+    path.parent.mkdir(parents=True)
+    path.touch()
+    clips = []
+
+    def fake_overview(bbox, crm, datum, clip):
+        clips.append(clip)
+        raise RuntimeError("stop")
+
+    monkeypatch.setattr(cli, "build_overview", fake_overview)
+    with pytest.raises(RuntimeError, match="stop"):
+        main(["build-bathy", str(region), str(tmp_path / "out"), "--cache", str(tmp_path / "cache"),
+              "--work", str(tmp_path / "work")])
+    assert clips[0] is not None and clips[0].covers(lake)
+
+
+def test_build_bathy_tile_outside_crm_has_no_coarse_layer(tmp_path, fixtures_dir, regions_dir, monkeypatch, capsys,
+                                                           zero_geoid):
+    """A tile wholly outside CRM's coverage: fetch-bathy asks nothing for it and build-bathy draws its CUDEM fine
+    layers, with no coarse layer instead of an error."""
+    import json
+
+    from chartpack import cli
+    from chartpack.bathy import blocks, crm
+
+    region = _bathy_region(tmp_path, regions_dir)
+    cache = _bathy_cache(tmp_path, fixtures_dir, region, monkeypatch, ["https://example.test/ncei19_n48x00_w122x50_2023v1.tif"])
+    shutil.rmtree(cache / "crm")
+    monkeypatch.setattr(crm, "CRM_BOUNDS", (-127.0, 44.0, -126.0, 45.0))  # far from the test tile
+    monkeypatch.setattr(crm, "download", lambda *a, **k: pytest.fail("nothing is asked of CRM"))
+    monkeypatch.setattr(cli, "download", lambda url, dest, **k: dest)  # the cached CUDEM list
+    monkeypatch.setattr(geoid, "fetch_grids", lambda p: None)
+    assert main(["fetch-bathy", str(region), "--cache", str(cache)]) == 0
+    monkeypatch.setattr(blocks, "read_window", lambda src, bbox: (
+        _fixture_window(fixtures_dir, bbox) if src.startswith("/vsicurl/") else pytest.fail(f"CRM read: {src}")))
+    work = tmp_path / "work"
+    assert main(["build-bathy", str(region), str(tmp_path / "out"), "--cache", str(cache), "--work", str(work)]) == 0
+    capsys.readouterr()
+    assert (work / "tippecanoe" / "contour.geojsonseq").stat().st_size > 0
+    coarse = work / "tippecanoe-coarse" / "contour.geojsonseq"
+    assert not coarse.exists() or not [json.loads(line) for line in coarse.read_text().splitlines()]
+
+
 def test_build_bathy_crm_only_writes_no_fine_layers(tmp_path, fixtures_dir, regions_dir, monkeypatch, capsys,
                                                     zero_geoid):
     """sources = ["crm"], no CUDEM list in the cache: the fine layer files stay absent, all four bathy files exist."""
@@ -493,3 +673,37 @@ def test_build_enc_merges_usgs_seabed(tmp_path, fixtures_dir, regions_dir):
     legend = json.loads((root / "legend.json").read_text())
     assert {s for e in legend["entries"] for s in e["sources"]} == {"enc", "usseabed", "usgs-cmecs"}
     assert main(["check", str(root), "--enc-cache", str(cache)]) == 0
+
+
+def test_build_enc_reads_usgs_seabed_over_the_owned_tiles(tmp_path, fixtures_dir, regions_dir, monkeypatch):
+    """A region owns whole zoom-10 tiles that reach past its bbox (sound-south owns 47.45 to 47.5172 N): USGS seabed
+    features in that strip must reach the pack input, or they land in no pack."""
+    import shutil
+
+    from chartpack import cli
+    from chartpack.grid import GRID_ZOOM, owned_tiles, tile_bounds
+    from chartpack.region import load_region
+    from shapely import union_all
+    from shapely.geometry import box, shape
+
+    path = _grid_region(tmp_path, regions_dir)
+    narrow = "bbox = [-122.4, 47.7, -122.39, 48.0]"  # a sliver of the west tile column (-122.695 to -122.344 W)
+    path.write_text(path.read_text().replace("bbox = [-122.4, 47.7, -122.1, 48.0]", narrow)
+                    + '\n[seabed]\nsources = ["enc", "usseabed", "usgs-cmecs"]\ncmecs_blocks = ["seattle"]\n')
+    region = load_region(path)
+    owned = union_all([box(*tile_bounds(GRID_ZOOM, *t)) for t in owned_tiles(region, path.parent)])
+    cache = tmp_path / "cache"
+    (cache / "enc").mkdir(parents=True)
+    shutil.copy(fixtures_dir / "US4WA1HK.zip", cache / "enc" / "US4WA1HK-1.3.zip")
+    shutil.copytree(fixtures_dir / "seabed", cache / "seabed")
+    got = []
+
+    def fake_build(cells, out, *, seabed, **kw):
+        got.extend(seabed)
+        raise RuntimeError("stop after the seabed read")
+
+    monkeypatch.setattr(cli, "build_enc_mbtiles", fake_build)
+    with pytest.raises(RuntimeError, match="seabed read"):
+        main(["build-enc", str(path), str(tmp_path / "out"), "--cache", str(cache), "--work", str(tmp_path / "work")])
+    strip = [f for f in got if shape(f.geometry).intersects(owned) and not shape(f.geometry).intersects(box(*region.bbox))]
+    assert {f.props["src"] for f in strip} == {"usseabed", "usgs-cmecs"}

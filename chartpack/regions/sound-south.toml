@@ -1,0 +1,39 @@
+# Puget Sound south of 47.45 N (spec 4): Tacoma Narrows, Commencement Bay, Carr and Case inlets, Olympia,
+# lower Hood Canal. It owns the zoom-10 row holding 47.45 N (grid.toml), so its tiles reach 47.5172 N.
+name = "sound-south"
+charts_version = "1.0.0"
+bathy_version = "1.0.0"
+bbox = [-123.25, 46.95, -122.1, 47.45]
+clip = "clip/canada-wa.geojson"
+
+# Every Active cell of bands 3 to 5 whose catalog polygon meets the owned tiles (zoom-10 tiles,
+# grid.toml), from `chartpack cells` and the catalog of 2026-11-09.
+[enc]
+band3 = ["US3WA1DF", "US3WA1DG"]
+band4 = [
+    "US4WA1EG", "US4WA1EI", "US4WA1EJ", "US4WA1FH", "US4WA1FI", "US4WA1FJ", "US4WA1FK", "US4WA1GH", "US4WA1GI",
+    "US4WA1GJ", "US4WA1GK",
+]
+band5 = [
+    "US5OLMBC", "US5OLMBD", "US5OLMCB", "US5OLMCC", "US5OLMCD", "US5OLMCE", "US5OLMCF", "US5OLMCG", "US5OLMDA",
+    "US5OLMDB", "US5OLMDC", "US5OLMDD", "US5OLMDE", "US5OLMDF", "US5OLMDG", "US5OLMDH", "US5SEAAK", "US5SEABI",
+    "US5SEABJ", "US5SEABK", "US5SEABL", "US5SEACI", "US5SEACJ", "US5SEACK", "US5SEACL", "US5SEADJ", "US5SEADK",
+    "US5SEADL", "US5SEAEH", "US5SEAEI", "US5SEAEJ", "US5SEAEK", "US5SEAEL", "US5SEAEM", "US5SEAEN",
+]
+
+[bathy]
+sources = ["cudem", "crm"]
+dem_maxzoom = 14
+
+[datum]
+file = "datum/wa-stations.toml"
+
+[seabed]
+sources = ["enc", "usseabed", "usgs-cmecs"]
+cmecs_blocks = ["tacoma", "burien"]  # the DS 935 blocks meeting the bbox (Burien also in sound-central)
+
+[[render.views]]
+name = "tacoma-narrows"
+lon = -122.55
+lat = 47.27
+zooms = [11, 13, 15]

@@ -1,19 +1,196 @@
-from shapely.geometry import Polygon, box
+import json
+import math
 
-from chartpack.enc.catalog import parse_catalog
+import shapely
+from shapely.geometry import box, shape
+
+from chartpack.enc.catalog import _intersects, parse_catalog
+from chartpack.enc.tiles import OVERVIEW_ZOOMS
+from chartpack.grid import GRID_ZOOM, load_grid, owned_tiles, seams, tile_bounds, tiles_meeting
 from chartpack.region import load_region
 
+WAVE1 = ["sound-south", "sound-central", "north-sound", "strait", "wa-coast", "overview"]
+BANDS = {"sound-south": (3, 4, 5), "sound-central": (3, 4, 5), "north-sound": (3, 4, 5),
+         "strait": (1, 2, 3, 4, 5), "wa-coast": (1, 2, 3, 4, 5), "overview": (1, 2, 3)}
+VIEWS = {
+    "sound-south": {"tacoma-narrows"},
+    "sound-central": {"everett", "possession-bar", "point-no-point", "jeff-head", "admiralty-inlet", "corner",
+                      "lake-washington"},
+    "north-sound": {"friday-harbor"},
+    "strait": {"port-angeles"},
+    "wa-coast": {"neah-bay-grounds"},
+    "overview": {"strait-and-coast"},
+}
 
-def _shape(cell):
-    return Polygon([(lon, lat) for lat, lon in cell.polygon])
+
+def _regions(regions_dir):
+    return {name: load_region(regions_dir / f"{name}.toml") for name in WAVE1}
 
 
-def test_puget_north_region_is_consistent(regions_dir, fixtures_dir):
-    r = load_region(regions_dir / "puget-north.toml")
-    cat = parse_catalog((fixtures_dir / "ENCProdCat_excerpt.xml").read_bytes())  # holds every cell the region names
-    for band, names in r.cells.items():
-        for n in names:
-            assert cat[n].status == "Active" and cat[n].band == band and _shape(cat[n]).intersects(box(*r.bbox)), n
-    assert set(r.cells[4]) >= {"US4WA1GJ", "US4WA1GK", "US4WA1HJ", "US4WA1HK", "US4WA1II", "US4WA1IJ", "US4WA1IK"}
-    assert r.cells[3] == ["US3WA1DF", "US3WA1DG", "US3WA1EF", "US3WA1EG"]
-    assert len(r.views) == 5 and {v.name for v in r.views} == {"everett", "possession-bar", "point-no-point", "jeff-head", "admiralty-inlet"}
+def _owned(regions_dir):
+    regions = _regions(regions_dir)
+    return {name: owned_tiles(regions[name], regions_dir) for name in load_grid(regions_dir / "grid.toml")}
+
+
+def _area(tiles):
+    return shapely.union_all([box(*tile_bounds(GRID_ZOOM, *t)) for t in tiles])
+
+
+def _tile_of(lon, lat):
+    n = 2**GRID_ZOOM
+    y = (1 - math.asinh(math.tan(math.radians(lat))) / math.pi) / 2 * n
+    return math.floor((lon + 180.0) / 360.0 * n), math.floor(y)
+
+
+def test_wave1_regions_load(regions_dir):
+    regions = _regions(regions_dir)
+    assert [r.name for r in regions.values()] == WAVE1
+    for r in regions.values():
+        assert (r.charts_version, r.bathy_version) == ("1.0.0", "1.0.0"), r.name
+        assert r.clip == regions_dir / "clip/canada-wa.geojson", r.name
+        assert r.datum_file == regions_dir / "datum/wa-stations.toml", r.name
+        assert r.overview == (r.name == "overview"), r.name
+    assert load_grid(regions_dir / "grid.toml") == WAVE1[:-1]
+
+
+def test_puget_north_is_gone(regions_dir):
+    assert not (regions_dir / "puget-north.toml").exists()
+    assert "puget-north" not in load_grid(regions_dir / "grid.toml")
+
+
+def test_global_caps(regions_dir):
+    assert {r.name: r.dem_maxzoom for r in _regions(regions_dir).values()} == {name: 14 for name in WAVE1}
+
+
+def test_region_packs_list_both_bathy_sources(regions_dir):
+    """Every region pack reads CUDEM, then CRM where CUDEM is absent; the overview is CRM only (load_region)."""
+    for r in _regions(regions_dir).values():
+        if r.overview:
+            assert r.bathy_sources == ["crm"]
+        else:
+            assert (r.bathy_sources, r.coarse_fallback) == (["cudem", "crm"], "crm"), r.name
+
+
+def test_every_box_tile_is_owned_or_canadian(regions_dir):
+    owned = _owned(regions_dir)
+    clip_path = regions_dir / "clip/canada-wa.geojson"
+    clip = shape(json.loads(clip_path.read_text())["geometry"])
+    every = set().union(*owned.values())
+    assert sum(len(t) for t in owned.values()) == len(every)  # no tile has two owners
+    for r in _regions(regions_dir).values():
+        if r.overview:
+            continue
+        for tile in tiles_meeting(r.bbox):
+            assert tile in every or clip.contains(box(*tile_bounds(GRID_ZOOM, *tile))), (r.name, tile)
+
+
+def test_no_region_owns_nothing(regions_dir):
+    for name, tiles in _owned(regions_dir).items():
+        assert tiles, name
+
+
+def test_views_inside_owned_tiles(regions_dir):
+    owned = _owned(regions_dir)
+    for r in _regions(regions_dir).values():
+        assert {v.name for v in r.views} == VIEWS[r.name], r.name
+        for v in r.views:
+            if r.overview:  # owns no grid tile: inside its bbox, at its own zooms
+                w, s, e, n = r.bbox
+                assert w < v.lon < e and s < v.lat < n, v.name
+                assert all(OVERVIEW_ZOOMS[0] <= z <= OVERVIEW_ZOOMS[1] for z in v.zooms), v.name
+            else:
+                assert _tile_of(v.lon, v.lat) in owned[r.name], (r.name, v.name)
+
+
+def test_overview_lists_low_bands_only(regions_dir):
+    r = load_region(regions_dir / "overview.toml")
+    assert r.overview and owned_tiles(r, regions_dir) is None
+    assert sorted(r.cells) == [1, 2, 3] and all(r.cells.values())
+
+
+def test_wave1_cells_match_catalog(regions_dir, fixtures_dir):
+    """Each named cell is Active, of its band and meets the owned tiles (the overview: all of them); and every
+    Active fixture cell of the region's bands meeting them is named. The fixture holds every cell the regions name."""
+    cat = parse_catalog((fixtures_dir / "ENCProdCat_excerpt.xml").read_bytes())
+    owned = _owned(regions_dir)
+    areas = {name: _area(tiles) for name, tiles in owned.items()}
+    areas["overview"] = _area(set().union(*owned.values()))
+    for r in _regions(regions_dir).values():
+        assert sorted(r.cells) == list(BANDS[r.name]), r.name
+        for band, names in r.cells.items():
+            assert names == sorted(set(names)), (r.name, band)
+            for n in names:
+                assert cat[n].status == "Active" and cat[n].band == band and _intersects(cat[n], areas[r.name]), n
+            meeting = {c.name for c in cat.values()
+                       if c.band == band and c.status == "Active" and _intersects(c, areas[r.name])}
+            assert meeting <= set(names), (r.name, band, sorted(meeting - set(names)))
+    central = load_region(regions_dir / "sound-central.toml")
+    assert central.cells[3] == ["US3WA1DF", "US3WA1DG", "US3WA1EF", "US3WA1EG"]
+    assert set(central.cells[4]) >= {"US4WA1GJ", "US4WA1GK", "US4WA1HJ", "US4WA1HK", "US4WA1II", "US4WA1IJ", "US4WA1IK"}
+
+
+def test_seams_printed(regions_dir):
+    """seams() gives each pair's shared tile lines; the Sound splits at the zoom-10 rows next to 47.45 N and 48.2 N."""
+    got = seams(_owned(regions_dir))
+    assert all(a != b for a, b in got)
+    (south,) = got[("sound-south", "sound-central")]
+    (north,) = got[("sound-central", "north-sound")]
+    for line, lat in ((south, 47.5172), (north, 48.2247)):
+        (w, s), (e, n) = line
+        assert abs(s - lat) < 1e-4 and abs(n - lat) < 1e-4 and w < e
+    for line in [ln for lines in got.values() for ln in lines]:
+        (w, s), (e, n) = line
+        assert (w == e) != (s == n)  # each line runs along a tile row or column
+
+
+def test_seams_merges_runs_and_keys_pairs_in_order():
+    a = {(0, 0), (1, 0)}
+    b = {(0, 1), (1, 1), (2, 0)}
+    got = seams({"a": a, "b": b})
+    assert set(got) == {("a", "b")}
+    w0, s0, _, n0 = tile_bounds(GRID_ZOOM, 0, 0)
+    e1 = tile_bounds(GRID_ZOOM, 1, 0)[2]
+    assert sorted(got[("a", "b")]) == sorted([
+        ((w0, s0), (e1, s0)),  # under row 0: one run over two tiles
+        ((e1, s0), (e1, n0)),  # a's tile (1, 0) against b's tile (2, 0)
+    ])
+
+
+
+def test_overview_bbox_holds_every_owned_tile(regions_dir):
+    """The overview's one CRM read (overview_bounds of its bbox) covers every zoom-10 tile a region pack owns, so
+    no owned water has depth at zoom 10 but none at zoom 6 to 9."""
+    w, s, e, n = load_region(regions_dir / "overview.toml").bbox
+    tw, ts, te, tn = _area(set().union(*_owned(regions_dir).values())).bounds
+    assert w <= tw and s <= ts and e >= te and n >= tn, ((w, s, e, n), (tw, ts, te, tn))
+
+
+CRM_VOL8 = (-127.0, 44.0, -121.75, 49.0)  # W, S, E, N: what CRM volume 8 fills (spec 7)
+
+
+def test_every_crm_request_meets_crm(regions_dir):
+    """Every CRM request of wave 1 (one per owned tile, over its read bounds, and the overview's one read) overlaps
+    CRM volume 8, so none is wholly outside it: read_window raises on a window wholly outside its file. Some reach
+    past -127 W or 49 N; that part reads as nodata (test_read_window_past_the_file_edge_is_nodata)."""
+    from chartpack.bathy.blocks import iter_blocks, overview_bounds
+
+    owned = _owned(regions_dir)
+    reads = [read for tiles in owned.values() for _, _, read in iter_blocks(tiles)]
+    reads.append(overview_bounds(load_region(regions_dir / "overview.toml").bbox))
+    cw, cs, ce, cn = CRM_VOL8
+    for w, s, e, n in reads:
+        assert w < ce and e > cw and s < cn and n > cs, (w, s, e, n)
+
+
+def test_wa_coast_reaches_the_sound_column(regions_dir):
+    """wa-coast's east edge is the -123.3984 W column line, the west edge of sound-south and sound-central, so
+    the column from -123.75 W to it south of the strait is wa-coast: Raymond on the Willapa River, the Chehalis
+    above Cosmopolis and the Columbia at Skamokawa."""
+    owned = _owned(regions_dir)
+    for lon, lat in ((-123.73, 46.686), (-123.70, 46.97), (-123.455, 46.27)):
+        assert _tile_of(lon, lat) in owned["wa-coast"], (lon, lat)
+    south = _area(owned["sound-south"]).bounds  # W, S, E, N
+    assert load_region(regions_dir / "wa-coast.toml").bbox[2] == south[0]
+    got = seams(owned)
+    assert got[("sound-south", "wa-coast")] == [((south[0], south[1]), (south[0], south[3]))]
+    assert ("sound-central", "wa-coast") in got

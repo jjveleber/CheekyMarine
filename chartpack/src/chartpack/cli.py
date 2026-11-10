@@ -23,6 +23,7 @@ from chartpack.bathy.blocks import (
     overview_bounds,
 )
 from chartpack.bathy.crm import crm_path, crm_tile_requests, crm_wcs_url, fetch_crm
+from chartpack.bathy.crm import crm_request as crm_request_bounds  # crm_request names the metadata string below
 from chartpack.bathy.cudem import URLLIST, parse_urllist, tiles_for_bbox
 from chartpack.bathy.dem import build_dem_mbtiles, empty_dem_mbtiles
 from chartpack.bathy.tiles import (
@@ -36,11 +37,12 @@ from chartpack.bathy.tiles import (
 )
 from chartpack.cache import download
 from chartpack.datum import geoid
-from chartpack.enc.catalog import CATALOG_URL, cells_in_bbox, parse_catalog
+from chartpack.datum.offsets import load_datum
+from chartpack.enc.catalog import CATALOG_URL, cells_meeting, parse_catalog
 from chartpack.enc.fetch import fetch_cells
 from chartpack.enc.reader import read_cell
 from chartpack.enc.tiles import OVERVIEW_ZOOMS, REGION_ZOOMS, build_enc_mbtiles
-from chartpack.grid import GRID_ZOOM, keep_tiles, owned_tiles, tile_bounds
+from chartpack.grid import content_tiles, keep_tiles, owned_tiles, tiles_area
 from chartpack.pack.archive import archive_pack
 from chartpack.pack.assemble import BATHY_FILES, assemble_bathy_pack, assemble_charts_pack
 from chartpack.pack.check import check_pack
@@ -68,8 +70,10 @@ def _fetch_enc(args: argparse.Namespace) -> int:
 
 
 def _cells(args: argparse.Namespace) -> int:
+    """The Active cells of the band meeting the region's owned zoom-10 tiles (the overview: every owned tile)."""
     region = load_region(args.region)
-    for name in cells_in_bbox(_load_catalog(args.cache), region.bbox, args.band):
+    area = tiles_area(content_tiles(region, args.region.parent))
+    for name in cells_meeting(_load_catalog(args.cache), area, args.band):
         print(name)
     return 0
 
@@ -94,16 +98,18 @@ def _fetch_seabed(args: argparse.Namespace) -> int:
     return 0
 
 
-def _usgs_seabed(region, cache: Path) -> list:
-    """The region's USGS seabed features from the fetch-seabed cache."""
+def _usgs_seabed(region, cache: Path, area=None) -> list:
+    """The region's USGS seabed features from the fetch-seabed cache, read over the bounds of `area` (a region
+    pack's owned tiles plus the margin, which reach past its bbox), or over the bbox for the overview."""
     usseabed = [cache / "seabed" / name for name in FILES] if "usseabed" in region.seabed_sources else []
     blocks = {block: cache / "seabed" / f"{BLOCKS[block].name}.zip" for block in region.cmecs_blocks}
     missing = [p for p in usseabed + list(blocks.values()) if not p.is_file()]
     if missing:
         raise SystemExit(f"{missing[0]} not found; run fetch-seabed first")
-    features = read_usseabed(usseabed, region.bbox) if usseabed else []
+    bbox = region.bbox if area is None else area.bounds
+    features = read_usseabed(usseabed, bbox) if usseabed else []
     for block, path in blocks.items():
-        features += read_cmecs(path, block, region.bbox)
+        features += read_cmecs(path, block, bbox)
     return features
 
 
@@ -113,13 +119,13 @@ def _build_enc(args: argparse.Namespace) -> int:
     cells = [read_cell(_newest_cached_zip(args.cache, name)) for name in names]
     owned = owned_tiles(region, args.region.parent)  # before the slow build: a bad grid fails fast
     zooms = OVERVIEW_ZOOMS if region.overview else REGION_ZOOMS
-    # A region pack keeps the quilt output on its owned tiles plus a margin wider than tippecanoe's tile buffer
-    # (5 of 256 px, about 0.007 degrees at zoom 10), so a feature across an owned edge still renders over the seam.
-    area = None if owned is None else unary_union([
-        box(w - BLOCK_MARGIN_DEG, s - BLOCK_MARGIN_DEG, e + BLOCK_MARGIN_DEG, n + BLOCK_MARGIN_DEG)
-        for w, s, e, n in (tile_bounds(GRID_ZOOM, x, y) for x, y in owned)])
+    # The quilt output is kept on the owned tiles (the overview: every owned tile) plus a margin wider than
+    # tippecanoe's tile buffer (5 of 256 px, about 0.007 degrees at zoom 10), so a feature across an owned edge
+    # still renders over the seam, and a band 1 cell spanning far past wave 1 adds nothing beyond it.
+    area = tiles_area(content_tiles(region, args.region.parent), BLOCK_MARGIN_DEG)
     enc = build_enc_mbtiles(cells, args.work / "enc.mbtiles", region=region, work=args.work / "tippecanoe",
-                            seabed=_usgs_seabed(region, args.cache), zooms=zooms, area=area)
+                            seabed=_usgs_seabed(region, args.cache, None if owned is None else area), zooms=zooms,
+                            area=area)
     keep_tiles(enc, owned, minzoom=zooms[0], maxzoom=zooms[1])
     print(_finish(assemble_charts_pack(region, enc, args.out), region))
     return 0
@@ -184,8 +190,9 @@ def _fetch_bathy(args: argparse.Namespace) -> int:
         for name in sorted({t.name for _, _, read in blocks for t in tiles_for_bbox(tiles, read)}):
             print(name)
     if "crm" in region.bathy_sources:
-        for _, _, read in blocks:  # one CRM request per owned tile, over its read bounds
-            print(fetch_crm(read, args.cache))
+        for _, _, read in blocks:  # one CRM request per owned tile, over its read bounds cut to CRM's coverage
+            if (path := fetch_crm(read, args.cache)) is not None:  # None: the tile is wholly outside CRM
+                print(path)
     return 0
 
 
@@ -206,7 +213,8 @@ def _build_bathy(args: argparse.Namespace) -> int:
         needed = [crm_path(overview_bounds(region.bbox), args.cache)]
     else:
         blocks = list(iter_blocks(owned))
-        needed = ([urllist] if has_cudem else []) + [crm_path(read, args.cache) for _, _, read in blocks if has_crm]
+        needed = ([urllist] if has_cudem else []) + [
+            path for _, _, read in blocks if has_crm and (path := crm_path(read, args.cache)) is not None]
     for path in needed:
         if not path.exists():
             raise SystemExit(f"{path} not found; run fetch-bathy first")
@@ -217,6 +225,9 @@ def _build_bathy(args: argparse.Namespace) -> int:
     if region.clip is not None:
         data = json.loads(region.clip.read_text())
         clip = shape(data.get("geometry", data))
+    # Lakes with no datum rule are left out like the clipped water: their bottoms are not on a tidal datum.
+    if mask := load_datum(region.datum_file).lake_mask:
+        clip = unary_union(([] if clip is None else [clip]) + [shape(g) for g in mask])
 
     files = {name: args.work / name for name in BATHY_FILES}
     fine_work, coarse_work = args.work / "tippecanoe", args.work / "tippecanoe-coarse"
@@ -231,7 +242,7 @@ def _build_bathy(args: argparse.Namespace) -> int:
 
     used = {}
     if owned is None:
-        crm_request = crm_wcs_url(overview_bounds(region.bbox))
+        crm_request = crm_wcs_url(crm_request_bounds(overview_bounds(region.bbox)))
         result = build_overview(region.bbox, needed[0], datum, clip)
         _append_layers(coarse_work, result.coarse_contours, result.coarse_bands, result.coarse_coverage)
         build_dem_mbtiles(result.coarse_grid.data, result.coarse_grid.transform, files["dem-coarse.mbtiles"],
@@ -262,7 +273,7 @@ def _build_bathy(args: argparse.Namespace) -> int:
                 _append_layers(coarse_work, r.coarse_contours, r.coarse_bands, r.coarse_coverage)
                 outputs.append((r.coarse_grid, coarse_tiles, True, "dem-coarse.mbtiles"))
             for grid, dem, skip_empty, name in outputs:
-                if dem:
+                if dem and grid is not None:  # no coarse grid where the tile is wholly outside CRM
                     build_dem_mbtiles(grid.data, grid.transform, files[name], minzoom=zooms[name][0],
                                       maxzoom=zooms[name][1], skip_empty=skip_empty, tiles=dem, within=core,
                                       append=True)

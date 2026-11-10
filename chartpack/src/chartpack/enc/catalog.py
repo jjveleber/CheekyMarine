@@ -68,9 +68,13 @@ def _intersects(cell: CellInfo, window) -> bool:
 
 
 def cells_in_bbox(catalog: dict[str, CellInfo], bbox, band: int) -> list[str]:
-    window = box(*bbox)  # W, S, E, N
+    return cells_meeting(catalog, box(*bbox), band)  # W, S, E, N
+
+
+def cells_meeting(catalog: dict[str, CellInfo], area, band: int) -> list[str]:
+    """The Active cells of the band whose catalog polygon (any panel) meets the area (a shapely geometry)."""
     return sorted(
         c.name
         for c in catalog.values()
-        if c.band == band and c.status == "Active" and _intersects(c, window)
+        if c.band == band and c.status == "Active" and _intersects(c, area)
     )

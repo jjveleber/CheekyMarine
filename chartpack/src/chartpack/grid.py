@@ -99,6 +99,23 @@ def owned_tiles(region: Region, regions_dir: Path) -> set[tuple[int, int]] | Non
     return {tile for tile, name in owner.items() if name == region.name}
 
 
+def content_tiles(region: Region, regions_dir: Path) -> set[tuple[int, int]]:
+    """The zoom-10 tiles a pack's content is selected and cropped over: a region pack's owned tiles
+    (owned_tiles); for the overview, every tile a region pack in grid.toml owns."""
+    owned = owned_tiles(region, regions_dir)
+    if owned is not None:
+        return owned
+    regions_dir = Path(regions_dir)
+    return set().union(*(owned_tiles(load_region(regions_dir / f"{name}.toml"), regions_dir)
+                         for name in load_grid(regions_dir / "grid.toml")))
+
+
+def tiles_area(tiles: set[tuple[int, int]], margin_deg: float = 0.0) -> shapely.Geometry:
+    """The union of the zoom-10 tiles, each grown by margin_deg."""
+    return shapely.union_all([box(w - margin_deg, s - margin_deg, e + margin_deg, n + margin_deg)
+                              for w, s, e, n in (tile_bounds(GRID_ZOOM, x, y) for x, y in tiles)])
+
+
 def keep_tiles(path: Path, owned: set[tuple[int, int]] | None, *, minzoom: int, maxzoom: int) -> None:
     """Prune an enc.mbtiles to the zoom range and, when `owned` is set, to the owned zoom-10 tiles and
     their descendants. Stored rows are TMS: flip to XYZ before taking the zoom-10 ancestor."""
@@ -131,3 +148,44 @@ def keep_tiles(path: Path, owned: set[tuple[int, int]] | None, *, minzoom: int, 
         conn.execute("vacuum")
     finally:
         conn.close()
+
+
+Line = tuple[tuple[float, float], tuple[float, float]]
+
+
+def seams(owned: dict[str, set[tuple[int, int]]]) -> dict[tuple[str, str], list[Line]]:
+    """The zoom-10 tile edges each pair of regions shares, as straight lines ((W, S), (E, N)): along a tile row
+    S == N, along a column W == E. Runs of edges on one row or column are merged. `owned` maps region names to
+    their owned tiles (owned_tiles); a pair is keyed in the order the names come in `owned`."""
+    owner = {tile: name for name, tiles in owned.items() for tile in tiles}
+    rank = {name: i for i, name in enumerate(owned)}
+    rows: dict[tuple[str, str, int], set[int]] = {}  # (a, b, row edge y) -> x of each shared unit edge
+    cols: dict[tuple[str, str, int], set[int]] = {}  # (a, b, column edge x) -> y of each shared unit edge
+    for (x, y), a in owner.items():
+        for (nx, ny), edges, key, unit in (((x + 1, y), cols, x + 1, y), ((x, y + 1), rows, y + 1, x)):
+            b = owner.get((nx, ny))
+            if b is not None and b != a:
+                pair = (a, b) if rank[a] < rank[b] else (b, a)
+                edges.setdefault((*pair, key), set()).add(unit)
+
+    def lon(tx: int) -> float:  # west edge of tile column tx
+        return tile_bounds(GRID_ZOOM, tx, 0)[0]
+
+    def lat(ty: int) -> float:  # north edge of tile row ty
+        return tile_bounds(GRID_ZOOM, 0, ty)[3]
+
+    def runs(units: set[int]) -> list[tuple[int, int]]:
+        out = []
+        for u in sorted(units):
+            if out and out[-1][1] == u:
+                out[-1] = (out[-1][0], u + 1)
+            else:
+                out.append((u, u + 1))
+        return out
+
+    result: dict[tuple[str, str], list[Line]] = {}
+    for (a, b, y), xs in sorted(rows.items()):
+        result.setdefault((a, b), []).extend(((lon(x0), lat(y)), (lon(x1), lat(y))) for x0, x1 in runs(xs))
+    for (a, b, x), ys in sorted(cols.items()):
+        result.setdefault((a, b), []).extend(((lon(x), lat(y1)), (lon(x), lat(y0))) for y0, y1 in runs(ys))
+    return dict(sorted(result.items(), key=lambda kv: (rank[kv[0][0]], rank[kv[0][1]])))

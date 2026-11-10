@@ -1,0 +1,35 @@
+# Strait of Juan de Fuca, US side (spec 4): Port Angeles, Sekiu, Neah Bay. sound-central and north-sound own
+# the tile column at -123.25 W; its tiles start at the row holding 47.95 N (47.7541 N).
+name = "strait"
+charts_version = "1.0.0"
+bathy_version = "1.0.0"
+bbox = [-124.8, 47.95, -123.25, 48.6]
+clip = "clip/canada-wa.geojson"
+
+# Every Active cell of bands 1 to 5 whose catalog polygon meets the owned tiles (zoom-10 tiles,
+# grid.toml), from `chartpack cells` and the catalog of 2026-11-09.
+[enc]
+band1 = ["US1GLBDD"]
+band2 = ["US2PACWX", "US2PACWY"]
+band3 = ["US3WA1DD", "US3WA1DE", "US3WA1DF", "US3WA1ED", "US3WA1EE", "US3WA1EF"]
+band4 = [
+    "US4WA1HC", "US4WA1HD", "US4WA1IB", "US4WA1IC", "US4WA1ID", "US4WA1IE", "US4WA1IF", "US4WA1IG", "US4WA1JB",
+    "US4WA1JC", "US4WA1JD", "US4WA1JE",
+]
+band5 = ["US5WA1BE", "US5WA1BF", "US5WA2RC", "US5WA2XC", "US5WA2YA", "US5WA2YC"]
+
+[bathy]
+sources = ["cudem", "crm"]
+dem_maxzoom = 14
+
+[datum]
+file = "datum/wa-stations.toml"
+
+[seabed]
+sources = ["enc", "usseabed"]  # no DS 935 CMECS block meets the bbox
+
+[[render.views]]
+name = "port-angeles"  # the harbor entrance, just west of the sound-central seam at -123.398 W
+lon = -123.41
+lat = 48.14
+zooms = [11, 13, 15]

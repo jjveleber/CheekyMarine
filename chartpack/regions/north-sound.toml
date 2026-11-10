@@ -1,0 +1,42 @@
+# San Juans, Rosario Strait, Deception Pass, Skagit and Padilla bays, Bellingham and the east end of the
+# Strait (spec 4). Its tiles start at 48.2247 N; tiles wholly on the Canadian side are clipped.
+name = "north-sound"
+charts_version = "1.0.0"
+bathy_version = "1.0.0"
+bbox = [-123.35, 48.2, -122.25, 49.05]
+clip = "clip/canada-wa.geojson"
+
+# Every Active cell of bands 3 to 5 whose catalog polygon meets the owned tiles (zoom-10 tiles,
+# grid.toml), from `chartpack cells` and the catalog of 2026-11-09.
+[enc]
+band3 = ["US3WA1EF", "US3WA1EG"]
+band4 = [
+    "US4WA1IG", "US4WA1IH", "US4WA1II", "US4WA1IJ", "US4WA1IK", "US4WA1JH", "US4WA1JI", "US4WA1JJ", "US4WA1KH",
+    "US4WA1KI", "US4WA1KJ", "US4WA1LI",
+]
+band5 = [
+    "US5SEANF", "US5SEANG", "US5SEANH", "US5SEANI", "US5SEANJ", "US5SEAOF", "US5SEAOG", "US5SEAOH", "US5SEAOI",
+    "US5SEAOJ", "US5SEAPI", "US5SEAPJ", "US5SEAQH", "US5SEAQI", "US5SEAQJ", "US5SEARH", "US5SEARI", "US5SEARJ",
+    "US5SEASH", "US5SEASI", "US5WA1EN", "US5WA1EO", "US5WA1EP", "US5WA1FL", "US5WA1FN", "US5WA1FO", "US5WA1GL",
+    "US5WA1GN", "US5WA1GO", "US5WA1HI", "US5WA1HK", "US5WA1HL", "US5WA1HM", "US5WA1HN", "US5WA1HO", "US5WA1II",
+    "US5WA1IJ", "US5WA1IK", "US5WA1IL", "US5WA1IN", "US5WA1IO", "US5WA1IP", "US5WA1IQ", "US5WA1JN", "US5WA1JO",
+    "US5WA1JP", "US5WA1JQ", "US5WA1JR", "US5WA1KM", "US5WA1KN", "US5WA1KO", "US5WA1KR", "US5WA1LO", "US5WA1NN",
+    "US5WA1NO",
+]
+
+[bathy]
+sources = ["cudem", "crm"]
+dem_maxzoom = 14
+
+[datum]
+file = "datum/wa-stations.toml"
+
+[seabed]
+sources = ["enc", "usseabed", "usgs-cmecs"]
+cmecs_blocks = ["admiralty-inlet"]  # its north end, above 48.2 N
+
+[[render.views]]
+name = "friday-harbor"
+lon = -123.01
+lat = 48.54
+zooms = [11, 13, 15]
