@@ -1,0 +1,30 @@
+lock-before: (false,)
+[ INFO ]  "{unknown}[General]: GPU Identifier: Mesa Intel(R) Iris(R) Xe Graphics (TGL GT2)"
+ready in 378 ms
+[ WARNING ]  "{unknown}[General]: Invalid geometry in line layer"
+frame-stats: frames 3546 max 37 ms p99 30 ms over50 0
+track-writes: writes 0 max 0.00 ms p99 0.00 ms over50 0
+	Command being timed: "/home/jjveleber/cm-plotter-0.3.0/cheekyplotter-0.3.0-x86_64/bin/cheekyplotter --packs /home/jjveleber/cm-packs-base --data /home/jjveleber/t17/data --fullscreen --view Nav --pan-path 47.98,-122.45,9;47.82,-122.29,13;47.98,-122.29,15;47.82,-122.45,11 --pan-leg-ms 1200 --frame-stats --exit-after-ms 60000"
+	User time (seconds): 33.10
+	System time (seconds): 3.87
+	Percent of CPU this job got: 61%
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 1:00.23
+	Average shared text size (kbytes): 0
+	Average unshared data size (kbytes): 0
+	Average stack size (kbytes): 0
+	Average total size (kbytes): 0
+	Maximum resident set size (kbytes): 253500
+	Average resident set size (kbytes): 0
+	Major (requiring I/O) page faults: 0
+	Minor (reclaiming a frame) page faults: 39053
+	Voluntary context switches: 172431
+	Involuntary context switches: 842
+	Swaps: 0
+	File system inputs: 0
+	File system outputs: 264
+	Socket messages sent: 0
+	Socket messages received: 0
+	Signals delivered: 0
+	Page size (bytes): 4096
+	Exit status: 0
+exit=0
