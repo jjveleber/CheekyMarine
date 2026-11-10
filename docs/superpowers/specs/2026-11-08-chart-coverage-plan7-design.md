@@ -57,8 +57,8 @@ From the approved map. Areas are bounding boxes (W, S, E, N), clipped by `chartp
 | `sound-central` | -123.25, 47.45, -122.1, 48.2 | Seattle, Lake Union, Lake Washington, Jeff Head, Possession bar, Everett, Admiralty Inlet, upper Hood Canal | ~184 MB | ~291 MB |
 | `north-sound` | -123.35, 48.2, -122.25, 49.05 | San Juans, Rosario Strait, Deception Pass, Skagit and Padilla bays, Bellingham, east end of the Strait | ~217 MB | ~505 MB |
 | `strait` | -124.8, 47.95, -123.25, 48.6 | Strait of Juan de Fuca US side: Port Angeles, Sekiu, Neah Bay | ~30 MB | ~256 MB |
-| `wa-coast` | polygon: -127 to -123.75 W, 46.15 to 48.6 N, minus the `strait` box | Columbia bar to Cape Flattery, Grays Harbor, Willapa, out to about 100 mi | ~79 MB | ~772 MB plus offshore at low zoom |
-| `overview` | all of the above | low zooms only (section 5.2) | small | small |
+| `wa-coast` | polygon: -127 to -123.3984375 W, 46.15 to 48.6 N, minus the `strait` box (east edge on the strait seam column line, PR #105) | Columbia bar to Cape Flattery, Grays Harbor, Willapa, out to about 100 mi | ~79 MB | ~772 MB plus offshore at low zoom |
+| `overview` | all of the above: -127.265625, 46.0732, -121.9921875, 49.153, the extent of the owned tiles (PR #105) | low zooms only (section 5.2) | small | small |
 
 Exact edges move to the ownership grid (section 5.2), so each box grows outward to whole grid tiles. Where boxes overlap today (near -123.3 W), the grid decides which pack owns each tile.
 
