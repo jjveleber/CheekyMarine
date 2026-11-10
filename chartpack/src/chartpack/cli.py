@@ -252,8 +252,9 @@ def _build_bathy(args: argparse.Namespace) -> int:
             # A region without CUDEM writes no fine layers (a fine file with contours alone fails tile_bathy).
             enc_lines = enc_fallback_contours(depcnt, uncovered, clip) if has_cudem else []
             _append_layers(fine_work, r.fine_contours + enc_lines, r.fine_bands, r.fine_coverage)
-            # One DEM source per place per zoom, decided per zoom-12 tile: the fine DEM (the whole merge, so no
-            # cliff at the CUDEM edge) where a zoom-12 tile holds CUDEM, the coarse DEM elsewhere.
+            # One DEM source per place per zoom, decided per zoom-12 tile: the fine DEM where a zoom-12 tile holds
+            # CUDEM, the coarse DEM elsewhere. With crm listed the fine DEM is the whole merge, so CRM fills past
+            # the CUDEM edge and there is no cliff; a CUDEM-only fine DEM is nan past that edge.
             owned12 = set() if r.fine_grid is None else fine_owned_z12(r.fine_cudem, r.fine_grid.transform, tile)
             fine_tiles, coarse_tiles = dem_tiles(owned12, tile, region.dem_maxzoom)
             outputs = [(r.fine_grid, fine_tiles, False, "dem.mbtiles")]
