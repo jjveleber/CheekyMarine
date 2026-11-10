@@ -15,10 +15,19 @@ from pathlib import Path
 import numpy as np
 import shapely
 from osgeo import osr
+from scipy.ndimage import binary_dilation
 from shapely.geometry import box, mapping, shape
 
 from chartpack.bathy.bands import bands_by_zoom
-from chartpack.bathy.contours import BANDS, COARSE_BANDS, OVERVIEW_BANDS, block_mean, contours_by_zoom
+from chartpack.bathy.contours import (
+    BANDS,
+    COARSE_BANDS,
+    OVERVIEW_BANDS,
+    block_factor,
+    block_mean,
+    contours_by_zoom,
+    zoom_tolerance_deg,
+)
 from chartpack.bathy.cudem import CudemTile, Grid, read_window, tiles_for_bbox
 from chartpack.bathy.merge import clip_mask, coverage_polygons, fill_land, merge_to_mllw
 from chartpack.bathy.tiles import COARSE_ZOOMS
@@ -168,20 +177,36 @@ def _coverage(valid: np.ndarray, transform, core, label: dict) -> list[dict]:
 
 
 def _features(
-    grid: Grid, core, bands, *, fine: bool, label: dict, cells: np.ndarray | None = None, overzoomed: bool = False
+    grid: Grid, core, bands, *, fine: bool, label: dict, cells: np.ndarray | None = None,
+    band_cells: np.ndarray | None = None, overzoomed: bool = False
 ) -> tuple[list[dict], list[dict], list[dict]]:
     """Contours (tagged with the label's source), bands and coverage of one depth grid, clipped to core.
-    `cells` (bool) limits them to those cells; by default every finite cell counts. overzoomed: see
-    contours_by_zoom."""
+    `cells` (bool) limits them to those cells; by default every finite cell counts. `band_cells` (bool, holding
+    `cells`) gives the bands more cells than the contours and coverage. overzoomed: see contours_by_zoom."""
     valid = np.isfinite(grid.data) if cells is None else cells
     filled = fill_land(grid.data)  # the grid itself keeps the real land heights for the hillshade
+    filled[~(valid if band_cells is None else band_cells)] = np.nan
+    polygons = bands_by_zoom(filled, grid.transform, bands=bands, core=core)
     filled[~valid] = np.nan
     contours = contours_by_zoom(filled, grid.transform, fine=fine, bands=bands, core=core, overzoomed=overzoomed)
     for f in contours:
         f["properties"]["source"] = label["source"]
-    polygons = bands_by_zoom(filled, grid.transform, bands=bands, core=core)
     del filled
     return contours, polygons, _coverage(valid, grid.transform, core, label)
+
+
+def _under_cells() -> int:
+    """Coarse cells the coarse bands run on past the coarse cells that fine owns, under the fine bands, so at every
+    zoom no point between them lacks a band. Each band edge stops at the last cell center of its zoom's
+    block-meaned grid, up to half a block short of the coarse data or past the CUDEM edge on the fine side, and
+    simplifying moves it up to its tolerance; the coarse bands draw their last range past its top zoom."""
+    def reach(res, bands, zoom):
+        _, hi, target = next((b for b in bands if b[0] <= zoom <= b[1]), bands[-1])
+        return block_factor((0, res, 0, 0, 0, -res), target) * res / 2 + zoom_tolerance_deg(hi)
+
+    zooms = range(BANDS[0][0], BANDS[-1][1] + 1)
+    worst = max(reach(COARSE_RES_DEG, COARSE_BANDS, z) + reach(FINE_RES_DEG, BANDS, z) for z in zooms)
+    return math.ceil(worst / COARSE_RES_DEG)
 
 
 def _no_data(bbox) -> Grid:
@@ -200,8 +225,9 @@ def build_block(
 
     Fine is the CUDEM-then-CRM merge; its features use the CUDEM cells (source index 1) only, its DEM the
     whole merge. Coarse is CRM on every coarse cell unless every fine cell in it holds CUDEM, decided per
-    cell, so coarse overlaps fine by under one coarse cell instead of leaving a gap (the style draws coarse
-    under fine). Cells inside clip are nan in both grids before anything is drawn. A crm_path of None (no CRM in
+    cell; its contours and coverage stop there, while its grid and bands keep _under_cells more coarse cells
+    under fine so the bands overlap instead of leaving a gap (the style draws coarse under fine). Cells
+    inside clip are nan in both grids before anything is drawn. A crm_path of None (no CRM in
     the region's sources) leaves the coarse outputs empty. A block that no CUDEM
     tile meets skips the fine merge: its fine outputs are empty and fine_grid is None. The grids (the DEMs)
     are depth by the station path; the features add the lake rule (_with_lakes).
@@ -226,11 +252,15 @@ def build_block(
         coarse.data -= datum("crm", coarse.transform, coarse.data.shape, lakes=False)
         _clip(coarse, clip)
     fine_out = ([], [], [])
+    coarse_cells = None
     if fine is not None:
         if coarse is not None:
             k = round(COARSE_RES_DEG / FINE_RES_DEG)
             rows, cols = coarse.data.shape
-            coarse.data[(source == 1).reshape(rows, k, cols, k).all(axis=(1, 3))] = np.nan
+            owned = (source == 1).reshape(rows, k, cols, k).all(axis=(1, 3))
+            coarse.data[~binary_dilation(~owned, np.ones((3, 3), bool), iterations=_under_cells())] = np.nan
+            coarse_cells = np.isfinite(coarse.data) & ~owned
+            del owned
         _clip(fine, clip)
         cudem = (source == 1) & np.isfinite(fine.data)
         del source
@@ -238,7 +268,8 @@ def build_block(
         cudem_label = {"source": "cudem", "resolution_m": 3, "date": years}
         fine_out = _features(_with_lakes(fine, datum), core, BANDS, fine=True, label=cudem_label, cells=cudem)
     coarse_out = ([], [], []) if coarse is None else _features(
-        _with_lakes(coarse, datum), core, COARSE_BANDS, fine=False, label=CRM_LABEL, overzoomed=True)
+        _with_lakes(coarse, datum), core, COARSE_BANDS, fine=False, label=CRM_LABEL, cells=coarse_cells,
+        band_cells=None if coarse_cells is None else np.isfinite(coarse.data), overzoomed=True)
     return BlockResult(*fine_out, *coarse_out, fine_grid=fine, coarse_grid=coarse, fine_cudem=cudem)
 
 
