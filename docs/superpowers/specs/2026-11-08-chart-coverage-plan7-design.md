@@ -62,6 +62,8 @@ From the approved map. Areas are bounding boxes (W, S, E, N), clipped by `chartp
 
 Exact edges move to the ownership grid (section 5.2), so each box grows outward to whole grid tiles. Where boxes overlap today (near -123.3 W), the grid decides which pack owns each tile.
 
+Known gap (owner, PR #105): no pack owns the tiles east of -123.398 W south of 46.80 N, so the Columbia from Cathlamet and the east half of Puget Island upriver is outside wave 1.
+
 `puget-north` is retired: the first set with the new packs no longer lists it, and the installer removes it as it removes any pack no kept set uses.
 
 ## 5. Several packs as one chart (#84)

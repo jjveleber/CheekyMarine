@@ -93,7 +93,8 @@ Wave 1 (plan 7) has five region packs and an overview, one file each in `regions
 Each region pack owns whole zoom-10 tiles: `regions/grid.toml` gives a tile meeting several boxes to the
 first region it lists, so pack edges follow the tile grid, not the box edges (`sound-south` owns up to
 47.5172 N, `sound-central` up to 48.2247 N). `chartpack.grid.seams` lists the lines where two packs meet.
-Tiles wholly inside `clip/canada-wa.geojson` belong to no pack. `test-cell.toml` is a small test region.
+Tiles wholly inside `clip/canada-wa.geojson` belong to no pack. The Columbia from Cathlamet and the east half of
+Puget Island upriver (east of -123.398 W, south of 46.80 N) is outside wave 1. `test-cell.toml` is a small test region.
 
 `regions/<region>.toml`:
 
