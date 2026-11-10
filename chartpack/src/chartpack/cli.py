@@ -122,11 +122,12 @@ def _build_enc(args: argparse.Namespace) -> int:
     # The quilt output is kept on the owned tiles (the overview: every owned tile) plus a margin wider than
     # tippecanoe's tile buffer (5 of 256 px, about 0.007 degrees at zoom 10), so a feature across an owned edge
     # still renders over the seam, and a band 1 cell spanning far past wave 1 adds nothing beyond it.
-    area = tiles_area(content_tiles(region, args.region.parent), BLOCK_MARGIN_DEG)
+    content = content_tiles(region, args.region.parent)
+    area = tiles_area(content, BLOCK_MARGIN_DEG)
     enc = build_enc_mbtiles(cells, args.work / "enc.mbtiles", region=region, work=args.work / "tippecanoe",
                             seabed=_usgs_seabed(region, args.cache, None if owned is None else area), zooms=zooms,
                             area=area)
-    keep_tiles(enc, owned, minzoom=zooms[0], maxzoom=zooms[1])
+    keep_tiles(enc, owned, minzoom=zooms[0], maxzoom=zooms[1], content=content)
     print(_finish(assemble_charts_pack(region, enc, args.out), region))
     return 0
 

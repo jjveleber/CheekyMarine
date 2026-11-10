@@ -13,7 +13,9 @@ catalogue (Appendix A chapter 2: NATSUR 113, NATQUA 114, CATWED 70).
 Mixtures (Chart No. 1 J 12.2): the main constituent comes first, the types are joined with a dot, and
 each qualifier is written in front of the type in the same list position, so NATSUR `4,1` with NATQUA
 `1` reads `fS.M`, fine sand with mud. A qualifier with no type (S-57 allows NATQUA alone) is shown on
-its own, for example `h`, hard bottom. Kelp is drawn with its J 13.2 symbol beside the word Kelp; a
+its own, for example `h`, hard bottom. A layered seabed (S-57 separates layers with `/`, surface layer
+first) reads layer by layer joined with `/`, so NATSUR `4,1/9` with NATQUA `1,/` reads `fS.M/Rk`, fine
+sand with mud over rock. Kelp is drawn with its J 13.2 symbol beside the word Kelp; a
 weed or kelp feature with no category reads `Wd` (J 13.1, weed including kelp).
 
 | Abbreviation | Meaning | Kind | S-57 code | Chart No. 1 |

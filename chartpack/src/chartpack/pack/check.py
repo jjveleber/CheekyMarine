@@ -108,8 +108,11 @@ def _band_zooms(metadata: dict) -> set[int]:
 
 
 def _owned_area(metadata: dict):
-    """The owned zoom-10 tiles as one polygon, or None for the overview (null: the whole cells)."""
+    """The owned zoom-10 tiles as one polygon; for the overview (owned null) its content tiles; None for an
+    overview with no content tiles recorded (an older pack: the whole cells)."""
     owned = json.loads(metadata.get("cheekymarine:owned", "null"))
+    if owned is None:
+        owned = json.loads(metadata.get("cheekymarine:content", "null"))
     if owned is None:
         return None
     return unary_union([box(*tile_bounds(GRID_ZOOM, x, y)) for x, y in owned])

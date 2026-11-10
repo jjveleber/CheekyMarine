@@ -28,6 +28,21 @@ def test_more_qualifiers_than_types_go_on_the_last_type():
     assert label("4", "1,6") == "fsoS"
 
 
+def test_layered_seabed():
+    """S-57 Use of the Object Catalogue (NATSUR, NATQUA): "/" separates layers, surface first, and ","
+    the constituents of one layer; NATQUA layers line up with NATSUR layers. US4WA1FI has NATSUR 4/6."""
+    assert label("4/6", None) == "S/G"
+    assert label("4,1/9", "1,/") == "fS.M/Rk"
+    assert label("4/9", "1") == "fS/Rk"  # no NATQUA layer for the rock: no qualifier
+    assert label("4/9", "/10") == "S/hRk"
+    assert label("4", "1/10") == "fS/h"  # NATQUA has more layers than NATSUR: the quality alone
+    assert label(None, "/10") == "h"  # an empty layer adds no bare slash
+    assert label("4/", None) == "S"
+    assert label("4//9", None) == "S/Rk"
+    with pytest.raises(ValueError, match="NATSUR 99"):
+        label("4/99", None)
+
+
 def test_chart_no1_abbreviations():
     assert {c: NATSUR[c][0] for c in (1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 14, 17, 18)} == {
         1: "M", 2: "Cy", 3: "Si", 4: "S", 5: "St", 6: "G", 7: "P", 8: "Cb", 9: "Rk", 11: "La", 14: "Co",
