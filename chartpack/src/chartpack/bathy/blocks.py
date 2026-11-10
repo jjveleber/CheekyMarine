@@ -58,15 +58,35 @@ def area_datum(region: Region, cache: Path) -> DatumFn:
     """The region's datum file as a DatumFn: the NAVD88 to MLLW offset per area for every source, plus the
     EGM2008 to NAVD88 height change for EGM2008 sources (CRM), from the geoid grids fetch-bathy put in cache.
     Both are summed at the global grid nodes and resampled once (bilinear is linear), so a call allocates one
-    block-size array."""
-    stations = load_datum(region.datum_file).stations
+    block-size array.
+
+    Lakes (#88): a cell whose center is inside a lake polygon of the datum file takes the lake's offset instead,
+    -low_level_navd88_m plus the height change, so its depth is the lake's low level minus the NAVD88 height of
+    the bottom whatever the source. The mask comes from the polygons, so it does not depend on the block."""
+    datum_file = load_datum(region.datum_file)
+    stations = datum_file.stations
+    lakes = [(lake.low_level_navd88_m, datum_file.lake_areas[lake.name], shape(datum_file.lake_areas[lake.name]))
+             for lake in datum_file.lakes]
 
     def datum(source: str, transform, shape: tuple[int, int]) -> np.ndarray:
         lons, lats = node_axes(transform, shape)
+        change = geoid.egm2008_to_navd88_nodes(lons, lats, cache) if SOURCE_VERTICAL[source] == "egm2008" else None
         nodes = navd88_to_mllw_nodes(stations, lons, lats)
-        if SOURCE_VERTICAL[source] == "egm2008":  # NAVD88 height = EGM2008 height + the change
-            nodes += geoid.egm2008_to_navd88_nodes(lons, lats, cache)
-        return resample(nodes, lons, lats, transform, shape)
+        if change is not None:  # NAVD88 height = EGM2008 height + the change
+            nodes += change
+        offset = resample(nodes, lons, lats, transform, shape)
+        x0, dx, _, y0, _, dy = transform
+        grid = box(x0, y0 + shape[0] * dy, x0 + shape[1] * dx, y0)
+        change_cells = None
+        for low, area, polygon in lakes:
+            if not polygon.intersects(grid):
+                continue
+            inside = clip_mask(transform, shape, area)
+            if change is not None and change_cells is None:
+                change_cells = resample(change, lons, lats, transform, shape)
+            offset[inside] = -low if change_cells is None else change_cells[inside] - low
+            del inside
+        return offset
 
     return datum
 

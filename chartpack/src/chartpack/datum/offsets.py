@@ -5,8 +5,9 @@ where the nearest set would change. Far offshore the nearest coastal station dom
 nearest station offshore; this is continuous instead (tests/test_datum_offsets.py bounds the difference).
 """
 
+import json
 import tomllib
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import numpy as np
@@ -37,16 +38,26 @@ class Lake:
 class Datum:
     stations: list[Station]
     lakes: list[Lake]
+    lake_areas: dict[str, dict] = field(default_factory=dict)  # lake name -> GeoJSON geometry (lon/lat)
 
 
 def load_datum(path: Path) -> Datum:
-    """The stations (and lakes, Task 14) of a datum file such as regions/datum/wa-stations.toml."""
-    with Path(path).open("rb") as f:
+    """The stations and lakes of a datum file such as regions/datum/wa-stations.toml. The lake polygons come
+    from the GeoJSON named by its lakes_file (relative to the datum file), one Feature per [[lakes]] name."""
+    path = Path(path)
+    with path.open("rb") as f:
         data = tomllib.load(f)
     stations = [Station(str(s["id"]), s["name"], float(s["lat"]), float(s["lon"]), float(s["navd88_to_mllw_m"]))
                 for s in data["stations"]]
     lakes = [Lake(lake["name"], float(lake["low_level_navd88_m"]), lake["source"]) for lake in data.get("lakes", [])]
-    return Datum(stations, lakes)
+    areas = {}
+    if "lakes_file" in data:
+        with (path.parent / data["lakes_file"]).open() as f:
+            areas = {feat["properties"]["name"]: feat["geometry"] for feat in json.load(f)["features"]}
+    if set(areas) != {lake.name for lake in lakes}:
+        names = sorted(lake.name for lake in lakes)
+        raise ValueError(f"{path}: lake polygons {sorted(areas)} do not match [[lakes]] {names}")
+    return Datum(stations, lakes, areas)
 
 
 def navd88_to_mllw_nodes(stations: list[Station], lons: np.ndarray, lats: np.ndarray) -> np.ndarray:
