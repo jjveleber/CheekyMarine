@@ -38,7 +38,7 @@ def build_bands(depth_m: np.ndarray, transform, *, levels_ft: list[int], simplif
                         "properties": {
                             "depth_min_ft": lo,
                             "depth_max_ft": hi,
-                            "minzoom": min_zoom(hi or 600),
+                            "minzoom": min_zoom(hi or 1000),
                         },
                         "geometry": mapping(part),
                     }

@@ -167,7 +167,7 @@ def test_major_minor_minzoom(bathy_pack):
         for *_, f in _features(bathy_pack, "contour", [10])
         if f["properties"]["source"] == "cudem"
     }
-    assert z10 and z10 <= {60, 120, 180, 300, 600}
+    assert z10 and z10 <= MAJOR_FT
     z14 = {f["properties"]["depth_ft"] for *_, f in _features(bathy_pack, "contour", [14])}
     assert 70 in z14
 

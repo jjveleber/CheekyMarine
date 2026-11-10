@@ -8,6 +8,7 @@ from make_ridge import BBOX, NODATA, PIXEL_DEG
 from chartpack.bathy.contours import (
     DEPTHS_FT,
     FINE_FT,
+    MAJOR_FT,
     build_contours,
     chaikin_line,
     contours_by_zoom,
@@ -43,7 +44,7 @@ def ridge_depth_with_land(fixtures_dir):
     return fill_land(d)
 
 
-@pytest.mark.parametrize("d,z", [(60, 10), (30, 12), (40, 13), (500, 13), (70, 14), (25, 15)])
+@pytest.mark.parametrize("d,z", [(60, 10), (30, 12), (40, 13), (500, 10), (450, 12), (70, 14), (25, 15)])
 def test_min_zoom(d, z):
     assert min_zoom(d) == z
 
@@ -57,7 +58,7 @@ def test_chaikin_keeps_endpoints():
 def test_ridge_contours_at_expected_depths(ridge_depth):
     feats = build_contours(ridge_depth, TRANSFORM, levels_ft=DEPTHS_FT)
     depths = {f["properties"]["depth_ft"] for f in feats}
-    assert {70, 100, 200, 300} <= depths and 10 not in depths and 600 not in depths
+    assert {70, 100, 200, 300} <= depths and 10 not in depths and 1200 not in depths
     assert all(len(f["geometry"]["coordinates"]) >= 2 for f in feats)
     assert all(f["properties"]["minzoom"] == min_zoom(f["properties"]["depth_ft"]) for f in feats)
 
@@ -93,7 +94,7 @@ def test_contours_by_zoom_assigns_bands(shallow_ridge_depth):
     native = [f for f in feats if f["tippecanoe"]["minzoom"] == 14]
     assert any(f["properties"]["depth_ft"] == 25 for f in native)
     assert not any(f["properties"]["depth_ft"] == 25 for f in feats if f["tippecanoe"]["minzoom"] < 14)
-    assert {f["properties"]["depth_ft"] for f in feats if f["tippecanoe"]["minzoom"] == 10} <= {60, 120, 180, 300, 600}
+    assert {f["properties"]["depth_ft"] for f in feats if f["tippecanoe"]["minzoom"] == 10} <= MAJOR_FT
     assert all(f["properties"]["minzoom"] >= f["tippecanoe"]["minzoom"] for f in feats)
     assert all(f["properties"]["minzoom"] <= f["tippecanoe"]["maxzoom"] for f in feats)
 
@@ -136,3 +137,21 @@ def test_contours_by_zoom_simplify_at_the_top_zoom_of_each_range(ridge_depth, mo
     monkeypatch.setattr(contours, "build_contours", lambda *a, **k: seen.append(k["simplify_deg"]) or real(*a, **k))
     contours.contours_by_zoom(ridge_depth, TRANSFORM, fine=False)
     assert seen == [zoom_tolerance_deg(11), zoom_tolerance_deg(13), zoom_tolerance_deg(15)]
+
+
+def test_levels_match_spec():
+    assert DEPTHS_FT == list(range(10, 301, 10)) + list(range(350, 601, 50)) + list(range(700, 1001, 100))
+    assert MAJOR_FT == frozenset({60, 120, 180, 300, 400, 500, 600, 800, 1000})
+
+
+def test_no_contour_past_1000():
+    slope = np.tile(np.arange(200) * 2.5, (200, 1))  # 0 to 497 m, so 1,630 ft at the deep edge
+    feats = build_contours(slope, TRANSFORM, levels_ft=DEPTHS_FT)
+    depths = {f["properties"]["depth_ft"] for f in feats}
+    assert 1000 in depths and max(depths) == 1000
+
+
+def test_majors_offshore():
+    assert min_zoom(500) == 10 and min_zoom(450) == 12
+    assert all(min_zoom(d) == 10 for d in (400, 600, 800, 1000))
+    assert all(min_zoom(d) == 12 for d in (350, 550, 700, 900))

@@ -101,3 +101,24 @@ def test_text_halo_differs_from_text(make, palette):
         paint = layer.get("paint", {})
         if "text-halo-color" in paint:
             assert paint["text-halo-color"] != paint["text-color"], layer["id"]
+
+
+def test_every_band_has_a_fill_color():
+    """Each band bands.py can produce, down to the deepest (1,000 ft and deeper), steps to a palette color."""
+    from chartpack.bathy.contours import DEPTHS_FT
+
+    band = _layer(fish_style("day"), "band-fill")
+    expr = band["paint"]["fill-color"]
+    assert expr[0] == "step"
+    stops = expr[3::2]
+
+    def color(depth_min):
+        out = expr[2]
+        for stop, c in zip(stops, expr[4::2]):
+            if depth_min >= stop:
+                out = c
+        return out
+
+    for lo in [0] + DEPTHS_FT:
+        assert isinstance(color(lo), str) and color(lo).startswith("#"), lo
+    assert color(1000) == color(300)

@@ -11,11 +11,11 @@ import contourpy
 import numpy as np
 from shapely.geometry import LineString
 
-# Every 10 ft to 300, then 400/500/600.
-DEPTHS_FT = list(range(10, 301, 10)) + [400, 500, 600]
+# Every 10 ft to 300, every 50 to 600, every 100 to 1,000.
+DEPTHS_FT = list(range(10, 301, 10)) + list(range(350, 601, 50)) + list(range(700, 1001, 100))
 FINE_FT = list(range(5, 61, 10))  # 5, 15, ..., 55: the 5 ft steps between the 10 ft lines
-MAJOR_FT = frozenset({60, 120, 180, 300, 600})  # heavier line, labelled first, shown from z10
-BASE_FT = frozenset({30, 60, 90, 120, 150, 180, 240, 300, 400, 600})  # the original ten levels, from z12
+MAJOR_FT = frozenset({60, 120, 180, 300, 400, 500, 600, 800, 1000})  # heavier line, labelled first, shown from z10
+BASE_FT = frozenset({30, 60, 90, 120, 150, 180, 240, 300, 350, 400, 450, 550, 600, 700, 900})  # base levels, from z12
 SMOOTH_PASSES = 1
 SIMPLIFY_DEG = 0.0002  # the wa-creel default; the per-zoom builds use zoom_tolerance_deg
 MIN_POINTS = 6
@@ -39,7 +39,7 @@ def min_zoom(depth_ft: int) -> int:
         return 10
     if depth_ft in BASE_FT:
         return 12
-    if depth_ft % 20 == 0 or depth_ft == 500:
+    if depth_ft % 20 == 0:
         return 13
     if depth_ft % 10 == 0:
         return 14
