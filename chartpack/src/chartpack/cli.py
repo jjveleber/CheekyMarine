@@ -242,7 +242,7 @@ def _build_bathy(args: argparse.Namespace) -> int:
             _append_layers(fine_work, r.fine_contours + enc_fallback_contours(depcnt, uncovered), r.fine_bands,
                            r.fine_coverage)
             # The fine DEM is the whole merge (no cliff at the CUDEM edge), written only where CUDEM is.
-            outputs = [(r.fine_grid, r.fine_cudem, "dem.mbtiles")]
+            outputs = [] if r.fine_grid is None else [(r.fine_grid, r.fine_cudem, "dem.mbtiles")]
             if not enc_fallback:
                 _append_layers(coarse_work, r.coarse_contours, r.coarse_bands, r.coarse_coverage)
                 outputs.append((r.coarse_grid, None, "dem-coarse.mbtiles"))

@@ -199,6 +199,20 @@ def test_crm_only_block_coarse_z12_has_every_level(sources, test_region):
     assert (250, 14) in top and (200, 13) in top and (110, 14) in top
 
 
+def test_block_without_cudem_tile_skips_fine(sources, test_region, monkeypatch):
+    """No CUDEM tile meets the read bounds: no fine merge, no fine features or grid; coarse builds as usual."""
+    _, crm = sources(_cudem_elev())
+    _, core, read = _block(NORTH)
+    merges = []
+    real = blocks.merge_to_mllw
+    monkeypatch.setattr(blocks, "merge_to_mllw", lambda *a, **k: merges.append(k["res_deg"]) or real(*a, **k))
+    result = build_block(core, read, [], crm, area_datum(test_region, Path("unused")), None)
+    assert merges == [COARSE]
+    assert not (result.fine_contours or result.fine_bands or result.fine_coverage)
+    assert result.fine_grid is None and result.fine_cudem is None
+    assert result.coarse_contours and result.coarse_bands and result.coarse_coverage
+
+
 def test_clip_removes_water_in_block(sources, test_region):
     _, _, read = _block(NORTH)
     mid = (read[1] + read[3]) / 2
@@ -458,3 +472,30 @@ def test_all_cudem_water_region_builds(tmp_path, monkeypatch, zero_geoid):
     assert main(["check", str(root)]) == 0
     assert _layer_features(root / "bathy-coarse.mbtiles", "coverage")
     assert not _layer_features(root / "bathy-coarse.mbtiles", "contour")
+
+
+def test_block_without_cudem_tile_writes_no_fine_dem(tmp_path, monkeypatch, zero_geoid):
+    """build-bathy of a tile no CUDEM tile meets: the fine merge never runs, dem.mbtiles and bathy.mbtiles hold
+    no tiles, the coarse files do, and the pack passes check."""
+    from chartpack.cli import main
+
+    monkeypatch.setattr(blocks, "FINE_RES_DEG", FINE)
+    monkeypatch.setattr(blocks, "COARSE_RES_DEG", COARSE)
+    region = _region_dir(tmp_path)
+    cache = tmp_path / "cache"
+    (cache / "cudem").mkdir(parents=True)
+    (cache / "cudem" / "urllist8483.txt").write_text("https://example.test/ncei19_n46x00_w125x00_2023v1.tif")
+    for _, _, read in iter_blocks({NORTH}):
+        dest = crm_path(read, cache)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        _write_tif(dest, _crm_elev(), AREA)
+    merges = []
+    real = blocks.merge_to_mllw
+    monkeypatch.setattr(blocks, "merge_to_mllw", lambda *a, **k: merges.append(k["res_deg"]) or real(*a, **k))
+    assert main(["build-bathy", str(region), str(tmp_path / "out"), "--cache", str(cache), "--work", str(tmp_path / "work")]) == 0
+    root = tmp_path / "out" / "bathy-blk-0.1.0"
+    assert main(["check", str(root)]) == 0
+    assert FINE not in merges
+    assert _zooms(root / "dem.mbtiles") == set() and _zooms(root / "bathy.mbtiles") == set()
+    assert _zooms(root / "dem-coarse.mbtiles") == {10, 11, 12}
+    assert _layer_features(root / "bathy-coarse.mbtiles", "contour")

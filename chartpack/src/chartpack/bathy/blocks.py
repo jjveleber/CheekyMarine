@@ -49,7 +49,7 @@ class BlockResult:
     coarse_contours: list[dict]
     coarse_bands: list[dict]
     coarse_coverage: list[dict]
-    fine_grid: Grid | None  # None for the overview, which has no fine output
+    fine_grid: Grid | None  # None for the overview and for a block no CUDEM tile meets: no fine output
     coarse_grid: Grid
     fine_cudem: np.ndarray | None = None  # bool, the fine grid's shape
 
@@ -166,31 +166,37 @@ def build_block(
     Fine is the CUDEM-then-CRM merge; its features use the CUDEM cells (source index 1) only, its DEM the
     whole merge. Coarse is CRM on every coarse cell unless every fine cell in it holds CUDEM, decided per
     cell, so coarse overlaps fine by under one coarse cell instead of leaving a gap (the style draws coarse
-    under fine). Cells inside clip are nan in both grids before anything is drawn.
+    under fine). Cells inside clip are nan in both grids before anything is drawn. A block that no CUDEM
+    tile meets skips the fine merge: its fine outputs are empty and fine_grid is None.
     """
-    primary = [(read_window("/vsicurl/" + t.url, _overlap(t.bounds, read)), t.name) for t in cudem_tiles]
+    has_cudem = bool(tiles_for_bbox(list(cudem_tiles), read))
+    meeting = cudem_tiles if has_cudem else []
+    primary = [(read_window("/vsicurl/" + t.url, _overlap(t.bounds, read)), t.name) for t in meeting]
     crm = read_window(str(crm_path), read)
-    fine, source = merge_to_mllw(primary, crm, 0.0, 0.0, read, res_deg=FINE_RES_DEG)
-    del primary
-    for index, name in ((1, "cudem"), (2, "crm")):
-        take = source == index
-        fine.data[take] -= datum(name, fine.transform, fine.data.shape)[take]
-        del take
+    fine = source = cudem = None
+    if has_cudem:
+        fine, source = merge_to_mllw(primary, crm, 0.0, 0.0, read, res_deg=FINE_RES_DEG)
+        del primary
+        for index, name in ((1, "cudem"), (2, "crm")):
+            take = source == index
+            fine.data[take] -= datum(name, fine.transform, fine.data.shape)[take]
+            del take
 
     coarse, _ = merge_to_mllw([], crm, 0.0, 0.0, read, res_deg=COARSE_RES_DEG)
     del crm
     coarse.data -= datum("crm", coarse.transform, coarse.data.shape)
-    k = round(COARSE_RES_DEG / FINE_RES_DEG)
-    rows, cols = coarse.data.shape
-    coarse.data[(source == 1).reshape(rows, k, cols, k).all(axis=(1, 3))] = np.nan
-    _clip(fine, clip)
     _clip(coarse, clip)
-    cudem = (source == 1) & np.isfinite(fine.data)
-    del source
-
-    years = ",".join(sorted({str(t.year) for t in tiles_for_bbox(list(cudem_tiles), core)}))
-    cudem_label = {"source": "cudem", "resolution_m": 3, "date": years}
-    fine_out = _features(fine, core, BANDS, fine=True, label=cudem_label, cells=cudem)
+    fine_out = ([], [], [])
+    if fine is not None:
+        k = round(COARSE_RES_DEG / FINE_RES_DEG)
+        rows, cols = coarse.data.shape
+        coarse.data[(source == 1).reshape(rows, k, cols, k).all(axis=(1, 3))] = np.nan
+        _clip(fine, clip)
+        cudem = (source == 1) & np.isfinite(fine.data)
+        del source
+        years = ",".join(sorted({str(t.year) for t in tiles_for_bbox(list(cudem_tiles), core)}))
+        cudem_label = {"source": "cudem", "resolution_m": 3, "date": years}
+        fine_out = _features(fine, core, BANDS, fine=True, label=cudem_label, cells=cudem)
     coarse_out = _features(coarse, core, COARSE_BANDS, fine=False, label=CRM_LABEL, overzoomed=True)
     return BlockResult(*fine_out, *coarse_out, fine_grid=fine, coarse_grid=coarse, fine_cudem=cudem)
 
