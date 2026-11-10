@@ -8,7 +8,7 @@ the same cells along their shared edge.
 """
 
 import math
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -31,13 +31,11 @@ OVERVIEW_RES_DEG = 0.0025  # the overview block-means native CRM to this (9 by 9
 BLOCK_MARGIN_DEG = 0.02  # each block is read this far past its tile
 CRM_LABEL = {"source": "crm", "resolution_m": 30, "date": "2025"}
 
-# (source name, geotransform, grid shape) -> offset in meters to subtract from -elevation for MLLW depth
-DatumFn = Callable[[str, tuple, tuple[int, int]], np.ndarray]
-
 
 @dataclass
 class BlockResult:
-    """GeoJSON Features clipped to the block's core, and the depth grids (land kept) for the DEMs.
+    """GeoJSON Features clipped to the block's core, and the depth grids (land kept) for the DEMs: depth by the
+    station path, without the lake rule the features use (AreaDatum).
 
     fine_grid is the whole CUDEM-over-CRM merge so the fine DEM has no false cliff at the CUDEM edge;
     fine_cudem marks its CUDEM cells, the only ones the fine features and the fine DEM's skip_empty use.
@@ -54,41 +52,65 @@ class BlockResult:
     fine_cudem: np.ndarray | None = None  # bool, the fine grid's shape
 
 
-def area_datum(region: Region, cache: Path) -> DatumFn:
-    """The region's datum file as a DatumFn: the NAVD88 to MLLW offset per area for every source, plus the
-    EGM2008 to NAVD88 height change for EGM2008 sources (CRM), from the geoid grids fetch-bathy put in cache.
-    Both are summed at the global grid nodes and resampled once (bilinear is linear), so a call allocates one
+class AreaDatum:
+    """The region's datum file as a callable: datum(source, transform, shape) is the offset in meters to subtract
+    from -elevation for MLLW depth. It is the NAVD88 to MLLW offset per area for every source, plus the EGM2008
+    to NAVD88 height change for EGM2008 sources (CRM), from the geoid grids fetch-bathy put in cache. Both are
+    summed at the global grid nodes and resampled once (bilinear is linear), so a call allocates one
     block-size array.
 
-    Lakes (#88): a cell whose center is inside a lake polygon of the datum file takes the lake's offset instead,
-    -low_level_navd88_m plus the height change, so its depth is the lake's low level minus the NAVD88 height of
-    the bottom whatever the source. The mask comes from the polygons, so it does not depend on the block."""
-    datum_file = load_datum(region.datum_file)
-    stations = datum_file.stations
-    lakes = [(lake.low_level_navd88_m, datum_file.lake_areas[lake.name], shape(datum_file.lake_areas[lake.name]))
-             for lake in datum_file.lakes]
+    Lakes (#88): with lakes=True a cell whose center is inside a lake polygon of the datum file takes the lake's
+    offset instead, -low_level_navd88_m plus the height change, so its depth is the lake's low level minus the
+    NAVD88 height of the bottom whatever the source. The mask comes from the polygons, so it does not depend on
+    the block. The lake rule is a depth datum, not terrain: the DEM grids use lakes=False, and lake_delta is
+    what the rule adds to such a depth."""
 
-    def datum(source: str, transform, grid_shape: tuple[int, int]) -> np.ndarray:
+    def __init__(self, region: Region, cache: Path):
+        datum_file = load_datum(region.datum_file)
+        self.stations = datum_file.stations
+        self.lakes = [(lake.low_level_navd88_m, datum_file.lake_areas[lake.name],
+                       shape(datum_file.lake_areas[lake.name])) for lake in datum_file.lakes]
+        self.cache = cache
+
+    def __call__(self, source: str, transform, grid_shape: tuple[int, int], *, lakes: bool = True) -> np.ndarray:
         lons, lats = node_axes(transform, grid_shape)
-        change = geoid.egm2008_to_navd88_nodes(lons, lats, cache) if SOURCE_VERTICAL[source] == "egm2008" else None
-        nodes = navd88_to_mllw_nodes(stations, lons, lats)
-        if change is not None:  # NAVD88 height = EGM2008 height + the change
-            nodes += change
+        nodes = navd88_to_mllw_nodes(self.stations, lons, lats)
+        if SOURCE_VERTICAL[source] == "egm2008":  # NAVD88 height = EGM2008 height + the change
+            nodes += geoid.egm2008_to_navd88_nodes(lons, lats, self.cache)
         offset = resample(nodes, lons, lats, transform, grid_shape)
+        delta = self.lake_delta(transform, grid_shape) if lakes else None
+        if delta is not None:
+            offset -= delta
+        return offset
+
+    def lake_delta(self, transform, grid_shape: tuple[int, int]) -> np.ndarray | None:
+        """Lake depth minus station-path depth per cell, the same for every source: low_level_navd88_m plus the
+        NAVD88 to MLLW offset inside a lake polygon, 0 elsewhere. None when no lake meets the grid."""
         x0, dx, _, y0, _, dy = transform
         grid = box(x0, y0 + grid_shape[0] * dy, x0 + grid_shape[1] * dx, y0)
-        change_cells = None
-        for low, area, polygon in lakes:
+        delta = station = None
+        for low, area, polygon in self.lakes:
             if not polygon.intersects(grid):
                 continue
             inside = clip_mask(transform, grid_shape, area)
-            if change is not None and change_cells is None:
-                change_cells = resample(change, lons, lats, transform, grid_shape)
-            offset[inside] = -low if change_cells is None else change_cells[inside] - low
+            if delta is None:
+                lons, lats = node_axes(transform, grid_shape)
+                station = resample(navd88_to_mllw_nodes(self.stations, lons, lats), lons, lats, transform, grid_shape)
+                delta = np.zeros(grid_shape, np.float32)
+            delta[inside] = low + station[inside]
             del inside
-        return offset
+        return delta
 
-    return datum
+
+def area_datum(region: Region, cache: Path) -> AreaDatum:
+    """The region's datum (AreaDatum), with the geoid grids fetch-bathy put in cache."""
+    return AreaDatum(region, cache)
+
+
+def _with_lakes(grid: Grid, datum: AreaDatum) -> Grid:
+    """A depth grid (station path) with the lake rule added; the grid itself when no lake meets it."""
+    delta = datum.lake_delta(grid.transform, grid.data.shape)
+    return grid if delta is None else Grid(grid.data + delta, grid.nodata, grid.transform, grid.crs)
 
 
 def snap_out(bbox, cell: float) -> tuple[float, float, float, float]:
@@ -159,7 +181,7 @@ def _features(
 
 
 def build_block(
-    core, read, cudem_tiles: Sequence[CudemTile], crm_path, datum: DatumFn, clip: shapely.Geometry | None
+    core, read, cudem_tiles: Sequence[CudemTile], crm_path, datum: AreaDatum, clip: shapely.Geometry | None
 ) -> BlockResult:
     """Fine and coarse outputs of one block: features clipped to core, grids over read.
 
@@ -167,7 +189,8 @@ def build_block(
     whole merge. Coarse is CRM on every coarse cell unless every fine cell in it holds CUDEM, decided per
     cell, so coarse overlaps fine by under one coarse cell instead of leaving a gap (the style draws coarse
     under fine). Cells inside clip are nan in both grids before anything is drawn. A block that no CUDEM
-    tile meets skips the fine merge: its fine outputs are empty and fine_grid is None.
+    tile meets skips the fine merge: its fine outputs are empty and fine_grid is None. The grids (the DEMs)
+    are depth by the station path; the features add the lake rule (_with_lakes).
     """
     has_cudem = bool(tiles_for_bbox(list(cudem_tiles), read))
     meeting = cudem_tiles if has_cudem else []
@@ -179,12 +202,12 @@ def build_block(
         del primary
         for index, name in ((1, "cudem"), (2, "crm")):
             take = source == index
-            fine.data[take] -= datum(name, fine.transform, fine.data.shape)[take]
+            fine.data[take] -= datum(name, fine.transform, fine.data.shape, lakes=False)[take]
             del take
 
     coarse, _ = merge_to_mllw([], crm, 0.0, 0.0, read, res_deg=COARSE_RES_DEG)
     del crm
-    coarse.data -= datum("crm", coarse.transform, coarse.data.shape)
+    coarse.data -= datum("crm", coarse.transform, coarse.data.shape, lakes=False)
     _clip(coarse, clip)
     fine_out = ([], [], [])
     if fine is not None:
@@ -196,12 +219,13 @@ def build_block(
         del source
         years = ",".join(sorted({str(t.year) for t in tiles_for_bbox(list(cudem_tiles), core)}))
         cudem_label = {"source": "cudem", "resolution_m": 3, "date": years}
-        fine_out = _features(fine, core, BANDS, fine=True, label=cudem_label, cells=cudem)
-    coarse_out = _features(coarse, core, COARSE_BANDS, fine=False, label=CRM_LABEL, overzoomed=True)
+        fine_out = _features(_with_lakes(fine, datum), core, BANDS, fine=True, label=cudem_label, cells=cudem)
+    coarse_out = _features(_with_lakes(coarse, datum), core, COARSE_BANDS, fine=False, label=CRM_LABEL,
+                           overzoomed=True)
     return BlockResult(*fine_out, *coarse_out, fine_grid=fine, coarse_grid=coarse, fine_cudem=cudem)
 
 
-def build_overview(bbox, crm_path, datum: DatumFn, clip: shapely.Geometry | None) -> BlockResult:
+def build_overview(bbox, crm_path, datum: AreaDatum, clip: shapely.Geometry | None) -> BlockResult:
     """The overview's coarse outputs from one native CRM read over overview_bounds(bbox), block-meaned to
     OVERVIEW_RES_DEG on the global grid (the read is snapped to it, so every block is whole), with
     OVERVIEW_BANDS (major levels only). CUDEM adds no detail at 300 m cells, so there is no fine output."""
@@ -211,7 +235,8 @@ def build_overview(bbox, crm_path, datum: DatumFn, clip: shapely.Geometry | None
     grid = Grid(mean.astype(np.float32), float("nan"), transform, native.crs)
     del native
     del mean
-    grid.data -= datum("crm", grid.transform, grid.data.shape)
+    grid.data -= datum("crm", grid.transform, grid.data.shape, lakes=False)
     _clip(grid, clip)
-    return BlockResult([], [], [], *_features(grid, None, OVERVIEW_BANDS, fine=False, label=CRM_LABEL),
+    return BlockResult([], [], [], *_features(_with_lakes(grid, datum), None, OVERVIEW_BANDS, fine=False,
+                                              label=CRM_LABEL),
                        fine_grid=None, coarse_grid=grid)

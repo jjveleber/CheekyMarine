@@ -9,7 +9,8 @@ import tomllib
 import numpy as np
 import pytest
 from osgeo import gdal, osr
-from shapely.geometry import box, mapping
+from shapely.geometry import box, mapping, shape
+from shapely.ops import unary_union
 
 from chartpack.bathy.blocks import area_datum, build_overview, overview_bounds
 from chartpack.datum import geoid
@@ -144,7 +145,9 @@ def test_lake_depth_from_low_level(source, change, test_region, tmp_path, monkey
 
 
 def test_overview_applies_lake_rule(test_region, tmp_path, zero_geoid):
-    """The overview path over a synthetic lake gives the lake depth, not the station path."""
+    """The overview path over a synthetic lake draws the lake depth, not the station path (the 0 to 60 ft band
+    fills the lake, the land around it has none), while its DEM grid keeps the station path everywhere: the
+    lake rule is a depth datum, not terrain (#88 review)."""
     bbox = (-122.4, 47.5, -122.2, 47.7)
     read = overview_bounds(bbox)
     cell = 1 / 3600  # native CRM, as the WCS serves it; the overview block-means it to OVERVIEW_RES_DEG
@@ -160,15 +163,12 @@ def test_overview_applies_lake_rule(test_region, tmp_path, zero_geoid):
     ds = None
     lake = box(-122.35, 47.55, -122.25, 47.65)
     region = _lake_region(test_region, tmp_path, mapping(lake))
-    grid = build_overview(bbox, crm, area_datum(region, tmp_path), None).coarse_grid
-    x0, dx, _, y0, _, dy = grid.transform
-    lon = x0 + (np.arange(grid.data.shape[1]) + 0.5) * dx
-    lat = y0 + (np.arange(grid.data.shape[0]) + 0.5) * dy
-    inside = ((lon > -122.35) & (lon < -122.25))[None, :] & ((lat > 47.55) & (lat < 47.65))[:, None]
-    assert inside.sum() > 100 and (~inside).sum() > 100
-    np.testing.assert_allclose(grid.data[inside], 6.0, atol=1e-5)
+    result = build_overview(bbox, crm, area_datum(region, tmp_path), None)
+    grid = result.coarse_grid
     station = navd88_to_mllw_grid(load_datum(region.datum_file).stations, grid.transform, grid.data.shape)
-    np.testing.assert_allclose(grid.data[~inside], -station[~inside], atol=1e-5)
+    np.testing.assert_allclose(grid.data, -station, atol=1e-5)
+    water = unary_union([shape(f["geometry"]) for f in result.coarse_bands if f["properties"]["depth_min_ft"] == 0])
+    assert water.symmetric_difference(lake).area < 0.05 * lake.area
 
 
 def test_grid_is_window_independent(wa):

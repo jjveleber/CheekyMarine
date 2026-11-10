@@ -15,7 +15,7 @@ import pytest
 import shapely
 from make_ridge import NODATA, ridge_grid
 from osgeo import gdal, osr
-from shapely.geometry import box, shape
+from shapely.geometry import box, mapping, shape
 from shapely.ops import unary_union
 
 from chartpack.bathy import blocks
@@ -211,6 +211,32 @@ def test_block_without_cudem_tile_skips_fine(sources, test_region, monkeypatch):
     assert not (result.fine_contours or result.fine_bands or result.fine_coverage)
     assert result.fine_grid is None and result.fine_cudem is None
     assert result.coarse_contours and result.coarse_bands and result.coarse_coverage
+
+
+@pytest.mark.parametrize("kind", ["fine", "coarse"])
+def test_lake_rule_stays_out_of_the_dem(kind, sources, test_region, tmp_path):
+    """A flat bottom at NAVD88 -20 m under a lake whose low level is 6.0 m: the contours and bands see the lake
+    depth (26 m inside, 19.3 m by the one 0.7 m station outside), but the DEM grids are the terrain with the
+    station offset alone, so the hillshade draws no step along the shore."""
+    from test_datum_offsets import _lake_region
+
+    _, core, read = _block(NORTH)
+    w, s, e, n = core
+    lake = box(w + 0.1003, s + 0.0507, w + 0.2011, s + 0.1509)  # edges off the cells
+    region = _lake_region(test_region, tmp_path, mapping(lake))
+    flat = np.full((2000, 2000), -20.0, np.float32)
+    tiles, crm = sources(flat if kind == "fine" else np.full((2000, 2000), NODATA, np.float32))
+    _write_tif(crm, np.full((400, 400), -20.0, np.float32), AREA)
+    result = build_block(core, read, tiles_for_bbox(tiles, read), crm, area_datum(region, Path("unused")), None)
+    grid = getattr(result, f"{kind}_grid")
+    x0, dx, _, y0, _, dy = grid.transform
+    lon = x0 + (np.arange(grid.data.shape[1]) + 0.5) * dx
+    lat = y0 + (np.arange(grid.data.shape[0]) + 0.5) * dy
+    inner = ((lon > w) & (lon < e))[None, :] & ((lat > s) & (lat < n))[:, None]
+    assert np.isfinite(grid.data[inner]).all()
+    np.testing.assert_allclose(grid.data[inner], 19.3, atol=1e-3)
+    rim = [f for f in getattr(result, f"{kind}_contours") if f["properties"]["depth_ft"] == 80]
+    assert rim and all(lake.boundary.distance(shape(f["geometry"])) < 0.005 for f in rim)
 
 
 def test_clip_removes_water_in_block(sources, test_region):
