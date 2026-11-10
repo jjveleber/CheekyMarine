@@ -140,3 +140,16 @@ def test_fish_style_coarse_under_fine():
     for f, c in zip(fine, coarse):
         assert c["source"] == f"{f['source']}-coarse"
         assert {k: v for k, v in c.items() if k not in ("id", "source")} == {k: v for k, v in f.items() if k not in ("id", "source")}
+
+
+def test_coarse_tiers_show_every_coarse_z12_level():
+    """The coarse z12 band carries every level with its minzoom property: each such tier has a coarse layer
+    that appears at that zoom (on the overzoomed z12 tiles) and keeps only that tier."""
+    from chartpack.bathy.contours import DEPTHS_FT, MAJOR_FT, min_zoom
+
+    layers = {l["id"]: l for l in fish_style("day")["layers"]}
+    for n in sorted({max(min_zoom(ft), 12) for ft in DEPTHS_FT if ft not in MAJOR_FT}):
+        for kind in ("contour-minor", "contour-label"):
+            layer = layers[f"{kind}-z{n}-coarse"]
+            assert layer["source"] == "bathy-coarse" and layer["minzoom"] == n
+            assert ["==", ["get", "minzoom"], n] in layer["filter"]

@@ -142,14 +142,15 @@ def _coverage(valid: np.ndarray, transform, core, label: dict) -> list[dict]:
 
 
 def _features(
-    grid: Grid, core, bands, *, fine: bool, label: dict, cells: np.ndarray | None = None
+    grid: Grid, core, bands, *, fine: bool, label: dict, cells: np.ndarray | None = None, overzoomed: bool = False
 ) -> tuple[list[dict], list[dict], list[dict]]:
     """Contours (tagged with the label's source), bands and coverage of one depth grid, clipped to core.
-    `cells` (bool) limits them to those cells; by default every finite cell counts."""
+    `cells` (bool) limits them to those cells; by default every finite cell counts. overzoomed: see
+    contours_by_zoom."""
     valid = np.isfinite(grid.data) if cells is None else cells
     filled = fill_land(grid.data)  # the grid itself keeps the real land heights for the hillshade
     filled[~valid] = np.nan
-    contours = contours_by_zoom(filled, grid.transform, fine=fine, bands=bands, core=core)
+    contours = contours_by_zoom(filled, grid.transform, fine=fine, bands=bands, core=core, overzoomed=overzoomed)
     for f in contours:
         f["properties"]["source"] = label["source"]
     polygons = bands_by_zoom(filled, grid.transform, bands=bands, core=core)
@@ -190,7 +191,7 @@ def build_block(
     years = ",".join(sorted({str(t.year) for t in tiles_for_bbox(list(cudem_tiles), core)}))
     cudem_label = {"source": "cudem", "resolution_m": 3, "date": years}
     fine_out = _features(fine, core, BANDS, fine=True, label=cudem_label, cells=cudem)
-    coarse_out = _features(coarse, core, COARSE_BANDS, fine=False, label=CRM_LABEL)
+    coarse_out = _features(coarse, core, COARSE_BANDS, fine=False, label=CRM_LABEL, overzoomed=True)
     return BlockResult(*fine_out, *coarse_out, fine_grid=fine, coarse_grid=coarse, fine_cudem=cudem)
 
 

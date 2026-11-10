@@ -161,3 +161,20 @@ def test_coarse_and_overview_bands():
     from chartpack.bathy.contours import COARSE_BANDS, OVERVIEW_BANDS
 
     assert COARSE_BANDS == ((10, 11, 150.0), (12, 12, 30.0)) and OVERVIEW_BANDS == ((6, 9, 300.0),)
+
+
+def test_coarse_top_band_holds_every_level():
+    """bathy-coarse stops at z12 and is overzoomed past it, so its z12 band carries every 10 ft level to 300
+    (and the deep ones), each with its own minzoom for the style tiers; z10-11 and the overview keep theirs."""
+    from chartpack.bathy.contours import COARSE_BANDS, OVERVIEW_BANDS
+
+    slope = np.tile(np.arange(200) * 0.5, (200, 1)).astype(np.float32)  # 0 to 99.5 m: past 300 ft
+    feats = contours_by_zoom(slope, TRANSFORM, fine=False, bands=COARSE_BANDS, overzoomed=True)
+    top = {f["properties"]["depth_ft"]: f["properties"]["minzoom"] for f in feats if f["tippecanoe"]["minzoom"] == 12}
+    assert set(range(10, 301, 10)) <= set(top)
+    assert all(top[ft] == max(min_zoom(ft), 12) for ft in top if ft not in MAJOR_FT)
+    assert top[250] == min_zoom(250) == 14 and top[200] == 13
+    low = {f["properties"]["depth_ft"] for f in feats if f["tippecanoe"]["minzoom"] == 10}
+    assert low == {ft for ft in range(10, 301, 10) if min_zoom(ft) <= 11 or ft in MAJOR_FT}
+    overview = contours_by_zoom(slope, TRANSFORM, fine=False, bands=OVERVIEW_BANDS)
+    assert {f["properties"]["depth_ft"] for f in overview} <= MAJOR_FT

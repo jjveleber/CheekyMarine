@@ -186,6 +186,19 @@ def test_coarse_fills_per_cell(sources, test_region):
     assert result.coarse_contours and result.fine_contours
 
 
+def test_crm_only_block_coarse_z12_has_every_level(sources, test_region):
+    """A block with no CUDEM value: its coarse z12 band holds the 10 ft levels with min_zoom 13 and 14 (the
+    style shows them on the overzoomed z12 tiles), e.g. 250 ft with minzoom 14."""
+    tiles, crm = sources(np.full((2000, 2000), NODATA, np.float32))
+    _write_tif(crm, -np.tile(np.linspace(-68.0, 188.0, 400, dtype=np.float32), (400, 1)), AREA)  # 10 to 100 m deep
+    _, core, read = _block(NORTH)
+    result = build_block(core, read, tiles_for_bbox(tiles, read), crm, area_datum(test_region, Path("unused")), None)
+    assert not result.fine_contours
+    top = {(f["properties"]["depth_ft"], f["properties"]["minzoom"])
+           for f in result.coarse_contours if f["tippecanoe"]["minzoom"] == 12}
+    assert (250, 14) in top and (200, 13) in top and (110, 14) in top
+
+
 def test_clip_removes_water_in_block(sources, test_region):
     _, _, read = _block(NORTH)
     mid = (read[1] + read[3]) / 2

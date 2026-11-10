@@ -25,7 +25,7 @@ M_PER_DEG = 111320.0
 
 # (tippecanoe minzoom, maxzoom, target cell size in metres; 0 = native grid)
 BANDS = ((10, 11, 150.0), (12, 13, 30.0), (14, 16, 0.0))
-COARSE_BANDS = ((10, 11, 150.0), (12, 12, 30.0))  # the CRM-only outputs, capped at zoom 12
+COARSE_BANDS = ((10, 11, 150.0), (12, 12, 30.0))  # the CRM-only outputs, capped at zoom 12 (overzoomed past it)
 OVERVIEW_BANDS = ((6, 9, 300.0),)  # the overview pack: major levels only
 REF_LAT = 48.0  # downsample factors are fixed at this latitude so every block (and pack) uses the same ones
 
@@ -162,7 +162,9 @@ def band_levels(levels_ft, hi: int) -> list[int]:
     return [ft for ft in sorted(levels_ft) if ft in MAJOR_FT or min_zoom(ft) <= hi]
 
 
-def contours_by_zoom(depth_m: np.ndarray, transform, *, fine: bool, bands=BANDS, core=None) -> list[dict]:
+def contours_by_zoom(
+    depth_m: np.ndarray, transform, *, fine: bool, bands=BANDS, core=None, overzoomed: bool = False
+) -> list[dict]:
     """Contours per zoom band: with BANDS, z10-11 from ~150 m cells, z12-13 from ~30 m, z14-16 native, each
     simplified to about one pixel at the band's top zoom (zoom_tolerance_deg).
 
@@ -170,10 +172,14 @@ def contours_by_zoom(depth_m: np.ndarray, transform, *, fine: bool, bands=BANDS,
     max(min_zoom(depth), band low) for the style filter (the band low for a major line). Depths whose
     min_zoom exceeds the band's top are not emitted in it, except the majors (band_levels). Fine (5 ft)
     levels are added in the native band only. `core` clips the raw lines (build_contours).
+
+    overzoomed: the file stops at the last band's top and the map overzooms it (bathy-coarse, z12), so the
+    last band carries every DEPTHS_FT level; the style tiers show each from its `minzoom` property.
     """
     feats = []
-    for lo, hi, target, grid, tr in zoom_grids(depth_m, transform, bands):
-        levels = band_levels(DEPTHS_FT + FINE_FT if fine and not target else DEPTHS_FT, hi)
+    for i, (lo, hi, target, grid, tr) in enumerate(zoom_grids(depth_m, transform, bands)):
+        top = max(min_zoom(ft) for ft in DEPTHS_FT) if overzoomed and i == len(bands) - 1 else hi
+        levels = band_levels(DEPTHS_FT + FINE_FT if fine and not target else DEPTHS_FT, top)
         for f in build_contours(grid, tr, levels_ft=levels, simplify_deg=zoom_tolerance_deg(hi), core=core):
             p = f["properties"]
             p["minzoom"] = lo if p["major"] else max(p["minzoom"], lo)
