@@ -5,6 +5,7 @@ import shapely
 from shapely.geometry import box, shape
 
 from chartpack.enc.catalog import _intersects, parse_catalog
+from chartpack.enc.tiles import OVERVIEW_ZOOMS
 from chartpack.grid import GRID_ZOOM, load_grid, owned_tiles, seams, tile_bounds, tiles_meeting
 from chartpack.region import load_region
 
@@ -16,9 +17,9 @@ VIEWS = {
     "sound-central": {"everett", "possession-bar", "point-no-point", "jeff-head", "admiralty-inlet", "corner",
                       "lake-washington"},
     "north-sound": {"friday-harbor"},
-    "strait": set(),
+    "strait": {"port-angeles"},
     "wa-coast": {"neah-bay-grounds"},
-    "overview": set(),
+    "overview": {"strait-and-coast"},
 }
 
 
@@ -93,7 +94,12 @@ def test_views_inside_owned_tiles(regions_dir):
     for r in _regions(regions_dir).values():
         assert {v.name for v in r.views} == VIEWS[r.name], r.name
         for v in r.views:
-            assert _tile_of(v.lon, v.lat) in owned[r.name], (r.name, v.name)
+            if r.overview:  # owns no grid tile: inside its bbox, at its own zooms
+                w, s, e, n = r.bbox
+                assert w < v.lon < e and s < v.lat < n, v.name
+                assert all(OVERVIEW_ZOOMS[0] <= z <= OVERVIEW_ZOOMS[1] for z in v.zooms), v.name
+            else:
+                assert _tile_of(v.lon, v.lat) in owned[r.name], (r.name, v.name)
 
 
 def test_overview_lists_low_bands_only(regions_dir):

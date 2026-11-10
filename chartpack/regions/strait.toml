@@ -27,3 +27,9 @@ file = "datum/wa-stations.toml"
 
 [seabed]
 sources = ["enc", "usseabed"]  # no DS 935 CMECS block meets the bbox
+
+[[render.views]]
+name = "port-angeles"  # the harbor entrance, just west of the sound-central seam at -123.398 W
+lon = -123.41
+lat = 48.14
+zooms = [11, 13, 15]

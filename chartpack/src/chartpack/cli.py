@@ -94,16 +94,18 @@ def _fetch_seabed(args: argparse.Namespace) -> int:
     return 0
 
 
-def _usgs_seabed(region, cache: Path) -> list:
-    """The region's USGS seabed features from the fetch-seabed cache."""
+def _usgs_seabed(region, cache: Path, area=None) -> list:
+    """The region's USGS seabed features from the fetch-seabed cache, read over the bounds of `area` (a region
+    pack's owned tiles plus the margin, which reach past its bbox), or over the bbox for the overview."""
     usseabed = [cache / "seabed" / name for name in FILES] if "usseabed" in region.seabed_sources else []
     blocks = {block: cache / "seabed" / f"{BLOCKS[block].name}.zip" for block in region.cmecs_blocks}
     missing = [p for p in usseabed + list(blocks.values()) if not p.is_file()]
     if missing:
         raise SystemExit(f"{missing[0]} not found; run fetch-seabed first")
-    features = read_usseabed(usseabed, region.bbox) if usseabed else []
+    bbox = region.bbox if area is None else area.bounds
+    features = read_usseabed(usseabed, bbox) if usseabed else []
     for block, path in blocks.items():
-        features += read_cmecs(path, block, region.bbox)
+        features += read_cmecs(path, block, bbox)
     return features
 
 
@@ -119,7 +121,7 @@ def _build_enc(args: argparse.Namespace) -> int:
         box(w - BLOCK_MARGIN_DEG, s - BLOCK_MARGIN_DEG, e + BLOCK_MARGIN_DEG, n + BLOCK_MARGIN_DEG)
         for w, s, e, n in (tile_bounds(GRID_ZOOM, x, y) for x, y in owned)])
     enc = build_enc_mbtiles(cells, args.work / "enc.mbtiles", region=region, work=args.work / "tippecanoe",
-                            seabed=_usgs_seabed(region, args.cache), zooms=zooms, area=area)
+                            seabed=_usgs_seabed(region, args.cache, area), zooms=zooms, area=area)
     keep_tiles(enc, owned, minzoom=zooms[0], maxzoom=zooms[1])
     print(_finish(assemble_charts_pack(region, enc, args.out), region))
     return 0

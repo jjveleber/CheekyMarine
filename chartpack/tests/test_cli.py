@@ -493,3 +493,37 @@ def test_build_enc_merges_usgs_seabed(tmp_path, fixtures_dir, regions_dir):
     legend = json.loads((root / "legend.json").read_text())
     assert {s for e in legend["entries"] for s in e["sources"]} == {"enc", "usseabed", "usgs-cmecs"}
     assert main(["check", str(root), "--enc-cache", str(cache)]) == 0
+
+
+def test_build_enc_reads_usgs_seabed_over_the_owned_tiles(tmp_path, fixtures_dir, regions_dir, monkeypatch):
+    """A region owns whole zoom-10 tiles that reach past its bbox (sound-south owns 47.45 to 47.5172 N): USGS seabed
+    features in that strip must reach the pack input, or they land in no pack."""
+    import shutil
+
+    from chartpack import cli
+    from chartpack.grid import GRID_ZOOM, owned_tiles, tile_bounds
+    from chartpack.region import load_region
+    from shapely import union_all
+    from shapely.geometry import box, shape
+
+    path = _grid_region(tmp_path, regions_dir)
+    narrow = "bbox = [-122.4, 47.7, -122.39, 48.0]"  # a sliver of the west tile column (-122.695 to -122.344 W)
+    path.write_text(path.read_text().replace("bbox = [-122.4, 47.7, -122.1, 48.0]", narrow)
+                    + '\n[seabed]\nsources = ["enc", "usseabed", "usgs-cmecs"]\ncmecs_blocks = ["seattle"]\n')
+    region = load_region(path)
+    owned = union_all([box(*tile_bounds(GRID_ZOOM, *t)) for t in owned_tiles(region, path.parent)])
+    cache = tmp_path / "cache"
+    (cache / "enc").mkdir(parents=True)
+    shutil.copy(fixtures_dir / "US4WA1HK.zip", cache / "enc" / "US4WA1HK-1.3.zip")
+    shutil.copytree(fixtures_dir / "seabed", cache / "seabed")
+    got = []
+
+    def fake_build(cells, out, *, seabed, **kw):
+        got.extend(seabed)
+        raise RuntimeError("stop after the seabed read")
+
+    monkeypatch.setattr(cli, "build_enc_mbtiles", fake_build)
+    with pytest.raises(RuntimeError, match="seabed read"):
+        main(["build-enc", str(path), str(tmp_path / "out"), "--cache", str(cache), "--work", str(tmp_path / "work")])
+    strip = [f for f in got if shape(f.geometry).intersects(owned) and not shape(f.geometry).intersects(box(*region.bbox))]
+    assert {f.props["src"] for f in strip} == {"usseabed", "usgs-cmecs"}

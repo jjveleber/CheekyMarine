@@ -22,3 +22,9 @@ dem_maxzoom = 14
 
 [datum]
 file = "datum/wa-stations.toml"
+
+[[render.views]]
+name = "strait-and-coast"  # the Strait and the WA coast, at overview zooms
+lon = -124.6
+lat = 47.8
+zooms = [7, 9]
