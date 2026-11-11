@@ -70,6 +70,13 @@ jobs:
             echo "no region file chartpack/regions/${INPUT_REGION}.toml" >&2
             exit 1
           fi
+          # The asset name: the region file's [sources] assets, default its name (as fetch-sources reads it).
+          name="$(python3 -c 'import sys, tomllib; d = tomllib.load(open(sys.argv[1], "rb")); print(d.get("sources", {}).get("assets", d["name"]))' "chartpack/regions/${INPUT_REGION}.toml")"
+          if [[ ! "${name}" =~ ^[a-z0-9-]+$ ]]; then
+            echo "[sources] assets must match [a-z0-9-]+" >&2
+            exit 1
+          fi
+          echo "ASSETS_NAME=${name}" >> "$GITHUB_ENV"
 
       - name: Install system packages
         run: |
@@ -87,17 +94,15 @@ jobs:
         working-directory: chartpack
         run: |
           # fetch-sources keeps the other kind's entries of this file (and refuses a changed extent).
-          name="$(.venv/bin/python -c 'import sys, tomllib; d = tomllib.load(open(sys.argv[1], "rb")); print(d.get("sources", {}).get("assets", d["name"]))' "regions/${INPUT_REGION}.toml")"
-          if [[ ! "${name}" =~ ^[a-z0-9-]+$ ]]; then
-            echo "[sources] assets must match [a-z0-9-]+" >&2
-            exit 1
-          fi
           mkdir -p sources
-          if gh release view sources-bc-1 >/dev/null 2>&1; then
-            assets="$(gh release view sources-bc-1 --json assets -q '.assets[].name')"
-            if grep -qx "fetch-stats-${name}.json" <<< "${assets}"; then
-              gh release download sources-bc-1 -p "fetch-stats-${name}.json" -D sources
-            fi
+          # Exit 3: no release yet, so no stats; any other failure fails the job.
+          code=0
+          assets="$(scripts/release-assets.sh sources-bc-1)" || code=$?
+          if [ "$code" -ne 0 ] && [ "$code" -ne 3 ]; then
+            exit "$code"
+          fi
+          if grep -qx "fetch-stats-${ASSETS_NAME}.json" <<< "${assets}"; then
+            gh release download sources-bc-1 -p "fetch-stats-${ASSETS_NAME}.json" -D sources
           fi
 
       - name: Fetch the sources
@@ -121,7 +126,9 @@ jobs:
       - name: Upload to the release sources-bc-1
         working-directory: chartpack
         run: |
-          if ! gh release view sources-bc-1 >/dev/null 2>&1; then
+          code=0
+          scripts/release-assets.sh sources-bc-1 > /dev/null || code=$?
+          if [ "$code" -eq 3 ]; then
             {
               echo "Source data for CheekyMarine chart packs, fetched by .github/workflows/chartpack-sources.yml. Not for navigation."
               echo
@@ -132,5 +139,20 @@ jobs:
             # A pre-release, so "Latest" stays with the n2kd v* releases.
             gh release create sources-bc-1 --target "${GITHUB_SHA}" --title sources-bc-1 \
               --notes-file "${RUNNER_TEMP}/notes.md" --prerelease --latest=false
+          elif [ "$code" -ne 0 ]; then
+            exit "$code"
           fi
-          gh release upload sources-bc-1 sources/* --clobber
+          # Data first, the stats last and only after the data went up: the stats never describe a grid that
+          # is not in the release (a failed run leaves the old stats, which a build guard then reads against
+          # the sha256 of each file). A rerun repairs a failed upload.
+          stats="sources/fetch-stats-${ASSETS_NAME}.json"
+          data=()
+          for f in sources/*; do
+            if [ "$f" != "$stats" ]; then
+              data+=("$f")
+            fi
+          done
+          if [ "${#data[@]}" -gt 0 ]; then
+            gh release upload sources-bc-1 "${data[@]}" --clobber
+          fi
+          gh release upload sources-bc-1 "$stats" --clobber

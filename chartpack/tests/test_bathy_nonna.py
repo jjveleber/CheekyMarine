@@ -8,8 +8,9 @@ from osgeo import gdal
 from chartpack.bathy import nonna
 from chartpack.cache import DownloadError
 from make_nonna import (
-    A_COL, A_ROW, GRID, NODATA, chunk_values, edge_transform, write_index, write_nonna,
+    A_COL, A_ROW, GRID, NODATA, SIZE, chunk_box, chunk_values, edge_transform, write_index, write_nonna,
 )
+from osgeo import osr
 
 gdal.UseExceptions()
 
@@ -45,17 +46,26 @@ class ListSession:
     def __init__(self, bodies):
         self.bodies = list(bodies)
         self.urls = []
+        self.retries = []
         self.backoffs = 0
 
-    def get(self, url):
+    def get(self, url, retry=True):
         self.urls.append(url)
+        self.retries.append(retry)
         return self.bodies.pop(0)
 
     def backoff(self):
         self.backoffs += 1
 
 
-BOXES = [(-124.4, 50.4, -124.3, 50.5), (-124.3, 50.4, -124.2, 50.5)]
+BOXES = [chunk_box("a"), chunk_box("b")]  # lon/lat boxes whose requests chunk-a.tif and chunk-b.tif answer
+
+
+def test_chunk_boxes_snap_to_the_fixture_chunks():
+    for which, (dc, dr) in (("a", (0, 0)), ("b", (62, 10))):
+        x0, px, _, y0, _, py = edge_transform("nonna10", A_COL + dc, A_ROW + dr)
+        expected = (x0, y0 + SIZE * py, x0 + SIZE * px, y0)
+        assert nonna.snap_box("nonna10", chunk_box(which)) == pytest.approx(expected, abs=1e-6)
 
 
 def _truncated(fixtures_dir) -> bytes:
@@ -68,9 +78,9 @@ def _truncated(fixtures_dir) -> bytes:
 def test_wcs_error_body_is_not_stored(tmp_path, fixtures_dir, bad, kind):
     """A chunk that comes back as an XML error body or a cut TIFF twice fails the fetch naming its box, after
     one retry behind the back-off; nothing is left at out or beside it."""
-    chunk = (fixtures_dir / "nonna" / "chunk-a.tif").read_bytes()
+    chunks = [(fixtures_dir / "nonna" / f"chunk-{w}.tif").read_bytes() for w in "ab"]
     error = (fixtures_dir / "nonna" / "error.xml").read_bytes() if kind == "xml" else _truncated(fixtures_dir)
-    bodies = [chunk] * bad + [error, error] + [chunk] * (1 - bad)
+    bodies = chunks[:bad] + [error, error] + chunks[bad + 1:]
     session = ListSession(bodies)
     out = tmp_path / "nonna10-x.tif"
     with pytest.raises(DownloadError, match=re.escape(str(BOXES[bad]))) as info:
@@ -81,6 +91,7 @@ def test_wcs_error_body_is_not_stored(tmp_path, fixtures_dir, bad, kind):
         assert "truncated TIFF" in str(info.value) and "II*" not in str(info.value)  # no raw TIFF bytes
     bad_url = nonna.wcs_url("nonna10", nonna.snap_box("nonna10", BOXES[bad]))
     assert session.urls.count(bad_url) == 2 and session.backoffs == 1
+    assert session.retries[-1] is False  # the bad-body retry does not stack the session's own retry
     assert not out.exists()
     assert list(tmp_path.iterdir()) == []  # no mosaic, no chunk left behind
 
@@ -93,21 +104,52 @@ def test_bad_chunk_then_good_one_succeeds(tmp_path, fixtures_dir, kind):
     out = tmp_path / "nonna10-x.tif"
     assert nonna.fetch_nonna("nonna10", BOXES, out, session)["chunks"] == 2
     assert len(session.urls) == 3 and session.urls[1] == session.urls[2] and session.backoffs == 1
+    assert session.retries == [True, True, False]
     ds = gdal.Open(str(out))
     b_src = gdal.Open(str(paths[1]))
     np.testing.assert_array_equal(ds.GetRasterBand(1).ReadAsArray(62, 10, 64, 64), b_src.GetRasterBand(1).ReadAsArray())
 
 
-def test_chunk_off_the_native_grid_is_refused(tmp_path):
-    shifted = tmp_path / "shifted.tif"
-    write_nonna(shifted, chunk_values("a"))
-    ds = gdal.Open(str(shifted), gdal.GA_Update)
-    x0, px, _, y0, _, py = ds.GetGeoTransform()
-    ds.SetGeoTransform((x0 + px / 2, px, 0.0, y0, 0.0, py))  # the half-cell shift Task 1 saw with corner snapping
+def _edited_chunk_a(tmp_path, transform=None, epsg=None, data=None) -> bytes:
+    path = write_nonna(tmp_path / "edited.tif", chunk_values("a") if data is None else data)
+    ds = gdal.Open(str(path), gdal.GA_Update)
+    if transform:
+        ds.SetGeoTransform(transform(ds.GetGeoTransform()))
+    if epsg:
+        srs = osr.SpatialReference()
+        srs.ImportFromEPSG(epsg)
+        ds.SetProjection(srs.ExportToWkt())
     ds = None
+    body = path.read_bytes()
+    path.unlink()
+    return body
+
+
+def _half_cell(gt):
+    x0, px, _, y0, _, py = gt
+    return (x0 + px / 2, px, 0.0, y0, 0.0, py)  # the half-cell shift Task 1 saw with corner snapping
+
+
+def _far_away(gt):
+    x0, px, _, y0, _, py = gt
+    return (x0 + 50000 * px, px, 0.0, y0, 0.0, py)  # on the native grid, but not where it was asked for
+
+
+@pytest.mark.parametrize("case, match", [
+    ({"transform": _half_cell}, "native grid"),
+    ({"transform": _far_away}, "requested box"),
+    ({"data": chunk_values("a")[:60, :]}, "requested box"),  # clipped smaller than the request
+    ({"epsg": 32610}, "EPSG:3857"),
+])
+def test_wrong_chunk_fails_at_once(tmp_path, case, match):
+    """A readable TIFF that is not the requested box on the native grid in EPSG:3857 cannot get better: the fetch
+    fails naming the box with no back-off and no second request."""
+    session = ListSession([_edited_chunk_a(tmp_path, **case)])
     out = tmp_path / "out.tif"
-    with pytest.raises(DownloadError, match="native grid"):
-        nonna.fetch_nonna("nonna10", BOXES[:1], out, ListSession([shifted.read_bytes()] * 2))
+    with pytest.raises(DownloadError, match=match) as info:
+        nonna.fetch_nonna("nonna10", BOXES[:1], out, session)
+    assert str(BOXES[0]) in str(info.value)
+    assert len(session.urls) == 1 and session.backoffs == 0
     assert not out.exists()
 
 
@@ -167,3 +209,15 @@ def test_nonna_sign_and_nodata(tmp_path):
     assert math.isnan(values[0]) and values[1:] == [30.0, -1.5]
     assert math.isnan(grid.data[0, 0])  # outside the raster
     assert grid.data.dtype == np.float32 and math.isnan(grid.nodata)
+
+
+def test_stats_count_only_chunks_in_the_mosaic(tmp_path, fixtures_dir, monkeypatch):
+    """BuildVRT skips a source it cannot place (another CRS) with a warning only; the fetch fails rather than
+    report a chunk the mosaic does not hold. The chunk check is switched off to reach that point."""
+    monkeypatch.setattr(nonna, "_check_chunk", lambda *args: None)
+    b_other_crs = _edited_chunk_a(tmp_path, epsg=32610)
+    session = ListSession([(fixtures_dir / "nonna" / "chunk-a.tif").read_bytes(), b_other_crs])
+    out = tmp_path / "out.tif"
+    with pytest.raises(DownloadError, match="1 of 2 chunks"):
+        nonna.fetch_nonna("nonna10", BOXES, out, session)
+    assert not out.exists()

@@ -148,11 +148,13 @@ the fetch. A region without `[seabed]` uses the ENC bottom marks only.
 Canadian sources (CHS NONNA depth grids, the BC Freshwater Atlas coastline) are never fetched by a build.
 `chartpack fetch-sources --region regions/<region>.toml --out <dir> [--only coast|nonna]` fetches them, and
 only `.github/workflows/chartpack-sources.yml` runs it: it stores `nonna10-<name>.tif`, `nonna100-<name>.tif`,
-`coast-<name>.geojson.gz` and `fetch-stats-<name>.json` (the requested extent, then chunks, bytes and seconds per
-file) as assets of the pre-release `sources-bc-1`, where `<name>` is the region's `[sources] assets` (default:
-its name; `[a-z0-9-]+`). A run of one kind keeps the other kind's entries of a stats file already in
-`<dir>` (the workflow downloads it from the release) and refuses a changed extent. The fetch is polite (`fetching.py`): one request at a time with a 2 s pause after each response,
-robots.txt read first, one retry after 60 s on a 5xx or a timeout, and a stop on HTTP 403 or 429.
+`coast-<name>.geojson.gz` and `fetch-stats-<name>.json` (the requested extent, then chunks, bytes, sha256 and
+seconds per file) as assets of the pre-release `sources-bc-1`, where `<name>` is the region's `[sources] assets`
+(default: its name; `[a-z0-9-]+`). The workflow uploads the data files first and the stats file last. A run of
+one kind keeps the other kind's entries of a stats file already in `<dir>` (the workflow downloads it from the
+release) and refuses a changed extent. The fetch is polite (`fetching.py`): one request at a time with a 2 s
+pause after each response (longer when robots.txt asks for a longer Crawl-delay), robots.txt read first, one
+retry after 60 s on a 5xx or a transport failure, and a stop on HTTP 403 or 429 or on a redirect to another host.
 
 ## Tests
 

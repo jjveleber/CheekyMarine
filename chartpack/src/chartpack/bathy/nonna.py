@@ -95,32 +95,48 @@ def _on_grid(value: float, edge: float, pixel: float) -> bool:
     return abs(k - round(k)) < 1e-3
 
 
+class _Unreadable(DownloadError):
+    """A chunk body that is not a whole GeoTIFF (an XML error body, a cut file): worth asking once more."""
+
+
 _TIFF_MAGIC = (b"II*\x00", b"MM\x00*", b"II+\x00", b"MM\x00+")  # TIFF and BigTIFF, both byte orders
 
 
-def _check_chunk(product: str, path: Path, body: bytes, box) -> None:
-    """Raise DownloadError naming the box unless path is one Float32 band on the product's native grid."""
+def _check_chunk(product: str, path: Path, body: bytes, box, request) -> None:
+    """Raise DownloadError naming the box unless path is one Float32 band in EPSG:3857 on the product's native
+    grid covering exactly the snapped request (xmin, ymin, xmax, ymax). An unreadable body raises _Unreadable."""
     try:
         ds = gdal.Open(str(path))
         ds.GetRasterBand(1).ReadAsArray()  # a cut file keeps its header; only the strips fail
     except RuntimeError as e:
         if body[:4] in _TIFF_MAGIC:
-            raise DownloadError(f"{product} box {box}: the response is a damaged or truncated TIFF: {e}") from e
+            raise _Unreadable(f"{product} box {box}: the response is a damaged or truncated TIFF: {e}") from e
         snippet = " ".join(body[:1000].decode("utf-8", "replace").split())
-        raise DownloadError(f"{product} box {box}: the response is not a GeoTIFF: {snippet}") from e
+        raise _Unreadable(f"{product} box {box}: the response is not a GeoTIFF: {snippet}") from e
     if ds.RasterCount != 1 or ds.GetRasterBand(1).DataType != gdal.GDT_Float32:
         raise DownloadError(f"{product} box {box}: expected one Float32 band")
+    srs = ds.GetSpatialRef()
+    if srs is None or (srs.GetAuthorityName(None), srs.GetAuthorityCode(None)) != ("EPSG", "3857"):
+        raise DownloadError(f"{product} box {box}: the response is not in EPSG:3857")
     gx0, gpx, _, gy0, _, gpy = ds.GetGeoTransform()
     x0, y0, px, py = _edges(product)
     if not (math.isclose(gpx, px, rel_tol=1e-9) and math.isclose(gpy, py, rel_tol=1e-9)
             and _on_grid(gx0, x0, px) and _on_grid(gy0, y0, py)):
         raise DownloadError(f"{product} box {box}: the response is not on the native grid: {(gx0, gpx, gy0, gpy)}")
+    xmin, ymin, xmax, ymax = request
+    cols, rows = round((xmax - xmin) / px), round((ymin - ymax) / py)
+    if (round((gx0 - xmin) / px), round((gy0 - ymax) / py), ds.RasterXSize, ds.RasterYSize) != (0, 0, cols, rows):
+        raise DownloadError(f"{product} box {box}: the response does not cover the requested box {request}: origin "
+                            f"{(gx0, gy0)}, {ds.RasterXSize} by {ds.RasterYSize} cells, asked {cols} by {rows}")
 
 
 def fetch_nonna(product: str, boxes: list[tuple], out: Path, session) -> dict:
-    """One WCS request per lon/lat box (snapped to native cell edges), each checked (a chunk that fails the check
-    is asked for once more after the session's back-off, then the fetch fails naming its box), mosaicked into one tiled,
-    DEFLATE-compressed GeoTIFF at out on the native grid. Nothing is written at out unless every chunk passes."""
+    """One WCS request per lon/lat box (snapped to native cell edges), each checked, mosaicked into one tiled,
+    DEFLATE-compressed GeoTIFF at out on the native grid. Nothing is written at out unless every chunk passes.
+
+    A chunk whose body is not a whole GeoTIFF (an XML error body, a cut file) is asked for once more after the
+    session's back-off, without the session's own retry, so one url is asked for at most three times; a readable
+    chunk that is wrong (grid, CRS, extent) cannot get better and fails at once. Either failure names the box."""
     out = Path(out)
     out.parent.mkdir(parents=True, exist_ok=True)
     start = time.monotonic()
@@ -128,29 +144,36 @@ def fetch_nonna(product: str, boxes: list[tuple], out: Path, session) -> dict:
         chunks = []
         for i, box in enumerate(boxes):
             path = Path(tmp) / f"chunk-{i:05d}.tif"
-            url = wcs_url(product, snap_box(product, box))
+            request = snap_box(product, box)
+            url = wcs_url(product, request)
             body = session.get(url)
             path.write_bytes(body)
             try:
-                _check_chunk(product, path, body, box)
-            except DownloadError:  # an XML error body or a cut TIFF: ask once more after the back-off
+                _check_chunk(product, path, body, box, request)
+            except _Unreadable:
                 session.backoff()
-                body = session.get(url)
+                body = session.get(url, retry=False)
                 path.write_bytes(body)
-                _check_chunk(product, path, body, box)
+                _check_chunk(product, path, body, box, request)
             chunks.append(str(path))
         if not chunks:
             raise DownloadError(f"{product}: no index tile meets the fetch extent")
         part = out.with_name(out.name + ".part")
         try:
-            vrt = gdal.BuildVRT(str(Path(tmp) / "mosaic.vrt"), chunks)
-            gdal.Translate(str(part), vrt, format="GTiff",
-                           creationOptions=["TILED=YES", "COMPRESS=DEFLATE", "PREDICTOR=3", "BIGTIFF=IF_SAFER"])
-            vrt = None
+            vrt_path = Path(tmp) / "mosaic.vrt"
+            vrt = gdal.BuildVRT(str(vrt_path), chunks)
+            try:
+                used = [f for f in vrt.GetFileList() if Path(f) != vrt_path]
+                if len(used) != len(chunks):  # BuildVRT skips a source it cannot place, with a warning only
+                    raise DownloadError(f"{product}: the mosaic holds {len(used)} of {len(chunks)} chunks")
+                gdal.Translate(str(part), vrt, format="GTiff",
+                               creationOptions=["TILED=YES", "COMPRESS=DEFLATE", "PREDICTOR=3", "BIGTIFF=IF_SAFER"])
+            finally:
+                vrt = None  # closed while the temporary directory still exists
             part.rename(out)
         finally:
             part.unlink(missing_ok=True)  # no-op after a successful rename
-    return {"chunks": len(chunks), "bytes": out.stat().st_size, "seconds": round(time.monotonic() - start, 3)}
+    return {"chunks": len(used), "bytes": out.stat().st_size, "seconds": round(time.monotonic() - start, 3)}
 
 
 def read_nonna(path: Path, bbox, res_deg: float) -> Grid:

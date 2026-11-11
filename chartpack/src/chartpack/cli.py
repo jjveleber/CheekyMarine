@@ -1,6 +1,7 @@
 """chartpack command line."""
 
 import argparse
+import hashlib
 import json
 import re
 import shutil
@@ -218,6 +219,14 @@ class _CountedSession:
         return self.session.get(url)
 
 
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as f:
+        while chunk := f.read(1 << 20):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 def _fetch_sources(args: argparse.Namespace) -> int:
     """A region's Canadian source data (NONNA grids from the CHS WCS, the BC coastline from the BC WFS) for the
     release sources-bc-1. Only the fetch workflow (chartpack-sources.yml) runs this; no pack build calls a
@@ -225,7 +234,8 @@ def _fetch_sources(args: argparse.Namespace) -> int:
 
     A run of both kinds writes fresh stats. A run of one kind keeps the other kind's entries of a stats file
     already in --out (the workflow downloads it from the release) and fails when that file's extent differs:
-    a changed box needs a run of both kinds."""
+    a changed box needs a run of both kinds. Each file entry holds its sha256, so a reader can tell the file
+    the stats describe from a stale one."""
     # The region file is read directly: load_region accepts the NONNA source names from plan 8 Task 5 on.
     with args.region.open("rb") as f:
         data = tomllib.load(f)
@@ -254,7 +264,7 @@ def _fetch_sources(args: argparse.Namespace) -> int:
                 if product in bathy_sources:
                     boxes = index_boxes(fetch_index(product, session, Path(work)), extent)
                     path = args.out / f"{product}-{name}.tif"
-                    files[path.name] = fetch_nonna(product, boxes, path, session)
+                    files[path.name] = {**fetch_nonna(product, boxes, path, session), "sha256": _sha256(path)}
                     print(path)
     if args.only in ("both", "coast"):
         path = args.out / f"coast-{name}.geojson.gz"
@@ -262,7 +272,7 @@ def _fetch_sources(args: argparse.Namespace) -> int:
         pages = _CountedSession(session)
         features = fetch_coastline(extent, path, pages)
         files[path.name] = {"chunks": pages.gets, "features": features, "bytes": path.stat().st_size,
-                            "seconds": round(time.monotonic() - start, 3)}
+                            "sha256": _sha256(path), "seconds": round(time.monotonic() - start, 3)}
         print(path)
     stats.write_text(json.dumps({"extent": extent, "files": files}, indent=2) + "\n")
     print(stats)

@@ -14,6 +14,7 @@ error.xml is the WCS exception body of a bad GetCoverage request, as recorded in
 """
 
 import io
+import math
 import zipfile
 from pathlib import Path
 
@@ -57,6 +58,25 @@ def write_nonna(path: Path, data: np.ndarray, product: str = "nonna10", col: int
     return Path(path)
 
 
+def lonlat_box(product: str, col: int, row: int, cols: int, rows: int, inset: float = 1e-7):
+    """The lon/lat box (W, S, E, N) of native cells col..col+cols-1, row..row+rows-1, shrunk by inset degrees on
+    each side, so snapping it outward to cell edges gives back exactly those cells."""
+    x0, px, _, y0, _, py = edge_transform(product, col, row)
+    lon = [math.degrees(x / 6378137.0) for x in (x0, x0 + cols * px)]
+    lat = [math.degrees(2 * math.atan(math.exp(y / 6378137.0)) - math.pi / 2) for y in (y0 + rows * py, y0)]
+    return (lon[0] + inset, lat[0] + inset, lon[1] - inset, lat[1] - inset)
+
+
+def write_request_chunk(path: Path, product: str, bbox_3857, value: float = -5.0) -> Path:
+    """What the WCS answers for a subset snapped to native cell edges: a chunk covering exactly bbox_3857."""
+    xmin, ymin, xmax, ymax = bbox_3857
+    ex, ey = edge_transform(product, 0, 0)[0], edge_transform(product, 0, 0)[3]
+    _, _, px, py = GRID[product]
+    col, row = round((xmin - ex) / px), round((ymax - ey) / py)
+    cols, rows = round((xmax - xmin) / px), round((ymin - ymax) / py)
+    return write_nonna(path, np.full((rows, cols), value, np.float32), product, col, row)
+
+
 def toba_values(rows: int, cols: int) -> np.ndarray:
     """The synthetic depths of the module docstring over cells (0..cols-1, 0..rows-1) from chunk a's corner."""
     r, c = np.mgrid[0:rows, 0:cols]
@@ -64,6 +84,12 @@ def toba_values(rows: int, cols: int) -> np.ndarray:
     v[0, :] = 0.3048 * (c[0, :] % 4)
     v[(c + r) % 7 == 0] = NODATA
     return v.astype(np.float32)
+
+
+def chunk_box(which: str):
+    """The lon/lat box whose WCS request chunk a (or b) answers."""
+    dc, dr = (0, 0) if which == "a" else B_OFFSET
+    return lonlat_box("nonna10", A_COL + dc, A_ROW + dr, SIZE, SIZE)
 
 
 def chunk_values(which: str) -> np.ndarray:

@@ -1,22 +1,45 @@
 import gzip
+import hashlib
+import http.client
 import io
 import json
 import urllib.error
+from dataclasses import dataclass
+from urllib.parse import parse_qs, urlsplit
 
 import pytest
 
 from chartpack import __version__, cli
+from chartpack.cache import DownloadError
 from chartpack.fetching import USER_AGENT, FetchStopped, PoliteSession
-from make_nonna import A_COL, A_ROW, chunk_values, index_zip, write_nonna
+from make_nonna import index_zip, write_request_chunk
 
 HOST = "https://nonna-geoserver.data.chs-shc.ca"
 ROBOTS = f"{HOST}/robots.txt"
 DATA = f"{HOST}/geoserver/wcs?service=WCS&request=GetCoverage"
 
 
+@dataclass
+class Redirect:
+    """A response that urlopen reached by following redirects to final_url."""
+
+    final_url: str
+    body: bytes
+
+
+class FakeResponse(io.BytesIO):
+    def __init__(self, body: bytes, url: str):
+        super().__init__(body)
+        self.url = url
+        self.status = 200
+
+    def geturl(self):
+        return self.url
+
+
 class FakeOpener:
-    """urlopen stand-in: each url maps to a list of results served in order. A result is the body (bytes), an
-    HTTP status to raise (int) or an exception to raise."""
+    """urlopen stand-in: each url maps to a list of results served in order. A result is the body (bytes), a
+    Redirect, an HTTP status to raise (int) or an exception to raise."""
 
     def __init__(self, routes: dict):
         self.routes = {url: list(results) for url, results in routes.items()}
@@ -30,7 +53,9 @@ class FakeOpener:
             raise urllib.error.HTTPError(url, result, "status", {}, io.BytesIO(b""))
         if isinstance(result, BaseException):
             raise result
-        return io.BytesIO(result)
+        if isinstance(result, Redirect):
+            return FakeResponse(result.body, result.final_url)
+        return FakeResponse(result, url)
 
 
 def _session(routes):
@@ -49,7 +74,8 @@ def test_robots_disallow_stops():
     assert [url for url, _, _ in opener.calls] == [ROBOTS]  # no data request
 
 
-@pytest.mark.parametrize("robots", [500, TimeoutError("timed out"), urllib.error.URLError(TimeoutError("timed out"))])
+@pytest.mark.parametrize("robots", [500, TimeoutError("timed out"), urllib.error.URLError(TimeoutError("timed out")),
+                                    urllib.error.URLError(ConnectionResetError("reset"))])
 def test_unreadable_robots_stops(robots):
     """A robots.txt that cannot be read (5xx or timeout, after the one retry) does not count as allowed."""
     session, opener, sleeps = _session({ROBOTS: [robots, robots]})
@@ -80,7 +106,12 @@ def test_403_and_429_stop_for_good(status):
     assert [url for url, _, _ in opener.calls] == [ROBOTS, DATA]  # nothing asked after the stop
 
 
-@pytest.mark.parametrize("failure", [503, TimeoutError("timed out"), urllib.error.URLError(TimeoutError("timed out"))])
+TRANSPORT = [TimeoutError("timed out"), urllib.error.URLError(TimeoutError("timed out")),
+             urllib.error.URLError(ConnectionResetError("reset")), http.client.RemoteDisconnected("closed"),
+             http.client.IncompleteRead(b"cut"), ConnectionResetError("reset")]
+
+
+@pytest.mark.parametrize("failure", [503] + TRANSPORT)
 def test_5xx_retries_once_after_60s(failure):
     session, opener, sleeps = _session({ROBOTS: [404], DATA: [failure, b"ok"]})
     assert session.get(DATA) == b"ok"
@@ -89,33 +120,115 @@ def test_5xx_retries_once_after_60s(failure):
     assert sleeps.count(60) == 1
 
 
-def test_5xx_twice_stops():
-    session, opener, _ = _session({ROBOTS: [404], DATA: [502, 502, b"never served"]})
-    with pytest.raises(FetchStopped, match="502"):
+@pytest.mark.parametrize("failure", [502] + TRANSPORT)
+def test_failure_twice_raises_naming_the_url(failure):
+    session, opener, _ = _session({ROBOTS: [404], DATA: [failure, failure, b"never served"]})
+    with pytest.raises(DownloadError, match="geoserver/wcs"):
         session.get(DATA)
     assert len(opener.calls) == 3
+
+
+@pytest.mark.parametrize("failure", [503, ConnectionResetError("reset")])
+def test_get_without_retry_fails_at_once(failure):
+    session, opener, sleeps = _session({ROBOTS: [404], DATA: [failure, b"never served"]})
+    with pytest.raises(DownloadError, match="geoserver/wcs"):
+        session.get(DATA, retry=False)
+    assert len(opener.calls) == 2 and 60 not in sleeps
+
+
+@pytest.mark.parametrize("status", [403, 429])
+def test_get_without_retry_still_stops_for_good(status):
+    session, _, _ = _session({ROBOTS: [404], DATA: [status]})
+    with pytest.raises(FetchStopped):
+        session.get(DATA, retry=False)
+
+
+def test_redirect_to_another_host_stops():
+    session, opener, _ = _session({ROBOTS: [404], DATA: [Redirect("https://elsewhere.example/wcs", b"data")]})
+    with pytest.raises(FetchStopped, match="elsewhere.example"):
+        session.get(DATA)
+
+
+def test_robots_redirect_to_another_host_stops():
+    session, opener, _ = _session({ROBOTS: [Redirect("https://elsewhere.example/page.html", b"<html></html>")]})
+    with pytest.raises(FetchStopped, match="elsewhere.example"):
+        session.get(DATA)
+    assert [url for url, _, _ in opener.calls] == [ROBOTS]
+
+
+def test_redirect_on_the_same_host_is_followed():
+    session, _, _ = _session({ROBOTS: [404], DATA: [Redirect(f"{HOST}/geoserver/other", b"data")]})
+    assert session.get(DATA) == b"data"
+
+
+def test_robots_401_stops():
+    session, opener, _ = _session({ROBOTS: [401]})
+    with pytest.raises(FetchStopped, match="401"):
+        session.get(DATA)
+    assert [url for url, _, _ in opener.calls] == [ROBOTS]
+
+
+def test_robots_200_allowing_the_path_lets_it_through():
+    session, opener, _ = _session({ROBOTS: [b"User-agent: *\nDisallow: /private/\n"], DATA: [b"data"]})
+    assert session.get(DATA) == b"data"
+    assert [url for url, _, _ in opener.calls] == [ROBOTS, DATA]
+
+
+def test_robots_200_that_is_not_robots_syntax_allows():
+    """RFC 9309: lines that are not rules are ignored, so an HTML page served as robots.txt disallows nothing."""
+    session, _, _ = _session({ROBOTS: [b"<html><body>Welcome</body></html>"], DATA: [b"data"]})
+    assert session.get(DATA) == b"data"
+
+
+@pytest.mark.parametrize("rule", ["/*/wcs", "/geoserver/*?", "/geoserver/wcs$", "/geo*"])
+@pytest.mark.parametrize("agent", ["*", "CheekyMarine-pack-builder"])
+def test_robots_wildcard_rule_refuses_when_its_prefix_matches(rule, agent):
+    """urllib.robotparser reads * and $ literally; a wildcard rule whose literal prefix matches the path refuses it."""
+    session, opener, _ = _session({ROBOTS: [f"User-agent: {agent}\nDisallow: {rule}\n".encode()]})
+    with pytest.raises(FetchStopped, match="robots.txt"):
+        session.get(DATA)
+    assert [url for url, _, _ in opener.calls] == [ROBOTS]
+
+
+def test_robots_wildcard_rule_elsewhere_allows():
+    session, _, _ = _session({ROBOTS: [b"User-agent: *\nDisallow: /other/*.tif\n"], DATA: [b"data"]})
+    assert session.get(DATA) == b"data"
+
+
+@pytest.mark.parametrize("delay, pause", [("10", 10.0), ("1", 2.0)])
+def test_crawl_delay_longer_than_the_pause_is_honored(delay, pause):
+    session, _, sleeps = _session({ROBOTS: [f"User-agent: *\nCrawl-delay: {delay}\n".encode()], DATA: [b"a", b"b"]})
+    session.get(DATA)
+    session.get(DATA)
+    assert sleeps == [2.0, pause, pause]  # robots.txt is read at the plain pause
 
 
 class FakeSession:
     """Serves the NONNA index zips, WCS chunks and coastline pages of the CLI test by url."""
 
-    def __init__(self, user_agent, tmp_path, index_boxes, chunk: bytes):
+    def __init__(self, user_agent, tmp_path, index_boxes):
         self.user_agent = user_agent
         self.urls = []
+        self.tmp_path = tmp_path
         self.index = index_zip(tmp_path, "NONNA100", index_boxes)
-        self.chunk = chunk
 
-    def get(self, url):
+    def get(self, url, retry=True):
         self.urls.append(url)
         if url.endswith("/NONNA100.zip"):
             return self.index
-        if "/geoserver/wcs?" in url:
-            return self.chunk
+        if "/geoserver/wcs?" in url:  # a chunk covering exactly the requested subset
+            q = parse_qs(urlsplit(url).query)
+            x = [float(v) for v in q["subset"][0][2:-1].split(",")]
+            y = [float(v) for v in q["subset"][1][2:-1].split(",")]
+            path = self.tmp_path / f"chunk-{len(self.urls)}.tif"
+            return write_request_chunk(path, "nonna100", (x[0], y[0], x[1], y[1])).read_bytes()
         if "FWA_COASTLINES_SP" in url:
             features = [{"type": "Feature", "properties": {"OBJECTID": i}, "geometry": None} for i in range(3)]
             return json.dumps({"type": "FeatureCollection", "features": features}).encode()
         raise AssertionError(f"unexpected url {url}")
 
+
+SMALL_TILE = (-124.61, 50.29, -124.6, 50.3)  # a stand-in index tile inside the fetch extent, a few NONNA-100 cells
 
 REGION = """name = "toba-part"
 charts_version = "0.1.0"
@@ -143,12 +256,11 @@ def test_fetch_sources_cli_writes_stats(tmp_path, monkeypatch, only):
     region = tmp_path / "toba-part.toml"
     region.write_text(REGION)
     (tmp_path / "work").mkdir()
-    chunk_path = write_nonna(tmp_path / "chunk.tif", chunk_values("a")[:8, :8], "nonna100", A_COL // 8, A_ROW // 8)
-    boxes = [("NONNA100_5000N12500W", (-125.0, 50.0, -124.0, 51.0)), ("NONNA100_5100N12500W", (-125.0, 51.0, -124.0, 52.0))]
+    boxes = [("small", SMALL_TILE), ("outside", (-125.0, 51.0, -124.0, 52.0))]
     sessions = []
 
     def make_session(user_agent):
-        sessions.append(FakeSession(user_agent, tmp_path / "work", boxes, chunk_path.read_bytes()))
+        sessions.append(FakeSession(user_agent, tmp_path / "work", boxes))
         return sessions[-1]
 
     monkeypatch.setattr(cli, "PoliteSession", make_session)
@@ -165,6 +277,7 @@ def test_fetch_sources_cli_writes_stats(tmp_path, monkeypatch, only):
     assert sorted(stats["files"]) == sorted(expected)
     for name, entry in stats["files"].items():
         assert entry["bytes"] == (out / name).stat().st_size
+        assert entry["sha256"] == hashlib.sha256((out / name).read_bytes()).hexdigest()
         assert entry["seconds"] >= 0
     if only != "coast":
         assert stats["files"]["nonna100-toba.tif"]["chunks"] == 1  # one index tile meets the extent
@@ -186,12 +299,10 @@ def _run_cli(tmp_path, monkeypatch, only, region_text=REGION):
     region = tmp_path / "toba-part.toml"
     region.write_text(region_text)
     (tmp_path / "work").mkdir(exist_ok=True)
-    chunk_path = write_nonna(tmp_path / "chunk.tif", chunk_values("a")[:8, :8], "nonna100", A_COL // 8, A_ROW // 8)
-    boxes = [("NONNA100_5000N12500W", (-125.0, 50.0, -124.0, 51.0))]
     sessions = []
 
     def make_session(user_agent):
-        sessions.append(FakeSession(user_agent, tmp_path / "work", boxes, chunk_path.read_bytes()))
+        sessions.append(FakeSession(user_agent, tmp_path / "work", [("small", SMALL_TILE)]))
         return sessions[-1]
 
     monkeypatch.setattr(cli, "PoliteSession", make_session)
@@ -200,7 +311,7 @@ def _run_cli(tmp_path, monkeypatch, only, region_text=REGION):
 
 
 EXTENT = [-124.62, 50.28, -124.18, 50.62]
-KEPT = {"coast-toba.geojson.gz": {"chunks": 7, "features": 60001, "bytes": 123, "seconds": 9.5}}
+KEPT = {"coast-toba.geojson.gz": {"chunks": 7, "features": 60001, "bytes": 123, "sha256": "ab" * 32, "seconds": 9.5}}
 
 
 def test_partial_run_keeps_the_other_kinds_stats(tmp_path, monkeypatch):
@@ -213,6 +324,8 @@ def test_partial_run_keeps_the_other_kinds_stats(tmp_path, monkeypatch):
     assert stats["extent"] == EXTENT
     assert sorted(stats["files"]) == ["coast-toba.geojson.gz", "nonna100-toba.tif"]
     assert stats["files"]["coast-toba.geojson.gz"] == KEPT["coast-toba.geojson.gz"]
+    tif = out / "nonna100-toba.tif"
+    assert stats["files"]["nonna100-toba.tif"]["sha256"] == hashlib.sha256(tif.read_bytes()).hexdigest()
 
 
 def test_partial_run_with_another_extent_fails(tmp_path, monkeypatch, capsys):
