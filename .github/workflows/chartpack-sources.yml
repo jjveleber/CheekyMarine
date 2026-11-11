@@ -1,0 +1,115 @@
+name: chartpack-sources
+
+# Fetches one region's Canadian source data and stores it as assets of the pre-release sources-bc-1:
+# nonna10-<name>.tif and nonna100-<name>.tif (CHS NONNA depth grids, WCS), coast-<name>.geojson.gz (BC Freshwater
+# Atlas coastline, WFS) and fetch-stats-<name>.json, where <name> is the region file's [sources] assets (default:
+# its name). This is the only place a Canadian host is called: pack builds, dry runs and tag runs read these
+# assets. The fetch manners (pause, User-Agent, robots.txt, back-off, stop on 403 or 429) are in
+# chartpack/src/chartpack/fetching.py.
+#
+# Start it by hand (workflow_dispatch) with a region file name and a stage. `only` limits a fetch to the
+# coastline or the NONNA grids.
+
+on:
+  workflow_dispatch:
+    inputs:
+      region:
+        description: Region file name without .toml
+        type: string
+        required: true
+      stage:
+        description: Stage
+        type: choice
+        options: [fetch]
+        required: true
+      only:
+        description: Which sources to fetch
+        type: choice
+        options: [both, coast, nonna]
+        default: both
+
+permissions:
+  contents: read
+
+# One run at a time: requests to a host stay in sequence, and the release has one writer.
+concurrency:
+  group: chartpack-sources
+  cancel-in-progress: false
+
+jobs:
+  fetch:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    env:
+      INPUT_REGION: ${{ inputs.region }}
+      INPUT_STAGE: ${{ inputs.stage }}
+      INPUT_ONLY: ${{ inputs.only }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check the inputs
+        run: |
+          if [[ ! "${INPUT_REGION}" =~ ^[a-z0-9-]+$ ]]; then
+            echo "region input must match [a-z0-9-]+" >&2
+            exit 1
+          fi
+          if [[ ! "${INPUT_STAGE}" =~ ^fetch$ ]]; then
+            echo "stage input must be fetch" >&2
+            exit 1
+          fi
+          if [[ ! "${INPUT_ONLY}" =~ ^(both|coast|nonna)$ ]]; then
+            echo "only input must be both, coast or nonna" >&2
+            exit 1
+          fi
+          if [ ! -f "chartpack/regions/${INPUT_REGION}.toml" ]; then
+            echo "no region file chartpack/regions/${INPUT_REGION}.toml" >&2
+            exit 1
+          fi
+
+      - name: Install system packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gdal-bin python3-gdal
+
+      - name: Create venv and install
+        working-directory: chartpack
+        run: |
+          python3 -m venv --system-site-packages .venv
+          .venv/bin/pip install -e .
+
+      - name: Fetch the sources
+        working-directory: chartpack
+        run: |
+          .venv/bin/chartpack fetch-sources --region "regions/${INPUT_REGION}.toml" --out sources --only "${INPUT_ONLY}"
+          ls -l sources
+
+      - name: Check every asset is under 2 GiB
+        working-directory: chartpack
+        run: |
+          limit=2147483648
+          for f in sources/*; do
+            size="$(stat -c %s "$f")"
+            if [ "$size" -ge "$limit" ]; then
+              echo "$f is $size bytes, a release asset must be under 2 GiB: split the region's fetch" >&2
+              exit 1
+            fi
+          done
+
+      - name: Upload to the release sources-bc-1
+        working-directory: chartpack
+        run: |
+          if ! gh release view sources-bc-1 >/dev/null 2>&1; then
+            {
+              echo "Source data for CheekyMarine chart packs, fetched by .github/workflows/chartpack-sources.yml. Not for navigation."
+              echo
+              cat src/chartpack/notices/chs.txt
+              echo
+              cat src/chartpack/notices/ogl-bc.txt
+            } > "${RUNNER_TEMP}/notes.md"
+            # A pre-release, so "Latest" stays with the n2kd v* releases.
+            gh release create sources-bc-1 --target "${GITHUB_SHA}" --title sources-bc-1 \
+              --notes-file "${RUNNER_TEMP}/notes.md" --prerelease --latest=false
+          fi
+          gh release upload sources-bc-1 sources/* --clobber

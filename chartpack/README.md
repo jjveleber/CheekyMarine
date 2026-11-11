@@ -145,6 +145,14 @@ Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko)
 sizes are pinned in `seabed/usseabed.py` and `seabed/cmecs.py`, so a damaged or revised file fails
 the fetch. A region without `[seabed]` uses the ENC bottom marks only.
 
+Canadian sources (CHS NONNA depth grids, the BC Freshwater Atlas coastline) are never fetched by a build.
+`chartpack fetch-sources --region regions/<region>.toml --out <dir> [--only coast|nonna]` fetches them, and
+only `.github/workflows/chartpack-sources.yml` runs it: it stores `nonna10-<name>.tif`, `nonna100-<name>.tif`,
+`coast-<name>.geojson.gz` and `fetch-stats-<name>.json` (the requested extent, then chunks, bytes and seconds per
+file) as assets of the pre-release `sources-bc-1`, where `<name>` is the region's `[sources] assets` (default:
+its name). The fetch is polite (`fetching.py`): one request at a time with a 2 s pause after each response,
+robots.txt read first, one retry after 60 s on a 5xx or a timeout, and a stop on HTTP 403 or 429.
+
 ## Tests
 
 Tests marked `online` need network and run only with `CHARTPACK_ONLINE=1`. Tests
