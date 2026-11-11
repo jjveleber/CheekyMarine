@@ -15,7 +15,10 @@ from chartpack.cache import DownloadError
 WFS_BASE = "https://openmaps.gov.bc.ca/geo/pub/WHSE_BASEMAPPING.FWA_COASTLINES_SP/ows"
 LAYER = "pub:WHSE_BASEMAPPING.FWA_COASTLINES_SP"
 PAGE_SIZE = 10000  # the server's CountDefault, its most features per request
-AXIS_MARGIN_DEG = 1.0  # how far past the requested bbox a coordinate may lie (lines run past the box they meet)
+# Where every FWA coastline position lies (BC and its islands, with room to spare): a line meeting the requested
+# box can run far past it, so positions are checked against the source's range, not the box.
+LON_RANGE = (-140.0, -113.0)
+LAT_RANGE = (47.0, 61.0)
 
 
 def page_url(bbox, start: int, count: int) -> str:
@@ -48,14 +51,21 @@ def _positions(coords):
             yield from _positions(c)
 
 
-def _check_axes(feature: dict, bbox) -> None:
-    """DownloadError unless every position lies in bbox grown by AXIS_MARGIN_DEG with x as longitude."""
-    w, s, e, n = bbox
-    m = AXIS_MARGIN_DEG
+def _inside(x: float, y: float) -> bool:
+    return LON_RANGE[0] <= x <= LON_RANGE[1] and LAT_RANGE[0] <= y <= LAT_RANGE[1]
+
+
+def _check_axes(feature: dict) -> None:
+    """DownloadError unless every position is lon, lat inside LON_RANGE and LAT_RANGE. A position that would be
+    inside with x and y exchanged is reported as a swapped axis order."""
     for x, y, *_ in _positions((feature.get("geometry") or {}).get("coordinates")):
-        if not (w - m <= x <= e + m and s - m <= y <= n + m):
-            raise DownloadError(f"coastline: position ({x}, {y}) lies outside the box {bbox} grown by {m} degree: "
-                                "the axis order looks swapped (lat, lon), expected lon, lat")
+        if _inside(x, y):
+            continue
+        if _inside(y, x):
+            raise DownloadError(f"coastline: position ({x}, {y}) reads as lat, lon: the axis order looks swapped, "
+                                "expected lon, lat")
+        raise DownloadError(f"coastline: position ({x}, {y}) is outside the expected range for this source "
+                            f"(longitude {LON_RANGE}, latitude {LAT_RANGE})")
 
 
 def fetch_coastline(bbox, out: Path, session, count: int = PAGE_SIZE) -> int:
@@ -63,7 +73,7 @@ def fetch_coastline(bbox, out: Path, session, count: int = PAGE_SIZE) -> int:
     to out as gzip GeoJSONSeq (one feature per line). Returns the feature count.
 
     Nothing is written at out unless every page is a FeatureCollection, no OBJECTID repeats, every position is
-    lon, lat near bbox, and the total equals the first page's numberMatched when the server gives a number."""
+    lon, lat in the source's range, and the total equals the first page's numberMatched when the server gives a number."""
     out = Path(out)
     out.parent.mkdir(parents=True, exist_ok=True)
     part = out.with_name(out.name + ".part")
@@ -83,7 +93,7 @@ def fetch_coastline(bbox, out: Path, session, count: int = PAGE_SIZE) -> int:
                         if oid in seen:
                             raise DownloadError(f"coastline: OBJECTID {oid} came twice (pages shifted while paging)")
                         seen.add(oid)
-                    _check_axes(feature, bbox)
+                    _check_axes(feature)
                     f.write(json.dumps(feature, separators=(",", ":")) + "\n")
                 total += len(features)
                 if len(features) < count:

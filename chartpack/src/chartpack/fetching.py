@@ -3,7 +3,8 @@
 Manners: one request at a time, a pause after each response (the host's robots.txt Crawl-delay when that is
 longer), a User-Agent that names the project, robots.txt read before the first request to a host, one retry after
 60 s on a 5xx or a transport failure, and a stop for good on HTTP 403 or 429. A redirect to another host stops
-the fetch: that host's robots.txt was never read.
+the fetch before that host is asked (its robots.txt was never read): the default opener refuses it, and the
+session also checks the final url of every response, for an injected opener.
 
 robots.txt: HTTP 200 is parsed; a body that is not robots syntax (an HTML page) holds no rules and so allows
 every path, as RFC 9309 reads it. 404 or another 4xx means no robots.txt: every path allowed. 401 and 403 stop.
@@ -37,6 +38,23 @@ def _host(url: str) -> str:
     return urlsplit(url).netloc.lower()
 
 
+class _CrossHostRedirect(Exception):
+    def __init__(self, url: str, target: str):
+        super().__init__(f"{url} redirects to another host: {target}")
+
+
+class _SameHostRedirects(urllib.request.HTTPRedirectHandler):
+    """Follows a redirect on the same host; refuses one to another host before it is requested."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        if _host(newurl) != _host(req.full_url):
+            raise _CrossHostRedirect(req.full_url, newurl)
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+safe_open = urllib.request.build_opener(_SameHostRedirects).open  # the default opener: urlopen's handlers otherwise
+
+
 def _robots_path(url: str) -> str:
     """The path and query of url normalized as urllib.robotparser.can_fetch normalizes it."""
     parsed = urlparse(unquote(url))
@@ -59,7 +77,7 @@ def _wildcard_refuses(parser: urllib.robotparser.RobotFileParser, user_agent: st
 
 
 class PoliteSession:
-    def __init__(self, user_agent: str, pause_s: float = 2.0, opener=urllib.request.urlopen, sleep=time.sleep):
+    def __init__(self, user_agent: str, pause_s: float = 2.0, opener=safe_open, sleep=time.sleep):
         self.user_agent = user_agent
         self.pause_s = pause_s
         self._opener = opener
@@ -75,11 +93,14 @@ class PoliteSession:
         try:
             with self._opener(request, timeout=TIMEOUT_S) as response:
                 status, body, final = getattr(response, "status", 200), response.read(), response.geturl()
+        except _CrossHostRedirect as e:
+            self._stopped = str(e)
+            raise FetchStopped(self._stopped) from e
         except urllib.error.HTTPError as e:
             status, body, final = e.code, e.read(), getattr(e, "url", None) or url
         except _TRANSPORT as e:
             return 0, b"", f"{type(e).__name__}: {e}"
-        if _host(final) != _host(url):
+        if _host(final) != _host(url):  # the second net, for an injected opener that follows any redirect
             self._stopped = f"{url} was redirected to another host: {final}"
             raise FetchStopped(self._stopped)
         self._sleep(self._pause.get(_host(url), self.pause_s))

@@ -355,3 +355,89 @@ def test_assets_name_must_be_safe(tmp_path, monkeypatch, capsys, assets):
     rc, out, sessions = _run_cli(tmp_path, monkeypatch, "both", REGION.replace('assets = "toba"', f'assets = "{assets}"'))
     assert rc == 1 and sessions == [] and not out.exists()
     assert "[a-z0-9-]+" in capsys.readouterr().err
+
+
+class _Server:
+    """A loopback HTTP server serving routes {path: (status, headers, body)} and logging each path asked for.
+    Two servers on different ports are different hosts to the session."""
+
+    def __init__(self):
+        import http.server
+        import threading
+
+        server = self
+        self.routes = {}
+        self.log = []
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                server.log.append(self.path)
+                status, headers, body = server.routes.get(self.path, (404, {}, b""))
+                self.send_response(status)
+                for k, v in headers.items():
+                    self.send_header(k, v)
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, *args):
+                pass
+
+        self.httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self.url = f"http://127.0.0.1:{self.httpd.server_address[1]}"
+        self.thread = threading.Thread(target=self.httpd.serve_forever, daemon=True)
+        self.thread.start()
+
+    def close(self):
+        self.httpd.shutdown()
+        self.httpd.server_close()
+
+
+@pytest.fixture
+def servers():
+    a, b = _Server(), _Server()
+    yield a, b
+    a.close()
+    b.close()
+
+
+def _real_session():
+    """A session with the default opener and no pauses."""
+    return PoliteSession("CheekyMarine-pack-builder/9.9.9 (+test)", pause_s=0, sleep=lambda s: None)
+
+
+def test_default_opener_refuses_a_redirect_to_another_host_before_asking_it(servers):
+    a, b = servers
+    a.routes["/data"] = (302, {"Location": f"{b.url}/x"}, b"")
+    with pytest.raises(FetchStopped, match=b.url):
+        _real_session().get(f"{a.url}/data")
+    assert b.log == []
+    assert a.log == ["/robots.txt", "/data"]
+
+
+def test_default_opener_refuses_a_chain_out_and_back(servers):
+    a, b = servers
+    a.routes["/data"] = (302, {"Location": f"{b.url}/bounce"}, b"")
+    b.routes["/bounce"] = (302, {"Location": f"{a.url}/final"}, b"")
+    a.routes["/final"] = (200, {}, b"data")
+    with pytest.raises(FetchStopped, match=b.url):
+        _real_session().get(f"{a.url}/data")
+    assert b.log == []
+    assert "/final" not in a.log
+
+
+def test_default_opener_follows_a_same_host_redirect(servers):
+    a, _ = servers
+    a.routes["/data"] = (302, {"Location": "/final"}, b"")
+    a.routes["/final"] = (200, {}, b"data")
+    assert _real_session().get(f"{a.url}/data") == b"data"
+    assert a.log == ["/robots.txt", "/data", "/final"]
+
+
+def test_default_opener_refuses_a_robots_redirect_to_another_host(servers):
+    a, b = servers
+    a.routes["/robots.txt"] = (301, {"Location": f"{b.url}/robots.txt"}, b"")
+    with pytest.raises(FetchStopped, match=b.url):
+        _real_session().get(f"{a.url}/data")
+    assert b.log == []
+    assert a.log == ["/robots.txt"]  # the data path is never asked for

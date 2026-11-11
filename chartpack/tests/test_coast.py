@@ -107,7 +107,16 @@ def test_swapped_axis_order_fails(tmp_path):
     assert list(tmp_path.iterdir()) == []
 
 
-def test_coordinates_just_past_the_box_are_kept(tmp_path):
-    """Lines run past the bbox they meet; the guard allows 1 degree around it."""
-    session = PagingSession(total=1, coords=((-125.5, 50.4), (-124.4, 51.5)))
+def test_coordinates_far_past_the_box_are_kept(tmp_path):
+    """A line meeting the box can run far past it (a long mainland piece); any position in the source's range
+    is accepted."""
+    session = PagingSession(total=1, coords=((-131.5, 54.0), (-124.4, 50.5)))
     assert coast.fetch_coastline(BOX, tmp_path / "c.geojson.gz", session, count=2) == 1
+
+
+@pytest.mark.parametrize("coords", [((0.0, 0.0), (-124.4, 50.5)), ((-124.4, 50.5), (-100.0, 50.0))])
+def test_position_outside_the_source_range_fails(tmp_path, coords):
+    with pytest.raises(DownloadError, match="outside the expected range") as info:
+        coast.fetch_coastline(BOX, tmp_path / "c.geojson.gz", PagingSession(total=1, coords=coords), count=2)
+    assert "axis order" not in str(info.value)
+    assert list(tmp_path.iterdir()) == []
