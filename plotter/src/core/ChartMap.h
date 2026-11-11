@@ -24,8 +24,9 @@ public:
     // Creates the GeoJSON source on the first call after a style load, then updates its data.
     virtual void setGeoJson(const QString& source, const QJsonObject& featureCollection) = 0;
     virtual void addImage(const QString& id, const QImage& image) = 0;
-    // `layer` is a style layer object including "id"; it goes above every existing layer.
-    virtual void addLayer(const QJsonObject& layer) = 0;
+    // `layer` is a style layer object including "id"; it goes above every existing layer, or right
+    // below layer `before` when that is given.
+    virtual void addLayer(const QJsonObject& layer, const QString& before = {}) = 0;
     virtual void setCamera(double lat, double lon, double zoom, double bearingDeg) = 0;
     // Changes the zoom only (centre and bearing kept).
     virtual void setZoom(double zoom) = 0;

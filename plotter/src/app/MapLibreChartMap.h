@@ -22,7 +22,7 @@ public:
     void setLayoutProperty(const QString& layer, const QString& property, const QJsonValue& value) override;
     void setGeoJson(const QString& source, const QJsonObject& featureCollection) override;
     void addImage(const QString& id, const QImage& image) override;
-    void addLayer(const QJsonObject& layer) override;
+    void addLayer(const QJsonObject& layer, const QString& before = {}) override;
     void setCamera(double lat, double lon, double zoom, double bearingDeg) override;
     void setZoom(double zoom) override;
     double zoom() const override;

@@ -12,11 +12,13 @@ inline constexpr const char* kOwnSource = "cm-own";
 inline constexpr const char* kTracksSource = "cm-tracks";        // finished visible tracks
 inline constexpr const char* kActiveTrackSource = "cm-track-active"; // the track being recorded
 inline constexpr const char* kAisSource = "cm-ais";
+inline constexpr const char* kBackgroundSource = "cm-background"; // one world polygon under the chart
 inline constexpr const char* kBoatImage = "cm-boat";
 inline constexpr const char* kAisImageA = "cm-ais-a";
 inline constexpr const char* kAisImageB = "cm-ais-b";
 inline constexpr const char* kAisImageHollow = "cm-ais-hollow";
 inline constexpr const char* kCogTipImage = "cm-cog-tip";
+inline constexpr const char* kBackgroundImage = "cm-background"; // the pattern over the no-data fill
 }
 
 // Spec 6.6. True heading in degrees [0, 360): the heading when hdgRef is "True", heading + variation

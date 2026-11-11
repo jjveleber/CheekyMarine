@@ -121,3 +121,7 @@ QHash<QString, QImage> chartIcons(double pxPerMm, const QString& palette) {
         {OverlayIds::kCogTipImage, cogTip(4 * pxPerMm, colours)},
     };
 }
+
+QImage chartBackground(const QString& palette) {
+    return QImage(QStringLiteral(":/chart/parchment-%1.jpg").arg(palette));
+}

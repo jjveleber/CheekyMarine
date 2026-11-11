@@ -94,10 +94,10 @@ void MapLibreChartPort::setGeoJson(const QString& source, const QJsonObject& fea
 
 void MapLibreChartPort::addImage(const QString& id, const QImage& image) { m_item.map().addImage(id, image); }
 
-void MapLibreChartPort::addLayer(const QJsonObject& layer) {
+void MapLibreChartPort::addLayer(const QJsonObject& layer, const QString& before) {
     QJsonObject params = layer;
     params.remove(QStringLiteral("id"));
-    m_item.map().addLayer(layer.value(QStringLiteral("id")).toString(), params.toVariantMap()); // on top
+    m_item.map().addLayer(layer.value(QStringLiteral("id")).toString(), params.toVariantMap(), before);
 }
 
 void MapLibreChartPort::setCamera(double lat, double lon, double zoom, double bearingDeg) {

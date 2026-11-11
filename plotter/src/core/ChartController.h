@@ -130,6 +130,7 @@ private:
     void loadStyle();
     void rebuildLegend();
     void onStyleLoaded();
+    void addImages();
     void applyDepthFilters();
     Depths currentDepths() const;
     void onVessel();
@@ -167,6 +168,7 @@ private:
     bool m_loadPending = false; // a setStyleJson whose styleLoaded has not arrived yet
     bool m_ready = false;       // runtime sources and layers are on the map
     QHash<QString, QImage> m_images;
+    bool m_backgroundAdded = false; // the background fill layer is on the current style
     QList<QList<LatLon>> m_tracks;
     QList<LatLon> m_activeTrack;
     QList<LatLon> m_seedTrack;
