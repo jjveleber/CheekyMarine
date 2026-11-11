@@ -57,7 +57,8 @@ def quilt(cells: list[tuple[CellMeta, list[Feature]]]) -> list[Feature]:
             for feature in features:
                 minzoom = lo
                 if feature.layer in THINNED_LAYERS:
-                    minzoom = max(minzoom_for_scamin(feature.props.get("SCAMIN"), max(band, 2)), lo)
+                    lat = shape(feature.geometry).centroid.y  # the whole feature's, so every pack agrees (#18)
+                    minzoom = max(minzoom_for_scamin(feature.props.get("SCAMIN"), max(band, 2), lat), lo)
                     if "extent" in feature.props:  # seabed areas and lines: from about 48 px across (R37)
                         minzoom = max(minzoom, minzoom_for_extent(feature.props["extent"]))
                     if minzoom > hi:

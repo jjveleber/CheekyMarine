@@ -11,6 +11,7 @@ from chartpack.bathy.contours import (
     SIMPLIFY_DEG,
     axes,
     band_levels,
+    center_lat,
     min_zoom,
     zoom_grids,
     zoom_tolerance_deg,
@@ -67,13 +68,14 @@ def bands_by_zoom(depth_m: np.ndarray, transform, *, bands=BANDS, core=None) -> 
     """Bands per zoom band, the grids and zoom ranges of contours_by_zoom.
 
     Bands are disjoint, so dropping some leaves unfilled water; instead each zoom range gets a
-    complete set between the DEPTHS_FT levels it draws (band_levels), simplified like the contours.
+    complete set between the DEPTHS_FT levels it draws (band_levels), simplified like the contours (at center_lat).
     The tippecanoe key carries the range and `minzoom` its low zoom. `core` clips the polygons.
     """
+    lat = center_lat(depth_m, transform, core)
     feats = []
     for lo, hi, _, grid, tr in zoom_grids(depth_m, transform, bands):
         levels = band_levels(DEPTHS_FT, hi)
-        for f in build_bands(grid, tr, levels_ft=levels, simplify_deg=zoom_tolerance_deg(hi), core=core):
+        for f in build_bands(grid, tr, levels_ft=levels, simplify_deg=zoom_tolerance_deg(hi, lat), core=core):
             f["properties"]["minzoom"] = lo
             f["tippecanoe"] = {"minzoom": lo, "maxzoom": hi}
             feats.append(f)

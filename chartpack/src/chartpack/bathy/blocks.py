@@ -23,6 +23,7 @@ from chartpack.bathy.contours import (
     BANDS,
     COARSE_BANDS,
     OVERVIEW_BANDS,
+    REF_LAT,
     block_factor,
     block_mean,
     contours_by_zoom,
@@ -201,11 +202,12 @@ def _under_cells() -> int:
     block-meaned grid, up to half a block short of the coarse data or past the CUDEM edge on the fine side,
     simplifying moves it up to its tolerance, and tippecanoe moves it up to 1.5 units of its 4096-unit tile (one
     unit of its own simplification, half a unit of rounding to the grid) at the zoom of the tile drawn; the
-    coarse bands draw their last range past its top zoom."""
+    coarse bands draw their last range past its top zoom. The tolerance is the one at REF_LAT: wider than at
+    any latitude north of it, and the count it gives holds down to 40 N (#18)."""
     def reach(res, bands, zoom):
         _, hi, target = next((b for b in bands if b[0] <= zoom <= b[1]), bands[-1])
         tile_units = 1.5 * 360 / 2 ** min(zoom, bands[-1][1]) / 4096
-        return block_factor((0, res, 0, 0, 0, -res), target) * res / 2 + zoom_tolerance_deg(hi) + tile_units
+        return block_factor((0, res, 0, 0, 0, -res), target) * res / 2 + zoom_tolerance_deg(hi, REF_LAT) + tile_units
 
     zooms = range(BANDS[0][0], BANDS[-1][1] + 1)
     worst = max(reach(COARSE_RES_DEG, COARSE_BANDS, z) + reach(FINE_RES_DEG, BANDS, z) for z in zooms)

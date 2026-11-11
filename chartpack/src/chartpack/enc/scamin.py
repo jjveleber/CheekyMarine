@@ -13,15 +13,17 @@ _MAX_ZOOM = 16
 # Scale denominator at zoom 0 for 256 px tiles at the equator. MapLibre GL draws a 512 px world, so its map
 # zoom z has the ground resolution of 256 px zoom z+1: map zooms are one earlier than this constant implies (R44).
 _ZOOM0_SCALE = 559082264.028
-_COS_LAT = math.cos(math.radians(48))  # the region sits near 48 N
 
 
-def minzoom_for_scamin(scamin: int | None, band: int) -> int:
-    """The MapLibre zoom (512 px world, R44) from which a feature of this SCAMIN is shown, clamped to the band."""
+def minzoom_for_scamin(scamin: int | None, band: int, lat: float) -> int:
+    """The MapLibre zoom (512 px world, R44) from which a feature of this SCAMIN is shown, clamped to the band.
+    `lat` is the feature's latitude: the ground under a scale shrinks with cos(lat) (#18). It is rounded to the
+    nearest 0.25 degree, so features near one another on both sides of a pack seam use one value."""
     low = BAND_ZOOMS[band][0]
     if scamin is None or scamin <= 0:
         return low
-    zoom = round(math.log2(_ZOOM0_SCALE * _COS_LAT / scamin) - 1)
+    lat = round(lat * 4) / 4
+    zoom = round(math.log2(_ZOOM0_SCALE * math.cos(math.radians(lat)) / scamin) - 1)
     return max(low, min(zoom, _MAX_ZOOM))
 
 
