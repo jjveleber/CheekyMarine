@@ -85,6 +85,8 @@ def test_scamin_zoom_shifts_at_54(scamin, at_48, at_54):
 
 
 def test_scamin_latitude_rounded_to_quarter_degree():
-    """Latitudes that round to the same 0.25 degree give the same zoom (both sides of a seam agree)."""
-    assert minzoom_for_scamin(29999, 3, 53.88) == minzoom_for_scamin(29999, 3, 54.0)
-    assert minzoom_for_scamin(29999, 3, 51.12) == minzoom_for_scamin(29999, 3, 51.0)
+    """The latitude is rounded to the nearest 0.25 degree, so the zoom changes only on eighths of a degree. For
+    SCAMIN 29999 the unrounded change is near 51.56 N, the rounded one at 51.625 N: 51.60 N rounds to 51.5 (13),
+    51.63 N to 51.75 (12)."""
+    assert minzoom_for_scamin(29999, 3, 51.60) == 13
+    assert minzoom_for_scamin(29999, 3, 51.63) == 12

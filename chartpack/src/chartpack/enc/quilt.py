@@ -1,6 +1,7 @@
 """Usage-band quilting: each zoom range shows its primary band, with lower bands filling the gaps."""
 
 import copy
+import math
 
 import shapely
 from shapely.geometry import mapping, shape
@@ -57,8 +58,12 @@ def quilt(cells: list[tuple[CellMeta, list[Feature]]]) -> list[Feature]:
             for feature in features:
                 minzoom = lo
                 if feature.layer in THINNED_LAYERS:
-                    lat = shape(feature.geometry).centroid.y  # the whole feature's, so every pack agrees (#18)
-                    minzoom = max(minzoom_for_scamin(feature.props.get("SCAMIN"), max(band, 2), lat), lo)
+                    # The whole feature's centroid, so every pack that holds it agrees (#18). An empty geometry
+                    # has no latitude and nothing to draw: it passes through from the band's low zoom.
+                    geom = shape(feature.geometry)
+                    lat = math.nan if geom.is_empty else geom.centroid.y
+                    scamin = None if math.isnan(lat) else feature.props.get("SCAMIN")
+                    minzoom = max(minzoom_for_scamin(scamin, max(band, 2), lat), lo)
                     if "extent" in feature.props:  # seabed areas and lines: from about 48 px across (R37)
                         minzoom = max(minzoom, minzoom_for_extent(feature.props["extent"]))
                     if minzoom > hi:

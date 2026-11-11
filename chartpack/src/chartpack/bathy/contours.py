@@ -34,8 +34,9 @@ def zoom_tolerance_deg(zoom: int, lat: float) -> float:
     """Douglas-Peucker tolerance of one 256 px Web Mercator pixel (R33), which is about 2 screen pixels in
     MapLibre's 512 px world (R46, kept for pack size: a true 1 px measured 301.4 MB): the ground resolution
     at `lat` (at 48 N about 100 m at z10, 3 m at z15) in degrees of latitude; z16 uses the z15 value. `lat`
-    is rounded to the nearest 0.25 degree, like minzoom_for_scamin's, so neighboring blocks on both sides of a
-    pack seam use one value (#18)."""
+    (#18) is rounded to the nearest 0.25 degree, like minzoom_for_scamin's. It is set per block (center_lat):
+    blocks in one tile row use one value in every pack; adjacent rows can differ by one step, under 1% of the
+    tolerance, and simplifying keeps line ends, so lines still meet at block edges."""
     lat = round(lat * 4) / 4
     return 156543.03392804097 * math.cos(math.radians(lat)) / 2 ** min(zoom, 15) / M_PER_DEG
 

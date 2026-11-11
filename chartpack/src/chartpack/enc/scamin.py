@@ -17,8 +17,11 @@ _ZOOM0_SCALE = 559082264.028
 
 def minzoom_for_scamin(scamin: int | None, band: int, lat: float) -> int:
     """The MapLibre zoom (512 px world, R44) from which a feature of this SCAMIN is shown, clamped to the band.
-    `lat` is the feature's latitude: the ground under a scale shrinks with cos(lat) (#18). It is rounded to the
-    nearest 0.25 degree, so features near one another on both sides of a pack seam use one value."""
+    `lat` is the feature's latitude: the ground under a scale shrinks with cos(lat) (#18). Two packs agree on a
+    feature because both pass the centroid of the same whole feature. The rounding to the nearest 0.25 degree
+    only keeps the value stable against float noise and puts every change on an eighth of a degree: an integer
+    zoom means features of one SCAMIN show one zoom apart on the two sides of fixed latitude lines (for 59999,
+    51.625 N)."""
     low = BAND_ZOOMS[band][0]
     if scamin is None or scamin <= 0:
         return low

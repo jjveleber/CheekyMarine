@@ -466,14 +466,30 @@ def test_bands_3_to_5_unchanged(monkeypatch):
 
 def test_quilt_same_feature_same_minzoom_across_seam():
     """#18: a feature on a seam, quilted by two packs with different cell sets, gets one zoom from its own
-    latitude (54 N: SCAMIN 29999 gives zoom 12 there, 13 at 48 N)."""
+    latitude. SCAMIN 59999 shows from zoom 11 north of 51.625 N and from 12 south of it: the sounding (51.7 N)
+    and the north cell's center (53.75 N) are north of that line, the south cell's center (50.5 N) south of it,
+    so a latitude per cell or per pack would give the two calls different zooms."""
     sounding = Feature(
         "soundg",
-        {"type": "Point", "coordinates": [-130.0, 54.0]},
-        {"cell": "CA3AAAAA", "band": 3, "class": "SOUNDG", "depth": "3.2", "SCAMIN": 29999},
+        {"type": "Point", "coordinates": [-130.0, 51.7]},
+        {"cell": "CA3AAAAA", "band": 3, "class": "SOUNDG", "depth": "3.2", "SCAMIN": 59999},
     )
-    north = quilt([(_cell("CA3AAAAA", 3, (-131, 54, -129, 56)), [sounding])])
-    south = quilt([(_cell("CA3AAAAA", 3, (-131, 52, -129, 54)), [sounding]),
-                   (_cell("CA3BBBBB", 3, (-131, 50, -129, 52)), [])])
+    north = quilt([(_cell("CA3AAAAA", 3, (-131, 51.5, -129, 56)), [sounding])])
+    south = quilt([(_cell("CA3AAAAA", 3, (-131, 49, -129, 52)), [sounding])])
     zooms = lambda out: sorted(f.props["tippecanoe"]["minzoom"] for f in out)
-    assert zooms(north) == zooms(south) == [12, 13]
+    assert zooms(north) == zooms(south) == [11, 13]
+
+
+@pytest.mark.parametrize(
+    "geometry",
+    [{"type": "Polygon", "coordinates": []}, {"type": "GeometryCollection", "geometries": []}],
+)
+@pytest.mark.parametrize("scamin", [29999, None])
+def test_empty_geometry_passes_through(geometry, scamin):
+    """A thinned feature with an empty geometry has no latitude: it passes through as before #18, from the
+    band's low zoom (there is nothing to draw, so its zoom has no effect)."""
+    props = {"cell": "US5AAAAA", "band": 5, "class": "SEAARE"}
+    if scamin is not None:
+        props["SCAMIN"] = scamin
+    out = quilt([(_cell("US5AAAAA", 5, (-123, 47.5, -122, 48.5)), [Feature("area", geometry, props)])])
+    assert [_range(f) for f in out] == [(13, 16)]
