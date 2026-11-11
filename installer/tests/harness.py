@@ -241,16 +241,16 @@ class Rig:
             files["share/icons/hicolor/scalable/apps/cheekyplotter.svg"] = icon
         return _tar("cheekyplotter-%s-x86_64" % ver, files, gz=True)
 
-    def _pack(self, pack, region, ver, schema):
+    def _pack(self, pack, region, ver, schema, tiles_bytes=None):
         manifest = {"pack": pack, "region": region, "version": ver, "schema": schema,
                     "built": "2026-11-01T00:00:00Z", "files": [], "sources": [], "notice": "test"}
         files = {"manifest.json": (json.dumps(manifest, indent=2) + "\n").encode(),
-                 "%s.mbtiles" % pack: b"fake tiles\n"}
+                 "%s.mbtiles" % pack: b"fake tiles\n" if tiles_bytes is None else b"\0" * tiles_bytes}
         return _tar("%s-%s-%s" % (pack, region, ver), files, gz=False)
 
     def make_set(self, set_ver, plotter_ver, n2kd_ver="0.1.0", charts_ver="1.1.0", bathy_ver="1.1.0",
                  pack_schema=1, plotter_range=(1, 1), lock_overrides=None, n2kd_tar=None, packs=None,
-                 plotter_icon=None):
+                 plotter_icon=None, tiles_bytes=None):
         """Build every release of one set under self.base and return the set release dir
         cheekymarine-v<set>/ holding install-cheekymarine.sh (lock embedded by lock-tool.sh),
         cheekymarine.lock and SHA256SUMS. Part releases with the same tag and asset as an earlier
@@ -259,7 +259,8 @@ class Rig:
         used instead of the fake one. packs: [(kind, region, version[, schema])] in lock order; the
         default is charts and bathy for puget-north at charts_ver and bathy_ver. plotter_icon: (bytes, mode)
         of share/icons/hicolor/scalable/apps/cheekyplotter.svg in the plotter tarball, or None for a
-        bundle with no icon. The lock is schema 2."""
+        bundle with no icon. tiles_bytes: size of each pack's fake .mbtiles (zeros), for disk-space
+        tests; None keeps the tiny default. The lock is schema 2."""
         n2kd_tag, n2kd_asset = "v" + n2kd_ver, "n2kd-%s-x86_64.tar.gz" % n2kd_ver
         n2kd = n2kd_tar or self._n2kd(n2kd_ver)
         self.make_release(n2kd_tag, n2kd_asset, n2kd)
@@ -272,7 +273,7 @@ class Rig:
             kind, region, ver = spec[:3]
             sch = spec[3] if len(spec) > 3 else pack_schema
             tag, asset = "%s-%s-v%s" % (kind, region, ver), "%s-%s-%s.tar" % (kind, region, ver)
-            data = self._pack(kind, region, ver, sch)
+            data = self._pack(kind, region, ver, sch, tiles_bytes)
             self.make_release(tag, asset, data)
             built.append(("%s-%s" % (kind, region), ver, tag, asset, data, sch))
         lines = ["# CheekyMarine set lock. Format: see installer/README.md.", "schema=2", "set=" + set_ver]

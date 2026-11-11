@@ -343,6 +343,67 @@ merge_packs() {
     || die "pack merge failed: $out"
 }
 
+# kib_of FILE: FILE's size in KiB, rounded up.
+kib_of() {
+  echo $((($(stat -c %s "$1") + 1023) / 1024))
+}
+
+# space_needed STAGE_DIR: the KiB this install still needs on the filesystem that holds
+# /opt/cheekymarine (stage, store and set dirs all live there), after the downloads in STAGE_DIR.
+# Two peaks: unpacking (the parts unpack beside the staged downloads, which are already on disk:
+# U = n2kd and plotter unpacked, plus each pack not in the store at its tar size), then the merge
+# (the stage is gone, and DIR/packs/merged gets M = the size of every pack of a kind with two or
+# more packs, from the stage or from the store). Need = U + max(0, M - stage), plus a margin of
+# 10% (file system blocks, SQLite pages and the merge's journal) and 256 MiB (so a full install
+# never leaves the system disk, which also holds /var and home on a tablet, at zero; it also
+# absorbs install_apt, which runs after this check and is skipped once the packages are in).
+space_needed() {
+  local stage=$1 store u=0 m=0 s part name want asset kib merging
+  store=$(p /opt/cheekymarine/packs)
+  for asset in "$(lock_get n2kd.asset)" "$(lock_get plotter.asset)"; do
+    u=$((u + ($(gzip -dc "$stage/$asset" | wc -c) + 1023) / 1024))
+  done
+  merging=$(lock_packs | sed 's/-.*//' | sort | uniq -d)
+  for part in $(lock_packs); do
+    name=$(pack_name "$part")
+    want=$(lock_get "pack.$part.sha256")
+    if pack_in_store "$name" "$want"; then
+      kib=$(du -sk --apparent-size "$store/$name" | cut -f1)
+    else
+      kib=$(kib_of "$stage/$(lock_get "pack.$part.asset")")
+      u=$((u + kib))
+    fi
+    if in_list "${part%%-*}" "$merging"; then m=$((m + kib)); fi
+  done
+  s=$(du -sk --apparent-size "$stage" | cut -f1)
+  [ "$m" -le "$s" ] || u=$((u + m - s))
+  echo $((u + u / 10 + 262144))
+}
+
+# check_space STAGE_DIR: die, before anything is installed, when the filesystem that holds
+# /opt/cheekymarine has less free space than space_needed. The trap removes the stage. The message
+# names set dirs that neither `current` nor `previous` uses: a run that failed after unpack_set
+# leaves one (with its merged copy), and only a later good install prunes it.
+check_space() {
+  local need free root keep= f n left=
+  need=$(space_needed "$1")
+  free=$(df -Pk "$(p /opt/cheekymarine)" | awk 'NR == 2 {print $4}') || free=
+  case $free in
+    '' | *[!0-9]*) die "cannot read the free disk space of /opt/cheekymarine; nothing was changed" ;;
+  esac
+  [ "$free" -lt "$need" ] || return 0
+  root=$(p /opt/cheekymarine)
+  for f in current previous; do
+    [ ! -L "$root/$f" ] || keep="$keep$(basename "$(readlink "$root/$f")")"$'\n'
+  done
+  for f in "$root/sets"/*; do
+    [ -e "$f" ] || [ -L "$f" ] || continue
+    n=$(basename "$f")
+    in_list "$n" "$keep" || left="$left /opt/cheekymarine/sets/$n"
+  done
+  die "not enough free disk space for set $(lock_get set): it needs about $(((need + 1023) / 1024)) MB on the filesystem that holds /opt/cheekymarine, and $((free / 1024)) MB is free. Free up space, then run this again; nothing was changed${left:+. Set dirs left by failed runs (neither current nor previous uses them, safe to delete):$left}"
+}
+
 # install_apt: refresh the package lists and install the run-time packages; either failing stops
 # the install (the set is still untouched at this point). Skipped when dpkg-query reports every
 # package installed, so a dead apt source cannot block a repair or an upgrade.
@@ -868,6 +929,7 @@ cmd_install() {
   mkdir -p "$CM_STAGE"
   trap 'rm -rf "$CM_STAGE"' EXIT
   fetch_parts "$CM_STAGE"
+  check_space "$CM_STAGE"
   install_apt
   unpack_set "$CM_STAGE" "$(lock_get set)"
   rm -rf "$CM_STAGE"
