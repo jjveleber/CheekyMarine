@@ -174,3 +174,71 @@ def test_fetch_sources_cli_writes_stats(tmp_path, monkeypatch, only):
                                                           "features": 3}
         with gzip.open(out / "coast-toba.geojson.gz", "rt") as f:
             assert len(f.read().splitlines()) == 3
+
+
+def test_backoff_sleeps_60s():
+    session, opener, sleeps = _session({})
+    session.backoff()
+    assert sleeps == [60] and opener.calls == []
+
+
+def _run_cli(tmp_path, monkeypatch, only, region_text=REGION):
+    region = tmp_path / "toba-part.toml"
+    region.write_text(region_text)
+    (tmp_path / "work").mkdir(exist_ok=True)
+    chunk_path = write_nonna(tmp_path / "chunk.tif", chunk_values("a")[:8, :8], "nonna100", A_COL // 8, A_ROW // 8)
+    boxes = [("NONNA100_5000N12500W", (-125.0, 50.0, -124.0, 51.0))]
+    sessions = []
+
+    def make_session(user_agent):
+        sessions.append(FakeSession(user_agent, tmp_path / "work", boxes, chunk_path.read_bytes()))
+        return sessions[-1]
+
+    monkeypatch.setattr(cli, "PoliteSession", make_session)
+    out = tmp_path / "out"
+    return cli.main(["fetch-sources", "--region", str(region), "--out", str(out), "--only", only]), out, sessions
+
+
+EXTENT = [-124.62, 50.28, -124.18, 50.62]
+KEPT = {"coast-toba.geojson.gz": {"chunks": 7, "features": 60001, "bytes": 123, "seconds": 9.5}}
+
+
+def test_partial_run_keeps_the_other_kinds_stats(tmp_path, monkeypatch):
+    out = tmp_path / "out"
+    out.mkdir()
+    (out / "fetch-stats-toba.json").write_text(json.dumps({"extent": EXTENT, "files": KEPT}))
+    rc, out, _ = _run_cli(tmp_path, monkeypatch, "nonna")
+    assert rc == 0
+    stats = json.loads((out / "fetch-stats-toba.json").read_text())
+    assert stats["extent"] == EXTENT
+    assert sorted(stats["files"]) == ["coast-toba.geojson.gz", "nonna100-toba.tif"]
+    assert stats["files"]["coast-toba.geojson.gz"] == KEPT["coast-toba.geojson.gz"]
+
+
+def test_partial_run_with_another_extent_fails(tmp_path, monkeypatch, capsys):
+    out = tmp_path / "out"
+    out.mkdir()
+    old = {"extent": [-124.7, 50.28, -124.18, 50.62], "files": KEPT}
+    (out / "fetch-stats-toba.json").write_text(json.dumps(old))
+    rc, out, sessions = _run_cli(tmp_path, monkeypatch, "coast")
+    assert rc == 1 and sessions == []  # nothing fetched
+    assert "--only both" in capsys.readouterr().err
+    assert json.loads((out / "fetch-stats-toba.json").read_text()) == old
+
+
+def test_full_run_writes_fresh_stats(tmp_path, monkeypatch):
+    out = tmp_path / "out"
+    out.mkdir()
+    (out / "fetch-stats-toba.json").write_text(json.dumps({"extent": [0, 0, 1, 1], "files": {"old.tif": {}}}))
+    rc, out, _ = _run_cli(tmp_path, monkeypatch, "both")
+    assert rc == 0
+    stats = json.loads((out / "fetch-stats-toba.json").read_text())
+    assert stats["extent"] == EXTENT
+    assert sorted(stats["files"]) == ["coast-toba.geojson.gz", "nonna100-toba.tif"]
+
+
+@pytest.mark.parametrize("assets", ["Toba", "../toba", "toba_1", ""])
+def test_assets_name_must_be_safe(tmp_path, monkeypatch, capsys, assets):
+    rc, out, sessions = _run_cli(tmp_path, monkeypatch, "both", REGION.replace('assets = "toba"', f'assets = "{assets}"'))
+    assert rc == 1 and sessions == [] and not out.exists()
+    assert "[a-z0-9-]+" in capsys.readouterr().err

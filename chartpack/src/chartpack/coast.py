@@ -3,7 +3,7 @@
 Only the source-data fetch workflow calls the WFS, through a PoliteSession. Values recorded in plan 8 Task 1
 (2026-11-11): WFS 2.0.0 with GeoJSON output, a lon/lat bbox with the EPSG:4326 suffix, at most 10000 features
 per request, paging with count and startIndex sorted by OBJECTID (paging is not transaction safe without a
-sort). Licence: Open Government Licence - British Columbia (see NOTICE).
+sort). License: Open Government Licence - British Columbia (see NOTICE).
 """
 
 import gzip

@@ -7,7 +7,7 @@ cell (0, 0), so cell edges sit at origin - pixel / 2 + k * pixel.
 
 chunk-a.tif and chunk-b.tif: 64 by 64 NONNA-10 cells near the head of Toba Inlet. Chunk b starts 62 columns east
 and 10 rows south of chunk a, so they share 2 columns by 54 rows, with equal values there, as two outward-snapped
-neighbor boxes do. Cell (c, r), counted from chunk a's north-west cell: -(1 + c + r / 100) metres (below chart
+neighbor boxes do. Cell (c, r), counted from chunk a's north-west cell: -(1 + c + r / 100) meters (below chart
 datum), +0.3048 * (c % 4) on row 0 (drying heights), NODATA where (c + r) % 7 == 0.
 
 error.xml is the WCS exception body of a bad GetCoverage request, as recorded in Task 1.
@@ -23,7 +23,7 @@ from osgeo import gdal, ogr, osr
 gdal.UseExceptions()
 
 NODATA = 3.4028234663852886e38
-# product: (origin x, origin y, pixel x, pixel y), origin = center of cell (0, 0), EPSG:3857 metres
+# product: (origin x, origin y, pixel x, pixel y), origin = center of cell (0, 0), EPSG:3857 meters
 GRID = {
     "nonna10": (-2.002636684067504e7, 2.0048994780289732e7, 19.098649920773468, -19.12019315728815),
     "nonna100": (-2.002629999514532e7, 2.004919554308374e7, 152.78970935710663, -152.96205582449275),

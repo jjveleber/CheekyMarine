@@ -44,7 +44,7 @@ def _edges(product: str) -> tuple[float, float, float, float]:
 
 
 def snap_box(product: str, bbox) -> tuple[float, float, float, float]:
-    """The lon/lat box (W, S, E, N) in EPSG:3857 metres, grown outward to the product's native cell edges."""
+    """The lon/lat box (W, S, E, N) in EPSG:3857 meters, grown outward to the product's native cell edges."""
     w, s, e, n = bbox
     x = [_EARTH_RADIUS * math.radians(lon) for lon in (w, e)]
     y = [_EARTH_RADIUS * math.log(math.tan(math.pi / 4 + math.radians(lat) / 2)) for lat in (s, n)]
@@ -95,12 +95,17 @@ def _on_grid(value: float, edge: float, pixel: float) -> bool:
     return abs(k - round(k)) < 1e-3
 
 
+_TIFF_MAGIC = (b"II*\x00", b"MM\x00*", b"II+\x00", b"MM\x00+")  # TIFF and BigTIFF, both byte orders
+
+
 def _check_chunk(product: str, path: Path, body: bytes, box) -> None:
     """Raise DownloadError naming the box unless path is one Float32 band on the product's native grid."""
     try:
         ds = gdal.Open(str(path))
         ds.GetRasterBand(1).ReadAsArray()  # a cut file keeps its header; only the strips fail
     except RuntimeError as e:
+        if body[:4] in _TIFF_MAGIC:
+            raise DownloadError(f"{product} box {box}: the response is a damaged or truncated TIFF: {e}") from e
         snippet = " ".join(body[:1000].decode("utf-8", "replace").split())
         raise DownloadError(f"{product} box {box}: the response is not a GeoTIFF: {snippet}") from e
     if ds.RasterCount != 1 or ds.GetRasterBand(1).DataType != gdal.GDT_Float32:
@@ -113,7 +118,8 @@ def _check_chunk(product: str, path: Path, body: bytes, box) -> None:
 
 
 def fetch_nonna(product: str, boxes: list[tuple], out: Path, session) -> dict:
-    """One WCS request per lon/lat box (snapped to native cell edges), each checked, mosaicked into one tiled,
+    """One WCS request per lon/lat box (snapped to native cell edges), each checked (a chunk that fails the check
+    is asked for once more after the session's back-off, then the fetch fails naming its box), mosaicked into one tiled,
     DEFLATE-compressed GeoTIFF at out on the native grid. Nothing is written at out unless every chunk passes."""
     out = Path(out)
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -122,9 +128,16 @@ def fetch_nonna(product: str, boxes: list[tuple], out: Path, session) -> dict:
         chunks = []
         for i, box in enumerate(boxes):
             path = Path(tmp) / f"chunk-{i:05d}.tif"
-            body = session.get(wcs_url(product, snap_box(product, box)))
+            url = wcs_url(product, snap_box(product, box))
+            body = session.get(url)
             path.write_bytes(body)
-            _check_chunk(product, path, body, box)
+            try:
+                _check_chunk(product, path, body, box)
+            except DownloadError:  # an XML error body or a cut TIFF: ask once more after the back-off
+                session.backoff()
+                body = session.get(url)
+                path.write_bytes(body)
+                _check_chunk(product, path, body, box)
             chunks.append(str(path))
         if not chunks:
             raise DownloadError(f"{product}: no index tile meets the fetch extent")

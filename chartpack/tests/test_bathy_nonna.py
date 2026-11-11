@@ -45,26 +45,57 @@ class ListSession:
     def __init__(self, bodies):
         self.bodies = list(bodies)
         self.urls = []
+        self.backoffs = 0
 
     def get(self, url):
         self.urls.append(url)
         return self.bodies.pop(0)
 
+    def backoff(self):
+        self.backoffs += 1
+
 
 BOXES = [(-124.4, 50.4, -124.3, 50.5), (-124.3, 50.4, -124.2, 50.5)]
 
 
-@pytest.mark.parametrize("bad", [0, 1])
-def test_wcs_error_body_is_not_stored(tmp_path, fixtures_dir, bad):
+def _truncated(fixtures_dir) -> bytes:
     chunk = (fixtures_dir / "nonna" / "chunk-a.tif").read_bytes()
-    error = (fixtures_dir / "nonna" / "error.xml").read_bytes()
-    bodies = [chunk, chunk]
-    bodies[bad] = error
+    return chunk[: len(chunk) // 2]  # header intact, strips cut
+
+
+@pytest.mark.parametrize("kind", ["xml", "truncated"])
+@pytest.mark.parametrize("bad", [0, 1])
+def test_wcs_error_body_is_not_stored(tmp_path, fixtures_dir, bad, kind):
+    """A chunk that comes back as an XML error body or a cut TIFF twice fails the fetch naming its box, after
+    one retry behind the back-off; nothing is left at out or beside it."""
+    chunk = (fixtures_dir / "nonna" / "chunk-a.tif").read_bytes()
+    error = (fixtures_dir / "nonna" / "error.xml").read_bytes() if kind == "xml" else _truncated(fixtures_dir)
+    bodies = [chunk] * bad + [error, error] + [chunk] * (1 - bad)
+    session = ListSession(bodies)
     out = tmp_path / "nonna10-x.tif"
     with pytest.raises(DownloadError, match=re.escape(str(BOXES[bad]))) as info:
-        nonna.fetch_nonna("nonna10", BOXES, out, ListSession(bodies))
-    assert "NoSuchCoverage" in str(info.value)
+        nonna.fetch_nonna("nonna10", BOXES, out, session)
+    if kind == "xml":
+        assert "NoSuchCoverage" in str(info.value)
+    else:
+        assert "truncated TIFF" in str(info.value) and "II*" not in str(info.value)  # no raw TIFF bytes
+    bad_url = nonna.wcs_url("nonna10", nonna.snap_box("nonna10", BOXES[bad]))
+    assert session.urls.count(bad_url) == 2 and session.backoffs == 1
+    assert not out.exists()
     assert list(tmp_path.iterdir()) == []  # no mosaic, no chunk left behind
+
+
+@pytest.mark.parametrize("kind", ["xml", "truncated"])
+def test_bad_chunk_then_good_one_succeeds(tmp_path, fixtures_dir, kind):
+    paths = [fixtures_dir / "nonna" / f"chunk-{w}.tif" for w in "ab"]
+    error = (fixtures_dir / "nonna" / "error.xml").read_bytes() if kind == "xml" else _truncated(fixtures_dir)
+    session = ListSession([paths[0].read_bytes(), error, paths[1].read_bytes()])
+    out = tmp_path / "nonna10-x.tif"
+    assert nonna.fetch_nonna("nonna10", BOXES, out, session)["chunks"] == 2
+    assert len(session.urls) == 3 and session.urls[1] == session.urls[2] and session.backoffs == 1
+    ds = gdal.Open(str(out))
+    b_src = gdal.Open(str(paths[1]))
+    np.testing.assert_array_equal(ds.GetRasterBand(1).ReadAsArray(62, 10, 64, 64), b_src.GetRasterBand(1).ReadAsArray())
 
 
 def test_chunk_off_the_native_grid_is_refused(tmp_path):
@@ -76,7 +107,7 @@ def test_chunk_off_the_native_grid_is_refused(tmp_path):
     ds = None
     out = tmp_path / "out.tif"
     with pytest.raises(DownloadError, match="native grid"):
-        nonna.fetch_nonna("nonna10", BOXES[:1], out, ListSession([shifted.read_bytes()]))
+        nonna.fetch_nonna("nonna10", BOXES[:1], out, ListSession([shifted.read_bytes()] * 2))
     assert not out.exists()
 
 

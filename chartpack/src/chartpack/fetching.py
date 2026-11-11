@@ -84,6 +84,10 @@ class PoliteSession:
         parser = self._robots[root]
         return parser is None or parser.can_fetch(self.user_agent, url)
 
+    def backoff(self) -> None:
+        """Wait BACKOFF_S before asking again for a response that came back unusable."""
+        self._sleep(BACKOFF_S)
+
     def get(self, url: str) -> bytes:
         if not self._allowed(url):
             raise FetchStopped(f"{url}: disallowed by robots.txt")

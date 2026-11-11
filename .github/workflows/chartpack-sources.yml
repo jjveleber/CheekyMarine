@@ -31,7 +31,10 @@ on:
 permissions:
   contents: read
 
-# One run at a time: requests to a host stay in sequence, and the release has one writer.
+# One run at a time: requests to a host stay in sequence, and the release has one writer. With
+# cancel-in-progress false a running fetch is never canceled, but GitHub keeps only one pending run per group:
+# a newer queued run replaces an older queued one, which is then canceled. Dispatch one region at a time and wait
+# for its run to finish before the next.
 concurrency:
   group: chartpack-sources
   cancel-in-progress: false
@@ -78,6 +81,24 @@ jobs:
         run: |
           python3 -m venv --system-site-packages .venv
           .venv/bin/pip install -e .
+
+      - name: Download the existing fetch stats for a one-kind run
+        if: inputs.only != 'both'
+        working-directory: chartpack
+        run: |
+          # fetch-sources keeps the other kind's entries of this file (and refuses a changed extent).
+          name="$(.venv/bin/python -c 'import sys, tomllib; d = tomllib.load(open(sys.argv[1], "rb")); print(d.get("sources", {}).get("assets", d["name"]))' "regions/${INPUT_REGION}.toml")"
+          if [[ ! "${name}" =~ ^[a-z0-9-]+$ ]]; then
+            echo "[sources] assets must match [a-z0-9-]+" >&2
+            exit 1
+          fi
+          mkdir -p sources
+          if gh release view sources-bc-1 >/dev/null 2>&1; then
+            assets="$(gh release view sources-bc-1 --json assets -q '.assets[].name')"
+            if grep -qx "fetch-stats-${name}.json" <<< "${assets}"; then
+              gh release download sources-bc-1 -p "fetch-stats-${name}.json" -D sources
+            fi
+          fi
 
       - name: Fetch the sources
         working-directory: chartpack
