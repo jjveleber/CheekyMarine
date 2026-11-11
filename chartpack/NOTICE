@@ -61,6 +61,25 @@ READMEs (https://github.com/OSGeo/PROJ-data, us_nga/us_nga_README.txt and us_noa
   us_noaa_g2018u0.tif   GEOID18, US National Geodetic Survey (NOAA NGS), conterminous US,
                         NAD83(2011) to NAVD88. License: Public Domain
 
+Canadian source data, fetched only by `chartpack fetch-sources` in .github/workflows/chartpack-sources.yml and
+stored as assets of the pre-release sources-bc-1 (pack builds read those assets, never the hosts). License
+pages read 2026-11-11:
+
+  CHS NONNA-10 and NONNA-100 bathymetry, Canadian Hydrographic Service, Fisheries and Oceans Canada, from the
+  CHS GeoServer WCS https://nonna-geoserver.data.chs-shc.ca/geoserver/wcs (GetCapabilities: Fees NONE,
+  AccessConstraints NONE), tiles picked from the indexes NONNA10.zip and NONNA100.zip of DFO catalog
+  record d3881c4c-650d-4070-bf9b-1e00aabf0a1d.
+    License: CHS NONNA Licence, https://api-proxy.edh-cde.dfo-mpo.gc.ca/catalogue/records/d3881c4c-650d-4070-bf9b-1e00aabf0a1d/attachments/CHS_NONNA_LICENCE-LICENCE_NONNA_DU_SHC.pdf
+    and the Open Government Licence – Canada, https://open.canada.ca/en/open-government-licence-canada
+    Its clause 7 requires the CHS notice on every derived product: src/chartpack/notices/chs.txt, which the
+    release notes of sources-bc-1 carry.
+  BC Freshwater Atlas coastline (WHSE_BASEMAPPING.FWA_COASTLINES_SP), Province of British Columbia, from the
+  WFS https://openmaps.gov.bc.ca/geo/pub/WHSE_BASEMAPPING.FWA_COASTLINES_SP/ows (Fees NONE,
+  AccessConstraints NONE).
+    License: Open Government Licence – British Columbia 2.0,
+    https://www2.gov.bc.ca/gov/content/data/policy-standards/open-data/open-government-licence-bc
+    Attribution: src/chartpack/notices/ogl-bc.txt, also in the release notes of sources-bc-1.
+
 Tide station datums (regions/datum/wa-stations.toml) are from the NOAA CO-OPS datums API, a US
 Government work.
 

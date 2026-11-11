@@ -1,0 +1,7 @@
+# Toba Inlet, one inlet for the plan 8 fetch spike (Task 3). Only `chartpack fetch-sources` reads it (name, bbox,
+# bathy.sources); it is never built, is not in grid.toml and is not among the regions test_regions.py names.
+name = "test-toba"
+bbox = [-124.6, 50.3, -124.2, 50.6]
+
+[bathy]
+sources = ["nonna10", "nonna100"]

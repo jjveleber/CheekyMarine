@@ -1,0 +1,158 @@
+name: chartpack-sources
+
+# Fetches one region's Canadian source data and stores it as assets of the pre-release sources-bc-1:
+# nonna10-<name>.tif and nonna100-<name>.tif (CHS NONNA depth grids, WCS), coast-<name>.geojson.gz (BC Freshwater
+# Atlas coastline, WFS) and fetch-stats-<name>.json, where <name> is the region file's [sources] assets (default:
+# its name). This is the only place a Canadian host is called: pack builds, dry runs and tag runs read these
+# assets. The fetch manners (pause, User-Agent, robots.txt, back-off, stop on 403 or 429) are in
+# chartpack/src/chartpack/fetching.py.
+#
+# Start it by hand (workflow_dispatch) with a region file name and a stage. `only` limits a fetch to the
+# coastline or the NONNA grids.
+
+on:
+  workflow_dispatch:
+    inputs:
+      region:
+        description: Region file name without .toml
+        type: string
+        required: true
+      stage:
+        description: Stage
+        type: choice
+        options: [fetch]
+        required: true
+      only:
+        description: Which sources to fetch
+        type: choice
+        options: [both, coast, nonna]
+        default: both
+
+permissions:
+  contents: read
+
+# One run at a time: requests to a host stay in sequence, and the release has one writer. With
+# cancel-in-progress false a running fetch is never canceled, but GitHub keeps only one pending run per group:
+# a newer queued run replaces an older queued one, which is then canceled. Dispatch one region at a time and wait
+# for its run to finish before the next.
+concurrency:
+  group: chartpack-sources
+  cancel-in-progress: false
+
+jobs:
+  fetch:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    env:
+      INPUT_REGION: ${{ inputs.region }}
+      INPUT_STAGE: ${{ inputs.stage }}
+      INPUT_ONLY: ${{ inputs.only }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check the inputs
+        run: |
+          if [[ ! "${INPUT_REGION}" =~ ^[a-z0-9-]+$ ]]; then
+            echo "region input must match [a-z0-9-]+" >&2
+            exit 1
+          fi
+          if [[ ! "${INPUT_STAGE}" =~ ^fetch$ ]]; then
+            echo "stage input must be fetch" >&2
+            exit 1
+          fi
+          if [[ ! "${INPUT_ONLY}" =~ ^(both|coast|nonna)$ ]]; then
+            echo "only input must be both, coast or nonna" >&2
+            exit 1
+          fi
+          if [ ! -f "chartpack/regions/${INPUT_REGION}.toml" ]; then
+            echo "no region file chartpack/regions/${INPUT_REGION}.toml" >&2
+            exit 1
+          fi
+          # The asset name: the region file's [sources] assets, default its name (as fetch-sources reads it).
+          name="$(python3 -c 'import sys, tomllib; d = tomllib.load(open(sys.argv[1], "rb")); print(d.get("sources", {}).get("assets", d["name"]))' "chartpack/regions/${INPUT_REGION}.toml")"
+          if [[ ! "${name}" =~ ^[a-z0-9-]+$ ]]; then
+            echo "[sources] assets must match [a-z0-9-]+" >&2
+            exit 1
+          fi
+          echo "ASSETS_NAME=${name}" >> "$GITHUB_ENV"
+
+      - name: Install system packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gdal-bin python3-gdal
+
+      - name: Create venv and install
+        working-directory: chartpack
+        run: |
+          python3 -m venv --system-site-packages .venv
+          .venv/bin/pip install -e .
+
+      - name: Download the existing fetch stats for a one-kind run
+        if: inputs.only != 'both'
+        working-directory: chartpack
+        run: |
+          # fetch-sources keeps the other kind's entries of this file (and refuses a changed extent).
+          mkdir -p sources
+          # Exit 3: no release yet, so no stats; any other failure fails the job.
+          code=0
+          assets="$(scripts/release-assets.sh sources-bc-1)" || code=$?
+          if [ "$code" -ne 0 ] && [ "$code" -ne 3 ]; then
+            exit "$code"
+          fi
+          if grep -qx "fetch-stats-${ASSETS_NAME}.json" <<< "${assets}"; then
+            gh release download sources-bc-1 -p "fetch-stats-${ASSETS_NAME}.json" -D sources
+          fi
+
+      - name: Fetch the sources
+        working-directory: chartpack
+        run: |
+          .venv/bin/chartpack fetch-sources --region "regions/${INPUT_REGION}.toml" --out sources --only "${INPUT_ONLY}"
+          ls -l sources
+
+      - name: Check every asset is under 2 GiB
+        working-directory: chartpack
+        run: |
+          limit=2147483648
+          for f in sources/*; do
+            size="$(stat -c %s "$f")"
+            if [ "$size" -ge "$limit" ]; then
+              echo "$f is $size bytes, a release asset must be under 2 GiB: split the region's fetch" >&2
+              exit 1
+            fi
+          done
+
+      - name: Upload to the release sources-bc-1
+        working-directory: chartpack
+        run: |
+          code=0
+          scripts/release-assets.sh sources-bc-1 > /dev/null || code=$?
+          if [ "$code" -eq 3 ]; then
+            {
+              echo "Source data for CheekyMarine chart packs, fetched by .github/workflows/chartpack-sources.yml. Not for navigation."
+              echo
+              cat src/chartpack/notices/chs.txt
+              echo
+              cat src/chartpack/notices/ogl-bc.txt
+            } > "${RUNNER_TEMP}/notes.md"
+            # A pre-release, so "Latest" stays with the n2kd v* releases.
+            gh release create sources-bc-1 --target "${GITHUB_SHA}" --title sources-bc-1 \
+              --notes-file "${RUNNER_TEMP}/notes.md" --prerelease --latest=false
+          elif [ "$code" -ne 0 ]; then
+            exit "$code"
+          fi
+          # Data first, the stats last and only after the data went up: the stats never describe a grid that
+          # is not in the release (a failed run leaves the old stats, which a build guard then reads against
+          # the sha256 of each file). A rerun repairs a failed upload.
+          stats="sources/fetch-stats-${ASSETS_NAME}.json"
+          data=()
+          for f in sources/*; do
+            if [ "$f" != "$stats" ]; then
+              data+=("$f")
+            fi
+          done
+          if [ "${#data[@]}" -gt 0 ]; then
+            gh release upload sources-bc-1 "${data[@]}" --clobber
+          fi
+          gh release upload sources-bc-1 "$stats" --clobber

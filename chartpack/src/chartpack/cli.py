@@ -1,10 +1,14 @@
 """chartpack command line."""
 
 import argparse
+import hashlib
 import json
 import re
 import shutil
 import sys
+import tempfile
+import time
+import tomllib
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -26,6 +30,7 @@ from chartpack.bathy.crm import crm_path, crm_tile_requests, crm_wcs_url, fetch_
 from chartpack.bathy.crm import crm_request as crm_request_bounds  # crm_request names the metadata string below
 from chartpack.bathy.cudem import URLLIST, parse_urllist, tiles_for_bbox
 from chartpack.bathy.dem import build_dem_mbtiles, empty_dem_mbtiles
+from chartpack.bathy.nonna import fetch_index, fetch_nonna, index_boxes
 from chartpack.bathy.tiles import (
     COARSE_ZOOMS,
     MAXZOOM,
@@ -36,12 +41,14 @@ from chartpack.bathy.tiles import (
     tile_bathy,
 )
 from chartpack.cache import download
+from chartpack.coast import fetch_coastline
 from chartpack.datum import geoid
 from chartpack.datum.offsets import load_datum
 from chartpack.enc.catalog import CATALOG_URL, cells_meeting, parse_catalog
 from chartpack.enc.fetch import fetch_cells
 from chartpack.enc.reader import read_cell
 from chartpack.enc.tiles import OVERVIEW_ZOOMS, REGION_ZOOMS, build_enc_mbtiles
+from chartpack.fetching import USER_AGENT, PoliteSession
 from chartpack.grid import content_tiles, keep_tiles, owned_tiles, tiles_area
 from chartpack.pack.archive import archive_pack
 from chartpack.pack.assemble import BATHY_FILES, assemble_bathy_pack, assemble_charts_pack
@@ -197,6 +204,81 @@ def _fetch_bathy(args: argparse.Namespace) -> int:
     return 0
 
 
+FETCH_MARGIN_DEG = 0.02  # plan 8 Task 5 replaces the grown box with fetch_extent
+
+
+class _CountedSession:
+    """Counts the requests made through it (each get is one page of the coastline)."""
+
+    def __init__(self, session):
+        self.session = session
+        self.gets = 0
+
+    def get(self, url: str) -> bytes:
+        self.gets += 1
+        return self.session.get(url)
+
+
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as f:
+        while chunk := f.read(1 << 20):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _fetch_sources(args: argparse.Namespace) -> int:
+    """A region's Canadian source data (NONNA grids from the CHS WCS, the BC coastline from the BC WFS) for the
+    release sources-bc-1. Only the fetch workflow (chartpack-sources.yml) runs this; no pack build calls a
+    Canadian host. Files are named by the region's [sources] assets (default: its name).
+
+    A run of both kinds writes fresh stats. A run of one kind keeps the other kind's entries of a stats file
+    already in --out (the workflow downloads it from the release) and fails when that file's extent differs:
+    a changed box needs a run of both kinds. Each file entry holds its sha256, so a reader can tell the file
+    the stats describe from a stale one."""
+    # The region file is read directly: load_region accepts the NONNA source names from plan 8 Task 5 on.
+    with args.region.open("rb") as f:
+        data = tomllib.load(f)
+    name = data.get("sources", {}).get("assets", data["name"])
+    if not re.fullmatch(r"[a-z0-9-]+", name):
+        print(f"fetch-sources: [sources] assets must match [a-z0-9-]+, got {name!r}", file=sys.stderr)
+        return 1
+    bathy_sources = data.get("bathy", {}).get("sources", [])
+    w, s, e, n = (float(v) for v in data["bbox"])
+    m = FETCH_MARGIN_DEG
+    extent = [round(v, 9) for v in (w - m, s - m, e + m, n + m)]
+    stats = args.out / f"fetch-stats-{name}.json"
+    files = {}
+    if args.only != "both" and stats.exists():
+        previous = json.loads(stats.read_text())
+        if previous["extent"] != extent:
+            print(f"fetch-sources: {stats} has extent {previous['extent']}, this run's is {extent}: the box changed,"
+                  " so fetch both kinds (--only both)", file=sys.stderr)
+            return 1
+        files = previous["files"]
+    session = PoliteSession(USER_AGENT)
+    args.out.mkdir(parents=True, exist_ok=True)
+    if args.only in ("both", "nonna"):
+        with tempfile.TemporaryDirectory() as work:
+            for product in ("nonna10", "nonna100"):
+                if product in bathy_sources:
+                    boxes = index_boxes(fetch_index(product, session, Path(work)), extent)
+                    path = args.out / f"{product}-{name}.tif"
+                    files[path.name] = {**fetch_nonna(product, boxes, path, session), "sha256": _sha256(path)}
+                    print(path)
+    if args.only in ("both", "coast"):
+        path = args.out / f"coast-{name}.geojson.gz"
+        start = time.monotonic()
+        pages = _CountedSession(session)
+        features = fetch_coastline(extent, path, pages)
+        files[path.name] = {"chunks": pages.gets, "features": features, "bytes": path.stat().st_size,
+                            "sha256": _sha256(path), "seconds": round(time.monotonic() - start, 3)}
+        print(path)
+    stats.write_text(json.dumps({"extent": extent, "files": files}, indent=2) + "\n")
+    print(stats)
+    return 0
+
+
 def _append_layers(work: Path, contours: list[dict], bands: list[dict], coverage: list[dict]) -> None:
     for name, feats in (("contour", contours), ("band", bands), ("coverage", coverage)):
         append_features(feats, work / f"{name}.geojsonseq")
@@ -322,6 +404,11 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("region", type=Path)
     p.add_argument("--cache", type=Path, required=True)
     p.set_defaults(func=_fetch_seabed)
+    p = sub.add_parser("fetch-sources", help="Canadian source data for release sources-bc-1 (the fetch workflow only)")
+    p.add_argument("--region", type=Path, required=True)
+    p.add_argument("--out", type=Path, required=True)
+    p.add_argument("--only", choices=["both", "coast", "nonna"], default="both")
+    p.set_defaults(func=_fetch_sources)
     p = sub.add_parser("build-enc")
     p.add_argument("region", type=Path)
     p.add_argument("out", type=Path)
