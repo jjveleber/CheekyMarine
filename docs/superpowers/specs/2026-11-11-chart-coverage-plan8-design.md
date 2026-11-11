@@ -40,7 +40,7 @@ Goals:
 - NOAA chart objects on the Canadian side where NOAA cells reach, with a drawn edge and a legend entry.
 - The US packs along the border and the overview pack rebuilt so the border shows no clipped edge, no gap and no doubled drawing.
 - The CHS notice and the open licence credits in the packs and in the app.
-- #18 fixed: no latitude hard-coded to 48 N.
+- #18 fixed: no latitude hard-coded to 48 N, except the shared downsample constant that section 10 keeps on purpose.
 
 Non-goals:
 - CHS chart objects of any kind, by purchase, harvest or live display.
@@ -61,7 +61,7 @@ Anti-goals (failures even if it technically works):
 
 ## 4. Pack areas
 
-From the approved map. Boxes are W, S, E, N. Exact edges move to the zoom-10 ownership grid (plan 7 spec 5.2), so each grows outward to whole grid tiles and the grid order settles overlaps. Bathy estimates are the map's upper bounds at zoom 14.
+From the approved map. Boxes are W, S, E, N. Exact edges move to the zoom-10 ownership grid (plan 7 spec 5.2), so each grows outward to whole grid tiles and the grid order settles overlaps. Bathy estimates are the map's upper bounds for the DEM at zoom 14; the vector file to zoom 16 adds to them, and dry runs give the real sizes.
 
 | Region | Box | Covers | Bathy est. at z14 |
 |---|---|---|---|
@@ -80,9 +80,10 @@ The offshore polygons are in the appendix (copied from the map's data).
 
 Ownership rules, added to plan 7 spec 5.2:
 - Zoom-10 tiles that hold both US and Canadian water stay with their US pack (plan 7). Those US packs are rebuilt with Canadian-side data (section 9). Tiles whose water is only Canadian go to a BC pack.
-- The BC packs join `chartpack/regions/grid.toml` after the US packs, so no wave 1 tile changes owner. The eight inshore packs come before the two offshore packs, because the first listed region that meets a tile owns it (`assign` in `grid.py`) and inshore water must never fall under the offshore packs' rules (7.1). The order among the inshore packs is the builder's call. The offshore regions are polygons, not boxes; the region file format gains a polygon area (as `wa-coast` needed in plan 7).
-- Ownership no longer drops tiles that lie inside the clip polygon. A test asserts that every zoom-10 tile meeting an inshore box is owned by a US pack or an inshore pack, never by an offshore pack.
-- "BC inshore area" in this spec means the eight inshore boxes minus the US side of the clip polygon. Rules written for it apply to that water whichever pack owns the tile: a BC pack, a rebuilt US pack, or `overview`.
+- The BC packs join `chartpack/regions/grid.toml` after the US packs, so no wave 1 tile changes owner. The eight inshore packs come before the two offshore packs, because the first listed region that meets a tile owns it (`assign` in `grid.py`) and inshore water must never fall under the offshore packs' rules (7.1). The order among the inshore packs is the builder's call. The offshore regions are polygons, not boxes. Region files hold only a `bbox` today (`wa-coast` is a plain box that loses its shared tiles to the regions listed before it), so a polygon area in the region file is new work in this plan.
+- Ownership no longer drops tiles that lie inside the clip polygon.
+- Shore water is never offshore. A test asserts that no zoom-10 tile owned by an offshore pack contains any Freshwater Atlas coastline. Where the approved boxes fail it, the inshore box grows by whole tiles until it passes. One case is known: small islands off southeast Haida Gwaii (about -131.13 to -130.96 W, 51.97 to 52.31 N) sit one tile column east of the `haida-gwaii` box, so that box grows east to take them. This is a small change to an approved edge and is listed for the owner.
+- Areas are defined by tile ownership, not by the boxes, so the strip a box gains when it grows to whole tiles is covered. "BC inshore area" means: all water in tiles owned by an inshore BC pack, plus the Canadian side (by the clip polygon) of tiles owned by a US pack. "Offshore area" means all water in tiles owned by an offshore pack. Rules written for an area apply to that water in every pack that draws it; `overview` uses the same tile ownership to tell the areas apart.
 - The `overview` pack is rebuilt over the whole area, US and BC.
 - An area that exceeds the 1.5 GB cap splits into smaller packs on the grid (plan 7 spec 6; section 6 says why lowering the zoom is not an option).
 
@@ -111,19 +112,20 @@ Spike pass rules (section 14 step 1), with numbers posted on #90:
 - one inlet fetched in a CI run, with the request size and pause that will be used;
 - the projected fetch time for the largest region is under 3 hours in one run, or the fetch is resumable across runs;
 - the compressed size of the largest region's NONNA-10 is known, and the build's peak disk use for it is projected to leave the fit guard's free-space margin on the 14 GB runner (plan 7 PR B: `fit-guard.sh`);
-- charts jobs now need depth too (7.1): the projected charts build time for the largest region is inside the fit guard's time limit.
+- charts jobs now need depth too (7.1): the projected charts build time for the largest region is inside the fit guard's time limit;
+- `overview` builds from NONNA-100, the coarse sources and the stored no-survey masks only, and its projected time and disk are inside the fit guard.
 A failed rule changes the design (smaller regions, a lower NONNA request size, streaming) before any reader is written.
 
 ## 6. Depth for the Fish view (#90, #92)
 
-Which source wins, by side of the border. "Side" is decided by the clip polygon `chartpack/regions/clip/canada-wa.geojson` south of its north end at 49.5 N; north of that, everything is the Canadian column (Alaskan water included, section 7.2). First source with data wins.
+Which source wins, by side of the border. The US side is defined positively: water in a tile owned by a US pack that is on the US side of the clip polygon `chartpack/regions/clip/canada-wa.geojson`. Everything else is the Canadian column: every tile owned by a BC pack (inshore or offshore, Alaskan water included, section 7.2) and the Canadian side of US-owned tiles. First source with data wins.
 
 | Tier | US side | Canadian side |
 |---|---|---|
 | fine | CUDEM | NONNA-10, then CUDEM where it reaches across |
-| coarse | CRM | NONNA-100, then CRM (south of 49 N), then ETOPO |
+| coarse | CRM, then ETOPO | NONNA-100, then CRM (it ends at 49 N and 127 W), then ETOPO |
 
-NONNA is not used on the US side even where it has data, and CUDEM never overrides NONNA-10 on the Canadian side (designer's call: each country's survey on its own water, each datum on its own side). ETOPO is not needed on the US side (plan 7).
+NONNA is not used on the US side even where it has data, and CUDEM never overrides NONNA-10 on the Canadian side (designer's call: each country's survey on its own water, each datum on its own side). ETOPO is last in both columns so that no water is left blank; plan 7 found CRM fills the US side, so it should never be reached there.
 
 Fine and coarse (plan 7 spec 5.3a), applied to BC:
 - fine (`bathy`, `dem`): NONNA-10 water, built to the same max zooms as US fine water (vector 16, DEM 14). This is forced, not chosen: the install merge refuses fine members whose max zooms differ (`maxzoomMismatch` in `plotter/src/core/PackMerge.cpp`), and a source draws a missing tile blank inside its zoom range, so BC fine tiles that stopped at a lower zoom would leave Fish blank when zoomed in. A 10 m grid gains little past zoom 13; the extra zooms cost size, not correctness.
@@ -149,16 +151,16 @@ Where even the coarse merge has no value over water (not expected: ETOPO is glob
 
 BC charts packs carry the same vector source and layers as US charts packs, filled from different data, so the app and the Nav styles treat BC like any other region (designer's call).
 
-- Depth areas (the chart-style blue bands) and depth contours: derived from NONNA-10 and NONNA-100 (and, in the offshore packs only, the coarse sources). Contour values are a fixed list in meters taken from the values the wave 1 NOAA cells already use, so that the merged `cheekymarine:valdco` list (which the app uses to pick the safety contour, and which the Nav style matches by equality in `chartpack/src/chartpack/style/nav.py`) gains no new value. The builder reads the wave 1 list from the released packs and writes the BC list into the plan; a check asserts the merged list is the same with and without the BC packs. Depth area limits use the same values.
+- Depth areas (the chart-style blue bands) and depth contours: derived from NONNA-10 and NONNA-100 (and, in the offshore packs only, the coarse sources). Contour values are a fixed list in meters taken from the values the wave 1 NOAA cells already use, so that the merged `cheekymarine:valdco` list (which the app uses to pick the safety contour, and which the Nav style matches by equality in `chartpack/src/chartpack/style/nav.py`) gains no new value. The builder reads the wave 1 list from the released packs and writes the BC list into the plan; a check asserts every derived contour value is in the wave 1 list. NOAA cells that are new to the build (the Alaskan cells) may carry contour values of their own; the builder posts any such value on #90 and settles it before tagging, with #95 (safety contour per cell) in view, so the safety contour does not vanish outside those cells. Depth area limits use the same values.
 - Shoal bias: every grid that feeds Nav depth areas, contours or spot depths is downsampled by taking the shallowest value in each block, never the mean (`zoom_grids` in `chartpack/src/chartpack/bathy/contours.py` uses block means today; Fish may keep them). Nav never shows water deeper than the data says.
 - No fill-in: derived Nav depth never extends into water without a NONNA value. No interpolation across holes. The "No survey data" area is computed once at the native NONNA grid and cuts the depth areas and contours at every zoom, so a hole can look larger when zoomed out but never smaller.
 - Coarse survey water (NONNA-100 only) draws as depth in Nav, with the legend entry "Coarse survey depth (100 m grid)" and a mark that sets it apart from NONNA-10 water (designer's call: it is survey data, so it is better shown than hidden, but it must not pass for fine survey).
 - Spot depths: sampled from NONNA-10 and NONNA-100 only, never from CRM or ETOPO, thinned per zoom like ENC soundings, and biased shallow (the shallowest value in each thinning cell), as a chart would.
 - Drying areas: NONNA values above chart datum draw as the intertidal band.
-- Land and shoreline: polygons and coastline built from the Freshwater Atlas lines.
-- No survey data: water (not land) in the BC inshore area where neither NONNA grid has a value. It draws as a distinct shading that cannot be read as deep water, in all three palettes (day, dusk, night), with the legend entry "No survey data". Coarse filler depth may still tint it in Fish view, but in the BC inshore area the Nav view never draws CRM or ETOPO as depth areas (designer's call: on a chart-like view, rough worldwide depth must not look surveyed, and a 460 m grid is unreliable in narrow inlets). Only the two offshore packs draw Nav depth areas from the coarse sources. A NONNA hole on the outer shelf of an inshore pack therefore shows "No survey data" next to the offshore pack's depth bands; that seam is accepted.
+- Land and shoreline: polygons and coastline built from the Freshwater Atlas lines. The atlas covers BC only; where it has no land (Alaska, and the US side), land and coastline come from the NOAA cells, finest band first, bands 1 and 2 included.
+- No survey data: water (not land) in the BC inshore area where neither NONNA grid has a value. The fetch workflow (section 5) computes this area once per region at the native NONNA-10 grid and stores it as a vector mask beside the source grids, so `overview` and the rebuilt US packs read the mask instead of the 10 m grids. It draws as a distinct shading that cannot be read as deep water, in all three palettes (day, dusk, night), with the legend entry "No survey data". Coarse filler depth may still tint it in Fish view, but in the BC inshore area the Nav view never draws CRM or ETOPO as depth areas (designer's call: on a chart-like view, rough worldwide depth must not look surveyed, and a 460 m grid is unreliable in narrow inlets). Only the offshore area draws Nav depth areas from the coarse sources. A NONNA hole on the outer shelf of an inshore pack therefore shows "No survey data" next to the offshore pack's depth bands; that seam is accepted.
 
-Pack check: `_check_safety_layers` in `chartpack/src/chartpack/pack/check.py` requires every safety layer to have features at each band zoom, and the release workflow runs it. A BC charts pack built from depth and shoreline cannot pass it as written. The region file declares the charts as derived; for a derived pack the check requires instead: depth areas, land, and the no-survey layer present at each zoom, and no derived depth feature inside the no-survey area (this second rule is the automated test of the first anti-goal). The check stays as strict as today for every US pack, rebuilt ones included.
+Pack check: `_check_safety_layers` in `chartpack/src/chartpack/pack/check.py` requires every safety layer to have features at each band zoom, and the release workflow runs it. A BC charts pack built from depth and shoreline cannot pass it as written. The region file declares the charts as derived; for a derived pack the check requires depth areas at each zoom, and for an inshore pack also land (an offshore pack may hold neither land nor a no-survey area). A second rule runs on every charts pack that draws BC inshore water, the rebuilt US packs and `overview` included: no derived depth feature lies inside the no-survey area. It is the automated test of the first anti-goal. The safety-layer check stays as strict as today for every US pack, rebuilt ones included.
 
 ### 7.2 NOAA objects on the Canadian side
 
@@ -168,9 +170,9 @@ Rules:
 - Inside a NOAA cell's coverage on the Canadian side, its point, line and area objects (lights, buoys, beacons, rocks, wrecks, obstructions, restricted and caution areas, traffic lanes, cables) show as in US water.
 - Depth and land do not double. Inside band 3 or finer coverage on the Canadian side: where NONNA has data, depth areas, contours and spot depths come from NONNA and the NOAA cell's are dropped; where NONNA is empty, the NOAA cell's depth objects show and the area is not marked "No survey data". Canadian land and shoreline come from the Freshwater Atlas; US land stays NOAA's.
 - The edge of NOAA band 3 and finer coverage on the Canadian side is drawn as a line with a legend entry in plain words: "US chart data ends here (coarse scale). Beyond: most hazards and navaids not shown." Bands 1 and 2 do not count as coverage for this edge.
-- Bands 1 and 2 (`US1GLBDD` at 1:3,500,000, `US2PACWX` at 1:700,000) cover all of BC. In the BC inshore area outside band 3 coverage (designer's call, following "something is better than nothing"): their navaid, hazard and regulated-area objects (the major lights and the like) are kept and draw as the quilt draws them today; their depth areas, depth contours, soundings, land areas and coastline are dropped, so they never cancel "No survey data" and never stand in for the shoreline. This holds at every zoom and in every pack that draws that water, `overview` included: at zoom 9 and below the BC inshore area shows derived NONNA depth, Freshwater Atlas land and "No survey data", not 1:700,000 depth. In the two offshore areas, at every zoom, their depth objects are kept where NONNA is empty. This is why the notices say "most", not "all".
+- Bands 1 and 2 (`US1GLBDD` at 1:3,500,000, `US2PACWX` at 1:700,000) cover all of BC. In the BC inshore area outside band 3 coverage (designer's call, following "something is better than nothing"): their navaid, hazard and regulated-area objects (the major lights and the like) are kept and draw as the quilt draws them today; their depth areas, depth contours and soundings are dropped, and so are their land areas and coastline wherever the Freshwater Atlas has land (7.1), so they never cancel "No survey data" and never stand in for the BC shoreline. This holds at every zoom and in every pack that draws that water, `overview` included: at zoom 9 and below the BC inshore area shows derived NONNA depth, Freshwater Atlas land and "No survey data", not 1:700,000 depth. In the two offshore areas, at every zoom, their depth objects are kept where NONNA is empty. This is why the notices say "most", not "all".
 
-Alaskan water (designer's call): `bc-north` and `bc-offshore-north` reach past the Dixon Entrance line, and no US pack owns tiles there. Alaska is not a goal, so nothing is added for it and nothing is clipped out: the NOAA cells already listed draw on both sides, depth comes from the merge order of section 6 (NONNA wherever it has data, else coarse), and land comes from the Freshwater Atlas where it has land, else from the NOAA cells. No boundary line is needed north of the existing clip polygon, which stops at 49.5 N and is only used for the CUDEM and NONNA rule of section 9.
+Alaskan water (designer's call): `bc-north` and `bc-offshore-north` reach past the Dixon Entrance line, and no US pack owns tiles there. Alaska is not a goal, so nothing is added for it and nothing is clipped out: the NOAA cells already listed draw on both sides, depth comes from the merge order of section 6 (NONNA wherever it has data, else coarse), and land follows the rule of 7.1 (Freshwater Atlas where it has land, else the NOAA cells). No boundary line is needed north of the existing clip polygon, which stops at 49.5 N and is only used to tell the US side in section 6.
 
 ### 7.3 Saying what is not there
 
@@ -191,8 +193,8 @@ Alaskan water (designer's call): `bc-north` and `bc-offshore-north` reach past t
 
 ## 9. Border and seams
 
-- US packs whose owned tiles hold Canadian water are rebuilt: at least `north-sound`, `strait` and `wa-coast` (the builder confirms the list from the grid). Charts: NOAA objects unclipped (7.2), Canadian land from the Freshwater Atlas, Canadian depth from NONNA per 7.2. Bathy: by the table in section 6, with no clipped edge.
-- `overview` is rebuilt over US and BC: charts from NOAA bands 1 to 3 under the rules of 7.2, plus derived BC depth, land and "No survey data" at low zoom; bathy from one coarse merge. The plan 7 rule that overview bathy sources must be `["crm"]` is widened to the coarse sources.
+- US packs whose owned tiles hold Canadian water are rebuilt: at least `north-sound`, `strait` and `wa-coast` (the builder confirms the list from the grid). Charts: NOAA objects as today, with the Canadian-side depth, land and edge rules of 7.1 and 7.2. Bathy: by the table in section 6, with no clipped edge.
+- `overview` is rebuilt over US and BC: charts from NOAA bands 1 to 3 under the rules of 7.2, plus derived BC depth (from NONNA-100, which is ample at zoom 9 and below), land and "No survey data" (from the stored masks) at low zoom; bathy from one coarse merge. It never reads NONNA-10. The plan 7 rule that overview bathy sources must be `["crm"]` is widened to the coarse sources.
 - The ENC fallback contours that plan 7 clips in Canadian water (plan 7 PR D) are not needed where NONNA covers; the builder removes or keeps the clip so that no contour draws twice.
 - Seams between BC packs follow plan 7: each pack reads every source tile that meets its owned tiles, so features cross whole.
 
@@ -228,7 +230,7 @@ Also in the NOTICE files and About: "Contains information licensed under the Ope
 
 Plan 7 already loads any number of packs and merges them at install. Plan 8 adds:
 - the area-aware notices of 7.3 and the "chart datum" banner of section 8;
-- legend entries: "No survey data", "US chart data ends here", "Rough depth, worldwide grid";
+- legend entries: "No survey data", "US chart data ends here", "Coarse survey depth (100 m grid)", "Rough depth, worldwide grid";
 - the About page text of section 11;
 - nothing else by intent. The builder avoids a pack schema change if the new layers and metadata fit schema 2. If a change is needed, the builder raises the pack schema and the plotter's accepted range together, an older plotter refuses the new packs with the existing per-pack reason, and every wave 1 pack is rebuilt at the new schema, `sound-south` and `sound-central` too (designer's call: the set check in `installer/lock-tool.sh` that all packs of a kind share one schema stays strict). That lengthens the release list of section 13 and applies the #18 change to all packs.
 
@@ -240,7 +242,7 @@ With at least 15 region packs plus `overview`, the install-time merge and the me
 - Rebuilt US packs and `overview`: a minor version bump.
 - Then a plotter release if the app changed, and a set release listing every pack, as a pre-release.
 - Tags need the owner's OK first and are pushed one per `git push`, about 2 minutes apart, with a run confirmed per tag.
-- CI fit: every BC pack must build on the GitHub runner (16 GB RAM, 14 GB disk, 6 h) within the plan 7 fit guard. NONNA raw data for one pack must fit the disk with margin; the builder streams or chunks where it does not.
+- CI fit: every BC pack must build on the GitHub runner (16 GB RAM, 14 GB disk, 6 h job limit) within the plan 7 fit guard (5 h and 2 GiB free). NONNA raw data for one pack must fit the disk with margin; the builder streams or chunks where it does not.
 
 ## 14. Order
 
