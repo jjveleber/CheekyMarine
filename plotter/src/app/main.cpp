@@ -7,6 +7,7 @@
 #include "core/MonotonicClock.h"
 #include "core/Geo.h"
 #include "core/N2kClient.h"
+#include "core/Overlays.h"
 #include "core/PackCatalog.h"
 #include "core/PackMerge.h"
 #include "core/PanPath.h"
@@ -340,8 +341,13 @@ int main(int argc, char* argv[]) {
     // The palette drives the chart style, the icons and (in Main.qml) the Theme. Icons first, so the
     // style reload that setPalette starts re-adds them in the new colours.
     PaletteController palette(settings, vessel, [] { return QDateTime::currentDateTimeUtc(); });
+    const auto chartImages = [&] {
+        QHash<QString, QImage> images = chartIcons(iconPxPerMm(), palette.palette());
+        images.insert(OverlayIds::kBackgroundImage, chartBackground(palette.palette()));
+        return images;
+    };
     const auto applyPalette = [&] {
-        chart.setImages(chartIcons(iconPxPerMm(), palette.palette()));
+        chart.setImages(chartImages());
         chart.setPalette(palette.palette());
     };
     applyPalette();
@@ -415,7 +421,7 @@ int main(int argc, char* argv[]) {
             qInfo().noquote() << writeStatsLine(chart.writeTimesUs());
         });
     }
-    const auto resizeIcons = [&] { chart.setImages(chartIcons(iconPxPerMm(), palette.palette())); };
+    const auto resizeIcons = [&] { chart.setImages(chartImages()); };
     resizeIcons();
     QObject::connect(window, &QWindow::widthChanged, &chart, resizeIcons);
     QObject::connect(window, &QWindow::heightChanged, &chart, resizeIcons);

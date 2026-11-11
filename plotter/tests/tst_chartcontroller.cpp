@@ -52,6 +52,7 @@ public:
     QStringList layerIds;             // current stack, bottom first
     QHash<QString, QString> layerSrc; // runtime layer id -> source
     QHash<QString, QJsonValue> filters;
+    QHash<QString, QJsonValue> paints; // "<layer>:<property>" -> value, since the last style load
     QHash<QString, QJsonObject> sources;
     QSet<QString> images;
     QHash<QString, QImage> imageData;   // last image added per id
@@ -66,6 +67,7 @@ public:
         layerSrc.clear();
         for (const auto& l : s["layers"].toArray()) layerIds << l.toObject()["id"].toString();
         filters.clear();
+        paints.clear();
         sources.clear();
         images.clear();
         layers.clear();
@@ -77,6 +79,7 @@ public:
     }
     void setPaintProperty(const QString& layer, const QString& property, const QJsonValue& value) override {
         calls << "paint:" + layer + ":" + property;
+        paints[layer + ":" + property] = value;
         patch(layer, "paint", property, value);
     }
     void setLayoutProperty(const QString& layer, const QString& property, const QJsonValue& value) override {
@@ -98,10 +101,11 @@ public:
         images << id;
         imageData[id] = image;
     }
-    void addLayer(const QJsonObject& layer) override {
+    void addLayer(const QJsonObject& layer, const QString& before = {}) override {
         const QString id = layer["id"].toString();
         calls << "layer:" + id;
-        layerIds << id;
+        if (before.isEmpty()) layerIds << id;
+        else layerIds.insert(layerIds.indexOf(before), id);
         layerSrc[id] = layer["source"].toString();
         layers[id] = layer;
     }
@@ -1896,6 +1900,37 @@ private slots:
             QVERIFY2(r.map.images.contains(id), qPrintable(id));
             QCOMPARE(r.map.imageData.value(id).pixelColor(4, 4).rgb(), QColor(0xc0, 0, 0).rgb());
         }
+    }
+    // The background image covers the style's no-data fill: a world fill layer with its pattern, right
+    // above the style's "background" layer, whether the image comes before the load, after it, or
+    // again for a new palette. MapLibre's background-pattern is not used: it raises a GL error here.
+    void backgroundImageCoversNoDataFill() {
+        Rig r;
+        QVERIFY(r.settings);
+        r.make();
+        r.map.loaded();
+        QVERIFY(!r.map.layerIds.contains("cm-background-fill")); // no image: the grey fill stays
+        QHash<QString, QImage> imgs;
+        for (const QString& id : kImageIds) imgs[id] = QImage(8, 8, QImage::Format_ARGB32_Premultiplied);
+        imgs[OverlayIds::kBackgroundImage] = QImage(16, 16, QImage::Format_ARGB32_Premultiplied);
+        const auto check = [&] {
+            QVERIFY(r.map.images.contains(OverlayIds::kBackgroundImage));
+            QCOMPARE(r.map.layerIds.value(0), QStringLiteral("background"));
+            QCOMPARE(r.map.layerIds.value(1), QStringLiteral("cm-background-fill"));
+            QCOMPARE(r.map.layerIds.count("cm-background-fill"), 1);
+            const QJsonObject layer = r.map.layers.value("cm-background-fill");
+            QCOMPARE(layer["type"].toString(), QStringLiteral("fill"));
+            QCOMPARE(layer["paint"].toObject()["fill-pattern"].toString(), QString(OverlayIds::kBackgroundImage));
+            QCOMPARE(r.map.sources.value(layer["source"].toString())["features"].toArray().size(), 1);
+        };
+        r.ctrl->setImages(imgs); // after the load
+        check();
+        r.ctrl->setImages(imgs); // again (a window resize): no second layer
+        check();
+        r.ctrl->setPalette("night"); // a reload drops it; the next load adds it again
+        QVERIFY(!r.map.layerIds.contains("cm-background-fill"));
+        r.map.loaded();
+        check();
     }
 };
 

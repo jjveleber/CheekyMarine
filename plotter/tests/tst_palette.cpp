@@ -223,6 +223,23 @@ private slots:
         QVERIFY(overlayColours("dusk").heading != overlayColours("night").heading);
     }
 
+    // Each palette has a seamless 1024 px parchment for the no-data background; night's is red only.
+    void backgroundPerPalette() {
+        for (const QString& palette : {QStringLiteral("day"), QStringLiteral("dusk"), QStringLiteral("night")}) {
+            const QImage img = chartBackground(palette);
+            QVERIFY2(img.size() == QSize(1024, 1024), qPrintable(palette));
+        }
+        QVERIFY(chartBackground("day").pixelColor(512, 512).lightness() >
+                chartBackground("dusk").pixelColor(512, 512).lightness());
+        const QImage night = chartBackground("night").convertToFormat(QImage::Format_RGB32);
+        for (int y = 0; y < night.height(); y += 7)
+            for (int x = 0; x < night.width(); x += 7) {
+                const QColor px = night.pixelColor(x, y);
+                if (px.green() > 0x08 || px.blue() > 0x08 || px.red() > 0x30)
+                    QFAIL(qPrintable(QStringLiteral("night %1,%2 is %3").arg(x).arg(y).arg(px.name())));
+            }
+    }
+
     void iconSizes() {
         const auto icons = chartIcons(4.0, QStringLiteral("day"));
         QCOMPARE(icons.size(), 5);

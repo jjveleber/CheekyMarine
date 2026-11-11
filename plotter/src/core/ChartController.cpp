@@ -419,7 +419,31 @@ void ChartController::setFollow(bool follow) {
 void ChartController::setImages(const QHash<QString, QImage>& images) {
     m_images = images;
     if (!m_ready) return;
+    addImages();
+}
+
+// Adds the runtime images. A background image covers the style's no-data fill (its first layer,
+// "background") with a world fill layer of its pattern, once per style load. MapLibre's own
+// background-pattern is not used: it raises a GL error that aborts the render (llvmpipe, 2026-11-10).
+void ChartController::addImages() {
     for (auto it = m_images.cbegin(); it != m_images.cend(); ++it) m_map.addImage(it.key(), it.value());
+    const QJsonArray layers = m_style[QStringLiteral("layers")].toArray();
+    if (m_backgroundAdded || !m_images.contains(OverlayIds::kBackgroundImage) || layers.size() < 2 ||
+        layers[0][QStringLiteral("id")].toString() != QLatin1String("background"))
+        return;
+    const QJsonArray ring{QJsonArray{-180, -85}, QJsonArray{180, -85}, QJsonArray{180, 85}, QJsonArray{-180, 85},
+                          QJsonArray{-180, -85}};
+    const QJsonObject world{{"type", "Feature"},
+                            {"properties", QJsonObject()},
+                            {"geometry", QJsonObject{{"type", "Polygon"}, {"coordinates", QJsonArray{ring}}}}};
+    m_map.setGeoJson(OverlayIds::kBackgroundSource,
+                     QJsonObject{{"type", "FeatureCollection"}, {"features", QJsonArray{world}}});
+    m_map.addLayer(QJsonObject{{"id", "cm-background-fill"},
+                               {"type", "fill"},
+                               {"source", OverlayIds::kBackgroundSource},
+                               {"paint", QJsonObject{{"fill-pattern", OverlayIds::kBackgroundImage}}}},
+                   layers[1][QStringLiteral("id")].toString());
+    m_backgroundAdded = true;
 }
 
 void ChartController::setTracks(const QList<QList<LatLon>>& tracks) {
@@ -490,7 +514,8 @@ void ChartController::loadStyle() {
 void ChartController::onStyleLoaded() {
     if (!m_loadPending) return; // one set of runtime additions per load
     m_loadPending = false;
-    for (auto it = m_images.cbegin(); it != m_images.cend(); ++it) m_map.addImage(it.key(), it.value());
+    m_backgroundAdded = false; // the load dropped it
+    addImages();
     m_map.setGeoJson(OverlayIds::kTracksSource, tracksGeoJson(m_tracks));
     m_map.setGeoJson(OverlayIds::kActiveTrackSource, tracksGeoJson({m_seedTrack + m_activeTrack}));
     m_map.setGeoJson(OverlayIds::kAisSource, aisGeoJson(m_ais.targets(), m_vessel.state()));

@@ -61,6 +61,12 @@ target_compile_definitions(plottercore PRIVATE
     PLOTTER_PACK_SCHEMA_MIN=${PLOTTER_PACK_SCHEMA_MIN}
     PLOTTER_PACK_SCHEMA_MAX=${PLOTTER_PACK_SCHEMA_MAX})
 
+# The no-data background tiles, at :/chart/parchment-<palette>.jpg (chartBackground() in Icons.cpp).
+function(plotter_add_chart_resources target)
+    qt_add_resources(${target} "chart_backgrounds" PREFIX "/chart" BASE assets
+        FILES assets/parchment-day.jpg assets/parchment-dusk.jpg assets/parchment-night.jpg)
+endfunction()
+
 if(CM_PLOTTER_TESTS)
     # plotter_add_test(NAME SOURCES...): Qt Test executable linked to plottercore, run by ctest.
     function(plotter_add_test name)
@@ -104,6 +110,7 @@ if(CM_PLOTTER_TESTS)
     plotter_add_test(tst_legend tests/tst_legend.cpp)
     # Icons.cpp is app code with no MapLibre dependency; the night icon rule is checked on its pixels.
     plotter_add_test(tst_palette tests/tst_palette.cpp src/app/Icons.cpp)
+    plotter_add_chart_resources(tst_palette)
     # The legend image provider is app code too (Qt Quick, no MapLibre).
     plotter_add_test(tst_legendimages tests/tst_legendimages.cpp src/app/LegendImageProvider.cpp src/app/Icons.cpp)
     target_link_libraries(tst_legendimages PRIVATE Qt6::Quick)
@@ -135,6 +142,7 @@ target_include_directories(plotterqml PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src/qm
 
 qt_add_executable(cheekyplotter src/app/main.cpp src/app/MapLibreChartMap.cpp src/app/Icons.cpp
     src/app/LegendImageProvider.cpp)
+plotter_add_chart_resources(cheekyplotter)
 target_link_libraries(cheekyplotter PRIVATE plottercore plotterqmlplugin Qt6::Quick Qt6::QuickControls2 Qt6::Sql Qt6::Svg
     QMapLibre::Core)
 set_target_properties(cheekyplotter PROPERTIES AUTOMOC ON)
