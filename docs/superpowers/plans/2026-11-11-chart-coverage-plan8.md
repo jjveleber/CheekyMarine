@@ -2,9 +2,11 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** The plotter shows the BC coast and offshore water as part of the same seamless chart: Fish from CHS NONNA depth with coarse fillers, Nav from depth-derived layers plus the open BC shoreline and the NOAA cells that reach into Canada, all built and released in CI with the CHS notice.
+**Status (2026-11-11):** Tasks 0 to 5 are done. PR A (#119, Tasks 1 and 2) and PR B (#120, Task 4) are merged; Task 5 is committed on branch `plan8-depth` (PR C continues there with Task 6). Task 1 Step 3 found that the NOAA cells carry a CHS licence notice over their Canadian part; Step 5 found tide station values only under the CHS Licence Agreement, not an open licence. Task 3: Gate 1 passed (owner: go). The owner then dropped NOAA features on the Canadian side and chose one fixed 4 m ETOPO shift (https://github.com/jjveleber/CheekyMarine/issues/90#issuecomment-6811436163), and the spec and this plan were amended the same day from Task 6 on. Facts from Tasks 1 to 5 that later tasks rely on: the coastline lines are not consistently directed and their tide level is undocumented; `fetch-stats-<name>.json` holds `extent` and a `sha256` per file; `chartpack-sources.yml` has an `only` input; `chartpack/scripts/release-assets.sh` lists a release's assets; Task 5's example was wrong about the Victoria tile (it holds US water, so it is shared and stays with `north-sound`; the test uses Saanich Inlet's tile instead).
 
-**Architecture:** A fetch workflow pulls NONNA grids and the BC coastline once per region and stores them as assets of a source-data release; pack builds read only those assets. Depth sources are picked per side of the border (spec 6 table) inside the existing fine and coarse block build. BC charts packs fill the existing `enc` vector layers from derived features (shoal-biased, no fill-in) plus two optional new layers, so pack schema 2 and the install merge stay as they are. The app picks its on-chart notice from notice areas carried in pack metadata.
+**Goal:** The plotter shows the BC coast and offshore water as part of the same seamless chart: Fish from CHS NONNA depth with coarse fillers, Nav from depth-derived layers plus the open BC shoreline, with no NOAA chart content on the Canadian side, all built and released in CI with the CHS notice.
+
+**Architecture:** A fetch workflow pulls NONNA grids and the BC coastline once per region and stores them as assets of a source-data release; pack builds read only those assets. Depth sources are picked per side of the border (spec 6 table) inside the existing fine and coarse block build. BC charts packs fill the existing `enc` vector layers from derived features (shoal-biased, no fill-in) plus one optional new layer (`nosurvey`), so pack schema 2 and the install merge stay as they are. Every NOAA feature is cut at one fixed Canada polygon, `chartpack/regions/clip/canada-chs.geojson`, in every charts pack. The app picks its on-chart notice from notice areas carried in pack metadata.
 
 **Tech Stack:** Python 3.12 (chartpack: numpy, GDAL, shapely, contourpy, pyproj, tippecanoe 2.79.0), C++23 and Qt 6.8 with MapLibre Native Qt, bash (installer), GitHub Actions.
 
@@ -14,19 +16,20 @@
 
 - Never use an em-dash character anywhere: code, comments, QML strings, commit messages, docs, issue and PR text. US English in new text.
 - No paid data. No GPL code or data. No CHS chart objects by any route. No stand-in navaids, routes, anchorages, names or marinas (spec 3).
+- No NOAA feature of any band (1 to 5) inside `chartpack/regions/clip/canada-chs.geojson` in any charts pack: no depth, land, navaids, hazards or regulated areas (spec 7.2). `chartpack/regions/clip/canada-wa.geojson` only tells the US side for depth sources (spec 6). Test fixtures never hold a NOAA cell with a CHS notice (the notice forbids redistribution); tests build such notes in memory.
 - No local pack builds. Every released pack is built by `.github/workflows/chartpack-release.yml` on `ubuntu-24.04` (16 GB RAM, 14 GB disk, 6 h job limit; fit guard 12 GiB RSS, 2 GiB free disk, 5 h).
 - Canadian hosts are called only by the fetch workflow (Task 2), never by a pack build, a dry run, a tag run or a test. Tests use fixtures. Fetch manners: one connection, requests in sequence, 2 s pause after each response, User-Agent `CheekyMarine-pack-builder/<chartpack version> (+https://github.com/jjveleber/CheekyMarine)`, 60 s back-off and one retry on a 5xx or a timeout, stop for good on HTTP 403 or 429. Before the first request to a host, read its robots.txt and refuse a disallowed path.
 - Pack cap `PACK_CAP_BYTES = 1_500_000_000` per pack file. An area over the cap splits on the zoom-10 grid. Zoom caps are global and do not change: fine vector 16, fine DEM 14 (`dem_maxzoom = 14`), coarse 12, overview 6 to 9.
 - Pack schema stays 2 (`SCHEMA_VERSION = 2`, `PLOTTER_PACK_SCHEMA_MIN 2`, `PLOTTER_PACK_SCHEMA_MAX 2`). Task 9 Step 1 is the gate: if it shows schema 2 cannot hold the change, stop and tell the controller (spec 12: schema 3 means every wave 1 pack is rebuilt and the owner is told).
 - Versions: BC packs `1.0.0`; rebuilt US packs and `overview` `1.1.0`; plotter `0.4.0`; set `0.4.0` (pre-release).
-- Depth source names (region files, coverage labels, feature `src`): `cudem`, `crm`, `nonna10`, `nonna100`, `etopo`. Grades: `nonna10` is "Survey depth", `nonna100` is "Coarse survey depth (100 m grid)", `crm` on the Canadian side and `etopo` are "Rough depth, worldwide grid".
+- Depth source names (region files, coverage labels, feature `src`): `cudem`, `crm`, `nonna10`, `nonna100`, `etopo`. Derived land and coastline carry `src = "fwa"`. A feature is NOAA-sourced when it has no `src` or `src = "enc"` (the reader's mark on NOAA bottom samples). Grades: `nonna10` is "Survey depth", `nonna100` is "Coarse survey depth (100 m grid)", `crm` on the Canadian side and `etopo` are "Rough depth, worldwide grid".
 - Notice strings, exact:
-  - Nav, BC outside NOAA band 3 coverage on screen: `BC: depth and shoreline only. Most hazards and navaids not shown. Not for navigation.`
-  - Nav, only NOAA-strip BC water on screen: `BC: coarse US chart data. Not for navigation.`
+  - Nav, any BC notice area on screen: `BC: depth and shoreline only. Hazards and navaids not shown. Not for navigation.` (proposed, owner to confirm: spec 2, open question 1; another answer changes only this string and the tests that quote it).
   - Fish, any BC water on screen: `BC: CHS survey depths where available, rough elsewhere. Chart datum. Not for navigation.`
-  - Legend: `No survey data`; `US chart data ends here (coarse scale). Beyond: most hazards and navaids not shown.`; `Coarse survey depth (100 m grid)`; `Rough depth, worldwide grid`.
+  - Legend: `No survey data`; `Coarse survey depth (100 m grid)`; `Rough depth, worldwide grid`.
 - CHS notice: the four paragraphs of spec section 11, verbatim, with "the CheekyMarine project" as the maker, followed by `Contains information licensed under the Open Government Licence – Canada.` and `https://open.canada.ca/en/open-government-licence-canada`. Shoreline credit: `Contains information licensed under the Open Government Licence – British Columbia.` (those two licence lines contain an en dash, which is part of the required text).
 - Contour budget of 10 ft applies to `nonna10` water only.
+- ETOPO: one fixed shift for all of BC, `CD_BELOW_MSL_M = 4.0` in `bathy/etopo.py` (depth below chart datum = depth below mean sea level minus 4.0 m). No tide station values (spec 8).
 - chartpack tests: `cd chartpack && PATH="$HOME/.local/bin:$PATH" .venv/bin/python -m pytest -q`. Plotter build and test and installer tests: as in the plan 7 plan's Global Constraints.
 - Report a pass only from the test runner's own exit status of a fresh run. Never `rm` a path built from a variable that could be empty; download into fresh directories.
 - Tags are pushed one per `git push`, about 2 minutes apart, only after the owner's OK, with a `chartpack-release` run confirmed per tag.
@@ -38,7 +41,9 @@
 2. NONNA nodata or sign read wrong (nodata as depth 0, or drying heights as depths). Expected: nodata is nan, stored negative values become positive depth, positive values stay drying heights above datum. Test in Task 6 (`test_nonna_sign_and_nodata`).
 3. The 0.4.0 set installs over 0.3.0 with `sound-south` and `sound-central` not rebuilt: their files lack the new optional layers and metadata keys. Expected: the merge succeeds and those areas draw as before. Test in Task 13 (`mergeAcceptsMembersWithoutNoticeAreas`).
 4. A view that shows US and BC water together, and a pan across the border. Expected: the BC notice whenever any BC notice area meets the viewport, the US notice otherwise, with no change while the set of areas in view is unchanged. Test in Task 13 (`mixedViewGetsBcNotice`, `usOnlyViewKeepsDefault`).
-5. The coastline of a region does not close into land polygons at the region edge (lines cut by the box). Expected: the land builder closes rings along the read box, and a ring it cannot close fails the build instead of drawing land as water or "No survey data" over land. Test in Task 9 (`test_land_closes_at_box_edge`, `test_unclosable_ring_fails`).
+5. The coastline of a region does not close into land polygons at the region edge (lines cut by the box), or its lines run in mixed directions. Expected: the land builder closes faces along the read box and decides land by the NONNA water vote, never by line direction; a line it cannot place fails the build instead of drawing land as water or "No survey data" over land. Test in Task 9 (`test_land_closes_at_box_edge`, `test_land_side_ignores_line_direction`, `test_unclosable_ring_fails`).
+6. A new NOAA edition adds or moves a CHS notice beyond `canada-chs.geojson`. Expected: the build fails naming the cell. Test in Task 11 (`test_chs_notice_outside_polygon_fails_build`).
+7. A NOAA feature (a light, a depth area, a land area) survives inside the Canada polygon in a built pack, or a general note that names the Canadian Hydrographic Service is taken for the CHS notice and cuts US water. Expected: the pack check fails naming the tile and layer; only notes with "Fisheries and Oceans Canada" count. Tests in Task 11 (`test_noaa_feature_inside_polygon_fails_check`, `test_chs_notice_found_by_dfo_text_only`).
 
 ---
 
@@ -191,32 +196,32 @@ Research task, no code. One request at a time, 2 s apart, robots.txt first.
   - `test_coverage_grade_per_source`.
   - `test_nav_depth_keeps_isolated_shoal` (one native NONNA cell of 3.0 m in a 50.0 m plain: `nav_depth` has a cell of 3.0 there, while the Fish grid may not).
   - `test_no_blank_water_in_block` (a block with `etopo` everywhere: every water cell of the coarse grid has a value).
-  - `test_block_outside_asset_extent_is_error` (a block whose read box reaches past the NONNA or coastline asset's extent fails the build naming the region, the asset and the fetch workflow; the same guard runs in `_build_enc`). The guard compares against the requested fetch extent recorded in `fetch-stats-<name>.json`, which the build downloads with the assets, not against the mosaic's raster bounds, which are smaller where NONNA has no data.
+  - `test_block_outside_asset_extent_is_error` (a block whose read box reaches past the NONNA or coastline asset's extent fails the build naming the region, the asset and the fetch workflow; the same guard runs in `_build_enc`). The guard compares against the requested fetch extent recorded in `fetch-stats-<name>.json`, which the build downloads with the assets, not against the mosaic's raster bounds, which are smaller where NONNA has no data. The stats also hold a `sha256` per file, which the guard may check against each downloaded asset.
   - `test_build_bathy_reads_assets_not_wcs` (the CLI with a cache holding fixture assets makes no HTTP request; a missing asset is an error naming the file and the fetch workflow).
 - [ ] **Step 2:** Run. Expected: FAIL.
 - [ ] **Step 3:** Implement. Keep the plan 7 global grid anchoring and the features-clipped-to-core rule; NONNA is warped from EPSG:3857 to the fine lon/lat grid with nearest-neighbor for the mask, bilinear for the Fish values, and `min` for `nav_depth`.
 - [ ] **Step 4:** Run the chartpack tests. Expected: PASS.
 - [ ] **Step 5:** Commit `feat(chartpack): NONNA depth in the block build, sources by side of the border (#90)`.
 
-### Task 7: ETOPO 2022 reader and its datum shift (#92)
+### Task 7: ETOPO 2022 reader and its fixed datum shift (#92)
 
 **Files:**
-- Create: `chartpack/src/chartpack/bathy/etopo.py`, `chartpack/regions/datum/bc-etopo.toml`
-- Modify: `chartpack/src/chartpack/cli.py` (`_fetch_bathy`), `chartpack/src/chartpack/bathy/blocks.py` (`AreaDatum` for `etopo`), `chartpack/src/chartpack/region.py` (`[datum] etopo_file`, optional), `chartpack/NOTICE`
+- Create: `chartpack/src/chartpack/bathy/etopo.py`
+- Modify: `chartpack/src/chartpack/cli.py` (`_fetch_bathy`), `chartpack/src/chartpack/bathy/blocks.py` (`AreaDatum` for `etopo`), `chartpack/NOTICE`
 - Test: `chartpack/tests/test_bathy_etopo.py`, `chartpack/tests/test_bathy_blocks.py`
 
 **Interfaces:**
 - Produces:
   - `etopo.ETOPO_URL = "https://www.ngdc.noaa.gov/mgg/global/relief/ETOPO2022/data/15s/15s_surface_elev_gtif/ETOPO_2022_v1_15s_N60W135_surface.tif"`; `etopo.fetch_etopo(cache_dir: Path) -> Path` (cached; NOAA host, so builds may call it, as they call CRM).
-  - `bc-etopo.toml`: `[[stations]] name, lon, lat, msl_above_cd_m` from Task 1 Step 5, with the source URL, licence and read date in a header comment. An ETOPO source with no stations is a build error.
-  - `AreaDatum` for `etopo`: EGM2008 height taken as mean sea level; depth below chart datum = depth below mean sea level minus the `msl_above_cd_m` of the nearest station (one value per block, by block center).
-  - `chartpack/NOTICE`: the ETOPO 2022 citation from #89, and one line stating the shift source.
+  - `etopo.CD_BELOW_MSL_M = 4.0`: how far chart datum is taken to lie below mean sea level, one value for all of BC (spec 8). No station file, no region key.
+  - `AreaDatum` for `etopo`: EGM2008 height taken as mean sea level; depth below chart datum = depth below mean sea level minus `CD_BELOW_MSL_M`, everywhere. The same shift applies to ETOPO on the US side, which CRM fills so it is not reached there (spec 6); it errs shallow there too.
+  - `chartpack/NOTICE`: the ETOPO 2022 citation from #89, and the line `ETOPO depths are shifted by a fixed 4 m toward chart datum; no tide station data is used.`
 
-- [ ] **Step 1: Write the failing tests.** `test_etopo_depth_is_msl_depth_minus_station_shift` (elevation -100.0 with a station `msl_above_cd_m` of 3.0 gives depth 97.0: chart datum lies below mean sea level, so a depth measured from it is smaller); `test_etopo_does_not_use_geoid_or_wa_stations` (a spy on the CRM geoid path is not called); `test_etopo_without_stations_is_error`; `test_fetch_etopo_uses_cache` (second call makes no request).
+- [ ] **Step 1: Write the failing tests.** `test_etopo_depth_is_msl_depth_minus_fixed_shift` (elevation -100.0 gives depth 96.0: chart datum lies below mean sea level, so a depth measured from it is smaller); `test_etopo_does_not_use_geoid_or_wa_stations` (a spy on the CRM geoid and Washington station path is not called); `test_fetch_etopo_uses_cache` (second call makes no request).
 - [ ] **Step 2:** Run. Expected: FAIL.
 - [ ] **Step 3:** Implement with `read_window`.
 - [ ] **Step 4:** Run the chartpack tests. Expected: PASS.
-- [ ] **Step 5:** Commit `feat(chartpack): ETOPO 2022 as the last coarse depth source (#92)`.
+- [ ] **Step 5:** Commit `feat(chartpack): ETOPO 2022 as the last coarse depth source, fixed 4 m shift (#92)`.
 
 ### Task 8: Fish style: three grades, the BC notice, the CHS notice in bathy packs
 
@@ -250,14 +255,14 @@ Research task, no code. One request at a time, 2 s apart, robots.txt first.
 
 **Interfaces:**
 - Produces:
-  - `schema.LAYERS` gains `LayerSpec("nosurvey", (), (), "polygon")` and `LayerSpec("covedge", (), ("kind",), "line")`; `OPTIONAL_LAYERS` gains both; `depare`, `depcnt` and `soundg` gain the attribute `src`.
-  - `coast.land_polygons(lines: Iterable[shapely.LineString], box: tuple[float, float, float, float]) -> shapely.MultiPolygon`: polygonize; a line that ends on the box edge is closed along the box on its land side (the atlas lines are directed; Task 1 Step 4 records which side is land); a line that ends inside the box raises `CoastError` naming its end point.
+  - `schema.LAYERS` gains `LayerSpec("nosurvey", (), (), "polygon")`; `OPTIONAL_LAYERS` gains it; `depare`, `depcnt`, `soundg`, `lndare` and `coalne` gain the attribute `src`.
+  - `coast.WATER_VOTE_M = 2.0`; `coast.land_polygons(lines: Iterable[shapely.LineString], box: tuple[float, float, float, float], water: shapely.MultiPoint) -> shapely.MultiPolygon`. Task 1 found the atlas lines are not consistently directed, so direction is never used (designer's call, spec 7.1): polygonize the lines together with the box outline into faces; two faces that share a coastline segment are of opposite kinds, which splits the faces into two classes; the class holding more of the `water` points is water and the other is land. `water` is the centers of NONNA cells deeper than `WATER_VOTE_M` (NONNA-10, or NONNA-100 for a region without NONNA-10). Raises `CoastError` when a line ends inside the box (naming its end point), when the faces cannot be split into two classes, or when more than 1% of the `water` points fall in land. A box with no coastline is all water. The tide level of the line is undocumented (Task 1); the 1% guard and the Garmin comparison (Task 18) are where an offset would show.
   - `nosurvey.mask(nonna10: Path | None, nonna100: Path, land: shapely.Geometry, box) -> shapely.MultiPolygon`: water in `box` with no value in either grid, computed at the NONNA-10 native grid (at the NONNA-100 grid when `nonna10` is None, as for the offshore regions), polygonized, land removed, simplified by at most half a cell.
   - `nosurvey.missing_in_100(nonna10: Path, nonna100: Path, box) -> float`: square kilometers where NONNA-10 has data and NONNA-100 has none.
-  - CLI `chartpack derive-sources --region <file.toml> --cache <dir> --out <dir>`: reads the fetched assets, writes `land-<region>.geojson.gz`, `nosurvey-<region>.geojson.gz` and `derive-stats-<region>.json` (`missing_in_100_km2`, polygon counts). Workflow stage `derive` downloads the region's assets from `sources-bc-1`, runs it, uploads the three files. No Canadian host is called.
+  - CLI `chartpack derive-sources --region <file.toml> --cache <dir> --out <dir>`: reads the fetched assets (the coastline, and NONNA for the mask and the water vote), writes `land-<region>.geojson.gz`, `nosurvey-<region>.geojson.gz` and `derive-stats-<region>.json` (`missing_in_100_km2`, polygon counts). Workflow stage `derive` downloads the region's assets from `sources-bc-1`, runs it, uploads the three files. No Canadian host is called.
 
-- [ ] **Step 1: Schema gate.** Write `test_schema2_pack_without_new_layers_still_passes`: the fixture pack of `tests/test_pack_check.py`, built without the new layers and without `src`, returns no error from `check_pack` under the edited `schema.py`. If it cannot pass without loosening a safety rule, stop and report (Global Constraints).
-- [ ] **Step 2: Write the failing tests.** `test_land_closes_at_box_edge` (an L-shaped coast cut by the box gives one polygon whose area matches the land side); `test_unclosable_ring_fails`; `test_island_ring_is_land`; `test_mask_is_water_without_nonna` (a fixture where the east half has no value in both grids and a land block: mask equals the east half minus land within one cell); `test_mask_never_overlaps_valid_cells`; `test_missing_in_100_reports_area`.
+- [ ] **Step 1: Schema gate.** Write `test_schema2_pack_without_new_layers_still_passes`: the fixture pack of `tests/test_pack_check.py`, built without the new layer and without `src`, returns no error from `check_pack` under the edited `schema.py`. If it cannot pass without loosening a safety rule, stop and report (Global Constraints).
+- [ ] **Step 2: Write the failing tests.** `test_land_closes_at_box_edge` (an L-shaped coast cut by the box gives one polygon whose area matches the land side); `test_land_side_ignores_line_direction` (the same coast with every line reversed gives the same land); `test_unclosable_ring_fails`; `test_island_ring_is_land`; `test_water_vote_on_land_fails` (`water` points mostly inside the true land: `CoastError`); `test_no_coastline_is_all_water`; `test_mask_is_water_without_nonna` (a fixture where the east half has no value in both grids and a land block: mask equals the east half minus land within one cell); `test_mask_never_overlaps_valid_cells`; `test_missing_in_100_reports_area`.
 - [ ] **Step 3:** Run. Expected: FAIL.
 - [ ] **Step 4:** Implement.
 - [ ] **Step 5:** Run the chartpack tests. Expected: PASS.
@@ -278,7 +283,7 @@ Research task, no code. One request at a time, 2 s apart, robots.txt first.
     - `depare` polygons with `DRVAL1`, `DRVAL2` (consecutive `levels_m`, plus one drying area `DRVAL1 = -H`, `DRVAL2 = 0` where depth is negative, `H` the greatest drying height in the block rounded up to 0.1), and `src`;
     - `depcnt` lines with `VALDCO` in `levels_m` and `src`;
     - `soundg` points with `depth` and `src`, one per 96 px cell at each zoom, the shallowest value in the cell, from `nonna10` or `nonna100` cells only;
-    - `lndare` polygons and `coalne` lines from `land`;
+    - `lndare` polygons and `coalne` lines from `land`, with `src = "fwa"`;
     - `nosurvey` polygons (`nosurvey` cut to `core`).
     Every depth geometry is cut by `nosurvey` and `land` before it is returned. `src` is the source name of the cell the value came from; a `depare` or `depcnt` spanning both gets `nonna100` (the coarser).
   - With `kind="derived-offshore"` semantics chosen by the caller: the caller passes the coarse merge as `depth_m` and an empty `nosurvey` and `land`.
@@ -294,69 +299,79 @@ Research task, no code. One request at a time, 2 s apart, robots.txt first.
   - `test_soundings_only_from_nonna` (a grid whose `src` is `etopo` everywhere yields no `soundg`).
   - `test_drying_area_has_negative_drval1`.
   - `test_src_is_coarser_when_mixed`.
+  - `test_land_features_carry_fwa_src`.
 - [ ] **Step 3:** Run. Expected: FAIL.
 - [ ] **Step 4:** Implement with contourpy filled contours on the block-min grids.
 - [ ] **Step 5:** Run the chartpack tests. Expected: PASS.
 - [ ] **Step 6:** Commit `feat(chartpack): Nav depth areas, contours and soundings derived from NONNA (#90)`.
 
-### Task 11: BC rules for NOAA cells, the coverage edge, the charts build
+### Task 11: The Canada polygon, NOAA cut at it, the charts build
 
 **Files:**
-- Create: `chartpack/src/chartpack/enc/bc.py`
-- Modify: `chartpack/src/chartpack/cli.py` (`_build_enc`), `chartpack/src/chartpack/enc/tiles.py` (new layers to tippecanoe), `chartpack/src/chartpack/pack/check.py`, `chartpack/src/chartpack/pack/manifest.py` (`charts.kind` in the manifest), `chartpack/src/chartpack/pack/assemble.py` (charts NOTICE, metadata)
-- Test: `chartpack/tests/test_enc_bc.py`, `chartpack/tests/test_pack_check.py`, `chartpack/tests/test_pack_assemble.py`, `chartpack/tests/test_cli.py`
+- Create: `chartpack/src/chartpack/enc/bc.py`, `chartpack/scripts/make-canada-chs.py`, `chartpack/regions/clip/canada-chs.geojson` (written by the script, committed)
+- Modify: `chartpack/src/chartpack/enc/reader.py` (`read_notes`), `chartpack/src/chartpack/cli.py` (`_build_enc`, `check`), `chartpack/src/chartpack/enc/tiles.py` (new layer to tippecanoe), `chartpack/src/chartpack/pack/check.py`, `chartpack/src/chartpack/pack/manifest.py` (`charts.kind` in the manifest), `chartpack/src/chartpack/pack/assemble.py` (charts NOTICE, metadata), `chartpack/README.md` (the two clip files and their jobs)
+- Test: `chartpack/tests/test_enc_bc.py`, `chartpack/tests/test_enc_reader.py`, `chartpack/tests/test_pack_check.py`, `chartpack/tests/test_pack_assemble.py`, `chartpack/tests/test_cli.py`
 
 **Interfaces:**
-- Consumes: `quilt` output; `canada_side` (Task 5); `derived_features` (Task 10); assets (Task 9).
+- Consumes: `read_cell` and `quilt` output; `canada_side` (Task 5); `derived_features` (Task 10); assets (Task 9).
 - Produces:
-  - `@dataclass class BcAreas: canada: shapely.Geometry; inshore: shapely.Geometry; band3: shapely.Geometry; nonna: shapely.Geometry; atlas_land: shapely.Geometry` (`band3`: union of `M_COVR` of band 3 and finer cells; `nonna`: water with a NONNA value, the complement of the mask over water).
-  - `bc.apply_rules(features: list[Feature], areas: BcAreas) -> list[Feature]`, applied to the quilt output, by geometry (features are cut, not dropped whole):
-    1. `DEPTH = ("depare", "depcnt", "soundg")`, `LAND = ("lndare", "coalne")`.
-    2. In `inshore` outside `band3` (so only bands 1 and 2 reach): drop `DEPTH`; keep every other layer.
-    3. In `canada` inside `band3`: drop `DEPTH` inside `nonna`; keep it elsewhere.
-    4. In offshore water: drop `DEPTH` inside `nonna`; keep it elsewhere (one winner per place: NONNA-100 where it has data, else the NOAA cells).
-    5. Everywhere in `canada`: drop `LAND` within `ATLAS_REACH_M = 1000` meters of `atlas_land` (the atlas draws that shore); keep it elsewhere, so Alaskan land stays.
-    6. Outside `canada`: unchanged.
-  - `bc.coverage_edge(areas: BcAreas) -> list[Feature]`: layer `covedge`, the boundary of `band3` inside `canada`, `kind = "us-chart-end"`.
-  - `_build_enc` for any region: quilt, `apply_rules`, then add per owned tile the derived features for the tile's Canadian-column water: inshore water (BC inshore packs and US packs) from `nav_depth` with the mask and atlas land, the `nosurvey` polygons first cut by `band3` (inside the NOAA strip the cells' own depth shows, spec 7.2); offshore water from NONNA-100 where it has data, and from the coarse merge only where no kept NOAA `depare` covers the water. Then tippecanoe as today. A region with `charts.kind = "enc"` and no Canadian water runs exactly the old path.
-  - Pack check: for `charts.kind` in the manifest (`"enc"` when absent), new `_check_derived_layers(m: MBTiles, metadata: dict, kind: str) -> list[str]` requires, at every zoom from the file's `minzoom` to `maxzoom` (not `_band_zooms`, which gives zoom 10 only for a pack with band 1 to 3 cells): `depare` and `lndare` for `derived-inshore`, `depare` for `derived-offshore`. `"enc"` keeps `_check_safety_layers` unchanged. `_check_against_sources` (the 0.9999 cover rule, `check.py` near line 187) counts `nosurvey` polygons as cover next to `depare` and `lndare`. Derived inputs are recorded in a new metadata key `cheekymarine:depth_sources` (`[{"source", "asset", "sha256"}]`), not in `cheekymarine:sources`, whose entries must keep a `cell` name. New `_check_no_depth_in_nosurvey(m: MBTiles) -> list[str]` runs for every charts pack that has a `nosurvey` layer: no `depare`, `depcnt` or `soundg` feature with a `src` attribute intersects a `nosurvey` polygon in the same tile (decoded tile coordinates, 1 unit tolerance).
+  - `reader.read_notes(zip_path: Path) -> list[tuple[shapely.Geometry, str]]`: each `M_NPUB` area of the cell with the text of the file its `TXTDSC` names (empty text when the file is missing).
+  - `bc.CHS_NOTICE_MARK = "Fisheries and Oceans Canada"`; `bc.chs_notice_areas(notes: list[tuple[shapely.Geometry, str]]) -> shapely.Geometry`: union of the areas whose text contains the mark; empty when none. Not "Canadian Hydrographic Service": the cell-wide general notes of `US3WA1ED`, `US3WA1EE` and seven band 4 cells contain those words and cover US water.
+  - `chartpack/scripts/make-canada-chs.py [--out PATH]`: downloads `US3WA1ED`, `US3WA1EE`, `US3WA1EF`, `US3AK1DW`, `US3AK1DX`, `US3AK1DY`, `US3AK1EY` and `US1GLBDD` from `https://charts.noaa.gov/ENCs/<cell>.zip` into a fresh directory (NOAA host only) and writes `regions/clip/canada-chs.geojson`: one Feature whose geometry is `chs_notice_areas` over the seven band 3 cells, united with `US1GLBDD`'s `ADMARE` `NATION=CA` minus the union of the seven cells' `M_COVR` (`CATCOV=1`) coverage, so the band 3 notices win wherever a band 3 cell exists (spec 7.2); properties `name: "canada-chs"`, `source`, and `cells: [{"cell", "edition", "update", "issued"}]`. It fails when the result is not a valid geometry.
+  - `bc.BORDER_TOLERANCE_M = 20.0`; `class BcError(Exception)`.
+  - `bc.load_canada(regions_dir: Path) -> shapely.Geometry`: reads `clip/canada-chs.geojson`; raises `BcError` when, inside the bounds of `clip/canada-wa.geojson` shrunk by 0.05 degree (away from its artificial north, east and west edges), the symmetric difference of the two polygons has any part wider than `BORDER_TOLERANCE_M` (in meters: what survives an inward buffer of half the tolerance).
+  - `bc.check_notices(cells: list[tuple[str, list[tuple[shapely.Geometry, str]]]], canada: shapely.Geometry) -> None`: raises `BcError` naming the cell when any CHS-notice area of a loaded cell reaches outside `canada` by more than `BORDER_TOLERANCE_M`. `_build_enc` calls it for every region, before the quilt.
+  - `@dataclass class BcAreas: canada: shapely.Geometry; inshore: shapely.Geometry; offshore: shapely.Geometry` (`canada`: the Canada polygon cut to the pack's owned tiles; `inshore` and `offshore`: the owned tiles' water by the areas of spec 4, told apart by the owner's `charts_kind`).
+  - `bc.apply_rules(noaa: list[Feature], derived: list[Feature], areas: BcAreas) -> list[Feature]`, by geometry:
+    1. Every NOAA feature (the quilt output: every band, every layer): area and line geometries cut to the outside of `canada`; points inside `canada` dropped. Nothing NOAA remains inside.
+    2. Derived features inside `canada`: kept.
+    3. Derived features outside `canada` (Alaskan, US or high-seas water in BC-owned tiles): `depare`, `depcnt`, `soundg` and `nosurvey` are cut away wherever a kept NOAA `depare` covers the water (one winner per place); derived `lndare` and `coalne` are dropped (land there is NOAA's).
+  - `_build_enc` for any region: `load_canada`, `check_notices`, quilt, then per owned tile the derived features for the tile's Canadian-column water (`canada_side`): `inshore` water from `nav_depth` with the mask and atlas land; `offshore` water from NONNA-100 where it has data, else the coarse merge; then `apply_rules`; then tippecanoe as today. A region none of whose owned tiles meets the Canada polygon or the Canadian column runs exactly the old path.
+  - Pack check: for `charts.kind` in the manifest (`"enc"` when absent), new `_check_derived_layers(m: MBTiles, metadata: dict, kind: str) -> list[str]` requires, at every zoom from the file's `minzoom` to `maxzoom` (not `_band_zooms`, which gives zoom 10 only for a pack with band 1 to 3 cells): `depare` and `lndare` for `derived-inshore`, `depare` for `derived-offshore`. `"enc"` keeps `_check_safety_layers` unchanged. `_check_against_sources` (the 0.9999 cover rule, `check.py` near line 187) counts `nosurvey` polygons as cover next to `depare` and `lndare`. Derived inputs are recorded in a new metadata key `cheekymarine:depth_sources` (`[{"source", "asset", "sha256"}]`), not in `cheekymarine:sources`, whose entries must keep a `cell` name. New `_check_no_depth_in_nosurvey(m: MBTiles) -> list[str]` runs for every charts pack that has a `nosurvey` layer: no `depare`, `depcnt` or `soundg` feature with a `src` attribute intersects a `nosurvey` polygon in the same tile (decoded tile coordinates, 1 unit tolerance). New `_check_no_noaa_in_canada(m: MBTiles, canada: shapely.Geometry) -> list[str]` runs on every charts pack (`check_pack` gains `canada: shapely.Geometry | None = None`; `chartpack check` passes `load_canada` of the repo): no NOAA-sourced feature (no `src`, or `src = "enc"`) in any layer but `nosurvey` lies inside `canada` in any tile. Inside means, against `canada` shrunk by 1 unit in decoded tile coordinates: a point inside, any vertex of a line or polygon inside, or a polygon that contains a representative point of the shrunk `canada` within the tile. Each error names the tile and the layer.
   - Charts NOTICE: the CHS notice when any feature has `src` `nonna10` or `nonna100`; the shoreline credit when the pack holds atlas land.
-  - Charts MBTiles metadata: `cheekymarine:data_notice`; `cheekymarine:notice_areas` with kinds `"bc"` (the Canadian column outside `band3`) and `"bc-noaa"` (the Canadian column inside `band3`), built from whole owned tiles and `canada_side` cuts with no simplification, land included, so a narrow channel is never lost; `cheekymarine:valdco` as today (derived values are already in the wave 1 list).
+  - Charts MBTiles metadata: `cheekymarine:data_notice`; `cheekymarine:notice_areas` with the one kind `"bc"`: the pack's owned tiles (for `overview`, its whole area) cut to the Canada polygon, land included, with no simplification, so a narrow channel is never lost (spec 7.3); `cheekymarine:valdco` as today (derived values are already in the wave 1 list).
 
 - [ ] **Step 1: Write the failing tests.**
-  - `test_band2_depth_dropped_inshore_lights_kept` (a band 2 cell with a `depare`, a `lndare` and a `light` over inshore water outside `band3`: only the light remains).
-  - `test_band3_depth_kept_only_where_nonna_empty` (a band 3 `depare` straddling the NONNA edge is cut at it).
+  - `test_read_notes_returns_text` (fixture `US4WA1HK.zip`: each `M_NPUB` area comes with the text of its `TXTDSC` file).
+  - `test_chs_notice_found_by_dfo_text_only` (three in-memory notes: the CHS notice, a general note with the "Canadian Hydrographic Service copyrighted works" paragraph, a source line naming CHS: only the first counts).
+  - `test_canada_chs_file_is_valid_and_lists_cells` (the committed file: one valid geometry; the eight cells, each with edition, update and issue date).
+  - `test_canada_chs_agrees_with_canada_wa` (the committed files: `load_canada` returns without error) and `test_border_disagreement_fails` (a copy of `canada-wa` shifted 50 m: `BcError`).
+  - `test_chs_notice_outside_polygon_fails_build` (a notice area 100 m outside: `BcError` naming the cell; 10 m outside passes).
+  - `test_noaa_cut_at_polygon_every_band` (for bands 1 to 5: a `depare` and a `coalne` straddling the edge are cut at it; a `light`, a `navaid` and a `soundg` inside are dropped; the same outside are kept).
   - `test_us_side_untouched`.
-  - `test_offshore_depth_has_one_winner` (offshore water with a band 2 `depare` and NONNA-100 over half of it: no point is covered by two `depare` polygons; the NONNA half has `src`, the other half does not).
-  - `test_nosurvey_not_drawn_inside_band3`.
-  - `test_alaskan_land_kept_bc_noaa_land_dropped` (NOAA land 300 m from atlas land is dropped; NOAA land 5 km from any atlas land stays).
+  - `test_alaskan_water_keeps_noaa_depth_and_land` (outside the polygon in a BC-owned tile: NOAA `depare` and `lndare` kept; a derived `depare` under them cut away; a derived `depare` where no NOAA `depare` lies kept).
+  - `test_derived_land_only_inside_polygon`.
+  - `test_nosurvey_outside_polygon_only_where_no_noaa_depth`.
+  - `test_offshore_inside_polygon_from_nonna100_then_coarse` (offshore water inside the polygon: derived `depare` with `src` `nonna100` where NONNA-100 has data, `etopo` elsewhere; no NOAA `depare`).
   - `test_cover_rule_counts_nosurvey` (a derived-inshore pack whose water is half `nosurvey` passes `_check_against_sources`).
   - `test_derived_layers_checked_at_every_zoom` (a derived-inshore pack with no `depare` at zoom 14 fails naming zoom 14).
-  - `test_coverage_edge_only_inside_canada`.
   - `test_enc_region_without_canada_builds_as_before` (feature list equal to the old path's).
   - `test_derived_inshore_pack_passes_check_without_navaids`; `test_enc_pack_still_needs_all_safety_layers`.
   - `test_depth_inside_nosurvey_fails_check` (a hand-made tile with a `soundg` in a `nosurvey` polygon: one error naming the tile).
+  - `test_noaa_feature_inside_polygon_fails_check` (a hand-made tile with a `light` without `src`, and one with a `seabed` feature with `src = "enc"`, inside the polygon: one error each naming the tile and layer) and `test_derived_features_inside_polygon_pass_check`.
+  - `test_notice_areas_are_owned_tiles_inside_polygon` (one kind, `bc`; Alaskan water of a BC-owned tile is not in it).
   - `test_valdco_gains_no_value_from_derived` (pack metadata `cheekymarine:valdco` of a derived pack is a subset of `bc-valdco.toml`).
   - `test_charts_notice_has_chs_and_bc_credit`.
 - [ ] **Step 2:** Run. Expected: FAIL.
-- [ ] **Step 3:** Implement.
+- [ ] **Step 3:** Implement. Run `make-canada-chs.py` to write `canada-chs.geojson` (it calls only `charts.noaa.gov`, like the cell downloads of a build).
 - [ ] **Step 4:** Run the chartpack tests. Expected: PASS.
-- [ ] **Step 5:** Commit `feat(chartpack): BC rules for NOAA cells and derived charts packs (#90)`.
+- [ ] **Step 5:** Post on #90: the polygon's area and vertex count, the cell editions, the widest disagreement with `canada-wa.geojson`, and the areas of the Alaskan piece and the Juan de Fuca strip that the construction leaves out (spec 7.2).
+- [ ] **Step 6:** Commit `feat(chartpack): the Canada polygon, NOAA features cut at it, derived charts packs (#90)`.
 
-### Task 12: Nav style: no-survey shading, coarse survey mark, coverage edge, notices
+### Task 12: Nav style: no-survey shading, coarse survey mark, notices
 
 **Files:**
 - Modify: `chartpack/src/chartpack/style/nav.py`, `chartpack/src/chartpack/style/sprites.py`, `chartpack/src/chartpack/style/palette.py`
 - Test: `chartpack/tests/test_style_nav.py`, `chartpack/tests/test_style_sprites.py`, `chartpack/tests/test_style_palette.py`
 
 **Interfaces:**
-- Produces: Nav layers `nosurvey` (fill with `fill-pattern` `pat-nosurvey`, a cross hatch, drawn above the depth areas and below land), `depare-coarse-survey` (the `pat-coarse-survey` dots over `depare` with `src == "nonna100"`), `covedge` (dashed line, `kind == "us-chart-end"`); style metadata `metadata.cheekymarine.notices = {"bc": "<Nav BC string>", "bc-noaa": "<Nav NOAA strip string>"}`. The three patterns exist in the day, dusk and night sprite sheets with a foreground that differs from every depth band color of that palette by pattern, never by color alone.
+- Produces: Nav layers `nosurvey` (fill with `fill-pattern` `pat-nosurvey`, a cross hatch, drawn above the depth areas and below land), `depare-coarse-survey` (the `pat-coarse-survey` dots over `depare` with `src == "nonna100"`); style metadata `metadata.cheekymarine.notices = {"bc": "<Nav BC string>"}`. The three patterns exist in the day, dusk and night sprite sheets with a foreground that differs from every depth band color of that palette by pattern, never by color alone.
 
-- [ ] **Step 1: Write the failing tests.** `test_nav_nosurvey_layer_is_pattern_fill_between_depth_and_land` (layer order); `test_nav_notices_exact_strings`; `test_coarse_survey_layer_filters_on_src`; `test_covedge_layer_is_dashed`; `test_nosurvey_pattern_in_three_sheets`; `test_wave1_style_layers_unchanged_before_new_ones` (the old layer ids keep their relative order).
+- [ ] **Step 1: Write the failing tests.** `test_nav_nosurvey_layer_is_pattern_fill_between_depth_and_land` (layer order); `test_nav_notices_exact_strings`; `test_coarse_survey_layer_filters_on_src`; `test_nosurvey_pattern_in_three_sheets`; `test_wave1_style_layers_unchanged_before_new_ones` (the old layer ids keep their relative order).
 - [ ] **Step 2:** Run. Expected: FAIL.
 - [ ] **Step 3:** Implement. Run the style validator (`chartpack/src/chartpack/style/validate.py`) in the tests as the existing style tests do.
 - [ ] **Step 4:** Run the chartpack tests. Expected: PASS.
-- [ ] **Step 5:** Commit `feat(chartpack): Nav style for no-survey water, coarse survey and the US chart edge (#90)`. Open PR D, review, merge. Then dispatch `chartpack-sources.yml` stage `derive` for `test-toba` from main and confirm the three assets.
+- [ ] **Step 5:** Commit `feat(chartpack): Nav style for no-survey water and coarse survey (#90)`. Open PR D, review, merge. Then dispatch `chartpack-sources.yml` stage `derive` for `test-toba` from main and confirm the three assets.
 
 ---
 
@@ -372,16 +387,16 @@ Research task, no code. One request at a time, 2 s apart, robots.txt first.
 **Interfaces:**
 - Consumes: MBTiles metadata `cheekymarine:notice_areas` and `cheekymarine:data_notice`; style metadata `cheekymarine.notices` (Tasks 8, 11, 12).
 - Produces:
-  - `class NoticeAreas { public: enum Kind { None = 0, Bc = 1, BcNoaa = 2 }; Q_DECLARE_FLAGS(Kinds, Kind) static NoticeAreas fromGeoJson(const QByteArray& json); void add(const NoticeAreas& other); Kinds kindsIn(double west, double south, double east, double north) const; bool isEmpty() const; QByteArray toGeoJson() const; };` Polygons and multipolygons with holes; `kindsIn` tests intersection of the viewport box with each polygon (`QPolygonF::intersects` on outer rings, a box wholly inside a hole does not count). Invalid or missing JSON gives an empty object.
-  - `QString pickNotice(const QJsonObject& styleMetadata, NoticeAreas::Kinds kinds)`: `notices.bc` when `Bc` is set; else `notices["bc-noaa"]` when `BcNoaa` is set and the key exists, else `notices.bc` when `BcNoaa` is set; else the existing `notice`. A style without `notices` always gives `notice`.
+  - `class NoticeAreas { public: enum Kind { None = 0, Bc = 1 }; Q_DECLARE_FLAGS(Kinds, Kind) static NoticeAreas fromGeoJson(const QByteArray& json); void add(const NoticeAreas& other); Kinds kindsIn(double west, double south, double east, double north) const; bool isEmpty() const; QByteArray toGeoJson() const; };` Polygons and multipolygons with holes; `kindsIn` tests intersection of the viewport box with each polygon (`QPolygonF::intersects` on outer rings, a box wholly inside a hole does not count). Invalid or missing JSON gives an empty object; a feature whose `kind` is not `"bc"` is skipped.
+  - `QString pickNotice(const QJsonObject& styleMetadata, NoticeAreas::Kinds kinds)`: `notices.bc` when `Bc` is set; else the existing `notice`. A style without `notices` always gives `notice`.
   - `mergedMetadata` writes `cheekymarine:notice_areas` as the union of the members' features (a member without the key adds nothing) and `cheekymarine:data_notice` as the distinct member texts joined by a blank line.
   - `ChartMap` (it has no bounds accessor or camera signal today) gains `virtual QRectF visibleBounds() const = 0;` (x west, y south, width and height in degrees; the box around the four viewport corners, so a rotated map is covered) and the signal `void cameraChanged();` (any center, zoom or bearing change, by the user or by code). `MapLibreChartMap` implements both over `QMapLibre::Map` (corner coordinates from the pixel-to-coordinate call; `cameraChanged` from the map's change signal).
   - `ChartController`: loads the notice areas of the charts files (Nav) and bathy files (Fish) it shows, at the same point it reads `cheekymarine:valdco`; recomputes `m_notice` with `pickNotice` when the style loads and on `cameraChanged` (a trailing single-shot 250 ms timer restarted by each signal, so the last camera position is always evaluated; from `visibleBounds()`), emitting `noticeChanged` only on a different string; new `Q_PROPERTY(QStringList dataNotices READ dataNotices CONSTANT)` holding the distinct `cheekymarine:data_notice` texts of every file shown. The notice bar and `noticeShown` in `plotter/qml/ChartPage.qml` are untouched: the BC notice obeys the setting (owner).
 
 - [ ] **Step 1: Write the failing tests.**
-  - `tst_noticeareas`: `boxInsidePolygonHits`, `boxOutsideMisses`, `boxInsideHoleMisses`, `boxTouchingEdgeHits`, `twoKindsBothReported`, `invalidJsonIsEmpty`, `roundTripKeepsKinds`.
+  - `tst_noticeareas`: `boxInsidePolygonHits`, `boxOutsideMisses`, `boxInsideHoleMisses`, `boxTouchingEdgeHits`, `unknownKindIsSkipped`, `invalidJsonIsEmpty`, `roundTripKeepsKinds`.
   - `tst_packmerge`: `mergeUnionsNoticeAreas` (two members, one feature each: merged file has both), `mergeAcceptsMembersWithoutNoticeAreas` (a schema 2 member built without the keys merges; merged collection holds the other member's feature only), `mergeJoinsDistinctDataNotices`.
-  - `tst_chartcontroller`: `mixedViewGetsBcNotice`, `usOnlyViewKeepsDefault`, `noaaStripOnlyGetsNoaaNotice`, `fishInBcGetsFishBcNotice`, `noticeChangedNotEmittedWhileKindsSame`, `styleWithoutNoticesKeepsOldBehavior`.
+  - `tst_chartcontroller`: `mixedViewGetsBcNotice`, `usOnlyViewKeepsDefault`, `fishInBcGetsFishBcNotice`, `noticeChangedNotEmittedWhileKindsSame`, `styleWithoutNoticesKeepsOldBehavior`.
 - [ ] **Step 2:** Build and run. Expected: FAIL.
 - [ ] **Step 3:** Implement.
 - [ ] **Step 4:** `ctest --test-dir build-plotter --output-on-failure`. Expected: PASS.
@@ -394,8 +409,8 @@ Research task, no code. One request at a time, 2 s apart, robots.txt first.
 - Test: `plotter/tests/tst_legend.cpp`, `plotter/tests/tst_legendimages.cpp`, `plotter/tests/qml/tst_qml.cpp`
 
 **Interfaces:**
-- Consumes: layer ids `nosurvey`, `depare-coarse-survey`, `covedge` (Task 12), `grade-coarse-survey`, `grade-rough` (Task 8); `ChartController::dataNotices` (Task 13).
-- Produces: legend rows with the exact Global Constraints titles: Nav `No survey data` (pattern swatch, `nosurvey`), `Coarse survey depth (100 m grid)` (`depare-coarse-survey`), `US chart data ends here (coarse scale). Beyond: most hazards and navaids not shown.` (line, `covedge`); Fish `Coarse survey depth (100 m grid)` (`grade-coarse-survey`), `Rough depth, worldwide grid` (`grade-rough`). Rows appear only when the style has the layer, as existing rows do. `AppInfo` gains `Q_PROPERTY(QStringList dataNotices ...)`; `AboutPage.qml` shows each text in full under a heading `Data notices` (objectName `dataNotices`) when the list is not empty; `Splash.qml` adds the line `BC: not for navigation. See About for the CHS notice.` when the list is not empty, regardless of `noticeShown` being on, and hides it with the pack notice when `noticeShown` is off.
+- Consumes: layer ids `nosurvey`, `depare-coarse-survey` (Task 12), `grade-coarse-survey`, `grade-rough` (Task 8); `ChartController::dataNotices` (Task 13).
+- Produces: legend rows with the exact Global Constraints titles: Nav `No survey data` (pattern swatch, `nosurvey`), `Coarse survey depth (100 m grid)` (`depare-coarse-survey`); Fish `Coarse survey depth (100 m grid)` (`grade-coarse-survey`), `Rough depth, worldwide grid` (`grade-rough`). Rows appear only when the style has the layer, as existing rows do. `AppInfo` gains `Q_PROPERTY(QStringList dataNotices ...)`; `AboutPage.qml` shows each text in full under a heading `Data notices` (objectName `dataNotices`) when the list is not empty; `Splash.qml` adds the line `BC: not for navigation. See About for the CHS notice.` when the list is not empty, regardless of `noticeShown` being on, and hides it with the pack notice when `noticeShown` is off.
 
 - [ ] **Step 1: Write the failing tests.** `legendHasNoSurveyRowWhenLayerPresent`, `legendOmitsBcRowsForWave1Style`, `fishLegendHasGradeRows`, `legendImageForPatternSwatchIsNotBlank`; QML: `aboutShowsDataNotices` (the four CHS paragraphs present in the `dataNotices` item's text), `aboutHidesSectionWhenEmpty`, `splashBcLineFollowsNoticeSetting`.
 - [ ] **Step 2:** Build and run. Expected: FAIL.
@@ -411,17 +426,17 @@ Research task, no code. One request at a time, 2 s apart, robots.txt first.
 
 **Files:**
 - Create: `chartpack/regions/bc-south-georgia.toml`, `bc-north-georgia.toml`, `bc-johnstone.toml`, `bc-vi-west-south.toml`, `bc-vi-west-north.toml`, `bc-central.toml`, `bc-north.toml`, `haida-gwaii.toml`, `bc-offshore-south.toml`, `bc-offshore-north.toml` (boxes and polygons from spec 4 and its appendix)
-- Modify: `chartpack/regions/grid.toml`, `north-sound.toml`, `strait.toml`, `wa-coast.toml`, `overview.toml` (versions `1.1.0`, sources, cells), `chartpack/src/chartpack/bathy/blocks.py` (`build_overview` over the coarse sources), `chartpack/src/chartpack/region.py` (overview sources rule), `.github/workflows/chartpack-release.yml` (both the charts and the bathy job download the region's source assets from `sources-bc-1` before the build; the charts job, lines 108 to 117 today, also runs `fetch-bathy` when the region has Canadian water, since derived charts need the depth inputs; append the pack's `cheekymarine:data_notice` text to the release notes when it has one)
+- Modify: `chartpack/regions/grid.toml`, `north-sound.toml`, `strait.toml`, `wa-coast.toml`, `overview.toml` (versions `1.1.0`, sources, cells), `chartpack/src/chartpack/bathy/blocks.py` (`build_overview` over the coarse sources), `chartpack/src/chartpack/region.py` (overview sources rule), `.github/workflows/chartpack-release.yml` (both the charts and the bathy job download the region's source assets from `sources-bc-1` before the build, probing the release with `chartpack/scripts/release-assets.sh`; the charts job, lines 108 to 117 today, also runs `fetch-bathy` when the region has Canadian water, since derived charts need the depth inputs; append the pack's `cheekymarine:data_notice` text to the release notes when it has one)
 - Delete: `chartpack/regions/test-toba.toml` (and its three assets stay in the release, unused)
 - Test: `chartpack/tests/test_regions.py`, `chartpack/tests/test_grid.py`, `chartpack/tests/test_bathy_blocks.py`
 
 **Interfaces:**
 - Produces:
-  - Region files: inshore BC `[charts] kind = "derived-inshore"`, `[bathy] sources = ["nonna10", "nonna100", "crm", "etopo"]` (`crm` only where the box reaches south of 49 N: `bc-south-georgia`, `bc-vi-west-south`), `dem_maxzoom = 14`, `[enc]` cells from `chartpack cells` for the owned tiles (bands 1 to 3 as the catalog gives; `US3WA1EF`, `US3WA1EE`, `US3WA1ED`, `US3AK1DX`, `US3AK1DY` where they meet), `[datum] file = "datum/wa-stations.toml"`, `etopo_file = "datum/bc-etopo.toml"`. Offshore: `kind = "derived-offshore"`, `[area] polygon`, `sources = ["nonna100", "crm", "etopo"]` (`crm` for `bc-offshore-south` only).
+  - Region files: inshore BC `[charts] kind = "derived-inshore"`, `[bathy] sources = ["nonna10", "nonna100", "crm", "etopo"]` (`crm` only where the box reaches south of 49 N: `bc-south-georgia`, `bc-vi-west-south`), `dem_maxzoom = 14`, `[enc]` cells from `chartpack cells` for the owned tiles (bands 1 to 3 as the catalog gives; `US3WA1EF`, `US3WA1EE`, `US3WA1ED`, `US3AK1DX`, `US3AK1DY` where they meet: their features are cut at the Canada polygon, Task 11, and they are still loaded for Alaskan water and for the notice guard), `[datum] file = "datum/wa-stations.toml"` (the ETOPO shift is a constant, Task 7). Offshore: `kind = "derived-offshore"`, `[area] polygon`, `sources = ["nonna100", "crm", "etopo"]` (`crm` for `bc-offshore-south` only).
   - `grid.toml` order: the five wave 1 names unchanged, then `bc-south-georgia`, `bc-vi-west-south`, `bc-north-georgia`, `bc-johnstone`, `bc-vi-west-north`, `bc-central`, `bc-north`, `haida-gwaii`, then `bc-offshore-south`, `bc-offshore-north`.
   - Rebuilt US packs: `north-sound`, `strait`, `wa-coast` add `nonna10`, `nonna100` to `bathy.sources` and keep `clip` (now only the side line). Confirm with `chartpack cells` and the grid that no other wave 1 pack owns a tile with Canadian water; a pack that does joins the list.
   - `overview`: bbox the extent of all owned tiles; `sources = ["nonna100", "crm", "etopo"]`; `load_region` accepts any subset of the coarse sources for an overview and rejects `cudem` and `nonna10`. `build_overview(bbox, sources: BlockSources, datum, canada, nosurvey: shapely.Geometry) -> BlockResult`; its charts build reads the stored masks and land of every BC region, never NONNA-10. Overview inputs: the workflow downloads every `nonna100-*.tif`, `land-*` and `nosurvey-*` asset of `sources-bc-1`; the bathy build opens the NONNA-100 files through one GDAL VRT.
-  - Render views (spec 15) in the owning region files: Victoria and Haro Strait, Active Pass, Vancouver harbor and Indian Arm, Desolation Sound, Knight Inlet head, Barkley Sound, Nootka Sound, the shelf off Tofino, Bella Bella, Prince Rupert, Dixon Entrance, Masset, the 49 N line at -126.0 W, one view in each offshore pack. Zooms `[9, 11, 13, 15]` inshore, `[7, 9, 11]` offshore.
+  - Render views (spec 15) in the owning region files: Victoria and Haro Strait (the NOAA cut at the border), Active Pass, Vancouver harbor and Indian Arm, Desolation Sound, Knight Inlet head, Barkley Sound, Nootka Sound, the shelf off Tofino, Bella Bella, Prince Rupert, Dixon Entrance, Masset, the 49 N line at -126.0 W, one view in each offshore pack. Zooms `[9, 11, 13, 15]` inshore, `[7, 9, 11]` offshore.
 
 - [ ] **Step 1: Write the failing tests.** `test_every_region_file_loads`; `test_every_bc_tile_has_one_owner` (no tile in two regions, no unowned tile inside any inshore box); `test_no_offshore_tile_holds_coastline` (uses a coast-tile fixture `tests/fixtures/bc-coast-tiles.json`, written by the controller from the fetched coastline assets in Step 4; until then the test is skipped with that reason); `test_wave1_owners_exact` (Task 5 fixture, now with the real grid); `test_overview_rejects_fine_sources`; `test_overview_charts_never_open_nonna10` (a path spy).
 - [ ] **Step 2:** Run, implement, run. Expected: PASS (one skip).
@@ -433,8 +448,8 @@ Research task, no code. One request at a time, 2 s apart, robots.txt first.
 
 - [ ] **Step 1: Gate 2, then dry runs.** First dry-run both kinds of the largest inshore region (by NONNA-10 tile count, Task 1) and of `overview`. Gate 2 (spec 5): each run inside the fit guard (5 h, 2 GiB free disk, 12 GiB RSS), the charts runs included. A fail stops here and goes to the owner with the numbers and options (split first, streaming, smaller blocks). Then, from main, `gh workflow run chartpack-release.yml -f pack=<kind> -f region=<name>` for both kinds of every BC region, the three rebuilt US regions and `overview` (28 runs in all; start no more than three at a time). Download each run's `build-stats.json` into a fresh directory per run. Post a table on #90: file sizes, peak RSS, free disk, time.
 - [ ] **Step 2: Size.** Any file over `1_500_000_000` bytes, or a run past the fit guard: split that region on the grid into two (north and south, or as the coast suggests), named `<region>-north` and `<region>-south`, each with its own region file, grid entry in the parent's place, fetch and derive runs, and dry runs. Repeat until every file fits. This goes through a small PR with a review.
-- [ ] **Step 3: Checks.** Every dry run's log shows `chartpack check` passing, including `_check_no_depth_in_nosurvey`. The datum step: sample the merged depth on both sides of the border along Haro Strait, Boundary Pass and the Strait (20 points each from the dry-run DEM tiles) and post the differences on #90; a step that moves a 10 ft contour by more than 10 ft goes to the owner before any tag. Post any `valdco` value the Alaskan cells add and settle it under #95 before tags.
-- [ ] **Step 4: Renders.** Run `chartpack render` in CI artifacts or from the dry-run packs for every view of spec 15, Nav and Fish; day, dusk and night for the Tofino shelf, Nootka and Dixon Entrance views. Post them on #90 with plain-language captions and legends. Get the owner's OK on the renders.
+- [ ] **Step 3: Checks.** Every dry run's log shows `chartpack check` passing, including `_check_no_depth_in_nosurvey` and `_check_no_noaa_in_canada`. The datum step: sample the merged depth on both sides of the border along Haro Strait, Boundary Pass and the Strait (20 points each from the dry-run DEM tiles) and post the differences on #90; a step that moves a 10 ft contour by more than 10 ft goes to the owner before any tag. Post any `valdco` value the Alaskan cells add and settle it under #95 before tags.
+- [ ] **Step 4: Renders.** Run `chartpack render` in CI artifacts or from the dry-run packs for every view of spec 15, Nav and Fish; day, dusk and night for the Tofino shelf, Nootka and Dixon Entrance views. Post them on #90 with plain-language captions and legends. Also render these carried checks: the SCAMIN zoom-change lines from PR B's review, at 47.625 N in `overview` at zoom 9 and at 51.625 N at zoom 11 (a feature should not appear on one side of the line and not the other); places inside the Canada polygon where the atlas has no land (they show "No survey data", not land; name each on #90); the Victoria and Haro Strait view, captioned for the cut at the border (NOAA content on the US side only, BC depth and shoreline beyond). Get the owner's OK on the renders.
 - [ ] **Step 5: Tags.** With the owner's OK: annotated tags on the dry-run commit, pushed one per `git push`, 2 minutes apart; confirm a `push` run per tag; rerun a NOAA 5xx failure; confirm each release has its tar, `SHA256SUMS` and `build-stats.json`. Charts and bathy `1.0.0` for the BC packs, `1.1.0` for the rebuilt US packs and `overview`.
 
 ### Task 17: Plotter release and the test laptop
@@ -449,6 +464,7 @@ Research task, no code. One request at a time, 2 s apart, robots.txt first.
 
 - [ ] **Step 1:** The set release notes carry the CHS notice of the Global Constraints. Fill the lock with `installer/lock-tool.sh`: `set=0.4.0`, plotter `0.4.0`, one `pack.<kind>-<region>.*` entry per released pack (wave 1 packs that were not rebuilt keep `1.0.0`). Run `lock-tool.sh check` and the installer tests. Expected: PASS. Open PR G, review, merge, tag `cheekymarine-v0.4.0` as a pre-release (owner's OK).
 - [ ] **Step 2:** Ask the owner to install set 0.4.0 on CapnButts from the release; confirm with `CapnButts-FirstMate` (read-only, ask for an ack) that About lists every pack and shows the CHS notice, and that the free-space check passed.
-- [ ] **Step 3: Owner check.** The owner pans BC on CapnButts, Nav and Fish. Record the verdict on #90.
-- [ ] **Step 4: Garmin comparison.** For each Garmin photo the owner provides: render the same place and zoom (Nav or Fish to match), post the pair on #90 with what matches and what differs against the pass rule of spec 15 (contours within one 10 ft step and spot depths within 10 ft where `nonna10` has data; shoreline lines up; missing detail is announced on screen). File follow-up issues for differences.
-- [ ] **Step 5: Housekeeping.** File a new issue "BC chart objects: CHS data (parked) and open stand-ins" with links to the three research comments on #89; close #89 with a pointer to it. Remove the `plan 8` label from #91 with a comment (not needed: all plan 8 data is public). Close #90 and #92 (#18 closed by PR B). Add "live side-by-side with the Garmin in BC water" to the boat checks memory. Update the chartpack spec's region and source sections (`docs/superpowers/specs/2026-10-28-chartpack-design.md`) for Canadian data.
+- [ ] **Step 3: Owner stop: the old releases.** After Step 2 confirms the 0.4.0 install, tell the owner (on #90) that the 1.0.0 releases of `charts-north-sound`, `charts-strait`, `charts-wa-coast` and `charts-overview`, and set `cheekymarine-v0.3.0`, which lists them, still hold the NOAA features with the CHS notice (spec 2, open question 3). The owner decides whether they are withdrawn (deleted or marked). Do nothing to those releases without that answer, and carry out only what the owner says.
+- [ ] **Step 4: Owner check.** The owner pans BC on CapnButts, Nav and Fish. Record the verdict on #90.
+- [ ] **Step 5: Garmin comparison.** For each Garmin photo the owner provides: render the same place and zoom (Nav or Fish to match), post the pair on #90 with what matches and what differs against the pass rule of spec 15 (contours within one 10 ft step and spot depths within 10 ft where `nonna10` has data; shoreline lines up; missing detail is announced on screen). File follow-up issues for differences.
+- [ ] **Step 6: Housekeeping.** File a new issue "BC chart objects: CHS data (parked) and open stand-ins" with links to the three research comments on #89; close #89 with a pointer to it. Remove the `plan 8` label from #91 with a comment (not needed: all plan 8 data is public). Close #90 and #92 (#18 closed by PR B). Add "live side-by-side with the Garmin in BC water" to the boat checks memory. Update the chartpack spec's region and source sections (`docs/superpowers/specs/2026-10-28-chartpack-design.md`) for Canadian data.
