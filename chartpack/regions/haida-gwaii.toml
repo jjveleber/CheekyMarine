@@ -3,7 +3,7 @@
 name = "haida-gwaii"
 charts_version = "1.0.0"
 bathy_version = "1.0.0"
-bbox = [-133.3, 51.8, -131.2, 54.3]
+bbox = [-133.3, 51.8, -130.78125, 54.3]  # east edge grown from -131.2 by one tile column (plan 8 Task 15 Step 4)
 
 [charts]
 kind = "derived-inshore"

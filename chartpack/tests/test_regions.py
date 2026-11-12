@@ -117,8 +117,8 @@ def _owned_all(regions_dir):
 # changed order changes a count.
 TILE_COUNTS = {"sound-south": 12, "sound-central": 12, "north-sound": 16, "strait": 13, "wa-coast": 92,
                "bc-south-georgia": 18, "bc-vi-west-south": 41, "bc-north-georgia": 28, "bc-johnstone": 39,
-               "bc-vi-west-north": 33, "bc-central": 79, "bc-north": 116, "haida-gwaii": 83, "bc-offshore-south": 98,
-               "bc-offshore-north": 159}
+               "bc-vi-west-north": 33, "bc-central": 79, "bc-north": 122, "haida-gwaii": 86, "bc-offshore-south": 98,
+               "bc-offshore-north": 150}
 UNOWNED_TILES = "bc-unowned-tiles.json"  # the reviewed gaps next to the owned tiles (tests/fixtures/README.md)
 UNOWNED_COAST_ALLOWED: set[tuple[int, int]] = set()  # unowned tiles known to hold coastline, owner-approved
 
@@ -335,3 +335,11 @@ def test_wa_coast_reaches_the_sound_column(regions_dir):
     got = seams(owned)
     assert got[("sound-south", "wa-coast")] == [((south[0], south[1]), (south[0], south[3]))]
     assert ("sound-central", "wa-coast") in got
+
+
+def test_unowned_coast_tiles_are_the_known_ones(regions_dir, fixtures_dir):
+    """The unowned tiles that hold coastline (the strict xfail above) are exactly UNOWNED_COAST, so a new one, or
+    one the owner's fix removes, is noticed."""
+    coast = {tuple(t) for t in json.loads((fixtures_dir / COAST_TILES).read_text())}
+    _, owned = _owned_all(regions_dir)
+    assert (_unowned_next_to_owned(regions_dir, owned) & coast) - UNOWNED_COAST_ALLOWED == UNOWNED_COAST
