@@ -86,3 +86,8 @@ coastline lines and the river-mouth closing lines, as derive-sources reads them)
 assets of release `sources-bc-1` for the thirteen regions with NONNA (fetched 2026-11-12), written by
 `scripts/make-coast-tiles.py OUT COAST_FILE...` (no network): 262 tiles. `test_no_offshore_tile_holds_coastline`
 and `test_no_unowned_tile_holds_coastline` read it. Rerun the script after a region's coastline is fetched again.
+
+The list is complete only inside the fetch extents of those assets (each region's owned tiles plus a small margin).
+Every offshore tile lies inside its own asset's extent, so the offshore test sees all of its shore. Most unowned
+tiles lie outside every extent, so the unowned test sees only shore next to owned tiles; the pinned list in
+`bc-unowned-tiles.json` is the guard for the rest.
