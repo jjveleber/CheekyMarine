@@ -195,7 +195,8 @@ def test_bathy_notice_has_chs_text_only_with_nonna(test_region, tmp_path, covera
         assert (text in notice) is chs, text
     assert ("Canadian Hydrographic" in notice) is chs
     assert "British Columbia" not in notice  # the shoreline credit is for charts packs only
-    assert "approximate MLLW" in notice and "SIL Open Font License" in notice
+    assert "SIL Open Font License" in notice
+    assert ("approximate MLLW" in notice) is (not chs or "crm" in coverage.get("bathy-coarse.mbtiles", []))
     for name in BATHY_FILES:
         with MBTiles.open(root / name) as m:
             etopo = "etopo" in {c for v in coverage.values() for c in (v or [])}
@@ -284,7 +285,7 @@ def test_bathy_notice_names_nonna(test_region, tmp_path):
                                                                 ["nonna10", "nonna100"]), tmp_path / "out",
                                owned=BC_TILES)
     notice = (root / "NOTICE").read_text()
-    bathy = notice[notice.index("Bathymetry:"):notice.index("Boundaries:")]
+    bathy = notice[notice.index("Bathymetry:"):notice.index("Datum:")]  # no clip: no Boundaries line
     assert "NONNA-10" in bathy and "nonna10-toba.tif (sha256 aa11)" in bathy
     assert "NONNA-100" in bathy and "nonna100-toba.tif (sha256 bb22)" in bathy
     assert "CHS NONNA Licence" in bathy and "Open Government Licence" in bathy
@@ -301,7 +302,7 @@ def test_bathy_notice_names_etopo(test_region, tmp_path):
 
     root = assemble_bathy_pack(test_region, _sourced_files(tmp_path / "in", ETOPO_SOURCES, ["etopo"]), tmp_path / "out")
     notice = (root / "NOTICE").read_text()
-    bathy = notice[notice.index("Bathymetry:"):notice.index("Boundaries:")]
+    bathy = notice[notice.index("Bathymetry:"):notice.index("Datum:")]  # no clip: no Boundaries line
     assert "ETOPO 2022 15 Arc-Second Global Relief Model" in bathy and "https://doi.org/10.25921/fd45-gt74" in bathy
     assert "CC0 1.0" in bathy and ETOPO_LINE in bathy and "N60W135" in bathy
     assert "bathy/etopo.py" not in notice and "NONNA" not in notice
@@ -326,7 +327,8 @@ def test_bathy_notice_wave1_unchanged(test_region, tmp_path):
 
     cudem = [{"name": "t1", "url": "u", "year": 2023, "version": 1}]
     files = _sourced_files(tmp_path / "in", {"cudem": cudem, "crm": "https://crm.test"}, ["cudem", "crm"])
-    notice = (assemble_bathy_pack(test_region, files, tmp_path / "out") / "NOTICE").read_text()
+    region = dataclasses.replace(test_region, clip=PROJECT / "regions" / "clip" / "canada-wa.geojson")  # as wave 1
+    notice = (assemble_bathy_pack(region, files, tmp_path / "out") / "NOTICE").read_text()
     assert ("Bathymetry:\n"
             "  NOAA NCEI Continuously Updated Digital Elevation Model (CUDEM) 1/9 arc-second tiles,\n"
             "  DOI 10.25921/ds9v-ky35, a US Government work.\n  CUDEM tiles used:\n  t1 (2023 v1)\n"
@@ -492,23 +494,71 @@ def test_overview_bathy_notice_areas_from_the_tile_owners(test_region, tmp_path)
     assert shape(feature["geometry"]).symmetric_difference(want).area < 1e-12
 
 
-def test_bathy_notice_wording_with_nonna(test_region, tmp_path):
-    """With NONNA the NOTICE no longer says every survey depth is on MLLW, nor that the ENC contours fill all
-    uncovered water (none is drawn on the Canadian side); a pack without NONNA keeps the plan 7 sentences."""
+COLUMN = ("In the Canadian column (BC pack tiles, Alaskan water in them included, and the Canadian side of the border"
+          " in US pack tiles), ")
+
+
+def _notice_of(tmp_path, region, sources, coverage, **kw):
     from chartpack.pack.assemble import assemble_bathy_pack
 
+    files = _sourced_files(tmp_path / "in", sources, coverage)
+    return (assemble_bathy_pack(region, files, tmp_path / "out", **kw) / "NOTICE").read_text()
+
+
+def test_bathy_notice_wording_by_depth_column(test_region, tmp_path):
+    """The depth and datum sentences follow the depth column, not the country: in the Canadian column NONNA is on
+    chart datum, ETOPO takes its fixed shift and CUDEM and CRM are on MLLW as on the US side; the ENC fallback is
+    drawn on the US side only; the Boundaries line is there only when the pack has a clip. A pack with no Canadian
+    column keeps the plan 7 text."""
+    import dataclasses
+    from pathlib import Path
+
+    from shapely.geometry import box, mapping
+
+    from chartpack.grid import tile_bounds
+
     cudem = [{"name": "t1", "url": "u", "year": 2023, "version": 1}]
-    sources = {"cudem": cudem, "crm": "https://crm.test", **NONNA_SOURCES}
-    us = (assemble_bathy_pack(test_region, _sourced_files(tmp_path / "us", sources, ["cudem", "crm"]),
-                              tmp_path / "us-out") / "NOTICE").read_text()
-    assert "\nDepths are survey depths converted to approximate MLLW.\n" in us
-    assert "\nWhere neither CUDEM nor CRM covers the water, contours come from NOAA ENC.\n" in us
-    assert "Datum: elevations are converted to MLLW" in us
-    bc = (assemble_bathy_pack(_bc(test_region), _sourced_files(tmp_path / "bc", sources, ["cudem", "crm", "nonna10"]),
-                              tmp_path / "bc-out", owned=BC_TILES) / "NOTICE").read_text()
-    assert ("\nUS depths are survey depths converted to approximate MLLW; Canadian depths (NONNA) are on Canadian"
-            " chart datum.\n") in bc
+    w, s, e, n = tile_bounds(10, 163, 356)
+    clip_path = tmp_path / "clip.geojson"
+    clip_path.write_text(json.dumps({"type": "Feature", "properties": {},
+                                     "geometry": mapping(box(w - 1, (s + n) / 2, e + 1, n + 1))}))
+    us = dataclasses.replace(test_region, clip=clip_path)
+    full = {"cudem": cudem, "crm": "https://crm.test", **NONNA_SOURCES, **ETOPO_SOURCES}
+    datum_us = "\nDatum: elevations are converted to MLLW with offsets interpolated between NOAA CO-OPS tide\n"
+    boundaries = "\nBoundaries: NOAA maritime boundaries (the water clip), a US Government work.\n"
+    fallback_us = "\nWhere neither CUDEM nor CRM covers the water, contours come from NOAA ENC.\n"
+
+    wave1 = _notice_of(tmp_path / "w1", us, {"cudem": cudem, "crm": "https://crm.test"}, ["cudem", "crm"])
+    assert "\nDepths are survey depths converted to approximate MLLW.\n" in wave1
+    assert datum_us in wave1 and boundaries in wave1 and fallback_us in wave1 and "Canadian column" not in wave1
+
+    border = _notice_of(tmp_path / "border", us, full, ["cudem", "crm", "nonna10", "nonna100"], owned={(163, 356)})
+    assert ("\nUS-side depths are survey depths converted to approximate MLLW.\n" + COLUMN + "NONNA depths are on"
+            " Canadian chart datum, and CUDEM and CRM depths are converted to approximate MLLW as on the US side.\n"
+            ) in border
+    assert boundaries in border
+    assert "\nDatum: CUDEM and CRM elevations are converted to MLLW with offsets interpolated" in border
     assert ("\nOn the US side, where neither CUDEM nor CRM covers the water, contours come from NOAA ENC; none are"
-            " drawn on the Canadian side.\n") in bc
-    assert "Datum: US elevations are converted to MLLW" in bc
-    assert "\nDepths are survey depths" not in bc and "\nWhere neither" not in bc
+            " drawn in the Canadian column.\n") in border
+
+    inshore = _notice_of(tmp_path / "inshore", _bc(test_region), {k: full[k] for k in ("crm", "nonna10", "nonna100",
+                         "etopo")}, ["nonna10", "nonna100", "crm", "etopo"], owned=BC_TILES)
+    assert ("\n" + COLUMN + "NONNA depths are on Canadian chart datum, ETOPO depths are shifted a fixed 4 m toward"
+            " chart datum, and CRM depths are converted to approximate MLLW as on the US side.\n") in inshore
+    assert "US-side" not in inshore and "Boundaries:" not in inshore and "NOAA ENC." not in inshore
+    assert "\nDatum: CRM elevations are converted to MLLW with offsets interpolated" in inshore
+
+    offshore = _notice_of(tmp_path / "offshore", dataclasses.replace(test_region, charts_kind="derived-offshore"),
+                          {k: full[k] for k in ("nonna100", "etopo")}, ["nonna100", "etopo"], owned=BC_TILES)
+    assert ("\n" + COLUMN + "NONNA depths are on Canadian chart datum, and ETOPO depths are shifted a fixed 4 m toward"
+            " chart datum.\n") in offshore
+    assert "\nDatum: no tide station offsets are used.\n" in offshore and "MLLW with offsets" not in offshore
+    assert "Boundaries:" not in offshore and "US-side" not in offshore
+
+    overview = _notice_of(tmp_path / "ov", dataclasses.replace(test_region, overview=True),
+                          {k: full[k] for k in ("crm", "nonna100", "etopo")}, ["nonna100", "crm", "etopo"],
+                          owners={(163, 356): _bc(test_region), (164, 356): us})
+    assert ("\nUS-side depths are survey depths converted to approximate MLLW.\n" + COLUMN + "NONNA depths are on"
+            " Canadian chart datum, ETOPO depths are shifted a fixed 4 m toward chart datum, and CRM depths are"
+            " converted to approximate MLLW as on the US side.\n") in overview
+    assert "Boundaries:" not in overview and "\nDatum: CRM elevations are converted to MLLW" in overview

@@ -184,10 +184,18 @@ def _etopo_citation(licences: str) -> str:
     return "".join(f"  {line}\n" for line in _etopo_text(licences).splitlines())
 
 
+_COLUMN = ("In the Canadian column (BC pack tiles, Alaskan water in them included, and the Canadian side of the border"
+           " in US pack tiles), ")
+
+
 def _bathy_notice(metadata: dict[str, str], name: str, version: str, chs: bool = False,
-                  coverage: frozenset[str] = frozenset()) -> str:
+                  coverage: frozenset[str] = frozenset(), *, canadian: bool = False, us_side: bool = True,
+                  clip: bool = True) -> str:
     """The bathy pack NOTICE; chs adds the datum sentence and the CHS notice (the pack holds NONNA depth).
-    coverage (the sources the coverage layers hold) adds the NONNA assets and the ETOPO citation the pack draws."""
+    coverage (the sources the coverage layers hold) adds the NONNA assets and the ETOPO citation the pack draws.
+    The depth, datum and ENC sentences follow the depth column (plan 8 spec 6): canadian, the pack has a Canadian
+    column (a notice area); us_side, it has US-side water (a US pack or the overview); clip, it has a water clip
+    (the Boundaries line). A pack with no Canadian column keeps the plan 7 text."""
     sources = json.loads(metadata["cheekymarine:sources"])
     licences = (PROJECT / "NOTICE").read_text()
     nonna = "".join(
@@ -213,8 +221,8 @@ def _bathy_notice(metadata: dict[str, str], name: str, version: str, chs: bool =
     fallback = ""
     if "cudem" in sources:
         where = "neither CUDEM nor CRM covers" if "crm" in sources else "CUDEM does not cover"
-        fallback = (f"\nOn the US side, where {where} the water, contours come from NOAA ENC; none are drawn on the"
-                    " Canadian side.\n" if chs else f"\nWhere {where} the water, contours come from NOAA ENC.\n")
+        fallback = (f"\nOn the US side, where {where} the water, contours come from NOAA ENC; none are drawn in the"
+                    " Canadian column.\n" if canadian else f"\nWhere {where} the water, contours come from NOAA ENC.\n")
     datum = sources["datum"]
     lakes = "" if "lakes_file" not in datum else (
         "  In Lake Union and Lake Washington depths are below the lakes' managed low level\n"
@@ -223,9 +231,21 @@ def _bathy_notice(metadata: dict[str, str], name: str, version: str, chs: bool =
         f"{datum['lakes_file']} (sha256 {datum['lakes_sha256']}).\n")
     fonts = _fonts_notice(licences)
     chs_text = f"{_DATUM_SENTENCE}\n\n{CHS_NOTICE}\n\n" if chs else ""
-    depths = ("US depths are survey depths converted to approximate MLLW; Canadian depths (NONNA) are on Canadian"
-              " chart datum." if chs else "Depths are survey depths converted to approximate MLLW.")
-    elevations = "US elevations" if chs else "elevations"  # NONNA is on chart datum: no tide station offsets
+    drawn = coverage or frozenset(sources)
+    mllw = " and ".join(label for source, label in (("cudem", "CUDEM"), ("crm", "CRM")) if source in drawn)
+    datum_line = (f"Datum: elevations are converted to MLLW with offsets interpolated between NOAA CO-OPS tide\n"
+                  f"  stations (a US Government work), listed in {datum['file']} (sha256 {datum['sha256']}).")
+    depths = "Depths are survey depths converted to approximate MLLW."
+    if canadian:
+        clauses = (["NONNA depths are on Canadian chart datum"] if _NONNA & drawn else []) + (
+            ["ETOPO depths are shifted a fixed 4 m toward chart datum"] if "etopo" in drawn else []) + (
+            [f"{mllw} depths are converted to approximate MLLW as on the US side"] if mllw else [])
+        said = clauses[0] if len(clauses) < 2 else ", ".join(clauses[:-1]) + ", and " + clauses[-1]
+        depths = ("US-side depths are survey depths converted to approximate MLLW.\n" if us_side else "") + (
+            f"{_COLUMN}{said}.")
+        datum_line = datum_line.replace("Datum: elevations", f"Datum: {mllw} elevations") if mllw else (
+            "Datum: no tide station offsets are used.")
+    boundaries = "Boundaries: NOAA maritime boundaries (the water clip), a US Government work.\n\n" if clip else ""
     return f"""CheekyMarine bathy pack {name} {version}
 
 This pack is a derived product. It is not an official chart.
@@ -234,10 +254,7 @@ It is not certified for navigation. Do not rely on it as the only means of navig
 
 Bathymetry:
 {cudem}{crm}{nonna}{etopo}
-Boundaries: NOAA maritime boundaries (the water clip), a US Government work.
-
-Datum: {elevations} are converted to MLLW with offsets interpolated between NOAA CO-OPS tide
-  stations (a US Government work), listed in {datum["file"]} (sha256 {datum["sha256"]}).
+{boundaries}{datum_line}
 {lakes}{geoid}{fallback}
 """ + chs_text + fonts + "\nSymbols are drawn in-house after US Chart No. 1 (public domain).\n"
 
@@ -302,5 +319,7 @@ def assemble_bathy_pack(region: Region, files: dict[str, Path], out_dir: Path,
     write_styles(root, "bathy")
 
     _sprites_glyphs_readme(root, "fish", f"bathy-{region.name}-{region.bathy_version}")
-    (root / "NOTICE").write_text(_bathy_notice(metadata, region.name, region.bathy_version, chs, frozenset(coverage)))
+    (root / "NOTICE").write_text(_bathy_notice(metadata, region.name, region.bathy_version, chs, frozenset(coverage),
+                                               canadian=bool(areas["features"]), us_side=region.charts_kind == "enc",
+                                               clip=region.clip is not None))
     return root
