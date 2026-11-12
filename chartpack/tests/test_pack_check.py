@@ -610,3 +610,14 @@ def test_cut_along_long_diagonal_polygon_edge_passes_check(tmp_path, test_region
     tiles = {(z, x, y): {**WATER, "depare": WATER["depare"] + [(mapping(p), {}) for p in shapely.get_parts(drawn)]}}
     root = _hand_pack(tmp_path, test_region, "derived-inshore", tiles, minzoom=z, maxzoom=z)
     assert check_pack(root, canada=canada) == []
+
+
+@pytest.mark.parametrize("inside, errors", [(2.5, 0), (5.0, 1)])
+def test_depth_edge_moved_into_nosurvey_by_tiling(tmp_path, test_region, inside, errors):
+    """A derived depare cut at the nosurvey edge (x = 2048) and moved into it by tippecanoe, up to 2.5 units on a
+    diagonal edge, passes; one reaching 5 units in is an error. The rule allows CANADA_TOLERANCE_UNITS, as the
+    Canada rule does."""
+    tiles = {(Z, X, Y): {**WATER, "depare": [(_square(0, 0, 2048 + inside, 4096), {"src": "nonna10"})],
+                         "nosurvey": [(_square(2048, 0, 4096, 4096), {})]}}
+    root = _hand_pack(tmp_path, test_region, "derived-inshore", tiles)
+    assert len(check_pack(root)) == errors

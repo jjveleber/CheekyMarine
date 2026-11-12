@@ -174,15 +174,19 @@ def _zooms(metadata: dict) -> range:
 
 
 def _check_no_depth_in_nosurvey(m: MBTiles) -> list[str]:
-    """No derived depth (depare, depcnt or soundg with a src) meets a nosurvey polygon of the same tile shrunk by one
-    tile unit (plan 8 spec 7.1). One error per feature, naming the tile."""
+    """No derived depth (depare, depcnt or soundg with a src) meets a nosurvey polygon of the same tile shrunk by
+    CANADA_TOLERANCE_UNITS (plan 8 spec 7.1). The depth is cut exactly at the mask edge before tiling, but
+    tippecanoe simplifies and rounds both sides, so on a diagonal or curved edge a depth edge lands up to about
+    2.5 units inside the tiled mask (measured 2.16 at zoom 16, PR 123 review): the same allowance as the Canada
+    rule. One error per feature, naming the tile."""
     errors = []
     for z in _zooms(m.metadata()):
         for x, y, data in m.tiles_at(z):
             layers = decode_pbf(data)
             if not layers.get("nosurvey"):
                 continue
-            mask = shapely.union_all([make_valid(shape(f["geometry"])) for f in layers["nosurvey"]]).buffer(-1)
+            mask = shapely.union_all([make_valid(shape(f["geometry"])) for f in layers["nosurvey"]]).buffer(
+                -CANADA_TOLERANCE_UNITS)
             shapely.prepare(mask)
             for layer in ("depare", "depcnt", "soundg"):
                 errors += [f"enc.mbtiles: {layer} depth inside a nosurvey area in tile {z}/{x}/{y}"
