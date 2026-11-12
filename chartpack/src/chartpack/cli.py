@@ -86,7 +86,8 @@ SOURCES_WORKFLOW = "chartpack-sources.yml"
 # derived depth covers the charts side to its edge before it is cut there (_derived_block).
 _SIDE_GROW_DEG = 0.001
 # Derived coalne this close to the land asset's box edge or the Canada polygon's boundary is dropped: the derive
-# stage cut the land there, so that stretch of its boundary is not coast (_tile_derived).
+# stage cut the land there, so that stretch of its boundary is not coast (_tile_derived). 1e-7 degree is about
+# 1.1 cm north-south and 0.7 cm east-west at 50 N; land_polygons' cut edges lie within 3e-14 degree of the lines.
 _OUTLINE_TOL_DEG = 1e-7
 
 
@@ -322,11 +323,13 @@ def _derived_block(tile, core, read, sources: BlockSources, datum, region, tile_
 
 def _derived_charts(args: argparse.Namespace, region, owned, canada) -> tuple[list, list[dict]]:
     """The derived features of every owned tile on the charts side, and their inputs for depth_sources. A region
-    that lists no NONNA derives nothing."""
+    that lists no NONNA source would leave its Canadian water blank (every NOAA feature is cut there): it stops
+    the build."""
     name = _asset_name(args.region, region)
     nonna = _nonna_files(region, name)
     if not nonna:
-        return [], []
+        raise SystemExit(f"region {region.name}: its owned tiles meet the Canada polygon, where no NOAA feature is"
+                         " drawn, but its [bathy] sources list no NONNA (nonna10, nonna100) to derive depth from")
     blocks = list(iter_blocks(owned))
     reads = [read for _, _, read in blocks]
     checked = _check_assets(args.region, region, args.cache, nonna, reads)

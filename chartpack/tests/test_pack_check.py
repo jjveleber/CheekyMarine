@@ -4,6 +4,8 @@ import sqlite3
 from datetime import datetime, timezone
 
 import mapbox_vector_tile
+import pytest
+import shapely
 
 from chartpack.pack.check import check_pack
 from chartpack.pack.manifest import describe_pack, write_manifest
@@ -580,3 +582,31 @@ def test_us_side_hazard_still_required_in_rebuilt_pack(tmp_path, monkeypatch):
     with MBTiles.open(path) as m:
         errs = _check_against_sources(m, m.metadata(), ["cell"], CANADA)
     assert len(errs) == 1 and errs[0].startswith("hazard ('UWTROC', '1.2', 3) at ") and "missing at zoom 16" in errs[0]
+
+
+@pytest.mark.parametrize("z", [15, 16])
+def test_cut_along_long_diagonal_polygon_edge_passes_check(tmp_path, test_region, regions_dir, z):
+    """A NOAA depare cut by apply_rules along a long diagonal edge of the real polygon, drawn as tippecanoe draws
+    it (vertices projected and rounded to the tile unit, straight in Mercator between them), passes the check: the
+    build and the check share the polygon from load_canada, whose edges are dense enough that the Mercator chord of
+    a cut edge stays within the tolerance (Dixon Entrance, an edge with a 4.55 m sagitta undensified)."""
+    import math
+
+    from shapely.geometry import box, mapping, shape
+
+    from chartpack.enc.bc import apply_rules, load_canada
+    from chartpack.enc.reader import Feature
+    from chartpack.pack.check import _tile_units
+
+    canada = load_canada(regions_dir)
+    (x0, y0), (x1, y1) = (-130.021, 55.338), (-130.041, 55.452)
+    noaa = Feature("depare", mapping(box(x1 - 0.01, y0 - 0.01, x0 + 0.01, y1 + 0.01)), {"DRVAL1": "0"})
+    cut = shapely.union_all([shape(f.geometry) for f in apply_rules([noaa], [], canada)])
+    lon, lat = (x0 + x1) / 2, (y0 + y1) / 2
+    n = 2**z
+    x, y = int((lon + 180) / 360 * n), int((1 - math.asinh(math.tan(math.radians(lat))) / math.pi) / 2 * n)
+    drawn = shapely.set_precision(_tile_units(z, x, y, cut), 1.0).intersection(box(-80, -80, 4176, 4176))
+    assert not drawn.is_empty
+    tiles = {(z, x, y): {**WATER, "depare": WATER["depare"] + [(mapping(p), {}) for p in shapely.get_parts(drawn)]}}
+    root = _hand_pack(tmp_path, test_region, "derived-inshore", tiles, minzoom=z, maxzoom=z)
+    assert check_pack(root, canada=canada) == []

@@ -228,6 +228,8 @@ def test_build_enc_uses_cached_zip(tmp_path, fixtures_dir, regions_dir):
     with MBTiles.open(root / "enc.mbtiles") as m:
         md = m.metadata()
         assert md["cheekymarine:region"] == "test-cell" and (md["minzoom"], md["maxzoom"]) == ("10", "16")
+        # away from the Canada polygon: none of the plan 8 metadata keys, so the old keys exactly
+        assert not {"cheekymarine:notice_areas", "cheekymarine:data_notice", "cheekymarine:depth_sources"} & set(md)
         owned = json.loads(md["cheekymarine:owned"])
         assert owned and all(isinstance(t, list) and len(t) == 2 for t in owned)
         assert {z for z in range(17) if any(True for _ in m.tiles_at(z))} <= set(range(10, 17))
@@ -1426,3 +1428,58 @@ def test_build_enc_derived_region_end_to_end(tmp_path, fixtures_dir, regions_dir
     assert CHS_NOTICE in notice and OGL_BC_NOTICE in notice
     assert json.loads((root / "manifest.json").read_text())["charts"] == {"kind": "derived-inshore"}
     assert check_pack(root, canada=canada) == []
+
+
+def test_build_enc_canadian_tiles_without_nonna_fail(tmp_path, fixtures_dir, regions_dir, monkeypatch):
+    """A region whose owned tiles meet the Canada polygon but which lists no NONNA source would draw blank Canadian
+    water (the NOAA cut, nothing derived): the build stops naming the region, before anything is tiled."""
+    from shapely.geometry import box
+
+    from chartpack import cli
+
+    (tmp_path / "cache" / "enc").mkdir(parents=True)
+    shutil.copy(fixtures_dir / "US4WA1HK.zip", tmp_path / "cache" / "enc" / "US4WA1HK-1.3.zip")
+    region = _grid_region(tmp_path, regions_dir)
+    monkeypatch.setattr(cli, "load_canada", lambda regions: box(-123.0, 47.5, -122.0, 48.5))
+    monkeypatch.setattr(cli, "build_enc_mbtiles", lambda *a, **k: pytest.fail("built with blank Canadian water"))
+    with pytest.raises(SystemExit, match=r"region test-cell: .*Canada polygon.*NONNA"):
+        main(["build-enc", str(region), str(tmp_path / "out"), "--cache", str(tmp_path / "cache"),
+              "--work", str(tmp_path / "work")])
+
+
+def test_derived_coalne_drop_on_real_land_asset_geometry():
+    """The same drop on land as coast.land_polygons makes it (faces in BC Albers meters, back to lon/lat, cut to the
+    box and to a densified polygon with a long diagonal edge): its cut edges lie on the outline to float noise
+    (measured 3e-14 degree, far under _OUTLINE_TOL_DEG), no coalne is left on the box edge or the polygon's
+    boundary, and the real coast is kept whole."""
+    from types import SimpleNamespace
+
+    import numpy as np
+    import shapely
+    from shapely.geometry import LineString, Polygon, box, shape
+    from test_coast import LAND_BOX, _water_points
+
+    from chartpack import cli
+    from chartpack.bathy.cudem import Grid
+    from chartpack.coast import land_polygons
+    from chartpack.enc.bc import SEGMENT_DEG
+
+    canada = shapely.segmentize(Polygon([(-125.0, 49.52), (-123.0, 49.56), (-123.0, 50.0), (-125.0, 50.0)]),
+                                SEGMENT_DEG)
+    coast = LineString([(-123.95, 49.49), (-123.95, 49.61)])  # land to the west, cut by the diagonal edge
+    area = box(*LAND_BOX).intersection(canada)
+    expected_land = area.intersection(box(-124.0, 49.4, -123.95, 49.7))
+    land, _ = land_polygons([coast], LAND_BOX, canada, _water_points(area, expected_land), Polygon())
+    assert land.symmetric_difference(expected_land).area < 1e-9
+    outline = canada.boundary.union(box(*LAND_BOX).boundary)
+    cut_edges = [p for p in shapely.points(shapely.get_coordinates(land.boundary)) if coast.distance(p) > 1e-6]
+    assert max(outline.distance(p) for p in cut_edges) < cli._OUTLINE_TOL_DEG / 1000
+    core = (-124.05, 49.45, -123.85, 49.65)
+    nav = Grid(np.full((4, 4), np.nan, np.float32), np.nan, (core[0], 0.05, 0.0, core[3], 0.0, -0.05), "")
+    r = SimpleNamespace(nav_depth=nav, nav_src=np.zeros((4, 4), np.int8), coarse_grid=None, coarse_source=None)
+    feats = cli._tile_derived(r, "derived-inshore", core, box(*core), levels_m=[0, 5], land=land,
+                              nosurvey=Polygon(), outline=outline)
+    real = shapely.union_all([shape(f.geometry) for f in feats if f.layer == "coalne"])
+    expected = LineString([(-123.95, 49.52 + 0.04 * 1.05 / 2), (-123.95, 49.6)])
+    assert real.intersection(outline.buffer(1e-9)).length == 0
+    assert abs(real.length - expected.length) < 1e-6 and real.hausdorff_distance(expected) < 1e-6

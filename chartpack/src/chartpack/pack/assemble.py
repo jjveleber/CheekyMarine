@@ -132,18 +132,21 @@ def _sprites_glyphs_readme(root: Path, sprite_name: str, title: str) -> None:
 def assemble_charts_pack(region: Region, enc_mbtiles: Path, out_dir: Path,
                          content: set[tuple[int, int]] | None = None, canada: shapely.Geometry | None = None) -> Path:
     """The charts pack directory. enc.mbtiles gets cheekymarine:notice_areas (charts_notice_areas of content, the
-    pack's owned tiles or the overview's content tiles, and canada) and, when its depth_sources hold NONNA,
-    cheekymarine:data_notice (the CHS notice)."""
+    pack's owned tiles or the overview's content tiles, and canada) when it has a feature and, when its
+    depth_sources hold NONNA, cheekymarine:data_notice (the CHS notice); a pack away from the polygon keeps its
+    old metadata keys."""
     root = Path(out_dir) / f"charts-{region.name}-{region.charts_version}"
     root.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(enc_mbtiles, root / "enc.mbtiles")
     with MBTiles.open(enc_mbtiles) as m:
         metadata = m.metadata()
-    notice = {"cheekymarine:notice_areas": json.dumps(charts_notice_areas(content, canada))}
+    areas = charts_notice_areas(content, canada)
+    notice = {"cheekymarine:notice_areas": json.dumps(areas)} if areas["features"] else {}
     if _NONNA & {d["source"] for d in json.loads(metadata.get("cheekymarine:depth_sources", "[]"))}:
         notice["cheekymarine:data_notice"] = CHS_NOTICE
-    with MBTiles.open(root / "enc.mbtiles") as m:
-        m.set_metadata(notice)
+    if notice:
+        with MBTiles.open(root / "enc.mbtiles") as m:
+            m.set_metadata(notice)
     safety_contour = _safety_contour_m(metadata)
 
     write_styles(root, "charts", safety_contour)

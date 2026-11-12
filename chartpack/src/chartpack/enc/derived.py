@@ -190,9 +190,10 @@ def _shoal_m(depth: float) -> float:
 
 
 def _owns(core, kx: int, ky: int, z: int) -> bool:
-    """Whether the center of sounding cell (kx, ky) at zoom z lies in core (W <= lon < E, S < lat <= N). The zoom-10
-    tile edges are multiples of 256 px at every zoom and a cell center is an odd multiple of 48 px, so a center is
-    at least 16 px from an edge: two adjacent cores never both own a cell, nor both miss it."""
+    """Whether the center of sounding cell (kx, ky) at zoom z lies in core (W <= lon < E, S < lat <= N). At zoom 10
+    and up a zoom-10 tile edge is a multiple of 256 px and a cell center an odd multiple of 48 px, so a center is at
+    least 16 px from an edge: two adjacent cores never both own a cell, nor both miss it. (Below zoom 10 a tile edge
+    can fall on a center; the derived soundings start at zoom 10.)"""
     world = 256 * 2**z
     lon = (kx + 0.5) * SOUNDING_PX / world * 360 - 180
     lat = math.degrees(math.atan(math.sinh(math.pi * (1 - 2 * (ky + 0.5) * SOUNDING_PX / world))))
@@ -205,7 +206,10 @@ def _soundings(depth_m, src, transform, allowed, cut, zooms, core) -> list[Featu
     shallowest NONNA value among the allowed cells under it, at its cell center. A zoom's cell holds exactly
     2 by 2 cells of the next zoom, so each zoom is taken from the next one's soundings. Only the cells whose center
     lies in core (_owns) are drawn, so a cell across a block edge gets one sounding, from the block holding its
-    center, taken from that block's part of it."""
+    center: the shallowest value of that block's part of the cell, which may be deeper than a shoal in the other
+    block's part. A pass across blocks was not done: a zoom-10 cell (0.13 degree) is wider than a block's read
+    margin, so no block sees a whole edge cell, and a second pass would need every block's soundings at once. The
+    depth areas and contours, cut at the core from grids that reach past it, carry the safety at the seam."""
     lo, hi = zooms
     x0, dx, _, y0, _, dy = transform
     lon, lat = axes(depth_m.shape, transform)

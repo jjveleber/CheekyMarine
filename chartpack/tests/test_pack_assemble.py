@@ -338,7 +338,7 @@ DEPTH_SOURCES = [{"source": "nonna100", "asset": "nonna100-toba.tif", "sha256": 
 
 def test_notice_areas_are_owned_tiles_inside_polygon(test_region, enc_pack_path, tmp_path):
     """One feature of kind bc: the owned tiles cut to the Canada polygon, land included, not simplified; the
-    Alaskan water of a BC-owned tile (outside the polygon) is not in it. A pack whose tiles miss it: no feature."""
+    Alaskan water of a BC-owned tile (outside the polygon) is not in it. A pack whose tiles miss it: no key."""
     from shapely.geometry import box, shape
 
     from chartpack.grid import tile_bounds
@@ -357,8 +357,8 @@ def test_notice_areas_are_owned_tiles_inside_polygon(test_region, enc_pack_path,
     assert not got.intersects(box(w, s, w + 0.009, n))  # Alaskan water of the tile
     assert got.intersects(box(w + 0.0100001, s + 0.15, w + 0.01009, s + 0.15001))  # the channel is kept
     far = assemble_charts_pack(region, enc_pack_path, tmp_path / "b", content=tiles, canada=box(0, 0, 1, 1))
-    with MBTiles.open(far / "enc.mbtiles") as m:
-        assert json.loads(m.metadata()["cheekymarine:notice_areas"])["features"] == []
+    with MBTiles.open(far / "enc.mbtiles") as m:  # no area: the key is not written, the old keys stay as they were
+        assert "cheekymarine:notice_areas" not in m.metadata()
 
 
 def test_charts_notice_has_chs_and_bc_credit(test_region, enc_pack_path, tmp_path):

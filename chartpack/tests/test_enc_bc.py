@@ -2,6 +2,7 @@ import json
 import math
 import shutil
 
+import numpy as np
 import pytest
 import shapely
 from shapely.geometry import LineString, Point, Polygon, box, mapping, shape
@@ -11,6 +12,7 @@ from chartpack.enc.bc import (
     DERIVED_SRC,
     JDF_STRIP_BOX,
     NOTICE_CELLS,
+    SEGMENT_DEG,
     BcError,
     apply_rules,
     area_km2,
@@ -81,7 +83,15 @@ def test_jdf_strip_is_inside_polygon(regions_dir):
 
 
 def test_canada_chs_agrees_with_canada_wa(regions_dir):
-    assert load_canada(regions_dir).equals(shape(_committed(regions_dir)["geometry"]))
+    """load_canada passes the border comparison and gives the committed polygon with edges no longer than
+    SEGMENT_DEG (the committed file is not densified)."""
+    committed = shape(_committed(regions_dir)["geometry"])
+    canada = load_canada(regions_dir)
+    assert canada.equals(shapely.segmentize(committed, SEGMENT_DEG))
+    assert canada.symmetric_difference(committed).area < 1e-12
+    xy = shapely.get_coordinates(canada.exterior)
+    assert np.hypot(*np.diff(xy, axis=0).T).max() <= SEGMENT_DEG + 1e-12
+    assert np.hypot(*np.diff(shapely.get_coordinates(committed.exterior), axis=0).T).max() > SEGMENT_DEG
 
 
 def test_border_disagreement_fails(regions_dir, tmp_path):

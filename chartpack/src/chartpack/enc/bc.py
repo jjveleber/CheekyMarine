@@ -28,6 +28,11 @@ BORDER_TOLERANCE_M = 20.0
 # The western entrance of the Strait of Juan de Fuca, where the two files differ on purpose (spec 7.2).
 JDF_STRIP_BOX = (-125.40, 48.33, -124.70, 48.52)
 _EDGE_INSET_DEG = 0.05  # away from canada-wa.geojson's artificial north, east and west edges
+# load_canada adds vertices so no edge of the polygon is longer than this, in degrees. A feature cut at the polygon
+# takes its edge, and tippecanoe draws the straight line between two vertices in Mercator: on a long diagonal edge
+# that chord leaves the lon/lat line by several meters (4.55 m on a Dixon Entrance edge), more than the check's
+# tolerance at zoom 16. With dense edges the build and the check cut and test at the same vertices.
+SEGMENT_DEG = 0.01
 # The src values of derived features (plan 8 spec 7.1): the only features, with the nosurvey areas, drawn inside
 # the Canada polygon.
 DERIVED_SRC = ("nonna10", "nonna100", "crm", "etopo", "fwa")
@@ -77,10 +82,11 @@ def _read(path: Path) -> shapely.Geometry:
 
 
 def load_canada(regions_dir: Path) -> shapely.Geometry:
-    """The Canada polygon (clip/canada-chs.geojson). BcError when, inside the bounds of clip/canada-wa.geojson
-    shrunk by 0.05 degree and outside JDF_STRIP_BOX, the two polygons disagree by a strip wider than
-    BORDER_TOLERANCE_M (what survives an inward buffer of half of it)."""
-    canada = _read(Path(regions_dir) / "clip" / "canada-chs.geojson")
+    """The Canada polygon (clip/canada-chs.geojson), densified to SEGMENT_DEG (every charts build, bathy build and
+    pack check takes it from here). BcError when, inside the bounds of clip/canada-wa.geojson shrunk by 0.05 degree
+    and outside JDF_STRIP_BOX, the two polygons disagree by a strip wider than BORDER_TOLERANCE_M (what survives an
+    inward buffer of half of it)."""
+    canada = shapely.segmentize(_read(Path(regions_dir) / "clip" / "canada-chs.geojson"), SEGMENT_DEG)
     wa = _read(Path(regions_dir) / "clip" / "canada-wa.geojson")
     w, s, e, n = wa.bounds
     inner = box(w + _EDGE_INSET_DEG, s + _EDGE_INSET_DEG, e - _EDGE_INSET_DEG, n - _EDGE_INSET_DEG)
