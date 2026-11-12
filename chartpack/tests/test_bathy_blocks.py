@@ -1034,3 +1034,19 @@ def test_fish_nonna_cells_read_true(tmp_path, test_region, product):
     assert (grid.data[shoal] == 3.0).all() and (grid.data[drying] == -1.5).all(), product
     assert (grid.data[inside & ~shoal & ~drying] == 50.0).all(), product
     assert (source[inside] == blocks.SOURCE_NAMES.index(product)).all(), product
+
+
+@pytest.mark.parametrize("product", ["nonna10", "nonna100"])
+def test_nonna_coverage_cut_at_the_border(small_grids, zero_geoid, test_region, tmp_path, product):
+    """PR #122 re-check: NONNA on both sides of the side line (it is used on the Canadian side only): its coverage
+    (fine for NONNA-10, coarse for NONNA-100) ends exactly at the line, not one coverage block onto US water."""
+    _, core, read = _block(NORTH)
+    canada, mid = _split(read)
+    b = (core[0] + 0.05, mid - 0.03, core[0] + 0.15, mid + 0.03)
+    path = _write_nonna_over(tmp_path / f"{product}.tif", product, b, _const(-25.0, b))
+    result = build_block(core, read, _sources(**{product: path}), area_datum(test_region, Path("unused")), canada)
+    feats = [f for f in result.fine_coverage + result.coarse_coverage if f["properties"]["source"] == product]
+    assert feats, product
+    covered = unary_union([shape(f["geometry"]) for f in feats])
+    assert covered.bounds[1] >= mid - 1e-9, (product, covered.bounds[1], mid)
+    assert covered.bounds[3] > mid + 0.02  # it still covers the Canadian side

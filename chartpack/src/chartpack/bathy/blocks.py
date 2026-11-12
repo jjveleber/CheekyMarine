@@ -310,12 +310,15 @@ def _graded_coverage(valid: np.ndarray, src: np.ndarray, side: np.ndarray | None
                      labels: dict, canada: shapely.Geometry | None = None) -> list[dict]:
     """Coverage of the `valid` cells, one set of polygons per source (CRM split by side of the border), each with
     its label and grade. The two CRM sets are cut at `canada`, so a coverage block the border crosses is "rough"
-    only on the Canadian side and "survey" only on the US side."""
+    only on the Canadian side and "survey" only on the US side; the NONNA sets (Canadian side only) are cut to
+    `canada` too, so they never reach onto US water."""
     out = []
     for index in _present(src[valid]):
         name = SOURCE_NAMES[index]
         cells = valid & (src == index)
-        if name != "crm" or side is None:
+        if name in ("nonna10", "nonna100"):
+            parts = [(True, cells, canada)]
+        elif name != "crm" or side is None:
             parts = [(False, cells, None)]
         else:
             parts = [(False, cells & ~side, None if canada is None else box(*core).difference(canada)),
