@@ -32,8 +32,8 @@ CHS_NOTICE = resources.files("chartpack").joinpath("notices", "chs.txt").read_te
 # The Open Government Licence - British Columbia attribution (the Freshwater Atlas shoreline), notices/ogl-bc.txt.
 OGL_BC_NOTICE = resources.files("chartpack").joinpath("notices", "ogl-bc.txt").read_text(encoding="utf-8").rstrip()
 _NONNA = frozenset({"nonna10", "nonna100"})
-_DATUM_SENTENCE = ("Canadian depths are on Canadian chart datum and US depths on MLLW; the two differ slightly at the"
-                   " border.")
+_DATUM_SENTENCE = ("NONNA depths are on Canadian chart datum; the other depth sources are on the datum noted for"
+                   " each. Canadian chart datum and US MLLW differ slightly at the border.")
 
 _NOTICE_HEAD = """CheekyMarine charts pack {name} {version}
 
@@ -82,21 +82,40 @@ def _notice(metadata: dict[str, str], name: str, version: str, cmecs_blocks: tup
 
 def _derived_notice(metadata: dict[str, str]) -> str:
     """The NOTICE block of a charts pack's derived inputs (cheekymarine:depth_sources, plan 8 spec 11): the NONNA
-    assets with the datum sentence and the CHS notice, the shoreline with its credit; empty for a pack with none."""
-    depth = {d["source"]: d for d in json.loads(metadata.get("cheekymarine:depth_sources", "[]"))}
+    assets with the datum sentence and the CHS notice, the shoreline with its credit, CRM with its MLLW conversion
+    and the ETOPO citation with its fixed shift (so each depth source's datum is noted); empty for a pack with none.
+    Every asset of a source is listed (the overview has a NONNA-100 asset per region)."""
+    entries = json.loads(metadata.get("cheekymarine:depth_sources", "[]"))
+
+    def assets(source: str) -> str:
+        return "".join(f"  Asset: {d['asset']} (sha256 {d['sha256']})\n" for d in entries if d["source"] == source)
+
     nonna = "".join(
         f"  CHS {label} bathymetry, Canadian Hydrographic Service, Fisheries and Oceans Canada,\n"
         "  under the CHS NONNA Licence and the Open Government Licence, Canada (the CHS notice below).\n"
-        f"  Asset: {depth[product]['asset']} (sha256 {depth[product]['sha256']})\n"
-        for product, label in (("nonna10", "NONNA-10"), ("nonna100", "NONNA-100")) if product in depth)
-    shore = "" if "fwa" not in depth else (
+        + assets(product) for product, label in (("nonna10", "NONNA-10"), ("nonna100", "NONNA-100"))
+        if assets(product))
+    shore = "" if not assets("fwa") else (
         "  Land and shoreline from the BC Freshwater Atlas coastline, Province of British Columbia.\n"
-        f"  Asset: {depth['fwa']['asset']} (sha256 {depth['fwa']['sha256']})\n{OGL_BC_NOTICE}\n")
-    if not (nonna or shore):
+        f"{assets('fwa')}{OGL_BC_NOTICE}\n")
+    crm = "" if not assets("crm") else (
+        "  NOAA NCEI Coastal Relief Model (CRM) volume 8, 2025, a US Government work.\n"
+        "  CRM depths are converted to approximate MLLW with offsets between NOAA CO-OPS tide stations.\n"
+        + assets("crm"))
+    etopo = "" if not assets("etopo") else _etopo_citation((PROJECT / "NOTICE").read_text()) + assets("etopo")
+    if not (nonna or shore or crm or etopo):
         return ""
     chs = f"{_DATUM_SENTENCE}\n\n{CHS_NOTICE}\n\n" if nonna else ""
     return ("Inside the Canada polygon no NOAA chart content is shown; depth and shoreline there are derived:\n"
-            f"{nonna}{shore}\n{chs}")
+            f"{nonna}{crm}{etopo}{shore}\n{chs}")
+
+
+def _check_chs_area(name: str, parts: list[str], areas: dict) -> None:
+    """A pack carrying the CHS notice needs a BC notice area, where the app puts the standing notice: an empty area
+    (an overview built with no owners, say) fails the build instead of shipping the notice text alone."""
+    if CHS_NOTICE in parts and not areas["features"]:
+        raise RuntimeError(f"{name}: the pack carries the CHS notice (it holds NONNA depth) but has no BC notice area"
+                           " (cheekymarine:notice_areas)")
 
 
 def charts_notice_areas(content: set[tuple[int, int]] | None, canada: shapely.Geometry | None) -> dict:
@@ -137,8 +156,6 @@ def assemble_charts_pack(region: Region, enc_mbtiles: Path, out_dir: Path,
     the ETOPO citation, a blank line between); a pack away from the polygon keeps its
     old metadata keys."""
     root = Path(out_dir) / f"charts-{region.name}-{region.charts_version}"
-    root.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(enc_mbtiles, root / "enc.mbtiles")
     with MBTiles.open(enc_mbtiles) as m:
         metadata = m.metadata()
     areas = charts_notice_areas(content, canada)
@@ -146,6 +163,9 @@ def assemble_charts_pack(region: Region, enc_mbtiles: Path, out_dir: Path,
     sources = {d["source"] for d in json.loads(metadata.get("cheekymarine:depth_sources", "[]"))}
     parts = ([CHS_NOTICE] if _NONNA & sources else []) + ([OGL_BC_NOTICE] if "fwa" in sources else []) + (
         [_etopo_text((PROJECT / "NOTICE").read_text())] if "etopo" in sources else [])
+    _check_chs_area(root.name, parts, areas)  # before anything is written
+    root.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(enc_mbtiles, root / "enc.mbtiles")
     if parts:
         notice["cheekymarine:data_notice"] = "\n\n".join(parts)
     if notice:
@@ -175,10 +195,18 @@ def _etopo_citation(licences: str) -> str:
     return "".join(f"  {line}\n" for line in _etopo_text(licences).splitlines())
 
 
+_COLUMN = ("In the Canadian column (BC pack tiles, Alaskan water in them included, and the Canadian side of the border"
+           " in US pack tiles), ")
+
+
 def _bathy_notice(metadata: dict[str, str], name: str, version: str, chs: bool = False,
-                  coverage: frozenset[str] = frozenset()) -> str:
+                  coverage: frozenset[str] = frozenset(), *, canadian: bool = False, us_side: bool = True,
+                  clip: bool = True) -> str:
     """The bathy pack NOTICE; chs adds the datum sentence and the CHS notice (the pack holds NONNA depth).
-    coverage (the sources the coverage layers hold) adds the NONNA assets and the ETOPO citation the pack draws."""
+    coverage (the sources the coverage layers hold) adds the NONNA assets and the ETOPO citation the pack draws.
+    The depth, datum and ENC sentences follow the depth column (plan 8 spec 6): canadian, the pack has a Canadian
+    column (a notice area); us_side, it has US-side water (a US pack or the overview); clip, it has a water clip
+    (the Boundaries line). A pack with no Canadian column keeps the plan 7 text."""
     sources = json.loads(metadata["cheekymarine:sources"])
     licences = (PROJECT / "NOTICE").read_text()
     nonna = "".join(
@@ -199,9 +227,13 @@ def _bathy_notice(metadata: dict[str, str], name: str, version: str, chs: bool =
     geoid = "" if "crm" not in sources else (
         "  CRM heights (EGM2008) go through NAVD88 with the NGA EGM2008 and NOAA GEOID18 geoid grids\n"
         "  (public domain, from cdn.proj.org) and PROJ.\n")
-    # ENC contours fill only water a CUDEM region's sources leave uncovered (a CRM-only build draws none).
-    fallback = "" if "cudem" not in sources else "\n{} the water, contours come from NOAA ENC.\n".format(
-        "Where neither CUDEM nor CRM covers" if "crm" in sources else "Where CUDEM does not cover")
+    # ENC contours fill only water a CUDEM region's sources leave uncovered (a CRM-only build draws none), and with
+    # NONNA (chs) only on the US side: none is drawn on the Canadian column or inside the Canada polygon.
+    fallback = ""
+    if "cudem" in sources:
+        where = "neither CUDEM nor CRM covers" if "crm" in sources else "CUDEM does not cover"
+        fallback = (f"\nOn the US side, where {where} the water, contours come from NOAA ENC; none are drawn in the"
+                    " Canadian column.\n" if canadian else f"\nWhere {where} the water, contours come from NOAA ENC.\n")
     datum = sources["datum"]
     lakes = "" if "lakes_file" not in datum else (
         "  In Lake Union and Lake Washington depths are below the lakes' managed low level\n"
@@ -210,18 +242,33 @@ def _bathy_notice(metadata: dict[str, str], name: str, version: str, chs: bool =
         f"{datum['lakes_file']} (sha256 {datum['lakes_sha256']}).\n")
     fonts = _fonts_notice(licences)
     chs_text = f"{_DATUM_SENTENCE}\n\n{CHS_NOTICE}\n\n" if chs else ""
+    drawn = coverage or frozenset(sources)
+    mllw = " and ".join(label for source, label in (("cudem", "CUDEM"), ("crm", "CRM")) if source in drawn)
+    datum_line = (f"Datum: elevations are converted to MLLW with offsets interpolated between NOAA CO-OPS tide\n"
+                  f"  stations (a US Government work), listed in {datum['file']} (sha256 {datum['sha256']}).")
+    depths = "Depths are survey depths converted to approximate MLLW."
+    if canadian:
+        clauses = (["NONNA depths are on Canadian chart datum"] if _NONNA & drawn else []) + (
+            ["ETOPO depths are shifted a fixed 4 m toward chart datum"] if "etopo" in drawn else []) + (
+            [f"{mllw} depths are converted to approximate MLLW as on the US side"] if mllw else [])
+        said = clauses[0] if len(clauses) < 2 else ", ".join(clauses[:-1]) + ", and " + clauses[-1]
+        us = "US-side depths are survey depths converted to approximate MLLW.\n"
+        if "etopo" in drawn:  # ETOPO takes its fixed shift on the US side too (the overview west of CRM)
+            us = (f"US-side {mllw} depths are converted to approximate MLLW, and " if mllw else "") + (
+                "ETOPO depths, on either side, are shifted a fixed 4 m toward chart datum.\n")
+        depths = (us if us_side else "") + f"{_COLUMN}{said}."
+        datum_line = datum_line.replace("Datum: elevations", f"Datum: {mllw} elevations") if mllw else (
+            "Datum: no tide station offsets are used.")
+    boundaries = "Boundaries: NOAA maritime boundaries (the water clip), a US Government work.\n\n" if clip else ""
     return f"""CheekyMarine bathy pack {name} {version}
 
 This pack is a derived product. It is not an official chart.
 It is not certified for navigation. Do not rely on it as the only means of navigation.
-Depths are survey depths converted to approximate MLLW.
+{depths}
 
 Bathymetry:
 {cudem}{crm}{nonna}{etopo}
-Boundaries: NOAA maritime boundaries (the water clip), a US Government work.
-
-Datum: elevations are converted to MLLW with offsets interpolated between NOAA CO-OPS tide
-  stations (a US Government work), listed in {datum["file"]} (sha256 {datum["sha256"]}).
+{boundaries}{datum_line}
 {lakes}{geoid}{fallback}
 """ + chs_text + fonts + "\nSymbols are drawn in-house after US Chart No. 1 (public domain).\n"
 
@@ -232,41 +279,51 @@ def _polygons(geom: shapely.Geometry) -> shapely.Geometry:
     return shapely.union_all(parts) if parts else shapely.Polygon()
 
 
-def notice_areas(region: Region, owned: set[tuple[int, int]] | None) -> dict:
+def notice_areas(region: Region, owned: set[tuple[int, int]] | None,
+                 owners: dict[tuple[int, int], Region] | None = None) -> dict:
     """cheekymarine:notice_areas of a bathy pack (plan 8 spec 7.3): the Canadian column (spec 6) of its owned tiles,
-    canada_side by the pack itself, as one feature of kind bc, not simplified. No feature when there is none: a US
-    pack with no clip or with every tile on the US side, and the overview (owned None), which is clipped to US
-    water."""
-    parts = []
-    if owned and (region.charts_kind != "enc" or region.clip is not None):
+    canada_side by the pack itself, as one feature of kind bc, not simplified; for the overview (owned None), of
+    every tile in owners, canada_side by the tile's owner. No feature when there is none: a US pack with no clip or
+    with every tile on the US side."""
+    tiles = {tile: region for tile in owned} if owned else dict(owners or {})
+    parts, clips = [], {}
+    for tile, owner in sorted(tiles.items()):
+        if owner.charts_kind == "enc" and owner.clip is None:  # all US side
+            continue
         clip = None
-        if region.charts_kind == "enc":
-            data = json.loads(region.clip.read_text())
-            clip = shape(data.get("geometry", data))
-        parts = [canada_side(clip, tile, region) for tile in sorted(owned)]
+        if owner.charts_kind == "enc":
+            if owner.clip not in clips:
+                data = json.loads(owner.clip.read_text())
+                clips[owner.clip] = shape(data.get("geometry", data))
+            clip = clips[owner.clip]
+        parts.append(canada_side(clip, tile, owner))
     area = _polygons(shapely.union_all(parts)) if parts else shapely.Polygon()
     features = [] if area.is_empty else [{"type": "Feature", "properties": {"kind": "bc"}, "geometry": mapping(area)}]
     return {"type": "FeatureCollection", "features": features}
 
 
 def assemble_bathy_pack(region: Region, files: dict[str, Path], out_dir: Path,
-                        owned: set[tuple[int, int]] | None = None) -> Path:
+                        owned: set[tuple[int, int]] | None = None,
+                        owners: dict[tuple[int, int], Region] | None = None) -> Path:
     """The bathy pack directory from the four built files, keyed by their BATHY_FILES names, each given the
-    notice metadata: cheekymarine:notice_areas (notice_areas over the owned tiles) and, when a coverage layer holds
-    NONNA and/or ETOPO, cheekymarine:data_notice (the CHS notice, then the ETOPO citation, a blank line between)."""
+    notice metadata: cheekymarine:notice_areas (notice_areas over the owned tiles, or for the overview over the
+    owners' tiles) and, when a coverage layer holds NONNA and/or ETOPO, cheekymarine:data_notice (the CHS notice,
+    then the ETOPO citation, a blank line between)."""
     root = Path(out_dir) / f"bathy-{region.name}-{region.bathy_version}"
-    root.mkdir(parents=True, exist_ok=True)
-    for name in BATHY_FILES:
-        shutil.copyfile(files[name], root / name)
-    with MBTiles.open(root / "bathy.mbtiles") as m:
+    with MBTiles.open(files["bathy.mbtiles"]) as m:
         metadata = m.metadata()
-    with MBTiles.open(root / "bathy-coarse.mbtiles") as m:
+    with MBTiles.open(files["bathy-coarse.mbtiles"]) as m:
         coverage = json.loads(metadata.get("cheekymarine:coverage", "[]"))
         coverage += json.loads(m.metadata().get("cheekymarine:coverage", "[]"))
     chs = bool(_NONNA & set(coverage))
-    notice = {"cheekymarine:notice_areas": json.dumps(notice_areas(region, owned))}
+    areas = notice_areas(region, owned, owners)
+    notice = {"cheekymarine:notice_areas": json.dumps(areas)}
     parts = ([CHS_NOTICE] if chs else []) + (
         [_etopo_text((PROJECT / "NOTICE").read_text())] if "etopo" in coverage else [])
+    _check_chs_area(root.name, parts, areas)  # before anything is written
+    root.mkdir(parents=True, exist_ok=True)
+    for name in BATHY_FILES:
+        shutil.copyfile(files[name], root / name)
     if parts:
         notice["cheekymarine:data_notice"] = "\n\n".join(parts)
     for name in BATHY_FILES:
@@ -276,5 +333,7 @@ def assemble_bathy_pack(region: Region, files: dict[str, Path], out_dir: Path,
     write_styles(root, "bathy")
 
     _sprites_glyphs_readme(root, "fish", f"bathy-{region.name}-{region.bathy_version}")
-    (root / "NOTICE").write_text(_bathy_notice(metadata, region.name, region.bathy_version, chs, frozenset(coverage)))
+    (root / "NOTICE").write_text(_bathy_notice(metadata, region.name, region.bathy_version, chs, frozenset(coverage),
+                                               canadian=bool(areas["features"]), us_side=region.charts_kind == "enc",
+                                               clip=region.clip is not None))
     return root

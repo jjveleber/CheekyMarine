@@ -34,7 +34,10 @@ refreshed, regenerate the golden file and re-run those tests.
 (the band 4 cells of the brief, US5SEAKL and the cancelled US5WA13M) from the catalog of 2026-10-28, then
 every other cell the retired `puget-north` region named, appended from the catalog of 2026-10-29, then every
 other cell the wave 1 region files (`regions/sound-south.toml` to `overview.toml`) name, appended from the
-catalog of 2026-11-09.
+catalog of 2026-11-09, then every other cell the plan 8 region files (the BC regions and the rebuilt `overview`)
+name, appended from the catalog of 2026-11-12: `US1GLBDC`, `US2PACYU`, `US2PACYW`, `US3AK1DW`, `US3AK1DX`,
+`US3AK1DY`, then the band 4 and 5 cells `bc-north` and `bc-offshore-north` name (`US4AK5*`, `US5KTN*`), from the
+same catalog.
 
 `cudem_urllist_excerpt.txt` is the 64 Washington lines (folders `wash_pugetsound`, `wash_bellingham`,
 `wash_juandefuca`, `wash_outercoast`) of the live `urllist8483.txt` (942 lines in all), fetched 2026-10-28.
@@ -67,3 +70,11 @@ and member names, cut from the real download of 2026-10-29. Licences: chartpack/
 on 2026-11-11 from the plan 7 grid code (commit 872bd0c, before plan 8 Task 5): `owned_tiles` of each region in
 `regions/grid.toml`, with the five wave 1 region files and the real `grid.toml`. `test_wave1_owners_exact` checks
 that later grid code gives the same map: no wave 1 tile gained, lost or moved.
+
+## BC unowned tiles
+
+`bc-unowned-tiles.json` lists, as `[x, y]`, every zoom-10 tile no region pack owns that touches an owned tile (by
+an edge or a corner) and meets `regions/clip/canada-chs.geojson`, from the shipped region files and `grid.toml`
+(plan 8 Task 15, PR 125 review): 113 tiles. They are the reviewed gaps: Portland Canal and Observatory Inlet north
+of `bc-north`, the Vancouver Island interior column (154, 347) and (154, 348), and inland and deep-ocean edges.
+`test_every_bc_tile_has_one_owner` fails when the set changes; update the file only after reviewing the change.

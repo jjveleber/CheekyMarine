@@ -15,7 +15,7 @@ import pytest
 import shapely
 from make_ridge import NODATA, ridge_grid
 from osgeo import gdal, osr
-from shapely.geometry import box, mapping, shape
+from shapely.geometry import Polygon, box, mapping, shape
 from shapely.ops import unary_union
 
 from chartpack.bathy import blocks
@@ -386,8 +386,11 @@ def _region_dir(tmp_path, *, overview=False, dem_maxzoom=12):
     regions.mkdir()
     shutil.copytree(Path(__file__).parent.parent / "regions" / "datum", regions / "datum")
     shutil.copytree(Path(__file__).parent.parent / "regions" / "clip", regions / "clip")  # the Canada polygon
-    (regions / "grid.toml").write_text('zoom = 10\norder = ["blk"]\n')
-    (regions / "blk.toml").write_text(("overview = true\n" if overview else "") + f"""name = "blk"
+    # the overview is in no grid: the grid holds a region pack over the same box
+    (regions / "grid.toml").write_text(f'zoom = 10\norder = ["{"pk" if overview else "blk"}"]\n')
+    for name in ("blk", "pk") if overview else ("blk",):
+        head = "overview = true\n" if name == "blk" and overview else ""
+        (regions / f"{name}.toml").write_text(head + f"""name = "{name}"
 charts_version = "0.1.0"
 bathy_version = "0.1.0"
 bbox = [-122.6, 47.8, -122.4, 47.95]
@@ -395,7 +398,7 @@ bbox = [-122.6, 47.8, -122.4, 47.95]
 [enc]
 
 [bathy]
-sources = {'["crm"]' if overview else '["cudem", "crm"]'}
+sources = {'["crm"]' if name == "blk" and overview else '["cudem", "crm"]'}
 dem_maxzoom = {dem_maxzoom}
 
 [datum]
@@ -524,7 +527,7 @@ def test_overview_block_means_native_crm(tmp_path, test_region, zero_geoid):
     crm = tmp_path / "crm.tif"
     _write_tif(crm, elev.astype(np.float32), read)
     datum = area_datum(test_region, Path("unused"))
-    grid = blocks.build_overview(bbox, crm, datum, None).coarse_grid
+    grid = blocks.build_overview(bbox, _sources(crm=crm), datum, None, Polygon()).coarse_grid
     x0, dx, _, y0, _, dy = grid.transform
     assert dx == pytest.approx(0.0025) and dy == pytest.approx(-0.0025)
     assert (x0 + 180) / 0.0025 == pytest.approx(round((x0 + 180) / 0.0025), abs=1e-6)
@@ -532,6 +535,145 @@ def test_overview_block_means_native_crm(tmp_path, test_region, zero_geoid):
     depth = grid.data + datum("crm", grid.transform, grid.data.shape)
     np.testing.assert_allclose(depth[:, : step // 9], 150.0, atol=100.0 / 81 + 1e-3)
     np.testing.assert_allclose(depth[:, step // 9 :], 300.0, atol=1e-3)
+
+
+OVERVIEW_BBOX = (-122.6, 47.8, -122.4, 47.95)
+OVERVIEW_WEST = box(-123.0, 47.0, -122.5, 48.5)  # the Canadian column: west of -122.5, an overview cell edge
+
+
+def _overview_sources(tmp_path):
+    """NONNA-100 over the overview read at 20 to 50 m with a hole, CRM (50 m) over the south half only, ETOPO
+    (300 m) everywhere; returns (sources, the hole)."""
+    read = blocks.overview_bounds(OVERVIEW_BBOX)
+    hole = (-122.58, 47.85, -122.54, 47.90)
+    nonna100 = _write_nonna_over(tmp_path / "n100.tif", "nonna100", read, lambda lon, lat: np.where(
+        _inside(lon, lat, hole), _const(0.0)(lon, lat), -(20.0 + 30.0 * (np.sin(lon * 4000.0) > 0))))
+    crm = _write_grid(tmp_path / "crm.tif", -50.0, (read[0], read[1], read[2], 47.875))
+    etopo = _write_grid(tmp_path / "etopo.tif", -300.0, AREA)
+    return _sources(crm=crm, nonna100=nonna100, etopo=[etopo]), hole
+
+
+def test_overview_merges_the_coarse_sources(tmp_path, test_region, zero_geoid):
+    """build_overview over the coarse sources (plan 8 spec 6): NONNA-100 first on the Canadian column, then CRM,
+    then ETOPO; each on its datum before the block mean. The Nav grids are the shallowest value of each cell on
+    the Canadian column (nav_depth of every source, nav_survey of NONNA-100), nan in the no-survey area and on the
+    US side."""
+    sources, hole = _overview_sources(tmp_path)
+    datum = area_datum(test_region, Path("unused"))
+    r = blocks.build_overview(OVERVIEW_BBOX, sources, datum, OVERVIEW_WEST, box(*hole))
+    g, src, nav = r.coarse_grid, r.coarse_source, r.nav_depth
+    assert g.transform == nav.transform and src.shape == g.data.shape == nav.data.shape == r.nav_src.shape
+
+    def at(arr, lon, lat):
+        return _cell(g.transform, arr, lon, lat)
+
+    def crm_depth(lon, lat):  # the CRM depth on MLLW: 50 m less the datum offset there
+        return 50.0 - at(datum("crm", g.transform, g.data.shape, lakes=False), lon, lat)
+
+    name = blocks.SOURCE_NAMES
+    west_north, west_hole = (-122.55, 47.93), (-122.56, 47.885)
+    east_north, east_south = (-122.45, 47.93), (-122.45, 47.83)
+    assert name[at(src, *west_north)] == "nonna100" and 20.0 <= at(g.data, *west_north) <= 50.0
+    assert name[at(src, *west_hole)] == "etopo" and at(g.data, *west_hole) == pytest.approx(296.0)
+    assert name[at(src, *east_north)] == "etopo" and at(g.data, *east_north) == pytest.approx(296.0)
+    assert name[at(src, *east_south)] == "crm" and at(g.data, *east_south) == pytest.approx(crm_depth(*east_south))
+    assert at(nav.data, *west_north) in (20.0, 50.0) and name[at(r.nav_src, *west_north)] == "nonna100"
+    assert np.isnan(at(nav.data, *west_hole)) and np.isnan(at(nav.data, *east_north))
+    assert at(r.nav_survey.data, *west_north) == at(nav.data, *west_north)
+    assert np.isnan(at(r.nav_survey.data, *west_hole)) and np.isnan(at(r.nav_survey.data, *east_north))
+    both = np.isfinite(nav.data)
+    assert both.any() and (nav.data[both] <= g.data[both] + 1e-4).all()  # shoal: never deeper than the mean
+    assert (nav.data[both] < g.data[both] - 1.0).any()
+    assert not np.isfinite(nav.data[:, round((-122.5 - g.transform[0]) / g.transform[1]):]).any()  # US side: none
+    grades = {(f["properties"]["source"], f["properties"]["grade"]) for f in r.coarse_coverage}
+    assert grades == {("nonna100", "coarse-survey"), ("crm", "survey"), ("crm", "rough"), ("etopo", "rough")}
+    assert r.coarse_contours and r.coarse_bands and r.fine_grid is None
+
+
+def test_overview_nav_offshore_never_deeper_than_any_source(tmp_path, test_region, zero_geoid):
+    """An overview cell that mixes NONNA-100 (50 m) and a shallower coarse value (ETOPO, 10 m after its shift):
+    nav_depth, the offshore Nav grid, takes the shallowest value of every source present (10 m), while nav_survey,
+    the inshore Nav grid, takes the NONNA-100 cells only (50 m)."""
+    read = blocks.overview_bounds(OVERVIEW_BBOX)
+    nonna100 = _write_nonna_over(tmp_path / "n100.tif", "nonna100", read,
+                                 _const(-50.0, (read[0], read[1], -122.5313, read[3])))
+    etopo = _write_grid(tmp_path / "etopo.tif", -14.0, AREA)
+    r = blocks.build_overview(OVERVIEW_BBOX, _sources(nonna100=nonna100, etopo=[etopo]),
+                              area_datum(test_region, Path("unused")), OVERVIEW_WEST, Polygon())
+    nav, survey = r.nav_depth.data, r.nav_survey.data
+    mixed = np.isfinite(survey) & np.isclose(nav, 10.0)
+    assert mixed.any() and np.allclose(survey[mixed], 50.0)
+    assert set(np.unique(nav[np.isfinite(nav)]).round(3)) == {10.0, 50.0}  # 50 m only where NONNA-100 alone
+    assert (nav[np.isfinite(survey)] <= survey[np.isfinite(survey)]).all()
+    assert (r.nav_src[mixed] == blocks.SOURCE_NAMES.index("etopo")).all()  # the coarsest source of the cell
+
+
+def _geoid_west_of_130_raises(monkeypatch):
+    """The real geoid path's limit: GEOID18 stops at -130 W, so a node west of it raises GeoidError; zero elsewhere."""
+    def nodes(lons, lats, cache):
+        if np.min(lons) < -130.0:
+            raise geoid.GeoidError(f"EGM2008 to NAVD88 is undefined at some of lon {lons} (outside GEOID18)")
+        return np.zeros((len(lats), len(lons)))
+
+    monkeypatch.setattr(geoid, "egm2008_to_navd88_nodes", nodes)
+
+
+def test_overview_crm_offset_only_where_crm_won(tmp_path, test_region, monkeypatch):
+    """A strip from -135.7 W to -122 W with CRM cells only east of -128 W builds: the CRM offset is taken over the
+    cells CRM won, never over the whole strip (GEOID18 stops at -130 W). A CRM cell truly west of -130 W still
+    raises: the error is not swallowed."""
+    _geoid_west_of_130_raises(monkeypatch)
+    bbox = (-135.7, 48.9, -122.0, 48.95)
+    read = blocks.overview_bounds(bbox)
+    rows = round((read[3] - read[1]) * 3600)
+    east = (-128.0, read[1], read[2], read[3])
+    crm = tmp_path / "crm.tif"
+    _write_tif(crm, np.full((rows, round((east[2] - east[0]) * 3600)), -50.0, np.float32), east)
+    datum = area_datum(test_region, Path("unused"))
+    r = blocks.build_overview(bbox, _sources(crm=crm), datum, None, Polygon())
+    assert np.isfinite(r.coarse_grid.data).any()
+    west = (-131.0, read[1], read[2], read[3])
+    _write_tif(crm, np.full((rows, round((west[2] - west[0]) * 3600)), -50.0, np.float32), west)
+    with pytest.raises(geoid.GeoidError):
+        blocks.build_overview(bbox, _sources(crm=crm), datum, None, Polygon())
+
+
+def test_shift_by_window_matches_the_whole_grid(test_region, zero_geoid):
+    """_shift takes each source's offset over the window of the cells it won; at those cells the values are the
+    ones the whole-grid offset gives, bit for bit, so wave 1 output does not change."""
+    from chartpack.bathy.cudem import Grid
+
+    transform = (-122.6, 1 / 3600, 0.0, 48.0, 0.0, -1 / 3600)
+    data = np.random.default_rng(1).uniform(-50, 200, (360, 720)).astype(np.float32)
+    source = np.zeros(data.shape, np.int8)
+    source[40:200, 100:300] = blocks.SOURCE_NAMES.index("crm")
+    source[150:330, 400:700] = blocks.SOURCE_NAMES.index("cudem")
+    source[0:20, 0:20] = blocks.SOURCE_NAMES.index("etopo")
+    datum = area_datum(test_region, Path("unused"))
+    grid = Grid(data.copy(), float("nan"), transform, "")
+    blocks._shift(grid, source, datum)
+    want = data.copy()
+    for name in ("crm", "cudem", "etopo"):
+        take = source == blocks.SOURCE_NAMES.index(name)
+        want[take] = data[take] - datum(name, transform, data.shape, lakes=False)[take]
+    etopo = source == blocks.SOURCE_NAMES.index("etopo")
+    want[etopo & (data > 0) & (want < 0)] = 0.0
+    np.testing.assert_array_equal(grid.data, want)
+
+
+def test_overview_strips_give_one_read(tmp_path, test_region, zero_geoid, monkeypatch):
+    """build_overview reads in strips to bound its memory; the strips give the grids of one read."""
+    sources, hole = _overview_sources(tmp_path)
+    datum = area_datum(test_region, Path("unused"))
+    whole = blocks.build_overview(OVERVIEW_BBOX, sources, datum, OVERVIEW_WEST, box(*hole))
+    monkeypatch.setattr(blocks, "OVERVIEW_STRIP_DEG", 0.05)  # three strips, each a whole number of overview cells
+    strips = blocks.build_overview(OVERVIEW_BBOX, sources, datum, OVERVIEW_WEST, box(*hole))
+    for a, b in ((whole.coarse_grid, strips.coarse_grid), (whole.nav_depth, strips.nav_depth),
+                 (whole.nav_survey, strips.nav_survey)):
+        assert a.transform == b.transform
+        np.testing.assert_allclose(a.data, b.data, atol=1e-4)
+    np.testing.assert_array_equal(whole.coarse_source, strips.coarse_source)
+    np.testing.assert_array_equal(whole.nav_src, strips.nav_src)
 
 
 def test_overview_has_empty_fine_files(tmp_path, monkeypatch, zero_geoid):

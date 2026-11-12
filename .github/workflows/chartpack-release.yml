@@ -9,6 +9,10 @@ name: chartpack-release
 # Dry run: start this workflow by hand (workflow_dispatch) with a pack and a region. It builds,
 # checks and archives like a tag run, then uploads the archive, SHA256SUMS and build-stats.json as
 # a workflow artifact. It skips the tag check and never publishes.
+#
+# Canadian source data (NONNA, the BC coastline and what is derived from them) comes only from the
+# assets of the release sources-bc-1, which chartpack-sources.yml writes: no step here calls a
+# Canadian host (plan 8 spec 5).
 
 on:
   push:
@@ -105,6 +109,47 @@ jobs:
           python3 -m venv --system-site-packages .venv
           .venv/bin/pip install -e .
 
+      - name: Download the source assets from the release sources-bc-1
+        working-directory: chartpack
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # A region with NONNA among its sources gets its own assets: the fetch and derive stats, the NONNA grids,
+          # the land and the no-survey mask (the builds check each against the sha256 in the stats). The overview
+          # gets every region's NONNA-100 grid, land, no-survey mask and stats, and never a NONNA-10 grid.
+          read -r nonna overview name < <(.venv/bin/python -c 'import sys, tomllib; d = tomllib.load(open(sys.argv[1], "rb")); print(int(bool({"nonna10", "nonna100"} & set(d["bathy"]["sources"]))), int(d.get("overview", False)), d.get("sources", {}).get("assets", d["name"]))' "regions/${REGION}.toml")
+          echo "NONNA=${nonna}" >> "$GITHUB_ENV"
+          if [ "${nonna}" = 0 ]; then
+            echo "regions/${REGION}.toml lists no NONNA: no source assets needed"
+            exit 0
+          fi
+          if [[ ! "${name}" =~ ^[a-z0-9-]+$ ]]; then
+            echo "[sources] assets must match [a-z0-9-]+" >&2
+            exit 1
+          fi
+          if ! assets="$(scripts/release-assets.sh sources-bc-1)"; then
+            echo "cannot list release sources-bc-1: run chartpack-sources.yml" >&2
+            exit 1
+          fi
+          if [ "${overview}" = 1 ]; then
+            wanted="$(grep -E '^(nonna100-.+\.tif|(land|nosurvey)-.+\.geojson\.gz|(fetch|derive)-stats-.+\.json)$' <<< "${assets}" || true)"
+          else
+            wanted="$(grep -Fx -e "fetch-stats-${name}.json" -e "derive-stats-${name}.json" -e "nonna10-${name}.tif" \
+                      -e "nonna100-${name}.tif" -e "land-${name}.geojson.gz" -e "nosurvey-${name}.geojson.gz" \
+                      <<< "${assets}" || true)"
+          fi
+          if [ -z "${wanted}" ]; then
+            echo "no assets for ${REGION} in sources-bc-1: run chartpack-sources.yml stages fetch and derive first" >&2
+            exit 1
+          fi
+          patterns=()
+          while read -r f; do
+            patterns+=(-p "$f")
+          done <<< "${wanted}"
+          mkdir -p cache/sources-bc-1
+          gh release download sources-bc-1 "${patterns[@]}" -D cache/sources-bc-1 --clobber
+          ls -l cache/sources-bc-1
+
       - name: Fetch and build the charts pack
         if: env.PACK == 'charts'
         working-directory: chartpack
@@ -112,6 +157,10 @@ jobs:
           export PATH="$HOME/.local/bin:$PATH"
           .venv/bin/chartpack fetch-enc "regions/${REGION}.toml" --cache cache
           .venv/bin/chartpack fetch-seabed "regions/${REGION}.toml" --cache cache
+          if [ "${NONNA}" = 1 ]; then
+            # Derived charts read the depth sources (NONNA from the cache, CRM, ETOPO) and the geoid grids.
+            .venv/bin/chartpack fetch-bathy "regions/${REGION}.toml" --cache cache
+          fi
           mkdir -p work
           scripts/fit-guard.sh "${GITHUB_WORKSPACE}/build-stats.json" -- \
             .venv/bin/chartpack build-enc "regions/${REGION}.toml" work/charts --cache cache --work work/enc
@@ -138,6 +187,17 @@ jobs:
           .venv/bin/chartpack archive "work/${PACK}/${PACK}-${REGION}-${VERSION}" dist
           cp "${GITHUB_WORKSPACE}/build-stats.json" dist/
 
+      - name: Write the release notes
+        working-directory: chartpack
+        run: |
+          # The pack's cheekymarine:data_notice (the CHS notice and the other credits, plan 8 spec 11), when it
+          # has one; an empty file otherwise.
+          file=enc.mbtiles
+          if [ "${PACK}" = bathy ]; then
+            file=bathy.mbtiles
+          fi
+          .venv/bin/python -c 'import sqlite3, sys; row = sqlite3.connect(sys.argv[1]).execute("select value from metadata where name = ?", ("cheekymarine:data_notice",)).fetchone(); print(row[0] if row else "", end="")' "work/${PACK}/${PACK}-${REGION}-${VERSION}/${file}" > dist/release-notes.md
+
       - uses: actions/upload-artifact@v4
         with:
           name: pack
@@ -145,6 +205,7 @@ jobs:
             chartpack/dist/${{ needs.version.outputs.pack }}-${{ needs.version.outputs.region }}-${{ needs.version.outputs.version }}.tar
             chartpack/dist/SHA256SUMS
             chartpack/dist/build-stats.json
+            chartpack/dist/release-notes.md
           if-no-files-found: error
 
       # The guard writes build-stats.json even when it fails the build, so keep it for a dry run over the limits.
@@ -172,6 +233,7 @@ jobs:
             *.tar
             SHA256SUMS
             build-stats.json
+          body_path: release-notes.md  # the pack's data notice, before the generated notes
           generate_release_notes: true
           # "Latest" stays with the n2kd v* releases; a pack release never replaces it.
           make_latest: false

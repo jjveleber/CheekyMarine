@@ -1,0 +1,39 @@
+# Off Haida Gwaii and Queen Charlotte Sound to about 100 mi (plan 8 spec 4). Coarse depth only: NONNA-100, then the
+# worldwide grids. Its area is the polygon of the spec's appendix; the inshore packs come first in grid.toml, so a
+# tile shared with an inshore box is theirs.
+name = "bc-offshore-north"
+charts_version = "1.0.0"
+bathy_version = "1.0.0"
+bbox = [-135.592, 51.0, -129.2, 55.0]  # the bounds of area.polygon
+
+[charts]
+kind = "derived-offshore"
+
+[area]
+polygon = [[[-135.106,55.0],[-133.137,55.0],[-133.136,54.952],[-133.065,54.947],[-132.994,54.837],[-132.908,54.838],[-132.932,54.79],[-132.84,54.742],[-132.843,54.699],[-132.745,54.674],[-132.7,54.71],[-132.758,54.742],[-132.735,54.787],[-132.942,54.948],[-132.945,55.0],[-132.551,55.0],[-132.546,54.941],[-132.49,55.0],[-132.434,54.966],[-132.391,55.0],[-132.345,54.895],[-132.216,54.804],[-132.289,54.728],[-132.025,54.696],[-132.01,54.784],[-131.959,54.814],[-132.047,54.899],[-131.98,54.917],[-132.01,54.968],[-131.979,55.0],[-131.01,55.0],[-130.982,54.991],[-130.913,54.8],[-131.199,54.786],[-131.2,54.3],[-133.297,54.291],[-133.298,51.812],[-131.216,51.8],[-131.2,52.138],[-131.141,52.176],[-131.181,52.241],[-131.1,52.272],[-131.2,52.31],[-131.2,52.7],[-129.222,52.7],[-129.2,51.0],[-132.864,51.0],[-134.621,52.413],[-135.44,53.405],[-135.592,53.795],[-135.592,54.064],[-135.361,54.648],[-135.106,55.0]],[[-131.091,52.154],[-131.128,52.096],[-131.056,51.967],[-131.027,51.995],[-131.065,52.084],[-130.963,52.092],[-131.091,52.154]],[[-131.105,52.231],[-131.107,52.172],[-131.01,52.209],[-131.025,52.233],[-131.105,52.231]],[[-131.438,54.956],[-131.349,54.861],[-131.212,54.908],[-131.262,54.995],[-131.438,54.956]],[[-132.663,54.821],[-132.682,54.785],[-132.623,54.761],[-132.617,54.792],[-132.663,54.821]],[[-132.645,54.902],[-132.789,54.893],[-132.718,54.829],[-132.638,54.857],[-132.645,54.902]]]
+
+# Every Active cell of bands 1 to 5 whose catalog polygon meets the owned tiles (zoom-10 tiles, grid.toml), from
+# `chartpack cells` and the catalog of 2026-11-12. Their features are cut at the Canada polygon; bands 4 and 5 keep
+# NOAA's finest detail in the Alaskan water of the owned tiles.
+[enc]
+band1 = ["US1GLBDC", "US1GLBDD"]
+band2 = ["US2PACYU", "US2PACYW"]
+band3 = ["US3AK1DW", "US3AK1DX", "US3AK1DY"]
+band4 = [
+    "US4AK5FL", "US4AK5FN", "US4AK5FO", "US4AK5FZ", "US4AK5GL", "US4AK5GN", "US4AK5GO", "US4AK5GP", "US4AK5GQ",
+    "US4AK5GZ",
+]
+band5 = ["US5KTNCE", "US5KTNDE", "US5KTNED", "US5KTNEE", "US5KTNFC", "US5KTNFD", "US5KTNFE"]
+
+[bathy]
+sources = ["nonna100", "etopo"]
+dem_maxzoom = 14
+
+[datum]
+file = "datum/wa-stations.toml"  # CRM south of 49 N; NONNA is on chart datum and ETOPO takes a fixed shift
+
+[[render.views]]
+name = "offshore-north"
+lon = -134.0
+lat = 53.0
+zooms = [7, 9, 11]

@@ -1,0 +1,27 @@
+# Johnstone Strait, Broughton Archipelago, Knight and Kingcome inlets, Port Hardy (plan 8 spec 4). Charts are
+# derived from NONNA and the BC Freshwater Atlas inside the Canada polygon.
+name = "bc-johnstone"
+charts_version = "1.0.0"
+bathy_version = "1.0.0"
+bbox = [-127.6, 50.25, -124.8, 51.0]
+
+[charts]
+kind = "derived-inshore"
+
+# Every Active cell of bands 1 to 3 whose catalog polygon meets the owned tiles (zoom-10 tiles, grid.toml), from
+# `chartpack cells` and the catalog of 2026-11-12. Their features are cut at the Canada polygon.
+[enc]
+band1 = ["US1GLBDD"]
+
+[bathy]
+sources = ["nonna10", "nonna100", "etopo"]
+dem_maxzoom = 14
+
+[datum]
+file = "datum/wa-stations.toml"  # CRM south of 49 N; NONNA is on chart datum and ETOPO takes a fixed shift
+
+[[render.views]]
+name = "knight-inlet-head"
+lon = -125.58
+lat = 51.08
+zooms = [9, 11, 13, 15]

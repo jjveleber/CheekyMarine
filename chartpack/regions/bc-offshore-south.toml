@@ -1,0 +1,31 @@
+# Off Vancouver Island to about 100 mi (plan 8 spec 4). Coarse depth only: NONNA-100, then the worldwide grids. Its
+# area is the polygon of the spec's appendix; the inshore packs come first in grid.toml, so a tile shared with an
+# inshore box is theirs.
+name = "bc-offshore-south"
+charts_version = "1.0.0"
+bathy_version = "1.0.0"
+bbox = [-132.864, 48.45, -126.6, 51.0]  # the bounds of area.polygon
+
+[charts]
+kind = "derived-offshore"
+
+[area]
+polygon = [[[-132.864,51.0],[-129.2,51.0],[-129.184,50.85],[-128.6,50.85],[-128.595,49.407],[-126.6,49.4],[-126.6,48.45],[-128.302,48.45],[-129.469,49.135],[-130.024,49.683],[-132.44,50.756],[-132.864,51.0]]]
+
+# Every Active cell of bands 1 to 3 whose catalog polygon meets the owned tiles (zoom-10 tiles, grid.toml), from
+# `chartpack cells` and the catalog of 2026-11-12. Their features are cut at the Canada polygon.
+[enc]
+band1 = ["US1GLBDD"]
+
+[bathy]
+sources = ["nonna100", "crm", "etopo"]
+dem_maxzoom = 14
+
+[datum]
+file = "datum/wa-stations.toml"  # CRM south of 49 N; NONNA is on chart datum and ETOPO takes a fixed shift
+
+[[render.views]]
+name = "offshore-south"
+lon = -129.0
+lat = 49.6
+zooms = [7, 9, 11]

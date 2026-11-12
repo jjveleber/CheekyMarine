@@ -31,7 +31,7 @@ from chartpack.bathy.contours import (
 )
 from chartpack.bathy.cudem import CudemTile, Grid, read_window, tiles_for_bbox
 from chartpack.bathy.etopo import CD_BELOW_MSL_M, clip_to_tile
-from chartpack.bathy.merge import clip_mask, coverage_polygons, fill_land, merge_ordered, merge_to_mllw, warp_depth
+from chartpack.bathy.merge import clip_mask, coverage_polygons, fill_land, merge_ordered, warp_depth
 from chartpack.bathy.nonna import read_nonna
 from chartpack.bathy.tiles import COARSE_ZOOMS
 from chartpack.datum import SOURCE_VERTICAL, geoid, node_axes, resample
@@ -43,6 +43,7 @@ FINE_RES_DEG = 1 / 32400  # CUDEM, 1/9 arc-second
 COARSE_RES_DEG = 1 / 3600  # CRM, 1 arc-second
 OVERVIEW_RES_DEG = 0.0025  # the overview block-means native CRM to this (9 by 9 arc-second cells)
 BLOCK_MARGIN_DEG = 0.02  # each block is read this far past its tile
+OVERVIEW_STRIP_DEG = 0.5  # build_overview reads this much latitude at a time: a whole number of overview cells
 CRM_LABEL = {"source": "crm", "resolution_m": 30, "date": "2025"}
 DEM_OWNER_ZOOM = COARSE_ZOOMS[1]  # DEM tile ownership is decided per tile of the coarse max zoom
 SOURCE_NAMES = ("none", "cudem", "crm", "nonna10", "nonna100", "etopo")  # the source index of the merged grids
@@ -107,6 +108,7 @@ class BlockResult:
     nonna_valid: np.ndarray | None = None  # bool, the fine grid's shape
     nav_depth: Grid | None = None
     nav_src: np.ndarray | None = None  # int8, nav_depth's shape
+    nav_survey: Grid | None = None  # the overview only: the shallowest NONNA-100 value per cell (build_overview)
 
 
 class AreaDatum:
@@ -262,14 +264,23 @@ def _present(source: np.ndarray) -> list[int]:
 def _shift(grid: Grid, source: np.ndarray, datum: AreaDatum) -> None:
     """Each cell's depth shifted by its own source's datum offset (the station path, no lake rule), in place:
     CUDEM and CRM to MLLW, NONNA left on chart datum, ETOPO by its fixed shift. A water cell (depth above 0) of
-    a mean sea level source that the shift would take below 0 gets 0.0: it never makes a drying area."""
+    a mean sea level source that the shift would take below 0 gets 0.0: it never makes a drying area. Each offset is
+    taken over the window of the cells its source won, not the whole grid: a geoid grid need not reach cells the
+    source does not hold (GEOID18 stops at -130 W, the overview reaches -135.7 W), and the offsets on the global
+    nodes are the same either way."""
+    x0, dx, rx, y0, ry, dy = grid.transform
     for index in _present(source):
         take = source == index
-        was = grid.data[take]
-        now = was - datum(SOURCE_NAMES[index], grid.transform, grid.data.shape, lakes=False)[take]
+        rows, cols = np.flatnonzero(take.any(axis=1)), np.flatnonzero(take.any(axis=0))
+        r0, r1, c0, c1 = rows[0], rows[-1] + 1, cols[0], cols[-1] + 1
+        window = (x0 + c0 * dx, dx, rx, y0 + r0 * dy, ry, dy)
+        take = take[r0:r1, c0:c1]
+        values = grid.data[r0:r1, c0:c1]  # a view: written back in place
+        was = values[take]
+        now = was - datum(SOURCE_NAMES[index], window, take.shape, lakes=False)[take]
         if SOURCE_VERTICAL[SOURCE_NAMES[index]] == "msl":
             now = np.where((was > 0) & (now < 0), np.float32(0.0), now)
-        grid.data[take] = now
+        values[take] = now
         del take
 
 
@@ -505,19 +516,78 @@ def dem_tiles(owned12: set[tuple[int, int]], tile: tuple[int, int], maxzoom: int
     return {t for t in fine if t[0] <= maxzoom}, coarse
 
 
-def build_overview(bbox, crm_path, datum: AreaDatum, clip: shapely.Geometry | None) -> BlockResult:
-    """The overview's coarse outputs from one native CRM read over overview_bounds(bbox), block-meaned to
-    OVERVIEW_RES_DEG on the global grid (the read is snapped to it, so every block is whole), with
-    OVERVIEW_BANDS (major levels only). CUDEM adds no detail at 300 m cells, so there is no fine output."""
+def _per_cell(values: np.ndarray, k: int) -> np.ndarray:
+    """values (rows and columns whole multiples of k) shaped (rows / k, k, cols / k, k): one entry per k by k cell."""
+    return values.reshape(values.shape[0] // k, k, values.shape[1] // k, k)
+
+
+def build_overview(bbox, sources: BlockSources, datum: AreaDatum, canada: shapely.Geometry | None,
+                   nosurvey: shapely.Geometry, *, lake_mask: shapely.Geometry | None = None) -> BlockResult:
+    """The overview's outputs over overview_bounds(bbox) on the global grid at OVERVIEW_RES_DEG (the read is snapped
+    to it, so every cell is whole), from the coarse sources at their native 1 arc-second: per native cell the first
+    source with data wins, as in build_block (NONNA-100 on the Canadian column `canada` only, then CRM, then ETOPO),
+    each on its datum, less lake_mask. The read goes in strips of OVERVIEW_STRIP_DEG, so the memory stays at one
+    strip over the whole plan 8 area. CUDEM and NONNA-10 add no detail at this cell size, so there is no fine output.
+
+    coarse_grid is each overview cell's mean (the Fish grid: its features use OVERVIEW_BANDS, major levels only);
+    coarse_source is the coarsest source among the cell's native cells. The Nav grids (plan 8 spec 7.1) are on the
+    Canadian column only, nan on the cells whose center is in nosurvey (the stored no-survey masks): nav_depth, the
+    offshore one, is the shallowest value of every source under the cell, so it is never deeper than any of them
+    (nav_src: the coarsest source among them); nav_survey, the inshore one, the shallowest NONNA-100 value under the
+    cell (the charts build draws CRM and ETOPO in the offshore area only)."""
     read = overview_bounds(bbox)
-    native, _ = merge_to_mllw([], read_window(str(crm_path), read), 0.0, 0.0, read, res_deg=COARSE_RES_DEG)
-    mean, transform = block_mean(native.data, native.transform, round(OVERVIEW_RES_DEG / COARSE_RES_DEG))
-    grid = Grid(mean.astype(np.float32), float("nan"), transform, native.crs)
-    del native
-    del mean
-    grid.data -= datum("crm", grid.transform, grid.data.shape, lakes=False)
-    _clip(grid, clip)
-    src = np.full(grid.data.shape, _INDEX["crm"], np.int8)
-    return BlockResult([], [], [], *_features(_with_lakes(grid, datum), None, OVERVIEW_BANDS, fine=False, src=src,
-                                              side=None, labels=LABELS),
-                       fine_grid=None, coarse_grid=grid)
+    w, s, e, n = read
+    k = round(OVERVIEW_RES_DEG / COARSE_RES_DEG)
+    rank = np.array([0] + [LABELS[name]["resolution_m"] for name in SOURCE_NAMES[1:]], np.int16)
+    by_rank = np.zeros(rank.max() + 1, np.int8)
+    by_rank[rank] = np.arange(len(rank))
+    means, srcs, navs, nav_srcs, surveys = [], [], [], [], []
+    transform = crs = None
+    top = n
+    while top > s + 1e-9:
+        strip = (w, max(s, round(top - OVERVIEW_STRIP_DEG, 10)), e, top)
+        top = strip[1]
+        native = {}
+
+        def window(path: Path, box=None, strip=strip) -> Grid:  # as in build_block, over the strip
+            if path not in native:
+                native[path] = read_window(str(path), strip if box is None else box)
+            return native[path]
+
+        crm = sources.crm_path if sources.crm_path is not None and clip_to_tile(sources.crm_path, strip) else None
+        side = _side(canada, strip, COARSE_RES_DEG)
+        layers = _coarse_layers(BlockSources([], crm, None, sources.nonna100, sources.etopo), strip,
+                                COARSE_RES_DEG, side, window)
+        grid, source = merge_ordered(layers, strip, COARSE_RES_DEG)
+        del native
+        _shift(grid, source, datum)
+        _clip(grid, lake_mask)
+        source[np.isnan(grid.data)] = 0
+        mean, mean_transform = block_mean(grid.data, grid.transform, k)
+        transform, crs = transform or mean_transform, grid.crs
+        means.append(mean.astype(np.float32))
+        srcs.append(by_rank[_per_cell(rank[source], k).max(axis=(1, 3))])
+        on = np.isfinite(grid.data) & (side if side is not None else False)
+        survey = _per_cell(np.where(on & (source == _INDEX["nonna100"]), grid.data, np.inf), k).min(axis=(1, 3))
+        other = _per_cell(np.where(on, grid.data, np.inf), k).min(axis=(1, 3))
+        coarsest = by_rank[_per_cell(np.where(on, rank[source], 0), k).max(axis=(1, 3))]
+        nav_srcs.append(np.where(np.isfinite(other), coarsest, np.int8(0)).astype(np.int8))
+        for values, out in ((other, navs), (survey, surveys)):
+            values = values.astype(np.float32)
+            values[np.isinf(values)] = np.nan
+            out.append(values)
+        del grid, source, on, survey, other
+    grid = Grid(np.vstack(means), float("nan"), transform, crs)
+    src = np.vstack(srcs)
+    nav = Grid(np.vstack(navs), float("nan"), transform, crs)
+    nav_src = np.vstack(nav_srcs)
+    survey = Grid(np.vstack(surveys), float("nan"), transform, crs)
+    if nosurvey is not None and not nosurvey.is_empty:
+        hole = clip_mask(transform, nav.data.shape, mapping(nosurvey))
+        nav.data[hole] = survey.data[hole] = np.nan
+        nav_src[hole] = 0
+    side = _side(canada, read, OVERVIEW_RES_DEG)
+    return BlockResult([], [], [], *_features(_with_lakes(grid, datum), read, OVERVIEW_BANDS, fine=False, src=src,
+                                              side=side, labels=LABELS, canada=canada),
+                       fine_grid=None, coarse_grid=grid, coarse_source=src, nav_depth=nav, nav_src=nav_src,
+                       nav_survey=survey)

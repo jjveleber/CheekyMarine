@@ -1,25 +1,25 @@
-# The overview pack (spec 5.2): zoom 9 and below over all wave 1 regions, from bands 1 to 3 and one CRM read.
-# The bbox is the extent of every zoom-10 tile the region packs own (grid.toml), rounded outward, so the CRM
-# read covers all of them (spec 4 has -127.0, 46.15, -122.1, 49.05).
+# The overview pack (spec 5.2): zoom 9 and below over every region, US and BC (plan 8 spec 4), from bands 1 to 3 and
+# the coarse depth sources. The bbox is the extent of every zoom-10 tile the region packs own (grid.toml), rounded
+# outward, so the coarse reads cover all of them.
 name = "overview"
-charts_version = "1.0.0"
-bathy_version = "1.0.0"
-bbox = [-127.265625, 46.0732, -121.9921875, 49.153]
+charts_version = "1.1.0"
+bathy_version = "1.1.0"
+bbox = [-135.703125, 46.0732, -121.9921875, 55.1789]
 overview = true
-clip = "clip/canada-wa.geojson"
 
-# Every Active cell of bands 1 to 3 whose catalog polygon meets all wave 1 owned tiles (zoom-10 tiles,
-# grid.toml), from `chartpack cells` and the catalog of 2026-11-09.
+# Every Active cell of bands 1 to 3 whose catalog polygon meets all owned tiles (zoom-10 tiles, grid.toml), from
+# `chartpack cells` and the catalog of 2026-11-12.
 [enc]
-band1 = ["US1GLBDD"]
-band2 = ["US2PACWX", "US2PACWY"]
+band1 = ["US1GLBDC", "US1GLBDD"]
+band2 = ["US2PACWX", "US2PACWY", "US2PACYU", "US2PACYW"]
 band3 = [
-    "US3WA1CD", "US3WA1CE", "US3WA1CF", "US3WA1DD", "US3WA1DE", "US3WA1DF", "US3WA1DG", "US3WA1ED", "US3WA1EE",
-    "US3WA1EF", "US3WA1EG",
+    "US3AK1DW", "US3AK1DX", "US3AK1DY", "US3WA1CD", "US3WA1CE", "US3WA1CF", "US3WA1DD", "US3WA1DE", "US3WA1DF",
+    "US3WA1DG", "US3WA1ED", "US3WA1EE", "US3WA1EF", "US3WA1EG",
 ]
 
 [bathy]
-sources = ["crm"]  # one CRM read over the bbox (load_region)
+# Coarse sources only (load_region): NONNA-100 of every region with it, through one VRT, then CRM, then ETOPO.
+sources = ["nonna100", "crm", "etopo"]
 dem_maxzoom = 14
 
 [datum]

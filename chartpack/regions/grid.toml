@@ -1,4 +1,11 @@
 # Zoom-10 tile ownership order (plan 7): a tile meeting several region boxes goes to the first one listed.
 # sound-south comes first so the tile row holding 47.45 N goes south and Tacoma Narrows stays in sound-south.
+# The BC packs come after the wave 1 packs, so no wave 1 tile changes owner, and the eight inshore BC packs before
+# the two offshore packs, so inshore water never falls under the offshore rules (plan 8 spec 4).
 zoom = 10
-order = ["sound-south", "sound-central", "north-sound", "strait", "wa-coast"]
+order = [
+    "sound-south", "sound-central", "north-sound", "strait", "wa-coast",
+    "bc-south-georgia", "bc-vi-west-south", "bc-north-georgia", "bc-johnstone", "bc-vi-west-north", "bc-central",
+    "bc-north", "haida-gwaii",
+    "bc-offshore-south", "bc-offshore-north",
+]

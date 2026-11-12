@@ -60,8 +60,10 @@ def test_cells_reproduces_the_wave1_lists(tmp_path, fixtures_dir, regions_dir, m
     every owned tile. The fixture holds every cell the regions name, so this holds against it."""
     from chartpack.region import load_region
 
+    from chartpack.grid import load_grid
+
     _fixture_catalog(monkeypatch, fixtures_dir)
-    for name in ["sound-south", "sound-central", "north-sound", "strait", "wa-coast", "overview"]:
+    for name in load_grid(regions_dir / "grid.toml") + ["overview"]:
         path = regions_dir / f"{name}.toml"
         for band, names in load_region(path).cells.items():
             assert main(["cells", str(path), "--band", str(band), "--cache", str(tmp_path / "cache")]) == 0
@@ -563,7 +565,7 @@ def test_build_bathy_masks_lakes_without_a_datum_rule(tmp_path, fixtures_dir, re
 
 
 def test_build_bathy_masks_lakes_in_the_overview(tmp_path, regions_dir, monkeypatch, zero_geoid):
-    """The overview's one CRM read is cut by the same lake mask as the region packs."""
+    """The overview's coarse read is cut by the same lake mask as the region packs."""
     from shapely.geometry import box
 
     from chartpack import cli
@@ -571,7 +573,9 @@ def test_build_bathy_masks_lakes_in_the_overview(tmp_path, regions_dir, monkeypa
     from chartpack.bathy.crm import crm_path
 
     region = _bathy_region(tmp_path, regions_dir)
-    region.write_text("overview = true\n" + region.read_text().replace('sources = ["cudem", "crm"]', 'sources = ["crm"]'))
+    shutil.copy(region, region.with_name("test-cell.toml"))  # the grid's region pack; the overview is in no grid
+    text = region.read_text().replace('sources = ["cudem", "crm"]', 'sources = ["crm"]')
+    region.write_text("overview = true\n" + text.replace('name = "test-cell"', 'name = "ov"'))
     lake = box(-122.382, 47.898, -122.378, 47.902)
     _mask_lake(region, lake)
     path = crm_path(overview_bounds((-122.3846, 47.8954, -122.3754, 47.9046)), tmp_path / "cache")
@@ -579,8 +583,8 @@ def test_build_bathy_masks_lakes_in_the_overview(tmp_path, regions_dir, monkeypa
     path.touch()
     clips = []
 
-    def fake_overview(bbox, crm, datum, clip):
-        clips.append(clip)
+    def fake_overview(bbox, sources, datum, canada, nosurvey, *, lake_mask=None):
+        clips.append(lake_mask)
         raise RuntimeError("stop")
 
     monkeypatch.setattr(cli, "build_overview", fake_overview)
@@ -588,6 +592,46 @@ def test_build_bathy_masks_lakes_in_the_overview(tmp_path, regions_dir, monkeypa
         main(["build-bathy", str(region), str(tmp_path / "out"), "--cache", str(tmp_path / "cache"),
               "--work", str(tmp_path / "work")])
     assert clips[0] is not None and clips[0].covers(lake)
+
+
+def test_build_bathy_overview_draws_no_depth_outside_owned_tiles(tmp_path, regions_dir, monkeypatch, zero_geoid):
+    """The overview bbox reaches past the owned tiles (an unowned tile east of the grid's one tile): the mask handed
+    to build_overview covers everything in its read outside the owned tiles and nothing inside them, so no depth is
+    drawn where no pack owns a tile (and so no BC notice area could be missing there)."""
+    from shapely.geometry import box
+
+    from chartpack import cli
+    from chartpack.bathy.blocks import overview_bounds
+    from chartpack.bathy.crm import crm_path
+    from chartpack.grid import owned_tiles, tile_bounds, tiles_area
+    from chartpack.region import load_region
+
+    region = _bathy_region(tmp_path, regions_dir)
+    pack = Path(shutil.copy(region, region.with_name("test-cell.toml")))
+    bbox = "bbox = [-122.3846, 47.8954, -122.2, 47.9046]"  # east into the next zoom-10 column
+    text = region.read_text().replace('sources = ["cudem", "crm"]', 'sources = ["crm"]')
+    region.write_text("overview = true\n" + text.replace('name = "test-cell"', 'name = "ov"')
+                      .replace("bbox = [-122.3846, 47.8954, -122.3754, 47.9046]", bbox))
+    _mask_lake(region, box(-122.30, 47.70, -122.29, 47.71))  # one lake, away from the owned tile
+    path = crm_path(overview_bounds(load_region(region).bbox), tmp_path / "cache")
+    path.parent.mkdir(parents=True)
+    path.touch()
+    masks = []
+
+    def fake_overview(bbox, sources, datum, canada, nosurvey, *, lake_mask=None):
+        masks.append(lake_mask)
+        raise RuntimeError("stop")
+
+    monkeypatch.setattr(cli, "build_overview", fake_overview)
+    with pytest.raises(RuntimeError, match="stop"):
+        main(["build-bathy", str(region), str(tmp_path / "out"), "--cache", str(tmp_path / "cache"),
+              "--work", str(tmp_path / "work")])
+    owned = tiles_area(owned_tiles(load_region(pack), pack.parent))
+    read = box(*overview_bounds(load_region(region).bbox))
+    (mask,) = masks
+    assert mask.covers(read.difference(owned)) and mask.intersection(owned).area < 1e-12
+    unowned = box(*tile_bounds(10, 164, 356)).intersection(read)
+    assert unowned.area > 0 and mask.covers(unowned)
 
 
 def test_build_bathy_tile_outside_crm_has_no_coarse_layer(tmp_path, fixtures_dir, regions_dir, monkeypatch, capsys,
@@ -1454,10 +1498,114 @@ def test_build_enc_canadian_tiles_without_nonna_fail(tmp_path, fixtures_dir, reg
               "--work", str(tmp_path / "work")])
 
 
-def test_build_enc_overview_meeting_canada_stops(tmp_path, fixtures_dir, regions_dir, monkeypatch):
-    """The overview owns no tile, so nothing derived would fill its Canadian water after the NOAA cut: an overview
-    whose content tiles meet the Canada polygon stops before the build, naming plan 8 Task 15. One away from the
-    polygon builds as before (test_build_enc_crops_the_overview_to_every_owned_tile and the fixtures)."""
+def _overview_over_bc(tmp_path, fixtures_dir, regions_dir, monkeypatch):
+    """A grid of one BC inshore region (the bathy test region as test-cell, assets toba, with its fetched and derived
+    assets in the cache) and an overview ov over it reading NONNA-100 and CRM. Returns (overview path, cache)."""
+    import gzip
+    import json
+
+    from shapely.geometry import box, mapping
+
+    from chartpack.bathy.blocks import overview_bounds
+    from chartpack.bathy.crm import crm_path
+    from chartpack.grid import fetch_extent
+    from chartpack.region import load_region
+
+    region = _nonna_region(tmp_path, regions_dir)
+    region = region.rename(region.with_name("test-cell.toml"))
+    shutil.copy(regions_dir / "bc-valdco.toml", region.parent)
+    cache = _bathy_cache(tmp_path, fixtures_dir, region, monkeypatch, [])
+    folder = cache / "sources-bc-1"
+    _write_assets(folder, region)
+    land = box(-122.395, 47.885, -122.390, 47.890)
+    for name, geom in (("land-toba.geojson.gz", land), ("nosurvey-toba.geojson.gz", box(-122.37, 47.915, -122.365,
+                                                                                          47.918))):
+        features = [{"type": "Feature", "properties": {}, "geometry": mapping(geom)}]
+        (folder / name).write_bytes(gzip.compress(json.dumps({"type": "FeatureCollection",
+                                                              "features": features}).encode()))
+    _write_derive_stats(folder, fetch_extent(load_region(region), region.parent))
+    overview = region.with_name("ov.toml")
+    overview.write_text("overview = true\n" + (regions_dir / "test-cell.toml").read_text()
+                        .replace('name = "test-cell"', 'name = "ov"')
+                        .replace('sources = ["cudem", "crm"]', 'sources = ["nonna100", "crm"]'))
+    path = crm_path(overview_bounds(load_region(overview).bbox), cache)
+    shutil.copy(fixtures_dir / "cudem_possession_bar.tif", path)
+    return overview, cache
+
+
+def test_overview_charts_never_open_nonna10(tmp_path, fixtures_dir, regions_dir, monkeypatch, capsys, zero_geoid):
+    """The overview's charts build draws its Canadian water from the stored land and no-survey assets of every BC
+    region and the coarse depth (NONNA-100 through one VRT): a spy on every way the build opens a file or a raster
+    sees the NONNA-100 asset and never a NONNA-10 one. build-enc hands the derived depth and land and their inputs
+    to the tiling, at the overview's zooms."""
+    import argparse
+
+    from osgeo import gdal
+    from shapely.geometry import box
+
+    from chartpack import cli
+    from chartpack.bathy import blocks
+    from chartpack.grid import content_tiles
+    from chartpack.region import load_region
+
+    overview, cache = _overview_over_bc(tmp_path, fixtures_dir, regions_dir, monkeypatch)
+    canada = box(-123.0, 47.5, -122.385, 48.5)  # the west part of the tile: the NOAA cell keeps its east part
+    monkeypatch.setattr(cli, "load_canada", lambda regions: canada)
+    seen = []
+
+    def spy(module, name):
+        real = getattr(module, name)
+
+        def wrapper(*args, **kwargs):
+            for value in list(args) + list(kwargs.values()):
+                for item in value if isinstance(value, (list, tuple)) else [value]:
+                    seen.append(str(item))
+            return real(*args, **kwargs)
+
+        monkeypatch.setattr(module, name, wrapper)
+
+    for name in ("Open", "OpenEx", "Warp", "Translate", "BuildVRT"):
+        spy(gdal, name)
+    spy(cli, "_sha256")
+    spy(cli, "_read_polygons")
+    spy(blocks, "read_nonna")
+    _no_network(monkeypatch)
+    ov = load_region(overview)
+    args = argparse.Namespace(region=overview, cache=cache, work=tmp_path / "work")
+    features, depth_sources = cli._overview_derived(args, ov, content_tiles(ov, overview.parent), canada)
+    assert not [p for p in seen if "nonna10-" in p]
+    assert [p for p in seen if p.endswith("nonna100-toba.tif")]
+    assert "nonna10-" not in (tmp_path / "work" / "nonna100.vrt").read_text()
+    assets = {d["asset"] for d in depth_sources}  # the build keeps those its features come from
+    assert {"nonna100-toba.tif", "land-toba.geojson.gz", "nosurvey-toba.geojson.gz"} <= assets
+    assert not [a for a in assets if a.startswith("nonna10-")]
+    srcs = {(f.layer, f.props.get("src")) for f in features}
+    assert ("depare", "nonna100") in srcs and ("lndare", "fwa") in srcs
+    assert not [f for f in features if f.props.get("src") in ("nonna10", "crm", "etopo")]  # inshore: NONNA only
+    assert all(f.props["tippecanoe"]["minzoom"] >= 6 and f.props["tippecanoe"]["maxzoom"] <= 9 for f in features)
+    assert not [f for f in features if f.layer == "soundg"]
+
+    seen.clear()
+    built = []
+
+    def stop(*args, **kwargs):  # tippecanoe of the overview cell is not the point: what reaches it is
+        built.append(kwargs)
+        raise RuntimeError("stop")
+
+    monkeypatch.setattr(cli, "build_enc_mbtiles", stop)
+    with pytest.raises(RuntimeError, match="stop"):
+        main(["build-enc", str(overview), str(tmp_path / "out"), "--cache", str(cache), "--work",
+              str(tmp_path / "work")])
+    assert not [p for p in seen if "nonna10-" in p]
+    (kwargs,) = built
+    assert kwargs["canada"] is canada and kwargs["zooms"] == (6, 9)
+    assert {(f.layer, f.props.get("src")) for f in kwargs["derived"]} == srcs
+    assert kwargs["depth_sources"] == depth_sources
+
+
+def test_build_enc_overview_without_nonna100_meeting_canada_stops(tmp_path, fixtures_dir, regions_dir, monkeypatch):
+    """An overview whose content tiles meet the Canada polygon but which lists no NONNA-100 would leave its Canadian
+    water blank after the NOAA cut: the build stops naming the region, before anything is tiled."""
     from shapely.geometry import box
 
     from chartpack import cli
@@ -1470,7 +1618,7 @@ def test_build_enc_overview_meeting_canada_stops(tmp_path, fixtures_dir, regions
                         .replace('sources = ["cudem", "crm"]', 'sources = ["crm"]'))
     monkeypatch.setattr(cli, "load_canada", lambda regions: box(-123.0, 47.5, -122.0, 48.5))
     monkeypatch.setattr(cli, "build_enc_mbtiles", lambda *a, **k: pytest.fail("built with blank Canadian water"))
-    with pytest.raises(SystemExit, match=r"region ov: .*Canada polygon.*overview.*Task 15"):
+    with pytest.raises(SystemExit, match=r"region ov: .*Canada polygon.*NONNA-100"):
         main(["build-enc", str(overview), str(tmp_path / "out"), "--cache", str(tmp_path / "cache"),
               "--work", str(tmp_path / "work")])
 

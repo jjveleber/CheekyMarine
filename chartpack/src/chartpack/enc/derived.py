@@ -252,11 +252,12 @@ def _soundings(depth_m, src, transform, allowed, cut, zooms, core) -> list[Featu
 
 
 def derived_features(depth_m: np.ndarray, src: np.ndarray, transform, *, core, levels_m: list[float],
-                     nosurvey: shapely.Geometry, land: shapely.Geometry, lat: float) -> list[Feature]:
+                     nosurvey: shapely.Geometry, land: shapely.Geometry, lat: float, bands=BANDS,
+                     soundings: bool = True) -> list[Feature]:
     """The Nav features of one block from depth_m (meters, positive down, a drying height negative, nan for no
     value; src its source index into SOURCE_NAMES), each carrying its tippecanoe zoom range:
 
-    - per BANDS zoom range, from the grid block-min downsampled to the band's cell size: depare between
+    - per zoom range of bands, from the grid block-min downsampled to the band's cell size: depare between
       consecutive levels_m (DRVAL1, DRVAL2), plus one drying area from -H to 0 (H the greatest drying height in
       depth_m rounded up to 0.1 m) and one from the last level to DEEPEST_M, and depcnt on levels_m (VALDCO),
       each with src: the source of its cells, the coarsest when it spans more than one. A grid finer than
@@ -264,9 +265,11 @@ def derived_features(depth_m: np.ndarray, src: np.ndarray, transform, *, core, l
       (_neighborhood_min) before contouring; nothing is simplified (tippecanoe does that);
     - soundg per zoom (_soundings), from nonna10 and nonna100 cells only, src the source of the cell, in the
       sounding cells whose center lies in core;
-    - lndare and coalne from land, src "fwa", and nosurvey, each cut to core, over every BANDS zoom.
+    - lndare and coalne from land, src "fwa", and nosurvey, each cut to core, over every zoom of bands.
 
-    Every depth geometry is cut to core and to the valid input cells, less nosurvey and land.
+    Every depth geometry is cut to core and to the valid input cells, less nosurvey and land. bands gives the zoom
+    ranges and cell sizes (BANDS for a region pack, OVERVIEW_BANDS for the overview, which passes soundings=False:
+    below zoom 10 a sounding cell can straddle two blocks, _owns).
     lat is unused since nothing is simplified here (kept in the interface). For the offshore kind the caller passes the coarse merge and empty nosurvey and land."""
     core_box = box(*core)
     levels = sorted(float(v) for v in levels_m)
@@ -274,7 +277,7 @@ def derived_features(depth_m: np.ndarray, src: np.ndarray, transform, *, core, l
     with np.errstate(invalid="ignore"):
         dry = depth_m[depth_m < 0]
     drying_m = math.ceil(round(-float(dry.min()) * 10, 4)) / 10 if dry.size else 0.0
-    zooms = (BANDS[0][0], BANDS[-1][1])
+    zooms = (bands[0][0], bands[-1][1])
     out = []
     valid = np.isfinite(depth_m)
     if valid.any():
@@ -289,15 +292,16 @@ def derived_features(depth_m: np.ndarray, src: np.ndarray, transform, *, core, l
         shapely.prepare(cut)
         if not cut.is_empty:
             tiles = _tiles(cut, core)
-            for lo, hi, target in BANDS:
+            for lo, hi, target in bands:
                 k = block_factor(base_tr, target)
                 grid, tr = block_min(base, base_tr, k) if k > 1 else (base, base_tr)
                 band_src = _coarsest(base_src, base_valid, base_tr, k) if k > 1 else base_src
                 grid, tr = _neighborhood_min(grid, tr)
                 out += _depth_features(grid, np.pad(band_src, 1), tr, levels_m=levels, drying_m=drying_m,
                                        tiles=tiles, zooms=(lo, hi))
-            allowed = clip_mask(transform, depth_m.shape, mapping(cut))
-            out += _soundings(depth_m, src, transform, allowed, cut, zooms, core)
+            if soundings:
+                allowed = clip_mask(transform, depth_m.shape, mapping(cut))
+                out += _soundings(depth_m, src, transform, allowed, cut, zooms, core)
     tip = {"minzoom": zooms[0], "maxzoom": zooms[1]}
     for part in _parts(land.intersection(core_box), 2):
         out.append(Feature("lndare", mapping(part), {"src": "fwa", "tippecanoe": tip}))
