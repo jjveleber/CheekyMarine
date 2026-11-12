@@ -1368,3 +1368,13 @@ def test_no_enc_fallback_contour_inside_canada(tmp_path, fixtures_dir, regions_d
     after = enc_lines("after")
     assert after and union_all(after).intersection(strip).length < 1e-12
     assert union_all(after).symmetric_difference(union_all(before).difference(strip)).length < 1e-9
+
+
+def test_check_passes_the_repo_canada_polygon(charts_pack_root_copy, regions_dir, monkeypatch, capsys):
+    from chartpack import cli
+    from chartpack.enc.bc import load_canada
+
+    got = []
+    monkeypatch.setattr(cli, "check_pack", lambda root, *, enc_zips=None, canada=None: got.append(canada) or [])
+    assert main(["check", str(charts_pack_root_copy)]) == 0
+    assert len(got) == 1 and got[0].equals(load_canada(regions_dir))

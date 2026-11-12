@@ -67,7 +67,7 @@ from chartpack.grid import (
     tiles_meeting,
 )
 from chartpack.pack.archive import archive_pack
-from chartpack.pack.assemble import BATHY_FILES, assemble_bathy_pack, assemble_charts_pack
+from chartpack.pack.assemble import BATHY_FILES, PROJECT, assemble_bathy_pack, assemble_charts_pack
 from chartpack.pack.check import check_pack
 from chartpack.pack.manifest import describe_pack, write_manifest
 from chartpack.pack.restyle import restyle_pack
@@ -428,7 +428,7 @@ def _check(args: argparse.Namespace) -> int:
             paths = []  # check_pack reports the manifest problem
         errors = [f"{p}: ENC zip not found in --enc-cache" for p in paths if not p.is_file()]
         zips = [p for p in paths if p.is_file()]
-    errors += check_pack(args.packdir, enc_zips=zips)
+    errors += check_pack(args.packdir, enc_zips=zips, canada=load_canada(PROJECT / "regions"))
     for error in errors:
         print(error)
     return 1 if errors else 0

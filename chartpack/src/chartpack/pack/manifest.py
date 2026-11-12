@@ -41,6 +41,8 @@ def write_manifest(
     }
     if pack == "bathy":
         manifest["charts_schema"] = SCHEMA_VERSION
+    else:  # the region's charts kind (plan 8 spec 7.1): the pack check needs the derived layers of a derived pack
+        manifest["charts"] = {"kind": region.charts_kind}
     (root / MANIFEST).write_text(json.dumps(manifest, indent=2) + "\n")
     return manifest
 

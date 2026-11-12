@@ -25,7 +25,8 @@ def restyle_pack(root: Path, night: str = "amber") -> None:
     colors = night_palette(night)
     write_styles(root, pack, safety, colors)
     build_sprites(PROJECT / "symbols", root / "sprites", "nav" if pack == "charts" else "fish", colors)
-    # write_manifest reads only the region name and the pack's version from the region.
-    region = SimpleNamespace(name=old["region"], charts_version=old["version"], bathy_version=old["version"])
+    # write_manifest reads only the region name, the pack's version and its charts kind from the region.
+    region = SimpleNamespace(name=old["region"], charts_version=old["version"], bathy_version=old["version"],
+                             charts_kind=(old.get("charts") or {}).get("kind", "enc"))
     write_manifest(root, pack=pack, region=region, sources=old["sources"], notice=old["notice"],
                    built=datetime.strptime(old["built"], "%Y-%m-%dT%H:%M:%SZ"))

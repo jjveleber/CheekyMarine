@@ -355,3 +355,228 @@ def test_schema2_pack_without_new_layers_still_passes(charts_pack_root, fixtures
     assert "nosurvey" not in layers
     assert not any("src" in layers[name].get("fields", {}) for name in ("depare", "depcnt", "soundg", "lndare", "coalne"))
     assert check_pack(charts_pack_root, enc_zips=[fixtures_dir / "US4WA1HK.zip"]) == []
+
+
+# ---- plan 8 Task 11: derived packs, the no-survey and Canada polygon rules (spec 7.1, 7.2)
+
+Z, X, Y = 16, 10600, 23000  # a zoom-16 tile for the hand-made packs (about 121.77 W, 47.6 N)
+
+
+def _tile_box(x0, y0, x1, y1, z=Z, x=X, y=Y):
+    """A lon/lat polygon over the tile unit box (x0, y0, x1, y1) of tile z/x/y (4,096 units, y down)."""
+    from shapely.geometry import Polygon
+    from tilemath import to_lonlat
+
+    return Polygon([to_lonlat(z, x, y, px, py) for px, py in ((x0, y0), (x1, y0), (x1, y1), (x0, y1))])
+
+
+CANADA = _tile_box(1000, 1000, 3000, 3000)  # a stand-in Canada polygon, inside the tile
+
+
+def _square(x0, y0, x1, y1):
+    return {"type": "Polygon", "coordinates": [[(x0, y0), (x1, y0), (x1, y1), (x0, y1), (x0, y0)]]}
+
+
+def _point(x, y):
+    return {"type": "Point", "coordinates": [x, y]}
+
+
+def _put(path, z, x, y, layers):
+    """Put one tile: layers maps a layer name to (geometry, properties) pairs in tile units."""
+    from chartpack.mbtiles import MBTiles
+
+    encoded = [{"name": name, "features": [{"geometry": g, "properties": p} for g, p in feats]}
+               for name, feats in layers.items()]
+    with MBTiles.open(path) as m:
+        m.put_tile(z, x, y, gzip.compress(mapbox_vector_tile.encode(encoded, default_options={"y_coord_down": True})))
+
+
+def _hand_pack(tmp_path, test_region, kind, tiles, *, minzoom=Z, maxzoom=Z, owned=None):
+    """A charts pack holding enc.mbtiles alone (no styles): tiles maps (z, x, y) to _put layers; charts.kind kind."""
+    import dataclasses
+
+    from chartpack.enc.schema import LAYERS, OPTIONAL_LAYERS
+    from chartpack.mbtiles import MBTiles
+
+    root = tmp_path / "hand-pack"
+    root.mkdir()
+    built = {name for layers in tiles.values() for name in layers}
+    layers = [{"id": s.name} for s in LAYERS if s.name not in OPTIONAL_LAYERS or s.name in built]
+    with MBTiles.create(root / "enc.mbtiles", fmt="pbf") as m:
+        m.set_metadata({
+            "name": "t", "format": "pbf", "bounds": "-180,-85,180,85", "minzoom": str(minzoom),
+            "maxzoom": str(maxzoom), "cheekymarine:schema": "2", "cheekymarine:pack": "charts",
+            "cheekymarine:region": "t", "cheekymarine:version": "0.1.0", "cheekymarine:built": "x",
+            "cheekymarine:sources": json.dumps([{"cell": "US5AAAAA", "edtn": 1, "updn": 0, "isdt": "2026-01-01"}]),
+            "cheekymarine:valdco": "[]", "cheekymarine:seabed": "[]", "json": json.dumps({"vector_layers": layers}),
+            **({"cheekymarine:owned": json.dumps(owned)} if owned is not None else {})})
+    for (z, x, y), content in tiles.items():
+        _put(root / "enc.mbtiles", z, x, y, content)
+    write_manifest(root, pack="charts", region=dataclasses.replace(test_region, charts_kind=kind), sources=[],
+                   notice="n", built=datetime.now(timezone.utc))
+    return root
+
+
+WATER = {"depare": [(_square(0, 0, 4096, 4096), {"src": "nonna10", "DRVAL1": "0", "DRVAL2": "5"})],
+         "lndare": [(_square(0, 0, 10, 10), {"src": "fwa"})]}
+
+
+def test_derived_layers_checked_at_every_zoom(tmp_path, test_region):
+    from chartpack.pack.check import _check_derived_layers
+
+    tiles = {(z, X >> (16 - z), Y >> (16 - z)): WATER for z in range(10, 17)}
+    tiles[(14, X >> 2, Y >> 2)] = {"lndare": WATER["lndare"]}
+    root = _hand_pack(tmp_path, test_region, "derived-inshore", tiles, minzoom=10, maxzoom=16)
+    assert check_pack(root) == ["enc.mbtiles: derived layer depare has no features at zoom 14"]
+    from chartpack.mbtiles import MBTiles
+
+    with MBTiles.open(root / "enc.mbtiles") as m:  # an offshore pack needs no land
+        assert _check_derived_layers(m, m.metadata(), "derived-offshore") == [
+            "enc.mbtiles: derived layer depare has no features at zoom 14"]
+
+
+def test_derived_inshore_pack_passes_check_without_navaids(tmp_path, test_region):
+    root = _hand_pack(tmp_path, test_region, "derived-inshore", {(Z, X, Y): WATER})
+    assert check_pack(root) == []
+
+
+def test_enc_pack_still_needs_all_safety_layers(tmp_path, test_region):
+    root = _hand_pack(tmp_path, test_region, "enc", {(Z, X, Y): WATER})
+    errs = check_pack(root)
+    assert "enc.mbtiles: safety layer navaid has no features at zoom 16" in errs
+    assert "enc.mbtiles: safety layer hazard has no features at zoom 16" in errs
+    manifest = json.loads((root / "manifest.json").read_text())
+    del manifest["charts"]  # a pack from before plan 8: charts.kind enc
+    (root / "manifest.json").write_text(json.dumps(manifest))
+    assert check_pack(root) == errs
+
+
+def test_depth_inside_nosurvey_fails_check(tmp_path, test_region):
+    """A soundg inside a nosurvey polygon: one error naming the tile. A derived depare sharing the nosurvey edge, and
+    a NOAA sounding (no src) inside it, are not errors."""
+    tiles = {(Z, X, Y): {**WATER, "depare": [(_square(0, 0, 2048, 4096), {"src": "nonna10"})],
+                         "nosurvey": [(_square(2048, 0, 4096, 4096), {})],
+                         "soundg": [(_point(3000, 2000), {"src": "nonna10", "depth": "4.1"}),
+                                    (_point(1000, 2000), {"src": "nonna10", "depth": "4.2"}),
+                                    (_point(3000, 3000), {"depth": "4.3"})]}}
+    root = _hand_pack(tmp_path, test_region, "derived-inshore", tiles)
+    assert check_pack(root) == [f"enc.mbtiles: soundg depth inside a nosurvey area in tile {Z}/{X}/{Y}"]
+
+
+def test_noaa_feature_inside_polygon_fails_check(tmp_path, test_region):
+    tiles = {(Z, X, Y): {**WATER, "light": [(_point(2000, 2000), {"OBJNAM": "a"})],
+                         "seabed": [(_point(2100, 2100), {"src": "enc"}), (_point(2200, 2200), {"src": "usseabed"}),
+                                    (_point(500, 500), {"src": "usseabed"})]}}
+    root = _hand_pack(tmp_path, test_region, "derived-inshore", tiles)
+    assert check_pack(root) == []  # without the polygon nothing is checked
+    tile = f"{Z}/{X}/{Y}"
+    assert check_pack(root, canada=CANADA) == [f"enc.mbtiles: {layer} feature inside the Canada polygon in tile {tile}"
+                                               for layer in ("light", "seabed", "seabed")]
+
+
+def test_line_crossing_polygon_without_vertex_inside_fails_check(tmp_path, test_region):
+    line = {"type": "LineString", "coordinates": [[500, 2000], [3500, 2000]]}
+    root = _hand_pack(tmp_path, test_region, "derived-inshore", {(Z, X, Y): {**WATER, "line": [(line, {})]}})
+    assert check_pack(root, canada=CANADA) == [
+        f"enc.mbtiles: line feature inside the Canada polygon in tile {Z}/{X}/{Y}"]
+
+
+def test_cut_edge_moved_by_simplification_passes_check(tmp_path, test_region):
+    """A NOAA depare cut at the polygon's west edge (x = 1000), its edge moved 1.5 units inside by tippecanoe."""
+    root = _hand_pack(tmp_path, test_region, "derived-inshore",
+                      {(Z, X, Y): {**WATER, "depare": WATER["depare"] + [(_square(0, 0, 1001.5, 4096), {})]}})
+    assert check_pack(root, canada=CANADA) == []
+
+
+def test_derived_features_inside_polygon_pass_check(tmp_path, test_region):
+    from chartpack.enc.bc import DERIVED_SRC
+
+    tiles = {(Z, X, Y): {**WATER, "depare": [(_square(0, 0, 1500, 4096), {"src": "nonna100"})],
+                         "nosurvey": [(_square(1500, 1500, 2500, 2500), {})],
+                         "coalne": [({"type": "LineString", "coordinates": [[1200, 1200], [2800, 1200]]},
+                                     {"src": "fwa"})],
+                         "soundg": [(_point(1100 + 100 * i, 2800), {"src": s, "depth": "3"})
+                                    for i, s in enumerate(DERIVED_SRC)]}}
+    assert check_pack(_hand_pack(tmp_path, test_region, "derived-inshore", tiles), canada=CANADA) == []
+
+
+def test_enc_contour_inside_canada_fails_bathy_check(tmp_path, test_region):
+    from chartpack.mbtiles import MBTiles
+
+    root = _bathy_pack(tmp_path, test_region, set())
+    line = {"type": "LineString", "coordinates": [[1500, 500], [1500, 3500]]}
+    for name, source in (("bathy.mbtiles", "enc"), ("bathy-coarse.mbtiles", "crm")):
+        _put(root / name, Z, X, Y, {"contour": [(line, {"source": source, "depth_ft": 10})],
+                                    "band": [(_square(0, 0, 4096, 4096), {})],
+                                    "coverage": [(_square(0, 0, 4096, 4096), {"source": source})]})
+        with MBTiles.open(root / name) as m:
+            m.set_metadata({"minzoom": str(Z), "maxzoom": str(Z)})
+    write_manifest(root, pack="bathy", region=test_region, sources=[], notice="n", built=datetime.now(timezone.utc))
+    assert check_pack(root) == []
+    assert check_pack(root, canada=CANADA) == [
+        f"bathy.mbtiles: contour feature with source enc inside the Canada polygon in tile {Z}/{X}/{Y}"]
+
+
+def _cover_pack(tmp_path, layers):
+    """enc.mbtiles with the one tile Z/X/Y holding layers, owned the zoom-10 tile around it."""
+    from chartpack.mbtiles import MBTiles
+
+    path = tmp_path / "cover.mbtiles"
+    with MBTiles.create(path, fmt="pbf") as m:
+        m.set_metadata({"maxzoom": str(Z), "cheekymarine:owned": json.dumps([[X >> 6, Y >> 6]])})
+    _put(path, Z, X, Y, layers)
+    return path
+
+
+def _cell(monkeypatch, hazards=()):
+    """check.read_cell gives one band 4 cell covering exactly tile Z/X/Y, with the hazards (lon, lat, VALSOU)."""
+    from shapely.geometry import mapping
+
+    from chartpack.enc.reader import CellMeta, Feature
+    from chartpack.pack import check
+
+    meta = CellMeta("US4AAAAA", 4, 1, 0, "2026-01-01", mapping(_tile_box(0, 0, 4096, 4096)))
+    feats = [Feature("hazard", {"type": "Point", "coordinates": [lon, lat]},
+                     {"class": "UWTROC", "VALSOU": valsou, "WATLEV": 3}) for lon, lat, valsou in hazards]
+    monkeypatch.setattr(check, "read_cell", lambda path: (meta, feats))
+
+
+def test_cover_rule_counts_nosurvey(tmp_path, monkeypatch):
+    from chartpack.mbtiles import MBTiles
+    from chartpack.pack.check import _check_against_sources
+
+    _cell(monkeypatch)
+    path = _cover_pack(tmp_path, {"depare": [(_square(0, 0, 2048, 4096), {"src": "nonna10"})],
+                                  "nosurvey": [(_square(2048, 0, 4096, 4096), {})]})
+    with MBTiles.open(path) as m:
+        assert _check_against_sources(m, m.metadata(), ["cell"], None) == []
+    path.unlink()
+    path = _cover_pack(tmp_path, {"depare": [(_square(0, 0, 2048, 4096), {"src": "nonna10"})]})
+    with MBTiles.open(path) as m:
+        assert [e[:24] for e in _check_against_sources(m, m.metadata(), ["cell"], None)] == ["depare and lndare cover "]
+
+
+def test_hazard_rule_ignores_cut_canadian_side(tmp_path, monkeypatch):
+    from tilemath import to_lonlat
+
+    from chartpack.mbtiles import MBTiles
+    from chartpack.pack.check import _check_against_sources
+
+    _cell(monkeypatch, [(*to_lonlat(Z, X, Y, 2000, 2000), "1.2")])
+    path = _cover_pack(tmp_path, {"depare": [(_square(0, 0, 4096, 4096), {})]})
+    with MBTiles.open(path) as m:
+        assert _check_against_sources(m, m.metadata(), ["cell"], CANADA) == []
+        assert len(_check_against_sources(m, m.metadata(), ["cell"], None)) == 1  # the polygon is what excuses it
+
+
+def test_us_side_hazard_still_required_in_rebuilt_pack(tmp_path, monkeypatch):
+    from tilemath import to_lonlat
+
+    from chartpack.mbtiles import MBTiles
+    from chartpack.pack.check import _check_against_sources
+
+    _cell(monkeypatch, [(*to_lonlat(Z, X, Y, 500, 500), "1.2")])
+    path = _cover_pack(tmp_path, {"depare": [(_square(0, 0, 4096, 4096), {})]})
+    with MBTiles.open(path) as m:
+        errs = _check_against_sources(m, m.metadata(), ["cell"], CANADA)
+    assert len(errs) == 1 and errs[0].startswith("hazard ('UWTROC', '1.2', 3) at ") and "missing at zoom 16" in errs[0]
