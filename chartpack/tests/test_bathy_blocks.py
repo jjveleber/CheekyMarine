@@ -555,8 +555,9 @@ def _overview_sources(tmp_path):
 
 def test_overview_merges_the_coarse_sources(tmp_path, test_region, zero_geoid):
     """build_overview over the coarse sources (plan 8 spec 6): NONNA-100 first on the Canadian column, then CRM,
-    then ETOPO; each on its datum before the block mean. nav_depth, the Nav grid, is the shallowest NONNA-100 value
-    of each cell on the Canadian column, nan in the no-survey area and on the US side."""
+    then ETOPO; each on its datum before the block mean. The Nav grids are the shallowest value of each cell on
+    the Canadian column (nav_depth of every source, nav_survey of NONNA-100), nan in the no-survey area and on the
+    US side."""
     sources, hole = _overview_sources(tmp_path)
     datum = area_datum(test_region, Path("unused"))
     r = blocks.build_overview(OVERVIEW_BBOX, sources, datum, OVERVIEW_WEST, box(*hole))
@@ -578,6 +579,8 @@ def test_overview_merges_the_coarse_sources(tmp_path, test_region, zero_geoid):
     assert name[at(src, *east_south)] == "crm" and at(g.data, *east_south) == pytest.approx(crm_depth(*east_south))
     assert at(nav.data, *west_north) in (20.0, 50.0) and name[at(r.nav_src, *west_north)] == "nonna100"
     assert np.isnan(at(nav.data, *west_hole)) and np.isnan(at(nav.data, *east_north))
+    assert at(r.nav_survey.data, *west_north) == at(nav.data, *west_north)
+    assert np.isnan(at(r.nav_survey.data, *west_hole)) and np.isnan(at(r.nav_survey.data, *east_north))
     both = np.isfinite(nav.data)
     assert both.any() and (nav.data[both] <= g.data[both] + 1e-4).all()  # shoal: never deeper than the mean
     assert (nav.data[both] < g.data[both] - 1.0).any()
@@ -587,6 +590,24 @@ def test_overview_merges_the_coarse_sources(tmp_path, test_region, zero_geoid):
     assert r.coarse_contours and r.coarse_bands and r.fine_grid is None
 
 
+def test_overview_nav_offshore_never_deeper_than_any_source(tmp_path, test_region, zero_geoid):
+    """An overview cell that mixes NONNA-100 (50 m) and a shallower coarse value (ETOPO, 10 m after its shift):
+    nav_depth, the offshore Nav grid, takes the shallowest value of every source present (10 m), while nav_survey,
+    the inshore Nav grid, takes the NONNA-100 cells only (50 m)."""
+    read = blocks.overview_bounds(OVERVIEW_BBOX)
+    nonna100 = _write_nonna_over(tmp_path / "n100.tif", "nonna100", read,
+                                 _const(-50.0, (read[0], read[1], -122.5313, read[3])))
+    etopo = _write_grid(tmp_path / "etopo.tif", -14.0, AREA)
+    r = blocks.build_overview(OVERVIEW_BBOX, _sources(nonna100=nonna100, etopo=[etopo]),
+                              area_datum(test_region, Path("unused")), OVERVIEW_WEST, Polygon())
+    nav, survey = r.nav_depth.data, r.nav_survey.data
+    mixed = np.isfinite(survey) & np.isclose(nav, 10.0)
+    assert mixed.any() and np.allclose(survey[mixed], 50.0)
+    assert set(np.unique(nav[np.isfinite(nav)]).round(3)) == {10.0, 50.0}  # 50 m only where NONNA-100 alone
+    assert (nav[np.isfinite(survey)] <= survey[np.isfinite(survey)]).all()
+    assert (r.nav_src[mixed] == blocks.SOURCE_NAMES.index("etopo")).all()  # the coarsest source of the cell
+
+
 def test_overview_strips_give_one_read(tmp_path, test_region, zero_geoid, monkeypatch):
     """build_overview reads in strips to bound its memory; the strips give the grids of one read."""
     sources, hole = _overview_sources(tmp_path)
@@ -594,7 +615,8 @@ def test_overview_strips_give_one_read(tmp_path, test_region, zero_geoid, monkey
     whole = blocks.build_overview(OVERVIEW_BBOX, sources, datum, OVERVIEW_WEST, box(*hole))
     monkeypatch.setattr(blocks, "OVERVIEW_STRIP_DEG", 0.05)  # three strips, each a whole number of overview cells
     strips = blocks.build_overview(OVERVIEW_BBOX, sources, datum, OVERVIEW_WEST, box(*hole))
-    for a, b in ((whole.coarse_grid, strips.coarse_grid), (whole.nav_depth, strips.nav_depth)):
+    for a, b in ((whole.coarse_grid, strips.coarse_grid), (whole.nav_depth, strips.nav_depth),
+                 (whole.nav_survey, strips.nav_survey)):
         assert a.transform == b.transform
         np.testing.assert_allclose(a.data, b.data, atol=1e-4)
     np.testing.assert_array_equal(whole.coarse_source, strips.coarse_source)

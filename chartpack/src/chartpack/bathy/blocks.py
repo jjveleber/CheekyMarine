@@ -108,6 +108,7 @@ class BlockResult:
     nonna_valid: np.ndarray | None = None  # bool, the fine grid's shape
     nav_depth: Grid | None = None
     nav_src: np.ndarray | None = None  # int8, nav_depth's shape
+    nav_survey: Grid | None = None  # the overview only: the shallowest NONNA-100 value per cell (build_overview)
 
 
 class AreaDatum:
@@ -520,17 +521,18 @@ def build_overview(bbox, sources: BlockSources, datum: AreaDatum, canada: shapel
     strip over the whole plan 8 area. CUDEM and NONNA-10 add no detail at this cell size, so there is no fine output.
 
     coarse_grid is each overview cell's mean (the Fish grid: its features use OVERVIEW_BANDS, major levels only);
-    coarse_source is the coarsest source among the cell's native cells. nav_depth, the Nav grid (plan 8 spec 7.1),
-    is on the Canadian column only: the shallowest NONNA-100 value under the cell, else the shallowest value of the
-    other sources (nav_src says which: the charts build draws CRM and ETOPO in the offshore area only), and nan on
-    the cells whose center is in nosurvey (the stored no-survey masks)."""
+    coarse_source is the coarsest source among the cell's native cells. The Nav grids (plan 8 spec 7.1) are on the
+    Canadian column only, nan on the cells whose center is in nosurvey (the stored no-survey masks): nav_depth, the
+    offshore one, is the shallowest value of every source under the cell, so it is never deeper than any of them
+    (nav_src: the coarsest source among them); nav_survey, the inshore one, the shallowest NONNA-100 value under the
+    cell (the charts build draws CRM and ETOPO in the offshore area only)."""
     read = overview_bounds(bbox)
     w, s, e, n = read
     k = round(OVERVIEW_RES_DEG / COARSE_RES_DEG)
     rank = np.array([0] + [LABELS[name]["resolution_m"] for name in SOURCE_NAMES[1:]], np.int16)
     by_rank = np.zeros(rank.max() + 1, np.int8)
     by_rank[rank] = np.arange(len(rank))
-    means, srcs, navs, nav_srcs = [], [], [], []
+    means, srcs, navs, nav_srcs, surveys = [], [], [], [], []
     transform = crs = None
     top = n
     while top > s + 1e-9:
@@ -560,21 +562,23 @@ def build_overview(bbox, sources: BlockSources, datum: AreaDatum, canada: shapel
         survey = _per_cell(np.where(on & (source == _INDEX["nonna100"]), grid.data, np.inf), k).min(axis=(1, 3))
         other = _per_cell(np.where(on, grid.data, np.inf), k).min(axis=(1, 3))
         coarsest = by_rank[_per_cell(np.where(on, rank[source], 0), k).max(axis=(1, 3))]
-        nav = np.where(np.isfinite(survey), survey, other).astype(np.float32)
-        nav_srcs.append(np.where(np.isfinite(survey), np.int8(_INDEX["nonna100"]),
-                                 np.where(np.isfinite(other), coarsest, np.int8(0))).astype(np.int8))
-        nav[np.isinf(nav)] = np.nan
-        navs.append(nav)
+        nav_srcs.append(np.where(np.isfinite(other), coarsest, np.int8(0)).astype(np.int8))
+        for values, out in ((other, navs), (survey, surveys)):
+            values = values.astype(np.float32)
+            values[np.isinf(values)] = np.nan
+            out.append(values)
         del grid, source, on, survey, other
     grid = Grid(np.vstack(means), float("nan"), transform, crs)
     src = np.vstack(srcs)
     nav = Grid(np.vstack(navs), float("nan"), transform, crs)
     nav_src = np.vstack(nav_srcs)
+    survey = Grid(np.vstack(surveys), float("nan"), transform, crs)
     if nosurvey is not None and not nosurvey.is_empty:
         hole = clip_mask(transform, nav.data.shape, mapping(nosurvey))
-        nav.data[hole] = np.nan
+        nav.data[hole] = survey.data[hole] = np.nan
         nav_src[hole] = 0
     side = _side(canada, read, OVERVIEW_RES_DEG)
     return BlockResult([], [], [], *_features(_with_lakes(grid, datum), read, OVERVIEW_BANDS, fine=False, src=src,
                                               side=side, labels=LABELS, canada=canada),
-                       fine_grid=None, coarse_grid=grid, coarse_source=src, nav_depth=nav, nav_src=nav_src)
+                       fine_grid=None, coarse_grid=grid, coarse_source=src, nav_depth=nav, nav_src=nav_src,
+                       nav_survey=survey)

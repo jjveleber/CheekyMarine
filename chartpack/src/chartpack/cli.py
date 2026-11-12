@@ -455,17 +455,17 @@ def _overview_derived(args: argparse.Namespace, region, content, canada) -> tupl
     datum = area_datum(region, args.cache / "proj")
     r = build_overview(region.bbox, BlockSources([], crm, None, vrt, etopo or None), datum, side,
                        shapely.union_all(masks) if masks else shapely.Polygon())
-    survey = np.where(r.nav_src == SOURCE_NAMES.index("nonna100"), r.nav_depth.data, np.nan).astype(np.float32)
+    survey_src = np.where(np.isfinite(r.nav_survey.data), np.int8(SOURCE_NAMES.index("nonna100")), np.int8(0))
     with (regions_dir / "bc-valdco.toml").open("rb") as f:
         levels = tomllib.load(f)["levels_m"]
     empty = shapely.Polygon()
     features = []
     for tile, owner in tiles.items():
         _, core, read = next(iter_blocks({tile}))
-        nav, src = _window(r.nav_depth, r.nav_src, read)
-        inshore, _ = _window(Grid(survey, np.nan, r.nav_depth.transform, r.nav_depth.crs), survey, read)
+        nav, src = _window(r.nav_depth, r.nav_src, read)  # offshore: every source, never deeper than any
+        inshore, inshore_src = _window(r.nav_survey, survey_src, read)  # inshore: NONNA-100 only
         part = BlockResult([], [], [], [], [], [], fine_grid=None, coarse_grid=nav, coarse_source=src,
-                           nav_depth=inshore, nav_src=src)
+                           nav_depth=inshore, nav_src=inshore_src)
         land, nosurvey, outline = stored.get(owner.name, (empty, empty, canada.boundary))
         features += _tile_derived(part, owner.charts_kind, core, canada_side(canada, tile, owner), levels_m=levels,
                                   land=_near(land, read), nosurvey=_near(nosurvey, read),
