@@ -131,8 +131,8 @@ CHS_PARAGRAPHS = (
 )
 OGL_CANADA = ("Contains information licensed under the Open Government Licence – Canada.\n"
               "https://open.canada.ca/en/open-government-licence-canada")
-DATUM_SENTENCE = ("Canadian depths are on Canadian chart datum and US depths on MLLW; the two differ slightly at the"
-                  " border.")
+DATUM_SENTENCE = ("NONNA depths are on Canadian chart datum; the other depth sources are on the datum noted for each."
+                  " Canadian chart datum and US MLLW differ slightly at the border.")
 
 
 BC_TILES = {(163, 356)}  # one zoom-10 tile at Possession Bar, the stand-in BC tile
@@ -558,7 +558,9 @@ def test_bathy_notice_wording_by_depth_column(test_region, tmp_path):
     overview = _notice_of(tmp_path / "ov", dataclasses.replace(test_region, overview=True),
                           {k: full[k] for k in ("crm", "nonna100", "etopo")}, ["nonna100", "crm", "etopo"],
                           owners={(163, 356): _bc(test_region), (164, 356): us})
-    assert ("\nUS-side depths are survey depths converted to approximate MLLW.\n" + COLUMN + "NONNA depths are on"
-            " Canadian chart datum, ETOPO depths are shifted a fixed 4 m toward chart datum, and CRM depths are"
-            " converted to approximate MLLW as on the US side.\n") in overview
+    assert ("\nUS-side CRM depths are converted to approximate MLLW, and ETOPO depths, on either side, are shifted a"
+            " fixed 4 m toward chart datum.\n" + COLUMN + "NONNA depths are on Canadian chart datum, ETOPO depths are"
+            " shifted a fixed 4 m toward chart datum, and CRM depths are converted to approximate MLLW as on the US"
+            " side.\n") in overview
+    assert "US-side depths are survey depths" not in overview
     assert "Boundaries:" not in overview and "\nDatum: CRM elevations are converted to MLLW" in overview

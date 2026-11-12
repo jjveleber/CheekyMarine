@@ -32,8 +32,8 @@ CHS_NOTICE = resources.files("chartpack").joinpath("notices", "chs.txt").read_te
 # The Open Government Licence - British Columbia attribution (the Freshwater Atlas shoreline), notices/ogl-bc.txt.
 OGL_BC_NOTICE = resources.files("chartpack").joinpath("notices", "ogl-bc.txt").read_text(encoding="utf-8").rstrip()
 _NONNA = frozenset({"nonna10", "nonna100"})
-_DATUM_SENTENCE = ("Canadian depths are on Canadian chart datum and US depths on MLLW; the two differ slightly at the"
-                   " border.")
+_DATUM_SENTENCE = ("NONNA depths are on Canadian chart datum; the other depth sources are on the datum noted for"
+                   " each. Canadian chart datum and US MLLW differ slightly at the border.")
 
 _NOTICE_HEAD = """CheekyMarine charts pack {name} {version}
 
@@ -241,8 +241,11 @@ def _bathy_notice(metadata: dict[str, str], name: str, version: str, chs: bool =
             ["ETOPO depths are shifted a fixed 4 m toward chart datum"] if "etopo" in drawn else []) + (
             [f"{mllw} depths are converted to approximate MLLW as on the US side"] if mllw else [])
         said = clauses[0] if len(clauses) < 2 else ", ".join(clauses[:-1]) + ", and " + clauses[-1]
-        depths = ("US-side depths are survey depths converted to approximate MLLW.\n" if us_side else "") + (
-            f"{_COLUMN}{said}.")
+        us = "US-side depths are survey depths converted to approximate MLLW.\n"
+        if "etopo" in drawn:  # ETOPO takes its fixed shift on the US side too (the overview west of CRM)
+            us = (f"US-side {mllw} depths are converted to approximate MLLW, and " if mllw else "") + (
+                "ETOPO depths, on either side, are shifted a fixed 4 m toward chart datum.\n")
+        depths = (us if us_side else "") + f"{_COLUMN}{said}."
         datum_line = datum_line.replace("Datum: elevations", f"Datum: {mllw} elevations") if mllw else (
             "Datum: no tide station offsets are used.")
     boundaries = "Boundaries: NOAA maritime boundaries (the water clip), a US Government work.\n\n" if clip else ""
