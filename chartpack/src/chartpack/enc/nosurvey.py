@@ -99,7 +99,7 @@ def _polygons(cells: np.ndarray, grid, simplify: bool = False) -> shapely.Geomet
     gdal.Polygonize(band, band, layer, 0)
     parts = shapely.from_wkb([bytes(f.GetGeometryRef().ExportToWkb()) for f in layer])
     out = src = None
-    merged = shapely.coverage_union_all(parts)  # the pieces share edges only: no overlay needed
+    merged = shapely.coverage_union_all(parts)  # the pieces never overlap: no overlay needed
     if simplify:
         merged = merged.simplify(_SIMPLIFY_CELLS * min(px, abs(py)))
     return shapely.transform(merged, lambda xy: np.column_stack(_lonlat(xy[:, 0], xy[:, 1])))

@@ -1,0 +1,4 @@
+# Depth contour levels for the derived BC Nav view, in meters.
+# The sorted union of cheekymarine:valdco over the six wave 1 charts packs
+# (v1.0.0: north-sound, overview, sound-central, sound-south, strait, wa-coast).
+levels_m = [0, 0.9, 1.8, 2, 3.6, 5, 5.4, 7.3, 9.1, 10, 18.2, 20, 27.4, 30, 36.5, 50, 54.8, 73.1, 91.4, 100, 109.7, 128, 137.1, 146.3, 164.5, 182.8, 200, 201.1, 219.4, 237.7, 256, 274.3, 292.6, 300, 310.8, 329.1, 347.4, 365.7, 548.6, 731.5, 914.4, 1000, 1097.2, 1280.1, 1463, 1645.9, 1828.8, 2000, 2011.6, 2194.5]
