@@ -239,3 +239,79 @@ def test_notice_areas_metadata_is_geojson(test_region, tmp_path):
             got = shape(feature["geometry"])
             assert got.is_valid and got.symmetric_difference(want).area < 1e-12, (i, name)
             assert shapely.get_num_coordinates(got) == shapely.get_num_coordinates(want)  # not simplified
+
+
+# PR #122 review F1: the pack NOTICE and source metadata name every depth source the pack holds.
+
+def _sourced_files(tmp_path, sources: dict, coverage: list[str]) -> dict:
+    """The four bathy files with the given cheekymarine:sources (the datum added) and the coverage list on both
+    vector files."""
+    files = _bathy_files(tmp_path, {"bathy.mbtiles": coverage, "bathy-coarse.mbtiles": coverage})
+    for name in ("bathy.mbtiles", "bathy-coarse.mbtiles"):
+        with MBTiles.open(files[name]) as m:
+            m.set_metadata({"cheekymarine:pack": "bathy", "cheekymarine:sources": json.dumps(
+                {**sources, "datum": {"file": "wa-stations.toml", "sha256": "ab12"}})})
+    return files
+
+
+NONNA_SOURCES = {"nonna10": {"name": "nonna10-toba.tif", "sha256": "aa11"},
+                 "nonna100": {"name": "nonna100-toba.tif", "sha256": "bb22"}}
+ETOPO_SOURCES = {"etopo": [{"name": "N60W135", "file": "ETOPO_2022_v1_15s_N60W135_surface.tif"}]}
+ETOPO_LINE = "ETOPO depths are shifted by a fixed 4 m toward chart datum; no tide station data is used."
+
+
+def test_bathy_notice_names_nonna(test_region, tmp_path):
+    from chartpack.pack.assemble import assemble_bathy_pack
+
+    root = assemble_bathy_pack(test_region, _sourced_files(tmp_path / "in", NONNA_SOURCES, ["nonna10", "nonna100"]),
+                               tmp_path / "out")
+    notice = (root / "NOTICE").read_text()
+    bathy = notice[notice.index("Bathymetry:"):notice.index("Boundaries:")]
+    assert "NONNA-10" in bathy and "nonna10-toba.tif (sha256 aa11)" in bathy
+    assert "NONNA-100" in bathy and "nonna100-toba.tif (sha256 bb22)" in bathy
+    assert "CHS NONNA Licence" in bathy and "Open Government Licence" in bathy
+    assert "ETOPO" not in notice and "Coastal Relief Model" not in notice
+    from chartpack.pack.manifest import describe_pack
+
+    _, sources, _ = describe_pack(root)
+    assert {"source": "nonna10", "name": "nonna10-toba.tif", "sha256": "aa11"} in sources
+    assert {"source": "nonna100", "name": "nonna100-toba.tif", "sha256": "bb22"} in sources
+
+
+def test_bathy_notice_names_etopo(test_region, tmp_path):
+    from chartpack.pack.assemble import assemble_bathy_pack
+
+    root = assemble_bathy_pack(test_region, _sourced_files(tmp_path / "in", ETOPO_SOURCES, ["etopo"]), tmp_path / "out")
+    notice = (root / "NOTICE").read_text()
+    bathy = notice[notice.index("Bathymetry:"):notice.index("Boundaries:")]
+    assert "ETOPO 2022 15 Arc-Second Global Relief Model" in bathy and "https://doi.org/10.25921/fd45-gt74" in bathy
+    assert "CC0 1.0" in bathy and ETOPO_LINE in bathy and "N60W135" in bathy
+    assert "bathy/etopo.py" not in notice and "NONNA" not in notice
+    from chartpack.pack.manifest import describe_pack
+
+    _, sources, _ = describe_pack(root)
+    assert {"source": "etopo", "name": "N60W135", "file": "ETOPO_2022_v1_15s_N60W135_surface.tif"} in sources
+
+
+def test_bathy_notice_etopo_listed_but_not_drawn(test_region, tmp_path):
+    """A region that lists ETOPO whose coverage holds none (CRM filled the water): no ETOPO credit."""
+    from chartpack.pack.assemble import assemble_bathy_pack
+
+    files = _sourced_files(tmp_path / "in", {"crm": "https://crm.test", **ETOPO_SOURCES}, ["crm"])
+    notice = (assemble_bathy_pack(test_region, files, tmp_path / "out") / "NOTICE").read_text()
+    assert "ETOPO" not in notice and "Coastal Relief Model" in notice
+
+
+def test_bathy_notice_wave1_unchanged(test_region, tmp_path):
+    """A wave 1 style pack (CUDEM and CRM, no coverage list): the Bathymetry block is the plan 7 text."""
+    from chartpack.pack.assemble import assemble_bathy_pack
+
+    cudem = [{"name": "t1", "url": "u", "year": 2023, "version": 1}]
+    files = _sourced_files(tmp_path / "in", {"cudem": cudem, "crm": "https://crm.test"}, ["cudem", "crm"])
+    notice = (assemble_bathy_pack(test_region, files, tmp_path / "out") / "NOTICE").read_text()
+    assert ("Bathymetry:\n"
+            "  NOAA NCEI Continuously Updated Digital Elevation Model (CUDEM) 1/9 arc-second tiles,\n"
+            "  DOI 10.25921/ds9v-ky35, a US Government work.\n  CUDEM tiles used:\n  t1 (2023 v1)\n"
+            "  NOAA NCEI Coastal Relief Model (CRM) volume 8, 2025, a US Government work.\n"
+            "  Request: https://crm.test\n\nBoundaries:") in notice
+    assert "NONNA" not in notice and "ETOPO" not in notice

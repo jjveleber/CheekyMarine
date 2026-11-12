@@ -94,7 +94,8 @@ def _coverage_sources(path: Path) -> list[str]:
 
 def tile_bathy(
     work: Path, out: Path, *, region: Region, crm_request: str | None, zooms: tuple[int, int] = (MINZOOM, MAXZOOM),
-    coarse: bool = False, cudem_tiles: Sequence[CudemTile] = (),
+    coarse: bool = False, cudem_tiles: Sequence[CudemTile] = (), nonna: dict[str, dict] | None = None,
+    etopo: Sequence[dict] = (),
 ) -> Path:
     """Tile the layer files work/<layer>.geojsonseq into out at zooms (min, max).
 
@@ -102,8 +103,9 @@ def tile_bathy(
     fine file, a region with no CRM-only water). Otherwise every layer needs features, except that the
     coarse file may lack contour and band (COARSE_OPTIONAL_LAYERS) when it has coverage. crm_request
     records the CRM requests the build made (None when crm is not in the region's bathy.sources). Only the
-    listed bathy sources are recorded; cheekymarine:coverage lists the sources the coverage layer holds (the pack
-    NOTICE carries the CHS notice when one is NONNA).
+    listed bathy sources are recorded: nonna maps nonna10 and nonna100 to their asset ({name, sha256}, from the
+    fetch stats) and etopo lists the ETOPO tiles ({name, file}). cheekymarine:coverage lists the sources the
+    coverage layer holds (the pack NOTICE credits NONNA and ETOPO, and carries the CHS notice, by it).
     """
     out, work = Path(out), Path(work)
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -141,6 +143,11 @@ def tile_bathy(
             sources["cudem"] = [{"name": t.name, "url": t.url, "year": t.year, "version": t.version} for t in cudem_tiles]
         if "crm" in region.bathy_sources:
             sources["crm"] = crm_request
+        for product in ("nonna10", "nonna100"):
+            if product in region.bathy_sources and nonna and product in nonna:
+                sources[product] = nonna[product]
+        if "etopo" in region.bathy_sources:
+            sources["etopo"] = list(etopo)
         sources["datum"] = datum_provenance(region.datum_file)
         w, s, e, n = region.bbox
         m.set_metadata({

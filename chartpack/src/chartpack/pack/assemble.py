@@ -116,9 +116,28 @@ def assemble_charts_pack(region: Region, enc_mbtiles: Path, out_dir: Path) -> Pa
     return root
 
 
-def _bathy_notice(metadata: dict[str, str], name: str, version: str, chs: bool = False) -> str:
-    """The bathy pack NOTICE; chs adds the datum sentence and the CHS notice (the pack holds NONNA depth)."""
+def _etopo_citation(licences: str) -> str:
+    """The ETOPO 2022 citation and its fixed shift line from the project NOTICE, indented as a Bathymetry entry."""
+    m = re.search(r"^ETOPO 2022 15 Arc-Second.*?no tide station data is used\.$", licences, re.M | re.S)
+    if m is None:
+        raise RuntimeError(f"{PROJECT / 'NOTICE'} has no ETOPO 2022 citation")
+    return "".join(f"  {line}\n" for line in m.group(0).replace(" (bathy/etopo.py)", "").splitlines())
+
+
+def _bathy_notice(metadata: dict[str, str], name: str, version: str, chs: bool = False,
+                  coverage: frozenset[str] = frozenset()) -> str:
+    """The bathy pack NOTICE; chs adds the datum sentence and the CHS notice (the pack holds NONNA depth).
+    coverage (the sources the coverage layers hold) adds the NONNA assets and the ETOPO citation the pack draws."""
     sources = json.loads(metadata["cheekymarine:sources"])
+    licences = (PROJECT / "NOTICE").read_text()
+    nonna = "".join(
+        f"  CHS {label} bathymetry, Canadian Hydrographic Service, Fisheries and Oceans Canada,\n"
+        "  under the CHS NONNA Licence and the Open Government Licence, Canada (the CHS notice below).\n"
+        f"  Asset: {sources[product]['name']} (sha256 {sources[product]['sha256']})\n"
+        for product, label in (("nonna10", "NONNA-10"), ("nonna100", "NONNA-100"))
+        if product in coverage and product in sources)
+    etopo = "" if "etopo" not in coverage else _etopo_citation(licences) + "".join(
+        f"  ETOPO tile used: {tile['name']} ({tile['file']})\n" for tile in sources.get("etopo", []))
     cudem = "" if "cudem" not in sources else (
         "  NOAA NCEI Continuously Updated Digital Elevation Model (CUDEM) 1/9 arc-second tiles,\n"
         "  DOI 10.25921/ds9v-ky35, a US Government work.\n  CUDEM tiles used:\n"
@@ -138,7 +157,6 @@ def _bathy_notice(metadata: dict[str, str], name: str, version: str, chs: bool =
         "  (US Army Corps of Engineers, a US Government work), inside polygons from NOAA ENC\n"
         "  (a US Government work) in "
         f"{datum['lakes_file']} (sha256 {datum['lakes_sha256']}).\n")
-    licences = (PROJECT / "NOTICE").read_text()
     fonts = _fonts_notice(licences)
     chs_text = f"{_DATUM_SENTENCE}\n\n{CHS_NOTICE}\n\n" if chs else ""
     return f"""CheekyMarine bathy pack {name} {version}
@@ -148,7 +166,7 @@ It is not certified for navigation. Do not rely on it as the only means of navig
 Depths are survey depths converted to approximate MLLW.
 
 Bathymetry:
-{cudem}{crm}
+{cudem}{crm}{nonna}{etopo}
 Boundaries: NOAA maritime boundaries (the water clip), a US Government work.
 
 Datum: elevations are converted to MLLW with offsets interpolated between NOAA CO-OPS tide
@@ -205,5 +223,5 @@ def assemble_bathy_pack(region: Region, files: dict[str, Path], out_dir: Path,
     write_styles(root, "bathy")
 
     _sprites_glyphs_readme(root, "fish", f"bathy-{region.name}-{region.bathy_version}")
-    (root / "NOTICE").write_text(_bathy_notice(metadata, region.name, region.bathy_version, chs))
+    (root / "NOTICE").write_text(_bathy_notice(metadata, region.name, region.bathy_version, chs, frozenset(coverage)))
     return root

@@ -108,7 +108,9 @@ def _pick(layers: list[dict], *ids: str) -> list[dict]:
 
 def _with_coarse(layers: list[dict]) -> list[dict]:
     """The layers with a -coarse twin of every bathy and dem layer, on the coarse sources, all placed
-    directly below the first fine one: the CRM-only depth is drawn under the CUDEM depth."""
+    directly below the first fine one: the CRM-only depth is drawn under the CUDEM depth. The grade layers on
+    the fine source draw nothing today (fine coverage is CUDEM and NONNA-10, both "survey"); only their
+    -coarse twins do."""
     fine = [l for l in layers if l.get("source") in ("bathy", "dem")]
     twins = [{**l, "id": f"{l['id']}-coarse", "source": f"{l['source']}-coarse"} for l in fine]
     first = layers.index(fine[0])

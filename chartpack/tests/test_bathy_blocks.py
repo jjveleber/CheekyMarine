@@ -948,3 +948,84 @@ def test_no_blank_water_in_block(small_grids, zero_geoid, test_region, tmp_path)
     assert np.isfinite(grid.data[inner]).all()
     assert (result.coarse_source[inner] == blocks.SOURCE_NAMES.index("etopo")).all()
     assert result.coarse_contours or result.coarse_bands
+
+
+# PR #122 review fixes, at the real fine and coarse resolutions (a real build enlarges NONNA: fine cells of about
+# 3.4 m, NONNA-10 cells of about 12.7 m), over a small read box so the grids stay small.
+
+def _native_cells(product, col, row, data, tmp_path):
+    """A NONNA mosaic of data (raw elevations) whose north-west cell is native cell (col, row), and its lon/lat
+    box."""
+    from make_nonna import edge_transform, write_nonna
+
+    path = write_nonna(tmp_path / f"{product}.tif", np.asarray(data, np.float32), product, col, row)
+    x0, px, _, y0, _, py = edge_transform(product, col, row)
+    rows, cols = np.asarray(data).shape
+
+    def lat(y):
+        return math.degrees(2 * math.atan(math.exp(y / _R)) - math.pi / 2)
+
+    bbox = (math.degrees(x0 / _R), lat(y0 + rows * py), math.degrees((x0 + cols * px) / _R), lat(y0))
+    return path, bbox, (x0, px, y0, py)
+
+
+def _native_index(grid, native):
+    """The native (col, row) offset, from the mosaic's north-west cell, of each fine cell center of grid."""
+    x0, px, y0, py = native
+    gx, dx, _, gy, _, dy = grid.transform
+    rows, cols = grid.data.shape
+    lon = gx + (np.arange(cols) + 0.5) * dx
+    lat = gy + (np.arange(rows) + 0.5) * dy
+    c = np.floor((_R * np.radians(lon) - x0) / px).astype(int)
+    r = np.floor((_R * np.log(np.tan(np.pi / 4 + np.radians(lat) / 2)) - y0) / py).astype(int)
+    return np.broadcast_arrays(c[None, :], r[:, None])
+
+
+def _real_block(tmp_path, data, test_region, product="nonna10"):
+    """build_block at the real resolutions over a 9 by 9 native cell mosaic of data (Canadian column)."""
+    from make_nonna import A_COL, A_ROW
+
+    k = 1 if product == "nonna10" else 8  # near the same place on either grid
+    path, bbox, native = _native_cells(product, A_COL // k, A_ROW // k, data, tmp_path)
+    read = blocks.snap_out(bbox, blocks.COARSE_RES_DEG)
+    sources = _sources(nonna10=path) if product == "nonna10" else _sources(nonna100=path)
+    return build_block(read, read, sources, area_datum(test_region, Path("unused")), box(*read)), native
+
+
+def test_nav_depth_and_valid_keep_nonna_holes(tmp_path, test_region):
+    """F3: no fill-in. A one-native-cell hole stays a hole of exactly that footprint in nav_depth and nonna_valid,
+    for NONNA-10 and NONNA-100 alike; and a one-cell 3.0 m shoal holds 3.0 in every fine cell of that native
+    cell."""
+    from make_nonna import NODATA as NONNA_NODATA
+
+    for product in ("nonna10", "nonna100"):
+        data = np.full((9, 9), -50.0)
+        data[4, 4] = NONNA_NODATA
+        data[2, 6] = -3.0
+        result, native = _real_block(tmp_path, data, test_region, product)
+        nav = result.nav_depth
+        c, r = _native_index(nav, native)
+        hole = (c == 4) & (r == 4)
+        shoal = (c == 6) & (r == 2)
+        inside = (c >= 0) & (c < 9) & (r >= 0) & (r < 9)
+        assert hole.sum() > 4 and shoal.sum() > 4, product
+        assert np.isnan(nav.data[hole]).all() and np.isfinite(nav.data[inside & ~hole]).all(), product
+        assert (result.nonna_valid == (inside & ~hole)).all(), product
+        assert (nav.data[shoal] == 3.0).all(), product
+
+
+def test_crm_grade_cut_at_the_border(small_grids, zero_geoid, test_region, tmp_path):
+    """F4: CRM on both sides of the border in one coverage block: "rough" lies only on the Canadian side and
+    "survey" only on the US side."""
+    _, core, read = _block(NORTH)
+    canada, mid = _split(read)
+    crm = _write_grid(tmp_path / "crm.tif", -70.0, AREA)
+    result = build_block(core, read, _sources(crm=crm), area_datum(test_region, Path("unused")), canada)
+    graded = {"rough": [], "survey": []}
+    for f in result.coarse_coverage:
+        graded[f["properties"]["grade"]].append(shape(f["geometry"]))
+    rough, survey = unary_union(graded["rough"]), unary_union(graded["survey"])
+    assert not rough.is_empty and not survey.is_empty
+    assert rough.bounds[1] >= mid - 1e-9 and survey.bounds[3] <= mid + 1e-9
+    assert rough.intersection(survey).area < 1e-12
+    assert abs(rough.union(survey).area - box(*core).area) < 1e-9  # together they still cover the core

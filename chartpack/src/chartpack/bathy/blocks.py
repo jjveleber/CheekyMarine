@@ -87,9 +87,10 @@ class BlockResult:
     and coarse_source give each cell's source as an index into SOURCE_NAMES (0: none).
 
     nav_depth is NONNA-10, then NONNA-100, on the Canadian column at the fine grid's cells, each the shallowest
-    native value under the cell (read_nonna "min"), so a shoal cell keeps its value; nan elsewhere. nav_src is
-    its source index and nonna_valid marks the cells holding any NONNA value. All three are None when the block
-    has no Canadian column or the region lists no NONNA.
+    native value under the cell (read_nonna "min"), so a shoal cell keeps its value, on the cells whose center
+    lies in a native cell with a value (no fill-in, _nav_values); nan elsewhere. nav_src is its source index and
+    nonna_valid marks the cells holding a NONNA value. All three are None when the block has no Canadian column
+    or the region lists no NONNA.
     """
 
     fine_contours: list[dict]
@@ -239,6 +240,14 @@ def _nonna_values(path: Path, read, res: float, valid: np.ndarray) -> np.ndarray
     return values
 
 
+def _nav_values(path: Path, read, res: float) -> np.ndarray:
+    """NONNA depths for nav_depth: the shallowest native value under each cell ("min"), only on the cells whose
+    center lies in a native cell with a value (nearest), so no depth reaches into a hole (spec 7.1, no fill-in)."""
+    values = read_nonna(path, read, res, "min").data
+    values[np.isnan(read_nonna(path, read, res).data)] = np.nan
+    return values
+
+
 def _coarse_layers(sources: BlockSources, read, res: float, side: np.ndarray | None, window) -> list:
     """The coarse sources as merge_ordered layers at res, in the order of plan 8 spec 6: NONNA-100 (Canadian
     column only), CRM, ETOPO. window(path) gives a source's native window over read."""
@@ -278,15 +287,18 @@ def _shift(grid: Grid, source: np.ndarray, datum: AreaDatum) -> None:
         del take
 
 
-def _coverage(valid: np.ndarray, transform, core, label: dict) -> list[dict]:
+def _coverage(valid: np.ndarray, transform, core, label: dict, within: shapely.Geometry | None = None) -> list[dict]:
+    """Coverage polygons of the valid cells, cut to core and to `within` (one side of the border) when given."""
     feats = coverage_polygons(valid.astype(np.uint8), transform, {1: label})
-    if core is None:
+    if core is None and within is None:
         return feats
+    area = box(*core) if within is None else within if core is None else within.intersection(box(*core))
     out = []
     for f in feats:
-        geom = shape(f["geometry"]).intersection(box(*core))
-        if not geom.is_empty and geom.geom_type in ("Polygon", "MultiPolygon"):
-            out.append({**f, "geometry": mapping(geom)})
+        geom = shape(f["geometry"]).intersection(area)
+        parts = [g for g in shapely.get_parts(geom) if g.geom_type in ("Polygon", "MultiPolygon")]
+        if parts:  # a cut along the border can leave lines and points beside the polygons
+            out.append({**f, "geometry": mapping(shapely.union_all(parts))})
     return out
 
 
@@ -309,29 +321,35 @@ def _tag_sources(contours: list[dict], src: np.ndarray, transform, valid: np.nda
 
 
 def _graded_coverage(valid: np.ndarray, src: np.ndarray, side: np.ndarray | None, transform, core,
-                     labels: dict) -> list[dict]:
+                     labels: dict, canada: shapely.Geometry | None = None) -> list[dict]:
     """Coverage of the `valid` cells, one set of polygons per source (CRM split by side of the border), each with
-    its label and grade."""
+    its label and grade. The two CRM sets are cut at `canada`, so a coverage block the border crosses is "rough"
+    only on the Canadian side and "survey" only on the US side."""
     out = []
     for index in _present(src[valid]):
         name = SOURCE_NAMES[index]
         cells = valid & (src == index)
-        parts = [(False, cells)] if name != "crm" or side is None else [(False, cells & ~side), (True, cells & side)]
-        for canadian, part in parts:
+        if name != "crm" or side is None:
+            parts = [(False, cells, None)]
+        else:
+            parts = [(False, cells & ~side, None if canada is None else box(*core).difference(canada)),
+                     (True, cells & side, canada)]
+        for canadian, part, within in parts:
             if part.any():
-                out += _coverage(part, transform, core, {**labels[name], "grade": grade(name, canadian)})
+                out += _coverage(part, transform, core, {**labels[name], "grade": grade(name, canadian)}, within)
     return out
 
 
 def _features(
     grid: Grid, core, bands, *, fine: bool, src: np.ndarray, side: np.ndarray | None, labels: dict,
-    cells: np.ndarray | None = None, band_cells: np.ndarray | None = None, overzoomed: bool = False
+    cells: np.ndarray | None = None, band_cells: np.ndarray | None = None, overzoomed: bool = False,
+    canada: shapely.Geometry | None = None
 ) -> tuple[list[dict], list[dict], list[dict]]:
     """Contours (tagged with their source, _tag_sources), bands and coverage (per source and grade) of one depth
     grid, clipped to core. src is the grid's source index, side its Canadian column (None: all US), labels the
     coverage labels by source. `cells` (bool) limits the features to those cells; by default every finite cell
     counts. `band_cells` (bool, holding `cells`) gives the bands more cells than the contours and coverage.
-    overzoomed: see contours_by_zoom."""
+    overzoomed: see contours_by_zoom. canada (the Canadian column) cuts the coverage grades at the border."""
     valid = np.isfinite(grid.data) if cells is None else cells
     filled = fill_land(grid.data)  # the grid itself keeps the real land heights for the hillshade
     filled[~(valid if band_cells is None else band_cells)] = np.nan
@@ -340,7 +358,7 @@ def _features(
     contours = contours_by_zoom(filled, grid.transform, fine=fine, bands=bands, core=core, overzoomed=overzoomed)
     _tag_sources(contours, src, grid.transform, valid)
     del filled
-    return contours, polygons, _graded_coverage(valid, src, side, grid.transform, core, labels)
+    return contours, polygons, _graded_coverage(valid, src, side, grid.transform, core, labels, canada)
 
 
 def _under_cells() -> int:
@@ -435,15 +453,15 @@ def build_block(
         years = ",".join(sorted({str(t.year) for t in tiles_for_bbox(cudem_tiles, core)}))
         labels = {**LABELS, "cudem": {**LABELS["cudem"], "date": years}}
         fine_out = _features(fine_depth, core, BANDS, fine=True, src=fine_source, side=fine_side, labels=labels,
-                             cells=cells)
+                             cells=cells, canada=canada)
         del fine_depth
     coarse_out = ([], [], []) if coarse is None else _features(
         _with_lakes(coarse, datum), core, COARSE_BANDS, fine=False, src=coarse_source, side=coarse_side,
         labels=LABELS, cells=coarse_cells, band_cells=None if coarse_cells is None else np.isfinite(coarse.data),
-        overzoomed=True)
+        overzoomed=True, canada=canada)
 
     nav = nav_src = nonna_valid = None
-    nav_layers = [(_INDEX[name], lambda path=path: read_nonna(path, read, FINE_RES_DEG, "min").data, fine_side)
+    nav_layers = [(_INDEX[name], lambda path=path: _nav_values(path, read, FINE_RES_DEG), fine_side)
                   for name, path in (("nonna10", sources.nonna10), ("nonna100", sources.nonna100))
                   if path is not None]
     if fine_side is not None and nav_layers:

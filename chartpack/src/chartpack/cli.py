@@ -31,7 +31,7 @@ from chartpack.bathy.crm import crm_path, crm_tile_requests, crm_wcs_url, fetch_
 from chartpack.bathy.crm import crm_request as crm_request_bounds  # crm_request names the metadata string below
 from chartpack.bathy.cudem import URLLIST, parse_urllist, tiles_for_bbox
 from chartpack.bathy.dem import build_dem_mbtiles, empty_dem_mbtiles
-from chartpack.bathy.etopo import etopo_paths, fetch_etopo
+from chartpack.bathy.etopo import etopo_paths, etopo_tiles, fetch_etopo
 from chartpack.bathy.nonna import fetch_index, fetch_nonna, index_boxes
 from chartpack.bathy.tiles import (
     COARSE_ZOOMS,
@@ -42,7 +42,7 @@ from chartpack.bathy.tiles import (
     enc_fallback_contours,
     tile_bathy,
 )
-from chartpack.cache import download
+from chartpack.cache import DownloadError, download
 from chartpack.coast import fetch_coastline
 from chartpack.datum import geoid
 from chartpack.datum.offsets import load_datum
@@ -90,40 +90,62 @@ def _nonna_files(region, name: str) -> list[str]:
     return [f"{p}-{name}.tif" for p in ("nonna10", "nonna100") if p in region.bathy_sources]
 
 
+def _stats_entries(stats: Path, files: list[str], region) -> tuple[dict, dict[str, dict]]:
+    """The fetch stats at `stats` and its entries for files. Stats that cannot be read, hold no `files` or lack an
+    entry stop the build naming the file and the fetch workflow."""
+    try:
+        data = json.loads(stats.read_text())
+    except ValueError as e:
+        raise SystemExit(f"region {region.name}: {stats.name} is not valid JSON ({e}); run the fetch workflow"
+                         f" {SOURCES_WORKFLOW} for region {region.name}") from e
+    entries = data.get("files") if isinstance(data, dict) else None
+    if not isinstance(entries, dict):
+        raise SystemExit(f"region {region.name}: {stats.name} has no files list; run the fetch workflow"
+                         f" {SOURCES_WORKFLOW} for region {region.name}")
+    for file in files:
+        if not isinstance(entries.get(file), dict) or "sha256" not in entries[file]:
+            raise SystemExit(f"region {region.name}: {file} is not in {stats.name} of release {SOURCES_RELEASE};"
+                             f" run the fetch workflow {SOURCES_WORKFLOW} for region {region.name}")
+    return data, {file: entries[file] for file in files}
+
+
 def _fetch_assets(region_path: Path, region, cache: Path) -> list[Path]:
-    """Download the region's assets from the release (its fetch stats, NONNA grids and coastline) into
-    cache/sources-bc-1, each checked against the sha256 in the stats; an asset already cached with that sha256
-    is kept. A region that lists no NONNA downloads nothing."""
+    """Download the region's NONNA assets from the release (its fetch stats and the NONNA grids its sources list)
+    into cache/sources-bc-1, each checked against the sha256 in the stats; an asset already cached with that
+    sha256 is kept. A bathy build reads no coastline, so none is asked for. A region that lists no NONNA
+    downloads nothing."""
     name = _asset_name(region_path, region)
     files = _nonna_files(region, name)
     if not files:
         return []
-    files.append(f"coast-{name}.geojson.gz")
     folder = cache / SOURCES_RELEASE
     stats_name = f"fetch-stats-{name}.json"
-    stats = json.loads(download(SOURCES_URL + stats_name, folder / stats_name).read_text())
-    paths = [folder / stats_name]
+    try:
+        stats = download(SOURCES_URL + stats_name, folder / stats_name)
+    except DownloadError as e:
+        raise SystemExit(f"region {region.name}: {stats_name} could not be downloaded from release"
+                         f" {SOURCES_RELEASE} ({e}); run the fetch workflow {SOURCES_WORKFLOW} for region"
+                         f" {region.name}") from e
+    _, entries = _stats_entries(stats, files, region)
+    paths = [stats]
     for file in files:
-        entry = stats["files"].get(file)
-        if entry is None:
-            raise SystemExit(f"{file} is not in {stats_name} of release {SOURCES_RELEASE}; run the fetch workflow"
-                             f" {SOURCES_WORKFLOW} for region {region.name}")
+        expected = entries[file]["sha256"]
         dest = folder / file
-        if not (dest.is_file() and _sha256(dest) == entry["sha256"]):
+        if not (dest.is_file() and _sha256(dest) == expected):
             download(SOURCES_URL + file, dest)
-            if (got := _sha256(dest)) != entry["sha256"]:
+            if (got := _sha256(dest)) != expected:
                 dest.unlink()
-                raise SystemExit(f"{file}: sha256 {got} does not match {entry['sha256']} in {stats_name}; run the"
+                raise SystemExit(f"{file}: sha256 {got} does not match {expected} in {stats_name}; run the"
                                  f" fetch workflow {SOURCES_WORKFLOW} for region {region.name} again")
         paths.append(dest)
     return paths
 
 
-def _check_assets(region_path: Path, region, cache: Path, files: list[str], boxes) -> dict[str, Path]:
-    """The cached assets `files` of the region by name, after checking that each is there and that every read
-    box (W, S, E, N) lies inside the extent the fetch workflow pulled, as its fetch stats record (the mosaics'
-    own bounds are smaller where NONNA has no data). Either failure stops the build naming the region, the file
-    and the fetch workflow."""
+def _check_assets(region_path: Path, region, cache: Path, files: list[str], boxes) -> dict[str, tuple[Path, str]]:
+    """The cached assets `files` of the region by name, each as (path, sha256), after checking that each is there,
+    that its sha256 is the one its fetch stats record (once per build), and that every read box (W, S, E, N) lies
+    inside the extent the fetch workflow pulled, as the stats record (the mosaics' own bounds are smaller where
+    NONNA has no data). Any failure stops the build naming the region, the file and the fetch workflow."""
     if not files:
         return {}
     name = _asset_name(region_path, region)
@@ -133,14 +155,26 @@ def _check_assets(region_path: Path, region, cache: Path, files: list[str], boxe
         if not path.is_file():
             raise SystemExit(f"region {region.name}: {path} not found; run fetch-bathy, which downloads it from"
                              f" release {SOURCES_RELEASE} (written by the fetch workflow {SOURCES_WORKFLOW})")
-    w, s, e, n = json.loads(stats.read_text())["extent"]
+    data, entries = _stats_entries(stats, files, region)
+    found = {}
+    for file in files:
+        if (got := _sha256(folder / file)) != entries[file]["sha256"]:
+            raise SystemExit(f"region {region.name}: {file} has sha256 {got}, but {stats.name} records"
+                             f" {entries[file]['sha256']}; run fetch-bathy to download it again (release"
+                             f" {SOURCES_RELEASE}, written by the fetch workflow {SOURCES_WORKFLOW})")
+        found[file] = (folder / file, got)
+    extent = data.get("extent")
+    if not (isinstance(extent, list) and len(extent) == 4):
+        raise SystemExit(f"region {region.name}: {stats.name} has no extent; run the fetch workflow"
+                         f" {SOURCES_WORKFLOW} for region {region.name}")
+    w, s, e, n = extent
     eps = 1e-9  # the stats round the extent to 9 decimals
     for bw, bs, be, bn in boxes:
         if bw < w - eps or bs < s - eps or be > e + eps or bn > n + eps:
             raise SystemExit(f"region {region.name}: the read box {(bw, bs, be, bn)} reaches past the extent"
                              f" {[w, s, e, n]} of {', '.join(files)} ({stats.name}); run the fetch workflow"
                              f" {SOURCES_WORKFLOW} for region {region.name} again")
-    return {file: folder / file for file in files}
+    return found
 
 
 def _load_catalog(cache: Path):
@@ -398,16 +432,23 @@ def _build_bathy(args: argparse.Namespace) -> int:
     has_cudem, has_crm = "cudem" in region.bathy_sources, "crm" in region.bathy_sources
     has_etopo = "etopo" in region.bathy_sources
     has_coarse = bool(set(COARSE_SOURCES) & set(region.bathy_sources))
+    nonna, etopo_record = {}, []  # the NONNA assets and ETOPO tiles the source metadata records
     if owned is None:
         needed = [crm_path(overview_bounds(region.bbox), args.cache)]
     else:
         blocks = list(iter_blocks(owned))
-        etopo = etopo_paths(fetch_extent(region, args.region.parent), args.cache) if has_etopo else []
+        extent = fetch_extent(region, args.region.parent)
+        etopo = etopo_paths(extent, args.cache) if has_etopo else []
+        etopo_record = [{"name": tile, "file": path.name} for tile, path in zip(etopo_tiles(extent), etopo)]
         needed = ([urllist] if has_cudem else []) + etopo + [
             path for _, _, read in blocks if has_crm and (path := crm_path(read, args.cache)) is not None]
         name = _asset_name(args.region, region)
-        paths = _check_assets(args.region, region, args.cache, _nonna_files(region, name), [r for _, _, r in blocks])
-        assets = {product: paths.get(f"{product}-{name}.tif") for product in ("nonna10", "nonna100")}
+        checked = _check_assets(args.region, region, args.cache, _nonna_files(region, name), [r for _, _, r in blocks])
+        assets = {product: None for product in ("nonna10", "nonna100")}
+        for product in assets:
+            if (file := f"{product}-{name}.tif") in checked:
+                assets[product], sha256 = checked[file]
+                nonna[product] = {"name": file, "sha256": sha256}
     for path in needed:
         if not path.exists():
             raise SystemExit(f"{path} not found; run fetch-bathy first")
@@ -484,9 +525,10 @@ def _build_bathy(args: argparse.Namespace) -> int:
 
     cudem_tiles = [used[name] for name in sorted(used)]
     tile_bathy(fine_work, files["bathy.mbtiles"], region=region, crm_request=crm_request, zooms=zooms["bathy.mbtiles"],
-               cudem_tiles=cudem_tiles)
+               cudem_tiles=cudem_tiles, nonna=nonna, etopo=etopo_record)
     tile_bathy(coarse_work, files["bathy-coarse.mbtiles"], region=region, crm_request=crm_request,
-               zooms=zooms["bathy-coarse.mbtiles"], coarse=True, cudem_tiles=cudem_tiles)
+               zooms=zooms["bathy-coarse.mbtiles"], coarse=True, cudem_tiles=cudem_tiles, nonna=nonna,
+               etopo=etopo_record)
     for name in ("dem.mbtiles", "dem-coarse.mbtiles"):
         if not files[name].exists():  # nothing to draw (the overview's fine DEM, the ENC path's coarse DEM)
             empty_dem_mbtiles(files[name], minzoom=zooms[name][0], maxzoom=zooms[name][1], bounds=region.bbox)

@@ -823,7 +823,7 @@ def test_fetch_bathy_downloads_the_region_assets(tmp_path, regions_dir, monkeypa
     monkeypatch.setattr(geoid, "fetch_grids", lambda p: None)
     cache = tmp_path / "cache"
     assert main(["fetch-bathy", str(region), "--cache", str(cache)]) == 0
-    names = ["fetch-stats-toba.json", "nonna10-toba.tif", "nonna100-toba.tif", "coast-toba.geojson.gz"]
+    names = ["fetch-stats-toba.json", "nonna10-toba.tif", "nonna100-toba.tif"]  # a bathy build reads no coastline
     assert urls == [SOURCES_BASE + name for name in names]
     for name in names:
         assert (cache / "sources-bc-1" / name).read_bytes() == served[name]
@@ -885,6 +885,11 @@ def test_build_bathy_reads_assets_not_wcs(tmp_path, fixtures_dir, regions_dir, m
 
     root = tmp_path / "out" / "bathy-test-cell-0.1.0"
     assert "Canadian Hydrographic Service" in (root / "NOTICE").read_text()
+    import hashlib
+
+    for asset in ("nonna10-toba.tif", "nonna100-toba.tif"):  # F1: the assets read, by name and sha256
+        sha = hashlib.sha256((cache / "sources-bc-1" / asset).read_bytes()).hexdigest()
+        assert f"{asset} (sha256 {sha})" in (root / "NOTICE").read_text()
     owned = tiles_area(owned_tiles(load_region(region), region.parent))
     for name in BATHY_FILES:
         with MBTiles.open(root / name) as m:
@@ -968,3 +973,94 @@ def test_build_bathy_passes_the_etopo_path_only_when_listed(tmp_path, fixtures_d
     with pytest.raises(Stop):
         main(args)
     assert seen[-1] == tiles
+
+
+# PR #122 review F5 and F6: the asset checks name the file and the fetch workflow, never a traceback.
+
+def _fetch_with(monkeypatch, served):
+    """cli.download serves `served` (file name -> bytes) from the release; a missing file fails like a 404."""
+    from chartpack import cli
+    from chartpack.cache import DownloadError
+
+    def fake_download(url, dest, *, expected_size=None, timeout=120):
+        name = url.removeprefix(SOURCES_BASE)
+        if name not in served:
+            raise DownloadError(f"{url}: HTTP Error 404: Not Found")
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(served[name])
+        return dest
+
+    monkeypatch.setattr(cli, "download", fake_download)
+    monkeypatch.setattr(cli, "fetch_crm", lambda bbox, cache: None)
+    monkeypatch.setattr(geoid, "fetch_grids", lambda p: None)
+
+
+def test_fetch_bathy_needs_no_coastline(tmp_path, regions_dir, monkeypatch, capsys):
+    """F6: stats from a NONNA-only fetch (no coastline entry, no coastline asset): fetch-bathy downloads the NONNA
+    grids and asks nothing about the coastline."""
+    import json
+
+    region = _nonna_region(tmp_path, regions_dir)
+    served = _write_assets(tmp_path / "release", region)
+    del served["coast-toba.geojson.gz"]
+    stats = json.loads(served["fetch-stats-toba.json"])
+    del stats["files"]["coast-toba.geojson.gz"]
+    served["fetch-stats-toba.json"] = json.dumps(stats).encode()
+    _fetch_with(monkeypatch, served)
+    assert main(["fetch-bathy", str(region), "--cache", str(tmp_path / "cache")]) == 0
+    assert (tmp_path / "cache" / "sources-bc-1" / "nonna100-toba.tif").is_file()
+    capsys.readouterr()
+
+
+@pytest.mark.parametrize("case, match", [
+    ("no stats", r"fetch-stats-toba\.json.*chartpack-sources\.yml"),
+    ("no files key", r"fetch-stats-toba\.json.*chartpack-sources\.yml"),
+    ("no entry", r"nonna100-toba\.tif.*fetch-stats-toba\.json.*chartpack-sources\.yml"),
+])
+def test_fetch_bathy_stats_problems_are_clean_errors(tmp_path, regions_dir, monkeypatch, capsys, case, match):
+    """F6: a release without the stats file, a stats file without `files`, or one without a needed NONNA entry
+    stops fetch-bathy with a message naming the file and the fetch workflow."""
+    import json
+
+    region = _nonna_region(tmp_path, regions_dir)
+    served = _write_assets(tmp_path / "release", region)
+    stats = json.loads(served["fetch-stats-toba.json"])
+    if case == "no stats":
+        del served["fetch-stats-toba.json"]
+    elif case == "no files key":
+        del stats["files"]
+    else:
+        del stats["files"]["nonna100-toba.tif"]
+    if case != "no stats":
+        served["fetch-stats-toba.json"] = json.dumps(stats).encode()
+    _fetch_with(monkeypatch, served)
+    with pytest.raises(SystemExit, match=match):
+        main(["fetch-bathy", str(region), "--cache", str(tmp_path / "cache")])
+
+
+@pytest.mark.parametrize("case", ["stale mosaic", "no entry", "no files key"])
+def test_build_bathy_checks_the_assets_against_the_stats(tmp_path, fixtures_dir, regions_dir, monkeypatch,
+                                                         zero_geoid, case):
+    """F5: new stats beside a stale mosaic (or stats that do not list the asset) fail the build before any block,
+    naming the file and the fetch workflow."""
+    import json
+
+    from chartpack import cli
+
+    region = _nonna_region(tmp_path, regions_dir)
+    cache = _bathy_cache(tmp_path, fixtures_dir, region, monkeypatch, [])
+    folder = cache / "sources-bc-1"
+    _write_assets(folder, region)
+    stats_path = folder / "fetch-stats-toba.json"
+    stats = json.loads(stats_path.read_text())
+    if case == "stale mosaic":
+        stats["files"]["nonna10-toba.tif"]["sha256"] = "0" * 64  # the stats of a newer fetch
+    elif case == "no entry":
+        del stats["files"]["nonna10-toba.tif"]
+    else:
+        del stats["files"]
+    stats_path.write_text(json.dumps(stats))
+    monkeypatch.setattr(cli, "build_block", lambda *a, **k: pytest.fail("built from an unchecked asset"))
+    with pytest.raises(SystemExit, match=r"nonna10-toba\.tif.*chartpack-sources\.yml|fetch-stats-toba\.json.*"
+                                         r"chartpack-sources\.yml"):
+        main(["build-bathy", str(region), str(tmp_path / "out"), "--cache", str(cache), "--work", str(tmp_path / "w")])
