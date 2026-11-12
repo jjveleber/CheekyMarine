@@ -117,6 +117,12 @@ def owned_tiles(region: Region, regions_dir: Path) -> set[tuple[int, int]] | Non
     """The zoom-10 tiles this region pack owns; None for the overview, which owns no zoom-10 tile."""
     if region.overview:
         return None
+    return {tile for tile, owner in owners(region, regions_dir).items() if owner.name == region.name}
+
+
+def owners(region: Region, regions_dir: Path) -> dict[tuple[int, int], Region]:
+    """Every zoom-10 tile of the grid order in regions_dir/grid.toml with the region that owns it (assign), with
+    `region` standing for its own file; region must be in the order."""
     regions_dir = Path(regions_dir)
     order = load_grid(regions_dir / "grid.toml")
     if region.name not in order:
@@ -130,8 +136,8 @@ def owned_tiles(region: Region, regions_dir: Path) -> set[tuple[int, int]] | Non
         if not path.is_file():
             raise RegionError(f"grid order names {name} but {path} does not exist")
         regions.append(load_region(path))
-    owner = assign(regions, order)
-    return {tile for tile, name in owner.items() if name == region.name}
+    by_name = {r.name: r for r in regions}
+    return {tile: by_name[name] for tile, name in assign(regions, order).items()}
 
 
 def content_tiles(region: Region, regions_dir: Path) -> set[tuple[int, int]]:

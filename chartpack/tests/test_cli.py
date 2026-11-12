@@ -511,8 +511,8 @@ def test_build_bathy_masks_lakes_without_a_datum_rule(tmp_path, fixtures_dir, re
                                                       zero_geoid, work_dir):
     """A contour crossing a lake of the datum file's lake mask keeps only the part outside it, in the fine and the
     coarse layers, and no band reaches inside. The coarse case has no CUDEM, so CRM draws the lake. (Coverage is
-    polygonized at COVERAGE_CELL_DEG, wider than this lake, so it follows the mask only to that size, as for the
-    clip: test_clip_removes_water_in_block.)"""
+    polygonized at COVERAGE_CELL_DEG, wider than this lake, so it follows the mask only to that size, as in
+    test_lake_mask_removes_water_in_block.)"""
     import json
 
     from shapely.geometry import box, shape
@@ -735,3 +735,155 @@ def test_build_enc_reads_usgs_seabed_over_the_owned_tiles(tmp_path, fixtures_dir
         main(["build-enc", str(path), str(tmp_path / "out"), "--cache", str(cache), "--work", str(tmp_path / "work")])
     strip = [f for f in got if shape(f.geometry).intersects(owned) and not shape(f.geometry).intersects(box(*region.bbox))]
     assert {f.props["src"] for f in strip} == {"usseabed", "usgs-cmecs"}
+
+
+# Canadian source assets from the release sources-bc-1 (plan 8 Task 6): no pack build calls a Canadian host.
+
+SOURCES_BASE = "https://github.com/jjveleber/CheekyMarine/releases/download/sources-bc-1/"
+
+
+def _nonna_region(tmp_path, regions_dir):
+    """The bathy test region as a BC inshore pack (its whole tile is the Canadian column), assets named toba."""
+    path = _bathy_region(tmp_path, regions_dir)
+    path.write_text(path.read_text().replace('sources = ["cudem", "crm"]', 'sources = ["nonna10", "nonna100", "crm"]')
+                    + '\n[charts]\nkind = "derived-inshore"\n\n[sources]\nassets = "toba"\n')
+    return path
+
+
+def _write_assets(folder, region, *, shrink=0.0):
+    """Fixture assets for the region in folder: NONNA-10 (a slope) and NONNA-100 patches around Possession Bar, a
+    coastline file, and fetch-stats-toba.json whose extent is the region's fetch extent with its west edge moved
+    east by shrink degrees. Returns {file name: bytes}."""
+    import gzip
+    import hashlib
+    import json
+
+    import numpy as np
+    from make_nonna import NODATA as NONNA_NODATA
+    from test_bathy_blocks import _const, _write_nonna_over
+
+    from chartpack.grid import fetch_extent
+    from chartpack.region import load_region
+
+    folder.mkdir(parents=True, exist_ok=True)
+    near = (-122.384, 47.896, -122.376, 47.904)
+    _write_nonna_over(folder / "nonna10-toba.tif", "nonna10", near,  # a slope from 5 m to 29 m deep, west to east
+                      lambda lon, lat: np.where(_const(1.0, near)(lon, lat) == 1.0, -(5.0 + 3000 * (lon - near[0])),
+                                                NONNA_NODATA))
+    wide = (-122.40, 47.88, -122.36, 47.92)
+    _write_nonna_over(folder / "nonna100-toba.tif", "nonna100", wide, _const(-15.0, wide))
+    (folder / "coast-toba.geojson.gz").write_bytes(gzip.compress(b'{"type": "FeatureCollection", "features": []}'))
+    w, s, e, n = fetch_extent(load_region(region), region.parent)
+    files = {}
+    for name in ("nonna10-toba.tif", "nonna100-toba.tif", "coast-toba.geojson.gz"):
+        files[name] = {"chunks": 1, "bytes": (folder / name).stat().st_size, "seconds": 0.1,
+                       "sha256": hashlib.sha256((folder / name).read_bytes()).hexdigest()}
+    stats = {"extent": [round(v, 9) for v in (w + shrink, s, e, n)], "files": files}
+    (folder / "fetch-stats-toba.json").write_text(json.dumps(stats, indent=2) + "\n")
+    return {p.name: p.read_bytes() for p in folder.iterdir()}
+
+
+def _no_network(monkeypatch):
+    import socket
+    import urllib.request
+
+    def refuse(*a, **k):
+        raise AssertionError(f"network request: {a[:1]}")
+
+    monkeypatch.setattr(urllib.request, "urlopen", refuse)
+    monkeypatch.setattr(socket, "create_connection", refuse)
+    monkeypatch.setattr(socket.socket, "connect", refuse)
+
+
+def test_fetch_bathy_downloads_the_region_assets(tmp_path, regions_dir, monkeypatch, capsys):
+    """fetch-bathy of a region listing NONNA downloads its assets from sources-bc-1 into the cache, checks each
+    against the sha256 in the fetch stats, and asks again only for the stats on a second run."""
+    from chartpack import cli
+
+    region = _nonna_region(tmp_path, regions_dir)
+    served = _write_assets(tmp_path / "release", region)
+    urls = []
+
+    def fake_download(url, dest, *, expected_size=None, timeout=120):
+        urls.append(url)
+        assert url.startswith(SOURCES_BASE), url
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(served[url.removeprefix(SOURCES_BASE)])
+        return dest
+
+    monkeypatch.setattr(cli, "download", fake_download)
+    monkeypatch.setattr(cli, "fetch_crm", lambda bbox, cache: None)
+    monkeypatch.setattr(geoid, "fetch_grids", lambda p: None)
+    cache = tmp_path / "cache"
+    assert main(["fetch-bathy", str(region), "--cache", str(cache)]) == 0
+    names = ["fetch-stats-toba.json", "nonna10-toba.tif", "nonna100-toba.tif", "coast-toba.geojson.gz"]
+    assert urls == [SOURCES_BASE + name for name in names]
+    for name in names:
+        assert (cache / "sources-bc-1" / name).read_bytes() == served[name]
+    urls.clear()
+    assert main(["fetch-bathy", str(region), "--cache", str(cache)]) == 0
+    assert urls == [SOURCES_BASE + "fetch-stats-toba.json"]  # the assets are cached
+    capsys.readouterr()
+
+
+def test_fetch_bathy_rejects_an_asset_that_does_not_match_its_stats(tmp_path, regions_dir, monkeypatch, capsys):
+    from chartpack import cli
+
+    region = _nonna_region(tmp_path, regions_dir)
+    served = _write_assets(tmp_path / "release", region)
+    served["nonna100-toba.tif"] = served["nonna100-toba.tif"] + b"x"
+
+    def fake_download(url, dest, *, expected_size=None, timeout=120):
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(served[url.removeprefix(SOURCES_BASE)])
+        return dest
+
+    monkeypatch.setattr(cli, "download", fake_download)
+    monkeypatch.setattr(cli, "fetch_crm", lambda bbox, cache: None)
+    monkeypatch.setattr(geoid, "fetch_grids", lambda p: None)
+    with pytest.raises(SystemExit, match=r"nonna100-toba\.tif.*sha256.*chartpack-sources\.yml"):
+        main(["fetch-bathy", str(region), "--cache", str(tmp_path / "cache")])
+    assert not (tmp_path / "cache" / "sources-bc-1" / "nonna100-toba.tif").exists()
+
+
+def test_build_bathy_reads_assets_not_wcs(tmp_path, fixtures_dir, regions_dir, monkeypatch, capsys, zero_geoid):
+    """build-bathy of a region listing NONNA reads the cached assets and makes no network request; its fine layers
+    are NONNA-10 water. A missing asset stops the build naming the file and the fetch workflow."""
+    import json
+
+    from chartpack.bathy import blocks
+
+    region = _nonna_region(tmp_path, regions_dir)
+    cache = _bathy_cache(tmp_path, fixtures_dir, region, monkeypatch, [])
+    _write_assets(cache / "sources-bc-1", region)
+    monkeypatch.setattr(blocks, "read_window", lambda src, bbox: _fixture_window(fixtures_dir, bbox))
+    _no_network(monkeypatch)
+    work = tmp_path / "work"
+    assert main(["build-bathy", str(region), str(tmp_path / "out"), "--cache", str(cache), "--work", str(work)]) == 0
+    capsys.readouterr()
+    fine = [json.loads(line)["properties"]
+            for line in (work / "tippecanoe" / "coverage.geojsonseq").read_text().splitlines()]
+    assert {(p["source"], p["grade"]) for p in fine} == {("nonna10", "survey")}
+    coarse = [json.loads(line)["properties"]
+              for line in (work / "tippecanoe-coarse" / "coverage.geojsonseq").read_text().splitlines()]
+    assert ("nonna100", "coarse-survey") in {(p["source"], p["grade"]) for p in coarse}
+    (cache / "sources-bc-1" / "nonna100-toba.tif").unlink()
+    with pytest.raises(SystemExit, match=r"nonna100-toba\.tif.*chartpack-sources\.yml"):
+        main(["build-bathy", str(region), str(tmp_path / "out2"), "--cache", str(cache), "--work", str(work)])
+
+
+@pytest.mark.parametrize("command, asset", [("build-bathy", "nonna10-toba.tif"),
+                                            ("build-enc", "coast-toba.geojson.gz")])
+def test_block_outside_asset_extent_is_error(tmp_path, fixtures_dir, regions_dir, monkeypatch, zero_geoid, command,
+                                             asset):
+    """A read box past the extent the fetch workflow pulled (fetch-stats-toba.json) fails the build, naming the
+    region, the asset and the fetch workflow, before anything is built."""
+    from chartpack import cli
+
+    region = _nonna_region(tmp_path, regions_dir)
+    cache = _bathy_cache(tmp_path, fixtures_dir, region, monkeypatch, [])
+    _write_assets(cache / "sources-bc-1", region, shrink=0.01)
+    monkeypatch.setattr(cli, "build_block", lambda *a, **k: pytest.fail("built past the asset extent"))
+    monkeypatch.setattr(cli, "build_enc_mbtiles", lambda *a, **k: pytest.fail("built past the asset extent"))
+    with pytest.raises(SystemExit, match=rf"test-cell.*{asset.replace('.', '[.]')}.*chartpack-sources\.yml"):
+        main([command, str(region), str(tmp_path / "out"), "--cache", str(cache), "--work", str(tmp_path / "work")])

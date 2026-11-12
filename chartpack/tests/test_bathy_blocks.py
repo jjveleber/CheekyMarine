@@ -19,7 +19,7 @@ from shapely.geometry import box, mapping, shape
 from shapely.ops import unary_union
 
 from chartpack.bathy import blocks
-from chartpack.bathy.blocks import area_datum, build_block, iter_blocks
+from chartpack.bathy.blocks import BlockSources, area_datum, build_block, iter_blocks
 from chartpack.bathy.crm import crm_path, crm_wcs_url
 from chartpack.bathy.cudem import CudemTile, parse_urllist, tiles_for_bbox
 from chartpack.bathy.merge import COVERAGE_CELL_DEG
@@ -110,11 +110,15 @@ def _block(tile):
     return next(b for b in iter_blocks({tile}))
 
 
-def _build(tile, sources_write, test_region, elev, clip=None):
+def _sources(tiles=(), crm=None, nonna10=None, nonna100=None, etopo=None) -> BlockSources:
+    return BlockSources(list(tiles), crm, nonna10, nonna100, etopo)
+
+
+def _build(tile, sources_write, test_region, elev, lake_mask=None):
     tiles, crm = sources_write(elev)
     _, core, read = _block(tile)
     datum = area_datum(test_region, Path("unused"))  # zero_geoid: no grid is read
-    return core, build_block(core, read, tiles_for_bbox(tiles, read), crm, datum, clip)
+    return core, build_block(core, read, _sources(tiles_for_bbox(tiles, read), crm), datum, None, lake_mask=lake_mask)
 
 
 def _coords(features) -> np.ndarray:
@@ -251,7 +255,8 @@ def test_crm_only_block_coarse_z12_has_every_level(sources, test_region):
     tiles, crm = sources(np.full((2000, 2000), NODATA, np.float32))
     _write_tif(crm, -np.tile(np.linspace(-68.0, 188.0, 400, dtype=np.float32), (400, 1)), AREA)  # 10 to 100 m deep
     _, core, read = _block(NORTH)
-    result = build_block(core, read, tiles_for_bbox(tiles, read), crm, area_datum(test_region, Path("unused")), None)
+    datum = area_datum(test_region, Path("unused"))
+    result = build_block(core, read, _sources(tiles_for_bbox(tiles, read), crm), datum, None)
     assert not result.fine_contours
     top = {(f["properties"]["depth_ft"], f["properties"]["minzoom"])
            for f in result.coarse_contours if f["tippecanoe"]["minzoom"] == 12}
@@ -263,9 +268,10 @@ def test_block_without_cudem_tile_skips_fine(sources, test_region, monkeypatch):
     _, crm = sources(_cudem_elev())
     _, core, read = _block(NORTH)
     merges = []
-    real = blocks.merge_to_mllw
-    monkeypatch.setattr(blocks, "merge_to_mllw", lambda *a, **k: merges.append(k["res_deg"]) or real(*a, **k))
-    result = build_block(core, read, [], crm, area_datum(test_region, Path("unused")), None)
+    real = blocks.merge_ordered
+    monkeypatch.setattr(blocks, "merge_ordered", lambda layers, bbox, res_deg: merges.append(res_deg) or real(
+        layers, bbox, res_deg))
+    result = build_block(core, read, _sources(crm=crm), area_datum(test_region, Path("unused")), None)
     assert merges == [COARSE]
     assert not (result.fine_contours or result.fine_bands or result.fine_coverage)
     assert result.fine_grid is None and result.fine_cudem is None
@@ -286,7 +292,8 @@ def test_lake_rule_stays_out_of_the_dem(kind, sources, test_region, tmp_path):
     flat = np.full((2000, 2000), -20.0, np.float32)
     tiles, crm = sources(flat if kind == "fine" else np.full((2000, 2000), NODATA, np.float32))
     _write_tif(crm, np.full((400, 400), -20.0, np.float32), AREA)
-    result = build_block(core, read, tiles_for_bbox(tiles, read), crm, area_datum(region, Path("unused")), None)
+    result = build_block(core, read, _sources(tiles_for_bbox(tiles, read), crm), area_datum(region, Path("unused")),
+                         None)
     grid = getattr(result, f"{kind}_grid")
     x0, dx, _, y0, _, dy = grid.transform
     lon = x0 + (np.arange(grid.data.shape[1]) + 0.5) * dx
@@ -298,11 +305,12 @@ def test_lake_rule_stays_out_of_the_dem(kind, sources, test_region, tmp_path):
     assert rim and all(lake.boundary.distance(shape(f["geometry"])) < 0.005 for f in rim)
 
 
-def test_clip_removes_water_in_block(sources, test_region):
+def test_lake_mask_removes_water_in_block(sources, test_region):
+    """Lakes with no datum rule (the datum file's lake mask): no depth inside, in either grid or any feature."""
     _, _, read = _block(NORTH)
     mid = (read[1] + read[3]) / 2
     clip = box(read[0] - 1, read[1] - 1, read[2] + 1, mid)  # the south half of the block
-    core, result = _build(NORTH, sources, test_region, _cudem_elev(west_of=SPLIT_LON), clip=clip)
+    core, result = _build(NORTH, sources, test_region, _cudem_elev(west_of=SPLIT_LON), lake_mask=clip)
     inner = clip.buffer(-COVERAGE_CELL_DEG)
     for name in FEATURES:
         feats = getattr(result, name)
@@ -577,8 +585,9 @@ def test_block_without_cudem_tile_writes_no_fine_dem(tmp_path, monkeypatch, zero
         dest.parent.mkdir(parents=True, exist_ok=True)
         _write_tif(dest, _crm_elev(), AREA)
     merges = []
-    real = blocks.merge_to_mllw
-    monkeypatch.setattr(blocks, "merge_to_mllw", lambda *a, **k: merges.append(k["res_deg"]) or real(*a, **k))
+    real = blocks.merge_ordered
+    monkeypatch.setattr(blocks, "merge_ordered", lambda layers, bbox, res_deg: merges.append(res_deg) or real(
+        layers, bbox, res_deg))
     assert main(["build-bathy", str(region), str(tmp_path / "out"), "--cache", str(cache), "--work", str(tmp_path / "work")]) == 0
     root = tmp_path / "out" / "bathy-blk-0.1.0"
     assert main(["check", str(root)]) == 0
@@ -678,3 +687,264 @@ def test_fine_ownership_decided_by_the_owning_block(sources, test_region):
     assert blocks.fine_owned_z12(north.fine_cudem, north.fine_grid.transform, NORTH) == set()
     tile = _tile_at(12, (patch[0] + patch[2]) / 2, (patch[1] + patch[3]) / 2)
     assert blocks.fine_owned_z12(south.fine_cudem, south.fine_grid.transform, SOUTH) == {tile}
+
+
+# NONNA in the block build, source order by side of the border (plan 8 Task 6). NONNA fixtures are mosaics on the
+# product's native EPSG:3857 grid (make_nonna), raw elevations as CHS stores them: depths negative.
+
+_R = 6378137.0
+
+
+def _write_nonna_over(path, product, bbox, raw) -> Path:
+    """A NONNA mosaic over bbox (W, S, E, N, grown to native cell edges): raw(lon, lat) gives the stored value
+    (elevation, NODATA for no data) at each native cell center, from 2D lon and lat arrays."""
+    from make_nonna import edge_transform, write_nonna
+
+    ex, px, _, ey, _, py = edge_transform(product, 0, 0)
+    w, s, e, n = bbox
+    x = [_R * math.radians(v) for v in (w, e)]
+    y = [_R * math.log(math.tan(math.pi / 4 + math.radians(v) / 2)) for v in (n, s)]
+    col0, col1 = math.floor((x[0] - ex) / px), math.ceil((x[1] - ex) / px)
+    row0, row1 = math.floor((y[0] - ey) / py), math.ceil((y[1] - ey) / py)
+    cx = ex + (np.arange(col0, col1) + 0.5) * px
+    cy = ey + (np.arange(row0, row1) + 0.5) * py
+    lon = np.degrees(cx / _R)[None, :]
+    lat = np.degrees(2 * np.arctan(np.exp(cy / _R)) - np.pi / 2)[:, None]
+    lon, lat = np.broadcast_arrays(lon, lat)
+    return write_nonna(path, np.asarray(raw(lon, lat), np.float32), product, col0, row0)
+
+
+def _inside(lon, lat, b):
+    return (lon > b[0]) & (lon < b[2]) & (lat > b[1]) & (lat < b[3])
+
+
+def _const(value, *boxes):
+    """raw(lon, lat): value inside any of the boxes, NODATA elsewhere."""
+    from make_nonna import NODATA as NONNA_NODATA
+
+    def raw(lon, lat):
+        inside = np.zeros(lon.shape, bool)
+        for b in boxes:
+            inside |= _inside(lon, lat, b)
+        return np.where(inside, value, NONNA_NODATA)
+
+    return raw
+
+
+def _cell(transform, arr, lon, lat):
+    x0, dx, _, y0, _, dy = transform
+    return arr[int((lat - y0) / dy), int((lon - x0) / dx)]
+
+
+def _sub(core, fw, fs, fe, fn):
+    """The box at fractions (fw, fs, fe, fn) of the core."""
+    w, s, e, n = core
+    return (w + fw * (e - w), s + fs * (n - s), w + fe * (e - w), s + fn * (n - s))
+
+
+def _center(b):
+    return (b[0] + b[2]) / 2, (b[1] + b[3]) / 2
+
+
+def _split(read):
+    """A canada polygon over the north half of the read box (the Canadian column), and its south edge."""
+    mid = round((read[1] + read[3]) / 2, 4) + 0.00013  # off the fine and coarse cell edges
+    return box(read[0] - 1, mid, read[2] + 1, read[3] + 1), mid
+
+
+def _source_name(arr, transform, lon, lat):
+    return blocks.SOURCE_NAMES[_cell(transform, arr, lon, lat)]
+
+
+def _fine_split(sources, test_region, tmp_path):
+    """CUDEM everywhere and NONNA-10 over a box across the side line: (result, box, side line latitude)."""
+    tiles, crm = sources(_cudem_elev())
+    _, core, read = _block(NORTH)
+    canada, mid = _split(read)
+    b = (core[0] + 0.05, mid - 0.03, core[0] + 0.15, mid + 0.03)
+    nonna10 = _write_nonna_over(tmp_path / "n10.tif", "nonna10", b, _const(-25.0, b))
+    result = build_block(core, read, _sources(tiles_for_bbox(tiles, read), crm, nonna10=nonna10),
+                         area_datum(test_region, Path("unused")), canada)
+    return result, b, mid
+
+
+def test_canadian_side_prefers_nonna10_over_cudem(sources, test_region, tmp_path):
+    result, b, mid = _fine_split(sources, test_region, tmp_path)
+    lon = (b[0] + b[2]) / 2
+    t = result.fine_grid.transform
+    assert _source_name(result.fine_source, t, lon, mid + 0.02) == "nonna10"
+    assert _cell(t, result.fine_grid.data, lon, mid + 0.02) == pytest.approx(25.0)
+    assert _source_name(result.fine_source, t, lon, b[3] + 0.02) == "cudem"  # past the NONNA box: CUDEM
+    assert _cell(t, result.fine_cudem, lon, mid + 0.02)  # NONNA-10 is fine-tier water
+    assert {f["properties"]["source"] for f in result.fine_coverage} == {"cudem", "nonna10"}
+
+
+def test_us_side_ignores_nonna(sources, test_region, tmp_path):
+    result, b, mid = _fine_split(sources, test_region, tmp_path)
+    lon = (b[0] + b[2]) / 2
+    t = result.fine_grid.transform
+    assert _source_name(result.fine_source, t, lon, mid - 0.02) == "cudem"
+    rows = np.arange(result.fine_source.shape[0])
+    lat = t[3] + (rows + 0.5) * t[5]
+    assert not (result.fine_source[lat < mid] == blocks.SOURCE_NAMES.index("nonna10")).any()
+    assert not (result.nav_src[lat < mid] != 0).any() and np.isnan(result.nav_depth.data[lat < mid]).all()
+
+
+def test_cudem_fills_nonna10_holes_on_canadian_side(sources, test_region, tmp_path):
+    from make_nonna import NODATA as NONNA_NODATA
+
+    tiles, crm = sources(_cudem_elev())
+    _, core, read = _block(NORTH)
+    b = _sub(core, 0.2, 0.2, 0.6, 0.6)
+    hole = _sub(core, 0.35, 0.35, 0.45, 0.45)
+    nonna10 = _write_nonna_over(tmp_path / "n10.tif", "nonna10", b,
+                                lambda lon, lat: np.where(_inside(lon, lat, hole), NONNA_NODATA, -25.0))
+    result = build_block(core, read, _sources(tiles_for_bbox(tiles, read), crm, nonna10=nonna10),
+                         area_datum(test_region, Path("unused")), box(*read))
+    t = result.fine_grid.transform
+    assert _source_name(result.fine_source, t, *_center(hole)) == "cudem"
+    assert _cell(t, result.fine_cudem, *_center(hole))
+    assert _source_name(result.fine_source, t, b[0] + 0.01, b[1] + 0.01) == "nonna10"
+
+
+def _write_grid(path, value, *boxes) -> Path:
+    """A lon/lat GeoTIFF over AREA at 0.0025 degree (as the CRM and ETOPO stand-ins): value inside the boxes,
+    nodata elsewhere."""
+    lon = AREA[0] + (np.arange(400) + 0.5) * 0.0025
+    lat = AREA[3] - (np.arange(400) + 0.5) * 0.0025
+    inside = np.zeros((400, 400), bool)
+    for b in boxes:
+        inside |= _inside(lon[None, :], lat[:, None], b)
+    _write_tif(path, np.where(inside, value, NODATA).astype(np.float32), AREA)
+    return Path(path)
+
+
+def test_coarse_order_canadian_side(small_grids, zero_geoid, test_region, tmp_path):
+    _, core, read = _block(NORTH)
+    q = [_sub(core, 0.1, 0.1, 0.4, 0.4), _sub(core, 0.6, 0.1, 0.9, 0.4), _sub(core, 0.1, 0.6, 0.4, 0.9),
+         _sub(core, 0.6, 0.6, 0.9, 0.9)]  # only nonna100, only crm, only etopo, all three
+    nonna100 = _write_nonna_over(tmp_path / "n100.tif", "nonna100", read, _const(-60.0, q[0], q[3]))
+    crm = _write_grid(tmp_path / "crm.tif", -70.0, q[1], q[3])
+    etopo = _write_grid(tmp_path / "etopo.tif", -80.0, q[2], q[3])
+    result = build_block(core, read, _sources(crm=crm, nonna100=nonna100, etopo=etopo),
+                         area_datum(test_region, Path("unused")), box(*read))
+    t = result.coarse_grid.transform
+    assert [_source_name(result.coarse_source, t, *_center(b)) for b in q] == ["nonna100", "crm", "etopo", "nonna100"]
+    assert result.fine_grid is None  # no fine-tier source in the block
+
+
+def test_etopo_last_on_us_side(small_grids, zero_geoid, test_region, tmp_path):
+    _, core, read = _block(NORTH)
+    west = (read[0], read[1], (core[0] + core[2]) / 2, read[3])
+    nonna100 = _write_nonna_over(tmp_path / "n100.tif", "nonna100", read, _const(-60.0, read))
+    crm = _write_grid(tmp_path / "crm.tif", -70.0, west)
+    etopo = _write_grid(tmp_path / "etopo.tif", -80.0, AREA)
+    result = build_block(core, read, _sources(crm=crm, nonna100=nonna100, etopo=etopo),
+                         area_datum(test_region, Path("unused")), None)
+    t = result.coarse_grid.transform
+    lat = (core[1] + core[3]) / 2
+    assert _source_name(result.coarse_source, t, core[0] + 0.05, lat) == "crm"
+    assert _source_name(result.coarse_source, t, core[2] - 0.05, lat) == "etopo"
+    assert not (result.coarse_source == blocks.SOURCE_NAMES.index("nonna100")).any()
+    assert result.nav_depth is None and result.nonna_valid is None  # no Canadian column
+
+
+def test_no_datum_shift_for_nonna(small_grids, test_region, tmp_path, monkeypatch, zero_geoid):
+    """A NONNA cell (Canadian chart datum) keeps its depth; a CUDEM cell is shifted by the station offset."""
+    cudem_tif = tmp_path / "cudem.tif"
+    _write_tif(cudem_tif, np.full((2000, 2000), -40.0, np.float32), AREA)
+    real = blocks.read_window
+    monkeypatch.setattr(blocks, "read_window",
+                        lambda src, bbox: real(str(cudem_tif) if src.startswith("/vsicurl/") else src, bbox))
+    _, core, read = _block(NORTH)
+    canada, mid = _split(read)
+    b = (core[0] + 0.05, mid - 0.03, core[0] + 0.15, mid + 0.03)
+    nonna10 = _write_nonna_over(tmp_path / "n10.tif", "nonna10", b, _const(-30.0, b))
+    datum = area_datum(test_region, Path("unused"))
+    result = build_block(core, read, _sources(tiles_for_bbox(_cudem_tiles(), read), nonna10=nonna10), datum, canada)
+    grid = result.fine_grid
+    lon = (b[0] + b[2]) / 2
+    assert _cell(grid.transform, grid.data, lon, mid + 0.02) == 30.0
+    offset = _cell(grid.transform, datum("cudem", grid.transform, grid.data.shape, lakes=False), lon, mid - 0.02)
+    assert abs(offset) > 0.1
+    assert _cell(grid.transform, grid.data, lon, mid - 0.02) == pytest.approx(40.0 - offset, abs=1e-4)
+
+
+def test_coverage_grade_per_source(sources, test_region, tmp_path):
+    """Coverage carries the grade: survey for CUDEM, NONNA-10 and US-side CRM; coarse-survey for NONNA-100; rough
+    for ETOPO and Canadian-side CRM."""
+    tiles, _ = sources(_cudem_elev(west_of=SPLIT_LON))
+    _, core, read = _block(NORTH)
+    canada, mid = _split(read)
+    n10 = (SPLIT_LON + 0.02, mid + 0.02, SPLIT_LON + 0.06, mid + 0.06)
+    n100 = (SPLIT_LON + 0.08, mid + 0.02, SPLIT_LON + 0.12, mid + 0.06)
+    hole = (SPLIT_LON + 0.08, mid - 0.08, SPLIT_LON + 0.12, mid - 0.04)  # no CRM: ETOPO fills (US side)
+    crm = tmp_path / "crm2.tif"
+    lon = AREA[0] + (np.arange(400) + 0.5) * 0.0025
+    lat = AREA[3] - (np.arange(400) + 0.5) * 0.0025
+    elev = _crm_elev()
+    elev[_inside(lon[None, :], lat[:, None], hole)] = NODATA
+    _write_tif(crm, elev, AREA)
+    nonna10 = _write_nonna_over(tmp_path / "n10.tif", "nonna10", n10, _const(-25.0, n10))
+    nonna100 = _write_nonna_over(tmp_path / "n100.tif", "nonna100", n100, _const(-60.0, n100))
+    etopo = _write_grid(tmp_path / "etopo.tif", -80.0, AREA)
+    result = build_block(core, read, _sources(tiles_for_bbox(tiles, read), crm, nonna10, nonna100, etopo),
+                         area_datum(test_region, Path("unused")), canada)
+    fine = {(f["properties"]["source"], f["properties"]["grade"]) for f in result.fine_coverage}
+    coarse = {(f["properties"]["source"], f["properties"]["grade"]) for f in result.coarse_coverage}
+    assert fine == {("cudem", "survey"), ("nonna10", "survey")}
+    assert coarse == {("crm", "survey"), ("crm", "rough"), ("nonna100", "coarse-survey"), ("etopo", "rough")}
+    for f in result.coarse_coverage:
+        if f["properties"]["source"] == "crm":
+            bounds = shape(f["geometry"]).bounds
+            if f["properties"]["grade"] == "rough":
+                assert bounds[1] >= mid - COVERAGE_CELL_DEG
+            else:
+                assert bounds[3] <= mid + COVERAGE_CELL_DEG
+    assert all(f["properties"] == {**blocks.LABELS[f["properties"]["source"]], "grade": f["properties"]["grade"]}
+               for f in result.coarse_coverage)
+
+
+def test_nav_depth_keeps_isolated_shoal(small_grids, zero_geoid, test_region, tmp_path):
+    """One native NONNA-10 cell of 3.0 m in a 50.0 m plain: nav_depth (GDAL min on depth) keeps a 3.0 m cell."""
+    from make_nonna import edge_transform
+
+    _, core, read = _block(NORTH)
+    b = _sub(core, 0.3, 0.3, 0.7, 0.7)
+    ex, px, _, ey, _, py = edge_transform("nonna10", 0, 0)
+    clon, clat = _center(b)
+    col = math.floor((_R * math.radians(clon) - ex) / px)
+    row = math.floor((_R * math.log(math.tan(math.pi / 4 + math.radians(clat) / 2)) - ey) / py)
+    sx, sy = ex + (col + 0.5) * px, ey + (row + 0.5) * py
+    shoal = (math.degrees(sx / _R), math.degrees(2 * math.atan(math.exp(sy / _R)) - math.pi / 2))
+
+    def raw(lon, lat):
+        out = np.full(lon.shape, -50.0)
+        out[np.isclose(lon, shoal[0], atol=1e-9, rtol=0) & np.isclose(lat, shoal[1], atol=1e-9, rtol=0)] = -3.0
+        return out
+
+    nonna10 = _write_nonna_over(tmp_path / "n10.tif", "nonna10", b, raw)
+    assert np.isclose(np.asarray(gdal.Open(str(nonna10)).ReadAsArray()), -3.0).sum() == 1
+    result = build_block(core, read, _sources(nonna10=nonna10), area_datum(test_region, Path("unused")), box(*read))
+    nav = result.nav_depth
+    assert np.nanmin(nav.data) == 3.0
+    assert _cell(nav.transform, nav.data, *shoal) == 3.0
+    assert blocks.SOURCE_NAMES[_cell(nav.transform, result.nav_src, *shoal)] == "nonna10"
+    assert result.nonna_valid.shape == result.fine_grid.data.shape
+    assert result.nonna_valid[np.isfinite(nav.data)].all() and not result.nonna_valid[np.isnan(nav.data)].any()
+
+
+def test_no_blank_water_in_block(small_grids, zero_geoid, test_region, tmp_path):
+    """ETOPO everywhere and nothing else: every water cell of the coarse grid in the core (what the block draws) has
+    a value."""
+    _, core, read = _block(NORTH)
+    etopo = _write_grid(tmp_path / "etopo.tif", -200.0, AREA)
+    result = build_block(core, read, _sources(etopo=etopo), area_datum(test_region, Path("unused")), None)
+    grid = result.coarse_grid
+    x0, dx, _, y0, _, dy = grid.transform
+    lon = x0 + (np.arange(grid.data.shape[1]) + 0.5) * dx
+    lat = y0 + (np.arange(grid.data.shape[0]) + 0.5) * dy
+    inner = _inside(lon[None, :], lat[:, None], core)
+    assert np.isfinite(grid.data[inner]).all()
+    assert (result.coarse_source[inner] == blocks.SOURCE_NAMES.index("etopo")).all()
+    assert result.coarse_contours or result.coarse_bands

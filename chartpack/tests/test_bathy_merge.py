@@ -11,6 +11,7 @@ from chartpack.bathy.merge import (
     clip_mask,
     coverage_polygons,
     fill_land,
+    merge_ordered,
     merge_to_mllw,
     tag_source,
     to_mllw_depth,
@@ -201,3 +202,21 @@ def test_clip_removes_canadian_side(regions_dir):
     m = clip_mask(t, (90, 100), clip)
     assert m.dtype == bool and m.shape == (90, 100)
     assert m[cell_at(48.75, -123.3)] and not m[cell_at(48.05, -122.6)]  # Gulf Islands side removed, Possession Bar kept
+
+
+def test_merge_ordered_first_source_wins_where_allowed():
+    """Per cell the first layer with a value wins, among the layers allowed there; the index records which."""
+    bbox, res = (0.0, 0.0, 0.004, 0.001), 0.001  # one row of four cells
+    nan = np.nan
+    a = np.array([[1.0, nan, 1.0, nan]], np.float32)
+    b = np.array([[2.0, 2.0, 2.0, nan]], np.float32)
+    c = np.array([[3.0, 3.0, 3.0, 3.0]], np.float32)
+    where_a = np.array([[True, True, False, True]])  # layer a may not fill the third cell
+    read = []
+    layers = [(3, lambda: read.append("a") or a, where_a), (1, lambda: read.append("b") or b, None),
+              (5, lambda: read.append("c") or c, None)]
+    grid, source = merge_ordered(layers, bbox, res)
+    np.testing.assert_array_equal(grid.data, [[1.0, 2.0, 2.0, 3.0]])
+    np.testing.assert_array_equal(source, [[3, 1, 1, 5]])
+    assert source.dtype == np.int8 and read == ["a", "b", "c"]  # each layer read once, in order
+    assert grid.transform == (0.0, res, 0.0, 0.001, 0.0, -res) and np.isnan(grid.nodata)

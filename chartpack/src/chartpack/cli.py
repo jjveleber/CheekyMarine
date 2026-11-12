@@ -18,6 +18,7 @@ from shapely.ops import unary_union
 from chartpack import __version__
 from chartpack.bathy.blocks import (
     BLOCK_MARGIN_DEG,
+    BlockSources,
     area_datum,
     build_block,
     build_overview,
@@ -49,16 +50,96 @@ from chartpack.enc.fetch import fetch_cells
 from chartpack.enc.reader import read_cell
 from chartpack.enc.tiles import OVERVIEW_ZOOMS, REGION_ZOOMS, build_enc_mbtiles
 from chartpack.fetching import USER_AGENT, PoliteSession
-from chartpack.grid import content_tiles, fetch_extent, keep_tiles, owned_tiles, tiles_area
+from chartpack.grid import (
+    canada_side,
+    content_tiles,
+    fetch_extent,
+    keep_tiles,
+    owned_tiles,
+    owners,
+    tiles_area,
+    tiles_meeting,
+)
 from chartpack.pack.archive import archive_pack
 from chartpack.pack.assemble import BATHY_FILES, assemble_bathy_pack, assemble_charts_pack
 from chartpack.pack.check import check_pack
 from chartpack.pack.manifest import describe_pack, write_manifest
 from chartpack.pack.restyle import restyle_pack
-from chartpack.region import load_region
+from chartpack.region import COARSE_SOURCES, load_region
 from chartpack.style.palette import NIGHT_VARIANTS
 from chartpack.seabed.cmecs import BLOCKS, fetch_cmecs, read_cmecs
 from chartpack.seabed.usseabed import FILES, fetch_usseabed, read_usseabed
+
+
+# The Canadian source data (NONNA grids, the BC coastline) is read from this release, which only the fetch workflow
+# writes; no pack build calls a Canadian host (plan 8 spec 5).
+SOURCES_RELEASE = "sources-bc-1"
+SOURCES_URL = f"https://github.com/jjveleber/CheekyMarine/releases/download/{SOURCES_RELEASE}/"
+SOURCES_WORKFLOW = "chartpack-sources.yml"
+
+
+def _asset_name(region_path: Path, region) -> str:
+    """The name in the region's asset files: [sources] assets, read by this module alone, else the region name."""
+    with Path(region_path).open("rb") as f:
+        return tomllib.load(f).get("sources", {}).get("assets", region.name)
+
+
+def _nonna_files(region, name: str) -> list[str]:
+    """The region's NONNA asset files, in the order of its sources; none when it lists no NONNA."""
+    return [f"{p}-{name}.tif" for p in ("nonna10", "nonna100") if p in region.bathy_sources]
+
+
+def _fetch_assets(region_path: Path, region, cache: Path) -> list[Path]:
+    """Download the region's assets from the release (its fetch stats, NONNA grids and coastline) into
+    cache/sources-bc-1, each checked against the sha256 in the stats; an asset already cached with that sha256
+    is kept. A region that lists no NONNA downloads nothing."""
+    name = _asset_name(region_path, region)
+    files = _nonna_files(region, name)
+    if not files:
+        return []
+    files.append(f"coast-{name}.geojson.gz")
+    folder = cache / SOURCES_RELEASE
+    stats_name = f"fetch-stats-{name}.json"
+    stats = json.loads(download(SOURCES_URL + stats_name, folder / stats_name).read_text())
+    paths = [folder / stats_name]
+    for file in files:
+        entry = stats["files"].get(file)
+        if entry is None:
+            raise SystemExit(f"{file} is not in {stats_name} of release {SOURCES_RELEASE}; run the fetch workflow"
+                             f" {SOURCES_WORKFLOW} for region {region.name}")
+        dest = folder / file
+        if not (dest.is_file() and _sha256(dest) == entry["sha256"]):
+            download(SOURCES_URL + file, dest)
+            if (got := _sha256(dest)) != entry["sha256"]:
+                dest.unlink()
+                raise SystemExit(f"{file}: sha256 {got} does not match {entry['sha256']} in {stats_name}; run the"
+                                 f" fetch workflow {SOURCES_WORKFLOW} for region {region.name} again")
+        paths.append(dest)
+    return paths
+
+
+def _check_assets(region_path: Path, region, cache: Path, files: list[str], boxes) -> dict[str, Path]:
+    """The cached assets `files` of the region by name, after checking that each is there and that every read
+    box (W, S, E, N) lies inside the extent the fetch workflow pulled, as its fetch stats record (the mosaics'
+    own bounds are smaller where NONNA has no data). Either failure stops the build naming the region, the file
+    and the fetch workflow."""
+    if not files:
+        return {}
+    name = _asset_name(region_path, region)
+    folder = cache / SOURCES_RELEASE
+    stats = folder / f"fetch-stats-{name}.json"
+    for path in [stats] + [folder / file for file in files]:
+        if not path.is_file():
+            raise SystemExit(f"region {region.name}: {path} not found; run fetch-bathy, which downloads it from"
+                             f" release {SOURCES_RELEASE} (written by the fetch workflow {SOURCES_WORKFLOW})")
+    w, s, e, n = json.loads(stats.read_text())["extent"]
+    eps = 1e-9  # the stats round the extent to 9 decimals
+    for bw, bs, be, bn in boxes:
+        if bw < w - eps or bs < s - eps or be > e + eps or bn > n + eps:
+            raise SystemExit(f"region {region.name}: the read box {(bw, bs, be, bn)} reaches past the extent"
+                             f" {[w, s, e, n]} of {', '.join(files)} ({stats.name}); run the fetch workflow"
+                             f" {SOURCES_WORKFLOW} for region {region.name} again")
+    return {file: folder / file for file in files}
 
 
 def _load_catalog(cache: Path):
@@ -131,6 +212,9 @@ def _build_enc(args: argparse.Namespace) -> int:
     # still renders over the seam, and a band 1 cell spanning far past wave 1 adds nothing beyond it.
     content = content_tiles(region, args.region.parent)
     area = tiles_area(content, BLOCK_MARGIN_DEG)
+    name = _asset_name(args.region, region)
+    if _nonna_files(region, name):  # a region with Canadian sources: the coastline the derived charts read
+        _check_assets(args.region, region, args.cache, [f"coast-{name}.geojson.gz"], [area.bounds])
     enc = build_enc_mbtiles(cells, args.work / "enc.mbtiles", region=region, work=args.work / "tippecanoe",
                             seabed=_usgs_seabed(region, args.cache, None if owned is None else area), zooms=zooms,
                             area=area)
@@ -188,6 +272,8 @@ def _fetch_bathy(args: argparse.Namespace) -> int:
     region = load_region(args.region)
     owned = owned_tiles(region, args.region.parent)
     geoid.fetch_grids(args.cache / "proj")  # CRM (EGM2008 heights) converts through NAVD88; kept for every region
+    for path in _fetch_assets(args.region, region, args.cache):
+        print(path)
     if owned is None:  # the overview: one native CRM request over the region, no CUDEM
         print(fetch_crm(overview_bounds(region.bbox), args.cache))
         return 0
@@ -234,8 +320,7 @@ def _fetch_sources(args: argparse.Namespace) -> int:
     a changed extent needs a run of both kinds. Each file entry holds its sha256, so a reader can tell the file
     the stats describe from a stale one."""
     region = load_region(args.region)
-    with args.region.open("rb") as f:  # [sources] assets is read by this command alone, not by load_region
-        name = tomllib.load(f).get("sources", {}).get("assets", region.name)
+    name = _asset_name(args.region, region)
     if not re.fullmatch(r"[a-z0-9-]+", name):
         print(f"fetch-sources: [sources] assets must match [a-z0-9-]+, got {name!r}", file=sys.stderr)
         return 1
@@ -273,6 +358,26 @@ def _fetch_sources(args: argparse.Namespace) -> int:
     return 0
 
 
+def _canada(read, tile_owners: dict, region, clips: dict):
+    """The Canadian column of plan 8 spec 6 over the read box: for each zoom-10 tile it meets, canada_side by the
+    tile's owner (a tile no pack owns by the region's own rule), so two blocks see the same side in a shared read
+    margin. None when no part of the box is Canadian. clips caches the clip polygons by path."""
+    parts = []
+    for tile in tiles_meeting(read):
+        owner = tile_owners.get(tile, region)
+        if owner.charts_kind == "enc" and owner.clip is None:  # a US pack with no clip: all US side
+            continue
+        clip = None
+        if owner.charts_kind == "enc":
+            if owner.clip not in clips:
+                data = json.loads(owner.clip.read_text())
+                clips[owner.clip] = shape(data.get("geometry", data))
+            clip = clips[owner.clip]
+        parts.append(canada_side(clip, tile, owner))
+    canada = unary_union(parts).intersection(box(*read)) if parts else None
+    return None if canada is None or canada.is_empty else canada
+
+
 def _append_layers(work: Path, contours: list[dict], bands: list[dict], coverage: list[dict]) -> None:
     for name, feats in (("contour", contours), ("band", bands), ("coverage", coverage)):
         append_features(feats, work / f"{name}.geojsonseq")
@@ -281,30 +386,31 @@ def _append_layers(work: Path, contours: list[dict], bands: list[dict], coverage
 def _build_bathy(args: argparse.Namespace) -> int:
     """Region packs: one block per owned zoom-10 tile, each appending its features to the fine and coarse
     layer files and its DEM tiles to the two DEM files; then one tippecanoe run per vector file and
-    keep_tiles on all four. The overview: the coarse outputs only, from one CRM read."""
+    keep_tiles on all four. Each block takes its depth sources by side of the border (_canada, build_block).
+    The overview: the coarse outputs only, from one CRM read."""
     region = load_region(args.region)
     owned = owned_tiles(region, args.region.parent)
     urllist = args.cache / "cudem" / "urllist8483.txt"
     has_cudem, has_crm = "cudem" in region.bathy_sources, "crm" in region.bathy_sources
+    has_coarse = bool(set(COARSE_SOURCES) & set(region.bathy_sources))
     if owned is None:
         needed = [crm_path(overview_bounds(region.bbox), args.cache)]
     else:
         blocks = list(iter_blocks(owned))
         needed = ([urllist] if has_cudem else []) + [
             path for _, _, read in blocks if has_crm and (path := crm_path(read, args.cache)) is not None]
+        name = _asset_name(args.region, region)
+        paths = _check_assets(args.region, region, args.cache, _nonna_files(region, name), [r for _, _, r in blocks])
+        assets = {product: paths.get(f"{product}-{name}.tif") for product in ("nonna10", "nonna100")}
     for path in needed:
         if not path.exists():
             raise SystemExit(f"{path} not found; run fetch-bathy first")
     if missing := geoid.missing_grids(args.cache / "proj"):
         raise SystemExit(f"{missing[0]} missing or damaged; run fetch-bathy first")
     datum = area_datum(region, args.cache / "proj")
-    clip = None
-    if region.clip is not None:
-        data = json.loads(region.clip.read_text())
-        clip = shape(data.get("geometry", data))
-    # Lakes with no datum rule are left out like the clipped water: their bottoms are not on a tidal datum.
-    if mask := load_datum(region.datum_file).lake_mask:
-        clip = unary_union(([] if clip is None else [clip]) + [shape(g) for g in mask])
+    # Lakes with no datum rule are left out: their bottoms are not on a tidal datum.
+    mask = load_datum(region.datum_file).lake_mask
+    lake_mask = unary_union([shape(g) for g in mask]) if mask else None
 
     files = {name: args.work / name for name in BATHY_FILES}
     fine_work, coarse_work = args.work / "tippecanoe", args.work / "tippecanoe-coarse"
@@ -320,6 +426,12 @@ def _build_bathy(args: argparse.Namespace) -> int:
     used = {}
     if owned is None:
         crm_request = crm_wcs_url(crm_request_bounds(overview_bounds(region.bbox)))
+        clip = None  # the overview keeps plan 7's clip until it is rebuilt over US and BC water
+        if region.clip is not None:
+            data = json.loads(region.clip.read_text())
+            clip = shape(data.get("geometry", data))
+        if lake_mask is not None:
+            clip = lake_mask if clip is None else unary_union([clip, lake_mask])
         result = build_overview(region.bbox, needed[0], datum, clip)
         _append_layers(coarse_work, result.coarse_contours, result.coarse_bands, result.coarse_coverage)
         build_dem_mbtiles(result.coarse_grid.data, result.coarse_grid.transform, files["dem-coarse.mbtiles"],
@@ -331,22 +443,31 @@ def _build_bathy(args: argparse.Namespace) -> int:
         cells = [read_cell(_newest_cached_zip(args.cache, name)) for band in sorted(region.cells) for name in region.cells[band]]
         depcnt = enc_depcnt(cells)  # quilted once; each block clips it to its uncovered water
         del cells
+        tile_owners, clips = owners(region, args.region.parent), {}
         for tile, core, read in blocks:
             tiles = tiles_for_bbox(all_tiles, read)
             used.update((t.name, t) for t in tiles_for_bbox(tiles, core))  # the tiles drawn in the owned tile
-            r = build_block(core, read, tiles, crm_path(read, args.cache) if has_crm else None, datum, clip)
+            canada = _canada(read, tile_owners, region, clips)
+            # ETOPO joins with its reader (plan 8 Task 7).
+            sources = BlockSources(tiles, crm_path(read, args.cache) if has_crm else None, assets["nonna10"],
+                                   assets["nonna100"], None)
+            r = build_block(core, read, sources, datum, canada, lake_mask=lake_mask)
             covered = r.fine_coverage + ([] if enc_fallback else r.coarse_coverage)
             uncovered = box(*core).difference(unary_union([shape(f["geometry"]) for f in covered]))
-            # A region without CUDEM writes no fine layers (a fine file with contours alone fails tile_bathy).
-            enc_lines = enc_fallback_contours(depcnt, uncovered, clip) if has_cudem else []
+            # A region without CUDEM writes no fine layers (a fine file with contours alone fails tile_bathy). No
+            # ENC line is drawn on the Canadian column (its coarse sources cover it) or in a masked lake.
+            leave_out = [g for g in (canada, lake_mask) if g is not None]
+            enc_lines = enc_fallback_contours(depcnt, uncovered, unary_union(leave_out) if leave_out else None
+                                              ) if has_cudem else []
             _append_layers(fine_work, r.fine_contours + enc_lines, r.fine_bands, r.fine_coverage)
             # One DEM source per place per zoom, decided per zoom-12 tile: the fine DEM where a zoom-12 tile holds
-            # CUDEM, the coarse DEM elsewhere. With crm listed the fine DEM is the whole merge, so CRM fills past
-            # the CUDEM edge and there is no cliff; a CUDEM-only fine DEM is nan past that edge.
+            # a fine-tier cell (CUDEM or NONNA-10), the coarse DEM elsewhere. With a coarse source listed the fine
+            # DEM is the whole merge, so the coarse sources fill past the fine edge and there is no cliff; a
+            # CUDEM-only fine DEM is nan past that edge.
             owned12 = set() if r.fine_grid is None else fine_owned_z12(r.fine_cudem, r.fine_grid.transform, tile)
             fine_tiles, coarse_tiles = dem_tiles(owned12, tile, region.dem_maxzoom)
             outputs = [(r.fine_grid, fine_tiles, False, "dem.mbtiles")]
-            if has_crm and not enc_fallback:
+            if has_coarse and not enc_fallback:
                 _append_layers(coarse_work, r.coarse_contours, r.coarse_bands, r.coarse_coverage)
                 outputs.append((r.coarse_grid, coarse_tiles, True, "dem-coarse.mbtiles"))
             for grid, dem, skip_empty, name in outputs:
