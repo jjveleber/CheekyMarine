@@ -13,8 +13,9 @@ QVariantMap summary(const PackInfo& p) {
 } // namespace
 
 AppInfo::AppInfo(const QList<PackInfo>& scanned, const QList<PackInfo>& inUse, const QString& setVersion,
-                 const QStringList& packNotices, const QVariantMap& packModes, QObject* parent)
-    : QObject(parent), m_setVersion(setVersion), m_packNotices(packNotices), m_packModes(packModes) {
+                 const QStringList& packNotices, const QVariantMap& packModes, const QStringList& dataNotices, QObject* parent)
+    : QObject(parent), m_setVersion(setVersion), m_packNotices(packNotices), m_packModes(packModes),
+      m_dataNotices(dataNotices) {
     QList<PackInfo> sorted = inUse;
     std::stable_sort(sorted.begin(), sorted.end(), [](const PackInfo& a, const PackInfo& b) {
         if (a.kind != b.kind) return a.kind == QLatin1String("charts");

@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Controls.Basic
 
 // App version, n2kd version (from its hello), the packs shown, merged or single per kind, every pack
-// notice line, and the refused packs with reasons.
+// notice line, the data notices (CHS) in full, and the refused packs with reasons.
 Item {
     id: page
     required property QtObject appInfo // AppInfo
@@ -85,6 +85,13 @@ Item {
                     objectName: "aboutPackNotice"
                     text: modelData
                 }
+            }
+
+            Heading { visible: page.appInfo.dataNotices.length > 0; text: "Data notices" }
+            Line {
+                objectName: "dataNotices"
+                visible: page.appInfo.dataNotices.length > 0
+                text: page.appInfo.dataNotices.join("\n\n")
             }
 
             Heading { text: "Refused packs" }

@@ -92,6 +92,20 @@ private slots:
         shown = d.filePath("fish");
         QCOMPARE(p.requestImage("sprite/red/none", nullptr, QSize()).size(), QSize(6, 4));
     }
+    void legendImageForPatternSwatchIsNotBlank() {
+        // A baked pattern entry (no SDF flag), as the nosurvey layer's pat-nosurvey-<palette>.
+        QTemporaryDir d;
+        const QString base = d.filePath("nav");
+        QImage img(8, 8, QImage::Format_ARGB32);
+        img.fill(Qt::transparent);
+        for (int i = 0; i < 8; ++i) img.setPixel(i, i, qRgba(200, 40, 40, 255));
+        QVERIFY(img.save(base + ".png"));
+        writeJson(base + ".json", {{"pat-nosurvey-day", QJsonObject{{"x", 0}, {"y", 0}, {"width", 8}, {"height", 8}}}});
+        LegendImageProvider p([&] { return base; }, [] { return 4.0; });
+        const QImage got = p.requestImage("sprite/pat-nosurvey-day/none", nullptr, QSize());
+        QCOMPARE(got.size(), QSize(8, 8));
+        QVERIFY(!isBlank(got));
+    }
     void overlayFromChartIcons() {
         LegendImageProvider p([] { return QString(); }, [] { return 5.0; });
         for (const QString palette : {"day", "night"}) {

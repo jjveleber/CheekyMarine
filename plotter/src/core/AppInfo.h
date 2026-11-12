@@ -25,12 +25,15 @@ class AppInfo : public QObject {
     // ChartController::packNotices: one line per difference between the installed packs and the files shown.
     Q_PROPERTY(QStringList packNotices READ packNotices CONSTANT)
     // ChartController::packModes: per kind "single", "merged", "merged-stale" or "single-fallback".
+    // ChartController::dataNotices: the data licence notices (the CHS notice) of the files shown, shown in full in About.
+    Q_PROPERTY(QStringList dataNotices READ dataNotices CONSTANT)
     Q_PROPERTY(QVariantMap packModes READ packModes CONSTANT)
 
 public:
     // `scanned` is every pack found; `inUse` the ones the loaded styles read (ChartController::packsInUse).
     explicit AppInfo(const QList<PackInfo>& scanned, const QList<PackInfo>& inUse = {}, const QString& setVersion = {},
-                     const QStringList& packNotices = {}, const QVariantMap& packModes = {}, QObject* parent = nullptr);
+                     const QStringList& packNotices = {}, const QVariantMap& packModes = {},
+                     const QStringList& dataNotices = {}, QObject* parent = nullptr);
 
     QString appVersion() const;
     QString setVersion() const { return m_setVersion; }
@@ -40,6 +43,7 @@ public:
     QVariantList packsInUse() const { return m_inUse; }
     QStringList packNotices() const { return m_packNotices; }
     QVariantMap packModes() const { return m_packModes; }
+    QStringList dataNotices() const { return m_dataNotices; }
 
 public slots:
     // From N2kClient::daemonVersion (every hello). A new hello clears an earlier mismatch: the
@@ -60,6 +64,7 @@ private:
     QVariantList m_inUse;
     QStringList m_packNotices;
     QVariantMap m_packModes;
+    QStringList m_dataNotices;
 };
 
 // The `set` of a cheekymarine.lock (installer/README.md, "Lock format"), or empty when the file is

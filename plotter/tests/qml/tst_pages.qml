@@ -857,6 +857,7 @@ TestCase {
         property string appVersion: "0.1.0"
         property var packsInUse: []
         property var packNotices: []
+        property var dataNotices: []
         property var packModes: ({})
         property var packs: []
         property string daemonVersion: ""
@@ -871,6 +872,38 @@ TestCase {
         appInfoStub.setVersion = ""
         const about = createTemporaryObject(aboutPageComp, testCase, { width: 1024, height: 600, appInfo: appInfoStub })
         compare(H.byName(about, "aboutSet").text, "Set: none (not installed from a set)")
+    }
+    readonly property string chsNotice:
+        "This product was made by the CheekyMarine project and contains intellectual property of the Canadian Hydrographic Service (CHS) of the Department of Fisheries and Oceans.\n\n"
+        + "This product does not meet the requirements of the Navigation Safety Regulations, 2020 under the Canada Shipping Act, 2001. Charts and publications issued by or on the authority of CHS must be used to meet the requirements of those regulations.\n\n"
+        + "The copyright in the data are and remain the property of His Majesty the King in Right of Canada and shall not be sold, licensed, leased, assigned or given to a third party.\n\n"
+        + "The incorporation of CHS data in this product does not constitute an endorsement or an approval of this product by the Canadian Hydrographic Service, the Department of Fisheries and Oceans or His Majesty the King in Right of Canada."
+    function test_aboutShowsDataNotices() {
+        appInfoStub.dataNotices = [chsNotice]
+        const about = createTemporaryObject(aboutPageComp, testCase, { width: 1024, height: 600, appInfo: appInfoStub })
+        const t = H.byName(about, "dataNotices")
+        verify(t, "dataNotices item")
+        for (const para of chsNotice.split("\n\n"))
+            verify(t.text.indexOf(para) >= 0, "missing: " + para)
+        appInfoStub.dataNotices = []
+    }
+    function test_aboutHidesSectionWhenEmpty() {
+        appInfoStub.dataNotices = []
+        const about = createTemporaryObject(aboutPageComp, testCase, { width: 1024, height: 600, appInfo: appInfoStub })
+        verify(H.byName(about, "dataNotices") === null || !H.byName(about, "dataNotices").visible)
+    }
+    function test_splashBcLineFollowsNoticeSetting() {
+        const line = "BC: not for navigation. See About for the CHS notice."
+        appInfoStub.packs = []
+        appInfoStub.packsInUse = packs("charts", 2, "")
+        appInfoStub.dataNotices = [chsNotice]
+        let splash = createTemporaryObject(splashComp, testCase, { width: 1024, height: 600, appInfo: appInfoStub })
+        compare(H.byName(splash, "splashNotice").text, line)
+        splash = createTemporaryObject(splashComp, testCase, { width: 1024, height: 600, appInfo: appInfoStub, noticeShown: false })
+        compare(H.byName(splash, "splashNotice").text, "")
+        appInfoStub.dataNotices = []
+        splash = createTemporaryObject(splashComp, testCase, { width: 1024, height: 600, appInfo: appInfoStub })
+        compare(H.byName(splash, "splashNotice").text, "")
     }
     function test_splashChartsLine_data() {
         const ok = { kind: "charts", region: "puget-north", version: "1.0.0", notice: "", refused: "", inUse: true }

@@ -110,8 +110,9 @@ private slots:
         const QStringList notices{"Charts: b shows 1.0.0, 1.1.0 is installed. Run sudo cheekymarine install again.",
                                   "Charts: d is installed but not merged, so it is not shown. Run sudo cheekymarine install again."};
         const QVariantMap modes{{"charts", "merged-stale"}, {"bathy", "single"}};
-        const AppInfo info(scanned, {scanned[0], gone, scanned[2]}, {}, notices, modes);
+        const AppInfo info(scanned, {scanned[0], gone, scanned[2]}, {}, notices, modes, {"CHS notice"});
         QCOMPARE(info.packNotices(), notices);
+        QCOMPARE(info.dataNotices(), QStringList{"CHS notice"});
         QCOMPARE(info.packModes(), modes);
         QCOMPARE(info.packs().at(0).toMap().value("inUse").toBool(), true);
         QCOMPARE(info.packs().at(1).toMap().value("inUse").toBool(), false);

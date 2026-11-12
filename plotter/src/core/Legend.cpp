@@ -88,6 +88,8 @@ QList<RowSpec> navDepthRows() {
         {"Medium", "", "swatch", {"depare-medium"}, "", "", "safety", "deep"},
         {"Deep", "", "swatch", {"depare-deep"}, "", "", "deep", ""},
         {"Dries at low tide", "", "swatch", {"depare-intertidal"}},
+        {"No survey data", "", "sprite", {"nosurvey"}, "pat-nosurvey-%1"},
+        {"Coarse survey depth (100 m grid)", "", "sprite", {"depare-coarse-survey"}, "pat-coarse-survey-%1"},
     };
     rows += commonDepthRows();
     rows += QList<RowSpec>{
@@ -112,6 +114,8 @@ QList<RowSpec> fishDepthRows() {
     QList<RowSpec> rows{
         {"Water outside the fine survey", "Depth not surveyed in detail.", "swatch", {"water-base"}},
         {"Relief shading", "Shows the shape of the bottom.", "swatch", {"hillshade"}},
+        {"Coarse survey depth (100 m grid)", "", "sprite", {"grade-coarse-survey"}, "pat-coarse-survey-%1"},
+        {"Rough depth, worldwide grid", "", "sprite", {"grade-rough"}, "pat-rough-%1"},
     };
     rows += commonDepthRows();
     rows += QList<RowSpec>{

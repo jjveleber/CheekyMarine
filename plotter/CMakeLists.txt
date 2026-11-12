@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.25)
 
 # The app's semver, independent of the root project's (n2kd) version.
-set(PLOTTER_VERSION 0.3.0)
+set(PLOTTER_VERSION 0.4.0)
 # The pack manifest schemas this app accepts, inclusive.
 set(PLOTTER_PACK_SCHEMA_MIN 2)
 set(PLOTTER_PACK_SCHEMA_MAX 2)
