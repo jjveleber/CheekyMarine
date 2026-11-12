@@ -249,8 +249,8 @@ def _check_no_enc_contour_in_canada(m: MBTiles, canada: shapely.Geometry) -> lis
 def _check_against_sources(m: MBTiles, metadata: dict, enc_zips: list[Path],
                            canada: shapely.Geometry | None = None) -> list[str]:
     """Hazards and depth/land coverage at the top zoom against the source cells. nosurvey areas count as cover
-    beside depare and lndare. A source hazard whose point lies inside canada (the Canada polygon, where every NOAA
-    feature is cut) is not expected in the tiles."""
+    beside depare and lndare. A source hazard that lies wholly inside canada (the Canada polygon, where every NOAA
+    feature is cut) is not expected in the tiles; one across it is expected at a point of its part outside."""
     z = int(metadata["maxzoom"])
     owned = _owned_area(metadata)
     tile_box = box(0, 0, _EXTENT, _EXTENT)
@@ -287,8 +287,10 @@ def _check_against_sources(m: MBTiles, metadata: dict, enc_zips: list[Path],
                 continue  # a finer band's cell takes this ground over in the quilt
             key = hazard_key(f.props)
             source_keys.add(key)
-            if canada is not None and canada.contains(point):
-                continue  # cut at the Canada polygon
+            if canada is not None and canada.intersects(geom := shape(f.geometry)):
+                if canada.covers(geom):
+                    continue  # cut at the Canada polygon
+                point = geom.difference(canada).representative_point()  # the part the build keeps
             if not any(g.distance(point) <= tol for g in hazards.get(key, [])):
                 errors.append(f"hazard {key} at {point.x:.6f},{point.y:.6f} from {meta.name} missing at zoom {z}")
     errors += [f"hazard {key} in the tiles at zoom {z} is not in the source cells" for key in sorted(set(hazards) - source_keys, key=str)]

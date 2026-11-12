@@ -621,3 +621,28 @@ def test_depth_edge_moved_into_nosurvey_by_tiling(tmp_path, test_region, inside,
                          "nosurvey": [(_square(2048, 0, 4096, 4096), {})]}}
     root = _hand_pack(tmp_path, test_region, "derived-inshore", tiles)
     assert len(check_pack(root)) == errors
+
+
+@pytest.mark.parametrize("drawn, errors", [(False, 1), (True, 0)])
+def test_straddling_area_hazard_us_part_still_required(tmp_path, monkeypatch, drawn, errors):
+    """An obstruction area across the polygon's west edge (x = 1000 units), mostly inside, so its representative
+    point is Canadian: its US part is kept by the build, so the check still expects it in the tiles."""
+    from shapely.geometry import mapping
+
+    from chartpack.enc.reader import CellMeta, Feature
+    from chartpack.mbtiles import MBTiles
+    from chartpack.pack import check
+    from chartpack.pack.check import _check_against_sources
+
+    area = _tile_box(900, 1500, 2900, 1700)
+    assert CANADA.contains(area.representative_point()) and not CANADA.covers(area)
+    meta = CellMeta("US4AAAAA", 4, 1, 0, "2026-01-01", mapping(_tile_box(0, 0, 4096, 4096)))
+    feats = [Feature("hazard", mapping(area), {"class": "OBSTRN", "VALSOU": "3.1", "WATLEV": 3})]
+    monkeypatch.setattr(check, "read_cell", lambda path: (meta, feats))
+    layers = {"depare": [(_square(0, 0, 4096, 4096), {})]}
+    if drawn:  # the US part, as apply_rules leaves it
+        layers["hazard"] = [(_square(900, 1500, 1000, 1700), {"class": "OBSTRN", "VALSOU": "3.1", "WATLEV": 3})]
+    path = _cover_pack(tmp_path, layers)
+    with MBTiles.open(path) as m:
+        errs = _check_against_sources(m, m.metadata(), ["cell"], CANADA)
+    assert len(errs) == errors, errs
