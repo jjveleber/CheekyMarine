@@ -1383,13 +1383,17 @@ def test_check_passes_the_repo_canada_polygon(charts_pack_root_copy, regions_dir
 
 
 def test_build_enc_derived_region_end_to_end(tmp_path, fixtures_dir, regions_dir, monkeypatch, capsys, zero_geoid):
-    """build-enc of a BC inshore region whose tiles lie inside the Canada polygon (a stand-in over the region): no
-    NOAA feature is left inside it, the derived depth and land are, the inputs and the notices are recorded, and
-    the pack passes the check with that polygon."""
+    """build-enc of a BC inshore region across the Canada polygon (a stand-in with a diagonal edge through the tile,
+    densified as load_canada does): no NOAA feature is left inside it, the derived depth and land are, the inputs
+    and the notices are recorded, and the pack passes the check with that polygon. The no-survey asset is a
+    triangle over the NONNA data, so both of the check's tolerances meet edges tippecanoe moved."""
     import gzip
     import json
 
-    from shapely.geometry import box, mapping, shape
+    import shapely
+    from shapely.geometry import Polygon, box, mapping, shape
+
+    from chartpack.enc.bc import SEGMENT_DEG
 
     from chartpack import cli
     from chartpack.grid import fetch_extent, owned_tiles, tiles_area
@@ -1398,7 +1402,8 @@ def test_build_enc_derived_region_end_to_end(tmp_path, fixtures_dir, regions_dir
     from chartpack.pack.check import check_pack
     from chartpack.region import load_region
 
-    canada = box(-123.0, 47.5, -122.0, 48.5)
+    canada = shapely.segmentize(Polygon([(-122.6, 47.5), (-122.0, 47.5), (-122.0, 48.5), (-122.3, 48.5),
+                                         (-122.41, 47.95), (-122.42, 47.86)]), SEGMENT_DEG)
     monkeypatch.setattr(cli, "load_canada", lambda regions: canada)
     region = _nonna_region(tmp_path, regions_dir)
     shutil.copy(regions_dir / "bc-valdco.toml", region.parent)
@@ -1406,8 +1411,9 @@ def test_build_enc_derived_region_end_to_end(tmp_path, fixtures_dir, regions_dir
     folder = cache / "sources-bc-1"
     _write_assets(folder, region)
     extent = fetch_extent(load_region(region), region.parent)
-    land = box(-122.395, 47.885, -122.390, 47.890)
-    for name, geoms in (("land-toba.geojson.gz", [land]), ("nosurvey-toba.geojson.gz", [])):
+    nosurvey = Polygon([(-122.399, 47.881), (-122.37, 47.919), (-122.361, 47.885)])
+    land = box(-122.395, 47.885, -122.390, 47.890).difference(nosurvey)
+    for name, geoms in (("land-toba.geojson.gz", [land]), ("nosurvey-toba.geojson.gz", [nosurvey])):
         features = [{"type": "Feature", "properties": {}, "geometry": mapping(g)} for g in geoms]
         (folder / name).write_bytes(gzip.compress(json.dumps({"type": "FeatureCollection",
                                                               "features": features}).encode()))
@@ -1419,11 +1425,12 @@ def test_build_enc_derived_region_end_to_end(tmp_path, fixtures_dir, regions_dir
     root = tmp_path / "out" / "charts-test-cell-0.1.0"
     with MBTiles.open(root / "enc.mbtiles") as m:
         md = m.metadata()
-    assert [d["source"] for d in json.loads(md["cheekymarine:depth_sources"])] == ["nonna10", "nonna100", "fwa"]
+    assert [d["source"] for d in json.loads(md["cheekymarine:depth_sources"])] == ["nonna10", "nonna100", "fwa",
+                                                                                 "nosurvey"]
     assert md["cheekymarine:data_notice"] == CHS_NOTICE
     areas = json.loads(md["cheekymarine:notice_areas"])["features"]
     owned = tiles_area(owned_tiles(load_region(region), region.parent))
-    assert len(areas) == 1 and shape(areas[0]["geometry"]).symmetric_difference(owned).area < 1e-12
+    assert len(areas) == 1 and shape(areas[0]["geometry"]).symmetric_difference(owned.intersection(canada)).area < 1e-12
     notice = (root / "NOTICE").read_text()
     assert CHS_NOTICE in notice and OGL_BC_NOTICE in notice
     assert json.loads((root / "manifest.json").read_text())["charts"] == {"kind": "derived-inshore"}
