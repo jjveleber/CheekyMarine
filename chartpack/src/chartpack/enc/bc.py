@@ -11,8 +11,10 @@ from pathlib import Path
 import numpy as np
 import pyproj
 import shapely
-from shapely.geometry import box, shape
+from shapely.geometry import box, mapping, shape
 from shapely.ops import unary_union
+
+from chartpack.enc.reader import Feature
 
 # The text a CHS notice's file holds. Not "Canadian Hydrographic Service": the cell-wide general notes of US3WA1ED,
 # US3WA1EE and seven band 4 cells hold those words and cover US water.
@@ -26,6 +28,10 @@ BORDER_TOLERANCE_M = 20.0
 # The western entrance of the Strait of Juan de Fuca, where the two files differ on purpose (spec 7.2).
 JDF_STRIP_BOX = (-125.40, 48.33, -124.70, 48.52)
 _EDGE_INSET_DEG = 0.05  # away from canada-wa.geojson's artificial north, east and west edges
+# The src values of derived features (plan 8 spec 7.1): the only features, with the nosurvey areas, drawn inside
+# the Canada polygon.
+DERIVED_SRC = ("nonna10", "nonna100", "crm", "etopo", "fwa")
+_NOAA_COVER = ("depare", "lndare")  # the kept NOAA areas that win over derived depth outside the polygon (rule 3)
 
 # BC Albers (equal area), for areas and distances in meters.
 _TO_M = pyproj.Transformer.from_crs("EPSG:4326", "EPSG:3005", always_xy=True)
@@ -85,3 +91,89 @@ def load_canada(regions_dir: Path) -> shapely.Geometry:
         raise BcError(f"canada-chs.geojson and canada-wa.geojson disagree by a strip wider than"
                       f" {BORDER_TOLERANCE_M:g} m near {x:.5f}, {y:.5f}")
     return canada
+
+
+def _outside_m(area: shapely.Geometry, grown_m: shapely.Geometry) -> shapely.Geometry:
+    """The part of area (lon/lat) outside grown_m (meters), in meters."""
+    return to_m(area).difference(grown_m)
+
+
+def check_notices(cells: list[tuple[str, list[tuple[shapely.Geometry, str | None]]]], canada: shapely.Geometry) -> None:
+    """The notice guards of spec 7.2 over the loaded cells, each (name, read_notes): BcError naming the cell when a
+    NOTICE_CELLS cell yields no CHS notice area, when a note names a text file missing from the cell, or when any
+    point of a cell's notice area lies more than BORDER_TOLERANCE_M from canada."""
+    grown = None
+    for name, notes in cells:
+        if any(text is None for _, text in notes):
+            raise BcError(f"{name}: a note names a text file missing from the cell")
+        area = chs_notice_areas(notes)
+        if area.is_empty:
+            if name in NOTICE_CELLS:
+                raise BcError(f"{name}: listed as carrying the CHS notice, but no note holds {CHS_NOTICE_MARK!r}")
+            continue
+        grown = to_m(canada).buffer(BORDER_TOLERANCE_M) if grown is None else grown
+        if not (outside := _outside_m(area, grown)).is_empty:
+            raise BcError(f"{name}: its CHS notice area reaches more than {BORDER_TOLERANCE_M:g} m past the Canada"
+                          f" polygon ({outside.area / 1e6:.6f} km2 outside); run scripts/make-canada-chs.py again")
+
+
+def check_canadian_areas(cells: list[tuple[str, int, shapely.Geometry, shapely.Geometry]], canada: shapely.Geometry,
+                         owned: shapely.Geometry) -> None:
+    """The Canadian-area guard of spec 7.2. cells: (name, band, read_canadian_area, coverage) of the loaded cells.
+    The Canadian area of each band 1, 4 or 5 cell within owned (for band 1, less the coverage of the loaded
+    NOTICE_CELLS, whose notices decide there) must lie within canada grown by BORDER_TOLERANCE_M; else BcError
+    naming the cell and the area outside in km2."""
+    notice = unary_union([coverage for name, _, _, coverage in cells if name in NOTICE_CELLS])
+    grown = None
+    for name, band, area, _ in cells:
+        if band not in (1, 4, 5):
+            continue
+        part = area.intersection(owned)
+        if band == 1:
+            part = part.difference(notice)
+        if part.is_empty:
+            continue
+        grown = to_m(canada).buffer(BORDER_TOLERANCE_M) if grown is None else grown
+        if not (outside := _outside_m(part, grown)).is_empty:
+            raise BcError(f"{name}: {outside.area / 1e6:.3f} km2 of its Canadian area in the owned tiles lies more"
+                          f" than {BORDER_TOLERANCE_M:g} m outside the Canada polygon; run"
+                          " scripts/make-canada-chs.py again")
+
+
+def _keep(feature: Feature, geom: shapely.Geometry) -> list[Feature]:
+    """The parts of geom of the feature's own dimension, each a copy of the feature."""
+    dim = shapely.get_dimensions(shape(feature.geometry))
+    return [Feature(feature.layer, mapping(part), feature.props)
+            for part in shapely.get_parts(geom) if not part.is_empty and shapely.get_dimensions(part) == dim]
+
+
+def apply_rules(cut: list[Feature], derived: list[Feature], canada: shapely.Geometry) -> list[Feature]:
+    """The rules of spec 7.2, by geometry. cut (the quilt output, every band and layer, and the bottom samples of
+    every source): areas and lines cut to the outside of canada, points inside it dropped. derived (made for the
+    charts side only): kept inside canada; outside it, depare, depcnt, soundg and nosurvey are cut away wherever a
+    kept NOAA depare or lndare covers the place, and lndare and coalne are dropped. Both sides are cut from the same
+    geometry, so they meet on one line. A feature that needs no cut is returned as it is."""
+    shapely.prepare(canada)
+    out = []
+    for feature in cut:
+        geom = shape(feature.geometry)
+        if geom.geom_type == "Point":  # dropped inside; one on the boundary is not inside (the pack check agrees)
+            if not shapely.contains(canada, geom):
+                out.append(feature)
+        elif not shapely.intersects(canada, geom):
+            out.append(feature)
+        elif not shapely.covers(canada, geom):
+            w, s, e, n = geom.bounds  # canada near the feature only: a straight line's bounds have no area
+            out += _keep(feature, geom.difference(canada.intersection(box(w - 1e-6, s - 1e-6, e + 1e-6, n + 1e-6))))
+    tree = shapely.STRtree([shape(f.geometry) for f in out if f.layer in _NOAA_COVER])
+    for feature in derived:
+        geom = shape(feature.geometry)
+        if shapely.covers(canada, geom):
+            out.append(feature)
+        elif feature.layer in ("lndare", "coalne"):
+            out += _keep(feature, geom.intersection(canada))
+        elif len(near := tree.query(geom, predicate="intersects")) == 0:
+            out.append(feature)
+        else:
+            out += _keep(feature, geom.difference(shapely.union_all(tree.geometries[near])))
+    return out

@@ -65,6 +65,9 @@ LAYERS: tuple[LayerSpec, ...] = (
 )
 
 SAFETY_LAYERS = ("depare", "depcnt", "hazard", "navaid", "light", "coalne", "lndare")
+# The layers a derived charts pack (region [charts] kind) must hold at every zoom, in place of SAFETY_LAYERS
+# (plan 8 spec 7.1): an offshore pack may hold neither land nor a no-survey area.
+DERIVED_LAYERS = {"derived-inshore": ("depare", "lndare"), "derived-offshore": ("depare",)}
 
 # Schema layers a region may have no features in (ruling R21): the build and the pack check accept their absence.
 OPTIONAL_LAYERS: frozenset[str] = frozenset({"seabed", "nosurvey"})

@@ -385,6 +385,7 @@ def _region_dir(tmp_path, *, overview=False, dem_maxzoom=12):
     regions = tmp_path / "regions"
     regions.mkdir()
     shutil.copytree(Path(__file__).parent.parent / "regions" / "datum", regions / "datum")
+    shutil.copytree(Path(__file__).parent.parent / "regions" / "clip", regions / "clip")  # the Canada polygon
     (regions / "grid.toml").write_text('zoom = 10\norder = ["blk"]\n')
     (regions / "blk.toml").write_text(("overview = true\n" if overview else "") + f"""name = "blk"
 charts_version = "0.1.0"

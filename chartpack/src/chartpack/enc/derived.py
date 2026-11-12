@@ -189,10 +189,23 @@ def _shoal_m(depth: float) -> float:
     return math.floor(round(depth * 10, 4)) / 10
 
 
-def _soundings(depth_m, src, transform, allowed, cut, zooms) -> list[Feature]:
+def _owns(core, kx: int, ky: int, z: int) -> bool:
+    """Whether the center of sounding cell (kx, ky) at zoom z lies in core (W <= lon < E, S < lat <= N). The zoom-10
+    tile edges are multiples of 256 px at every zoom and a cell center is an odd multiple of 48 px, so a center is
+    at least 16 px from an edge: two adjacent cores never both own a cell, nor both miss it."""
+    world = 256 * 2**z
+    lon = (kx + 0.5) * SOUNDING_PX / world * 360 - 180
+    lat = math.degrees(math.atan(math.sinh(math.pi * (1 - 2 * (ky + 0.5) * SOUNDING_PX / world))))
+    w, s, e, n = core
+    return w <= lon < e and s < lat <= n
+
+
+def _soundings(depth_m, src, transform, allowed, cut, zooms, core) -> list[Feature]:
     """One sounding per SOUNDING_PX cell of the global Web Mercator pixel grid at each zoom of zooms: the
     shallowest NONNA value among the allowed cells under it, at its cell center. A zoom's cell holds exactly
-    2 by 2 cells of the next zoom, so each zoom is taken from the next one's soundings."""
+    2 by 2 cells of the next zoom, so each zoom is taken from the next one's soundings. Only the cells whose center
+    lies in core (_owns) are drawn, so a cell across a block edge gets one sounding, from the block holding its
+    center, taken from that block's part of it."""
     lo, hi = zooms
     x0, dx, _, y0, _, dy = transform
     lon, lat = axes(depth_m.shape, transform)
@@ -222,7 +235,9 @@ def _soundings(depth_m, src, transform, allowed, cut, zooms) -> list[Feature]:
         order = np.lexsort((cells[:, 2], keys[0], keys[1]))
         k0, k1 = keys[0][order], keys[1][order]
         first = order[np.r_[True, (np.diff(k0) != 0) | (np.diff(k1) != 0)]] if len(order) else order
-        for _, _, v, row, col in cells[first]:
+        for i, (_, _, v, row, col) in zip(first, cells[first]):
+            if not _owns(core, int(keys[0][i]), int(keys[1][i]), z):
+                continue
             row, col = int(row), int(col)
             point = Point(x0 + (col + 0.5) * dx, y0 + (row + 0.5) * dy)
             if cut.contains(point):
@@ -243,7 +258,8 @@ def derived_features(depth_m: np.ndarray, src: np.ndarray, transform, *, core, l
       each with src: the source of its cells, the coarsest when it spans more than one. A grid finer than
       NAV_BASE_M is first block-min reduced to it, and each band grid takes its 3 by 3 neighborhood minimum
       (_neighborhood_min) before contouring; nothing is simplified (tippecanoe does that);
-    - soundg per zoom (_soundings), from nonna10 and nonna100 cells only, src the source of the cell;
+    - soundg per zoom (_soundings), from nonna10 and nonna100 cells only, src the source of the cell, in the
+      sounding cells whose center lies in core;
     - lndare and coalne from land, src "fwa", and nosurvey, each cut to core, over every BANDS zoom.
 
     Every depth geometry is cut to core and to the valid input cells, less nosurvey and land.
@@ -277,7 +293,7 @@ def derived_features(depth_m: np.ndarray, src: np.ndarray, transform, *, core, l
                 out += _depth_features(grid, np.pad(band_src, 1), tr, levels_m=levels, drying_m=drying_m,
                                        tiles=tiles, zooms=(lo, hi))
             allowed = clip_mask(transform, depth_m.shape, mapping(cut))
-            out += _soundings(depth_m, src, transform, allowed, cut, zooms)
+            out += _soundings(depth_m, src, transform, allowed, cut, zooms, core)
     tip = {"minzoom": zooms[0], "maxzoom": zooms[1]}
     for part in _parts(land.intersection(core_box), 2):
         out.append(Feature("lndare", mapping(part), {"src": "fwa", "tippecanoe": tip}))

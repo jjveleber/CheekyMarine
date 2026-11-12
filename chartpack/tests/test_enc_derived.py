@@ -20,6 +20,7 @@ X0, Y0 = -124.0, 49.0  # on multiples of 8 cells from (-180, 90)
 N = 160
 TRANSFORM = (X0, D, 0.0, Y0, 0.0, -D)
 CORE = (X0, Y0 - N * D, X0 + N * D, Y0)
+WIDE = (X0 - 1, Y0 - 1, X0 + 1, Y0 + 1)  # a core holding the center of every sounding cell the grid meets (_owns)
 EMPTY = Polygon()
 DEPTH_LAYERS = ("depare", "depcnt", "soundg")
 
@@ -88,7 +89,7 @@ def test_shoal_survives_downsampling(row, col):
     assert block_factor(TRANSFORM, BANDS[0][2]) == 8
     depth = np.full((N, N), 50.0)
     depth[row, col] = 3.0
-    feats = _derive(depth)
+    feats = _derive(depth, core=WIDE)
     _assert_shoal_kept(feats, box(X0 + col * D, Y0 - (row + 1) * D, X0 + (col + 1) * D, Y0 - row * D))
     assert float(min(_layer(feats, "soundg", BANDS[0][0]), key=lambda f: float(f.props["depth"])).props["depth"]) == 3.0
 
@@ -143,7 +144,7 @@ def test_no_depth_on_land():
 def test_soundings_only_from_nonna():
     assert not _layer(_derive(_slope(), _src("etopo")), "soundg")
     assert _layer(_derive(_slope(), _src("crm")), "depare")  # the depth areas still come from any source
-    soundings = _layer(_derive(_slope(), _src("nonna100")), "soundg")
+    soundings = _layer(_derive(_slope(), _src("nonna100"), core=WIDE), "soundg")
     assert soundings and {f.props["src"] for f in soundings} == {"nonna100"}
     for lo, hi, _ in BANDS:  # one per 96 px cell at each zoom
         for z in range(lo, hi + 1):

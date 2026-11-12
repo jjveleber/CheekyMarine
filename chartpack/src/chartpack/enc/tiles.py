@@ -10,9 +10,10 @@ from pathlib import Path
 import shapely
 from shapely.geometry import mapping, shape
 
+from chartpack.enc.bc import apply_rules
 from chartpack.enc.quilt import _parts, quilt
 from chartpack.enc.reader import CellMeta, Feature
-from chartpack.enc.schema import LAYERS, OPTIONAL_LAYERS, SAFETY_LAYERS, SCHEMA_VERSION
+from chartpack.enc.schema import DERIVED_LAYERS, LAYERS, OPTIONAL_LAYERS, SAFETY_LAYERS, SCHEMA_VERSION
 from chartpack.mbtiles import MBTiles
 from chartpack.region import Region
 
@@ -34,6 +35,9 @@ _COMMON = ["-r1", "--no-feature-limit", "--no-tile-size-limit",
            "--no-tiny-polygon-reduction", "--no-simplification-of-shared-nodes",
            "--extend-zooms-if-still-dropping", "-P", "--force"]
 _SAFETY_ONLY = ["--detect-shared-borders"]
+# The layers tiled with _SAFETY_ONLY: the no-survey areas share their edges with the depth areas, so they are
+# simplified together.
+_SAFETY_GROUP = SAFETY_LAYERS + ("nosurvey",)
 _SEABED_KEYS = ("src", "class", "NATSUR", "NATQUA", "CATWED", "folk", "substrate")
 
 
@@ -82,13 +86,19 @@ def _tippecanoe(out: Path, layer_files: list[tuple[str, Path]], extra: list[str]
 def build_enc_mbtiles(
     cells: list[tuple[CellMeta, list[Feature]]], out: Path, *, region: Region, work: Path,
     seabed: Sequence[Feature] = (), zooms: tuple[int, int], area: shapely.Geometry | None = None,
+    canada: shapely.Geometry | None = None, derived: Sequence[Feature] = (), depth_sources: Sequence[dict] = (),
 ) -> Path:
     """`seabed`: USGS survey features (seabed/usseabed.py, seabed/cmecs.py) that already carry their
     tippecanoe zooms; they join the seabed layer as they are, not quilted (spec 6.10).
     `zooms`: (minzoom, maxzoom) of the tippecanoe run, REGION_ZOOMS or OVERVIEW_ZOOMS.
     `area`: where the quilt output is kept (the owned tiles plus a margin; the overview: every owned tile), so a
     cell spanning far past the region does not fill tippecanoe's top zooms over its whole extent; None keeps it
-    all."""
+    all.
+    `canada`: the Canada polygon when the pack's tiles meet it (plan 8 spec 7.2): the quilt output and `seabed`
+    are cut at it and `derived` (enc/derived.py features, made for the charts side) is added, by apply_rules.
+    `depth_sources`: the derived inputs ({"source", "asset", "sha256"}); those whose source is a src of the
+    built features (or "nosurvey", when the nosurvey layer holds any) go to cheekymarine:depth_sources.
+    A charts kind other than enc (DERIVED_LAYERS) needs its derived layers only, not every schema layer."""
     out, work = Path(out), Path(work)
     work.mkdir(parents=True, exist_ok=True)
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -97,6 +107,8 @@ def build_enc_mbtiles(
     if area is not None:
         shapely.prepare(area)
         features = _crop(features, area)
+    if canada is not None:
+        features, seabed = apply_rules(features + list(seabed), list(derived), canada), ()
     for feature in features:
         by_layer[feature.layer].append(feature)
     by_layer["seabed"].extend(seabed)
@@ -107,7 +119,7 @@ def build_enc_mbtiles(
             continue  # reported by name after the build, below
         path = work / f"{spec.name}.geojsonseq"
         _write_geojsonseq(by_layer[spec.name], path)
-        groups["safety" if spec.name in SAFETY_LAYERS else "thinned"].append((spec.name, path))
+        groups["safety" if spec.name in _SAFETY_GROUP else "thinned"].append((spec.name, path))
 
     parts = []
     for group, extra in (("safety", _SAFETY_ONLY), ("thinned", [])):
@@ -119,7 +131,8 @@ def build_enc_mbtiles(
 
     with MBTiles.open(out) as m:
         built_layers = {l["id"] for l in json.loads(m.metadata()["json"])["vector_layers"]}
-        missing = [spec.name for spec in LAYERS if spec.name not in built_layers | OPTIONAL_LAYERS]
+        required = DERIVED_LAYERS.get(region.charts_kind) or [spec.name for spec in LAYERS]
+        missing = [name for name in required if name not in built_layers | OPTIONAL_LAYERS]
         if missing:
             raise RuntimeError(f"enc.mbtiles has no features in layer(s): {', '.join(missing)}")
         sources = [
@@ -130,6 +143,9 @@ def build_enc_mbtiles(
         # the distinct seabed codes in the tiles, for legend.json (seabed/legend.py)
         seabed = sorted({json.dumps({k: f.props[k] for k in _SEABED_KEYS if k in f.props}, sort_keys=True)
                          for f in by_layer["seabed"]})
+        srcs = {f.props.get("src") for layer in by_layer.values() for f in layer} | (
+            {"nosurvey"} if by_layer["nosurvey"] else set())
+        recorded = [source for source in depth_sources if source["source"] in srcs]
         w, s, e, n = region.bbox
         m.set_metadata({
             "name": f"charts-{region.name}",
@@ -146,6 +162,7 @@ def build_enc_mbtiles(
             "cheekymarine:valdco": json.dumps(valdco),
             "cheekymarine:seabed": json.dumps([json.loads(row) for row in seabed]),
             "cheekymarine:built": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            **({"cheekymarine:depth_sources": json.dumps(recorded)} if recorded else {}),
         })
         m.delete_metadata(["generator_options"])  # holds the temp work paths
     return out
