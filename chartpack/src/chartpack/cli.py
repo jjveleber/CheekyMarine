@@ -389,6 +389,9 @@ def _build_enc(args: argparse.Namespace) -> int:
     check_canadian_areas([(meta.name, meta.band, read_canadian_area(path), shape(meta.covr))
                           for (meta, _), path in zip(cells, zips)], canada, tiles_area(content))
     meets = tiles_area(content).intersection(canada).area > 0
+    if meets and owned is None:  # the overview owns no tile, so nothing derived would fill its Canadian water
+        raise SystemExit(f"region {region.name}: its content tiles meet the Canada polygon, where no NOAA feature is"
+                         " drawn, and the overview's derived depth and land are not built yet (plan 8 Task 15)")
     derived, depth_sources = _derived_charts(args, region, owned, canada) if meets and owned else ([], [])
     enc = build_enc_mbtiles(cells, args.work / "enc.mbtiles", region=region, work=args.work / "tippecanoe",
                             seabed=_usgs_seabed(region, args.cache, None if owned is None else area), zooms=zooms,

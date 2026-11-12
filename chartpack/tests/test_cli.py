@@ -1454,6 +1454,27 @@ def test_build_enc_canadian_tiles_without_nonna_fail(tmp_path, fixtures_dir, reg
               "--work", str(tmp_path / "work")])
 
 
+def test_build_enc_overview_meeting_canada_stops(tmp_path, fixtures_dir, regions_dir, monkeypatch):
+    """The overview owns no tile, so nothing derived would fill its Canadian water after the NOAA cut: an overview
+    whose content tiles meet the Canada polygon stops before the build, naming plan 8 Task 15. One away from the
+    polygon builds as before (test_build_enc_crops_the_overview_to_every_owned_tile and the fixtures)."""
+    from shapely.geometry import box
+
+    from chartpack import cli
+
+    (tmp_path / "cache" / "enc").mkdir(parents=True)
+    shutil.copy(fixtures_dir / "US4WA1HK.zip", tmp_path / "cache" / "enc" / "US4WA1HK-1.3.zip")
+    pack = _grid_region(tmp_path, regions_dir)
+    overview = pack.with_name("ov.toml")
+    overview.write_text("overview = true\n" + pack.read_text().replace('name = "test-cell"', 'name = "ov"')
+                        .replace('sources = ["cudem", "crm"]', 'sources = ["crm"]'))
+    monkeypatch.setattr(cli, "load_canada", lambda regions: box(-123.0, 47.5, -122.0, 48.5))
+    monkeypatch.setattr(cli, "build_enc_mbtiles", lambda *a, **k: pytest.fail("built with blank Canadian water"))
+    with pytest.raises(SystemExit, match=r"region ov: .*Canada polygon.*overview.*Task 15"):
+        main(["build-enc", str(overview), str(tmp_path / "out"), "--cache", str(tmp_path / "cache"),
+              "--work", str(tmp_path / "work")])
+
+
 def test_derived_coalne_drop_on_real_land_asset_geometry():
     """The same drop on land as coast.land_polygons makes it (faces in BC Albers meters, back to lon/lat, cut to the
     box and to a densified polygon with a long diagonal edge): its cut edges lie on the outline to float noise
