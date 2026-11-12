@@ -214,23 +214,24 @@ def test_nonna_sign_and_nodata(tmp_path, alg):
 
 
 
-def test_read_nonna_bilinear_and_min(tmp_path):
-    """Two native columns, 10 m and 20 m deep, read at a quarter of a native cell: nearest gives only 10 and 20,
-    bilinear gives depths between them near the shared edge, and min on depth gives 10 (the shallower) in every
-    target cell that holds part of the shallow cell."""
+def test_read_nonna_near_and_min(tmp_path):
+    """Two native columns, 10 m and 20 m deep, read at a quarter of a native cell on a grid offset from the cell
+    edges: nearest gives only 10 and 20 (the cell under each center), and min on depth gives 10 (the shallower)
+    in the target cell that straddles the shared edge with its center on the deep side."""
     path = write_nonna(tmp_path / "n.tif", np.tile(np.array([-10.0, -20.0], np.float32), (3, 1)), "nonna100",
-                       A_COL // 8, A_ROW // 8)  # three rows: bilinear needs a neighbor row
+                       A_COL // 8, A_ROW // 8)
     x0, px, _, y0, _, py = gdal.Open(str(path)).GetGeoTransform()
     lon = [math.degrees((x0 + i * px) / 6378137.0) for i in range(3)]  # cell edges
     lat = math.degrees(2 * math.atan(math.exp((y0 + 1.5 * py) / 6378137.0)) - math.pi / 2)  # the middle row
     res = (lon[1] - lon[0]) / 4
-    bbox = (lon[0], lat - res, lon[2], lat + res)
-    near, bilinear, low = (nonna.read_nonna(path, bbox, res, alg).data for alg in ("near", "bilinear", "min"))
+    off = 3 * res / 4  # the grid sits off the cell edges by 3/4 of a target cell
+    bbox = (lon[0] + off, lat - res, lon[2] + off, lat + res)
+    near, low = (nonna.read_nonna(path, bbox, res, alg).data for alg in ("near", "min"))
     assert set(np.unique(near[np.isfinite(near)])) == {10.0, 20.0}
-    middle = bilinear[np.isfinite(bilinear) & (bilinear > 10.01) & (bilinear < 19.99)]
-    assert middle.size > 0
     assert set(np.unique(low[np.isfinite(low)])) == {10.0, 20.0}
-    assert (low[np.isfinite(low)] <= near[np.isfinite(low)]).all()  # never deeper than the nearest value
+    both = np.isfinite(near) & np.isfinite(low)
+    assert ((near == 20.0) & (low == 10.0))[both].any()  # the straddling cell
+    assert (low[both] <= near[both]).all()  # never deeper than the nearest value
 
 
 def test_stats_count_only_chunks_in_the_mosaic(tmp_path, fixtures_dir, monkeypatch):

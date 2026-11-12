@@ -905,33 +905,18 @@ def test_coverage_grade_per_source(sources, test_region, tmp_path):
                for f in result.coarse_coverage)
 
 
-def test_nav_depth_keeps_isolated_shoal(small_grids, zero_geoid, test_region, tmp_path):
-    """One native NONNA-10 cell of 3.0 m in a 50.0 m plain: nav_depth (GDAL min on depth) keeps a 3.0 m cell."""
-    from make_nonna import edge_transform
-
-    _, core, read = _block(NORTH)
-    b = _sub(core, 0.3, 0.3, 0.7, 0.7)
-    ex, px, _, ey, _, py = edge_transform("nonna10", 0, 0)
-    clon, clat = _center(b)
-    col = math.floor((_R * math.radians(clon) - ex) / px)
-    row = math.floor((_R * math.log(math.tan(math.pi / 4 + math.radians(clat) / 2)) - ey) / py)
-    sx, sy = ex + (col + 0.5) * px, ey + (row + 0.5) * py
-    shoal = (math.degrees(sx / _R), math.degrees(2 * math.atan(math.exp(sy / _R)) - math.pi / 2))
-
-    def raw(lon, lat):
-        out = np.full(lon.shape, -50.0)
-        out[np.isclose(lon, shoal[0], atol=1e-9, rtol=0) & np.isclose(lat, shoal[1], atol=1e-9, rtol=0)] = -3.0
-        return out
-
-    nonna10 = _write_nonna_over(tmp_path / "n10.tif", "nonna10", b, raw)
-    assert np.isclose(np.asarray(gdal.Open(str(nonna10)).ReadAsArray()), -3.0).sum() == 1
-    result = build_block(core, read, _sources(nonna10=nonna10), area_datum(test_region, Path("unused")), box(*read))
+def test_nav_depth_keeps_isolated_shoal(test_region, tmp_path):
+    """One native NONNA-10 cell of 3.0 m in a 50.0 m plain, at the real resolutions: nav_depth (min on depth) holds
+    3.0 in every fine cell of that native cell, from nonna10."""
+    data = np.full((9, 9), -50.0)
+    data[4, 4] = -3.0
+    result, native = _real_block(tmp_path, data, test_region)
     nav = result.nav_depth
-    assert np.nanmin(nav.data) == 3.0
-    assert _cell(nav.transform, nav.data, *shoal) == 3.0
-    assert blocks.SOURCE_NAMES[_cell(nav.transform, result.nav_src, *shoal)] == "nonna10"
+    c, r = _native_index(nav, native)
+    shoal = (c == 4) & (r == 4)
+    assert shoal.sum() > 4 and (nav.data[shoal] == 3.0).all() and np.nanmin(nav.data) == 3.0
+    assert (result.nav_src[shoal] == blocks.SOURCE_NAMES.index("nonna10")).all()
     assert result.nonna_valid.shape == result.fine_grid.data.shape
-    assert result.nonna_valid[np.isfinite(nav.data)].all() and not result.nonna_valid[np.isnan(nav.data)].any()
 
 
 def test_no_blank_water_in_block(small_grids, zero_geoid, test_region, tmp_path):
@@ -1029,3 +1014,23 @@ def test_crm_grade_cut_at_the_border(small_grids, zero_geoid, test_region, tmp_p
     assert rough.bounds[1] >= mid - 1e-9 and survey.bounds[3] <= mid + 1e-9
     assert rough.intersection(survey).area < 1e-12
     assert abs(rough.union(survey).area - box(*core).area) < 1e-9  # together they still cover the core
+
+
+@pytest.mark.parametrize("product", ["nonna10", "nonna100"])
+def test_fish_nonna_cells_read_true(tmp_path, test_region, product):
+    """Owner ruling (2026-11-12): the Fish grids draw NONNA as exact squares (nearest). At the real resolutions
+    (NONNA-10 in the fine grid, NONNA-100 in the coarse grid) a one-cell 3.0 m shoal reads 3.0 and a one-cell
+    drying height of 1.5 m reads -1.5 in every grid cell of that native cell, and the plain reads 50.0."""
+    data = np.full((9, 9), -50.0)
+    data[2, 2] = -3.0
+    data[6, 6] = 1.5
+    result, native = _real_block(tmp_path, data, test_region, product)
+    grid = result.fine_grid if product == "nonna10" else result.coarse_grid
+    source = result.fine_source if product == "nonna10" else result.coarse_source
+    c, r = _native_index(grid, native)
+    shoal, drying = (c == 2) & (r == 2), (c == 6) & (r == 6)
+    inside = (c >= 0) & (c < 9) & (r >= 0) & (r < 9)
+    assert shoal.sum() > 1 and drying.sum() > 1, product
+    assert (grid.data[shoal] == 3.0).all() and (grid.data[drying] == -1.5).all(), product
+    assert (grid.data[inside & ~shoal & ~drying] == 50.0).all(), product
+    assert (source[inside] == blocks.SOURCE_NAMES.index(product)).all(), product

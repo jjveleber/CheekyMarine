@@ -229,22 +229,12 @@ def _side(canada: shapely.Geometry | None, read, res: float) -> np.ndarray | Non
     return side if side.any() else None
 
 
-def _nonna_values(path: Path, read, res: float, valid: np.ndarray) -> np.ndarray:
-    """NONNA depths for the Fish grids: bilinear on the cells `valid` holds (where nearest finds a NONNA value),
-    nan elsewhere; a valid cell bilinear leaves empty takes the nearest value."""
-    values = read_nonna(path, read, res, "bilinear").data
-    values[~valid] = np.nan
-    gap = valid & np.isnan(values)
-    if gap.any():
-        values[gap] = read_nonna(path, read, res).data[gap]
-    return values
-
-
-def _nav_values(path: Path, read, res: float) -> np.ndarray:
+def _nav_values(path: Path, read, res: float, near: np.ndarray | None = None) -> np.ndarray:
     """NONNA depths for nav_depth: the shallowest native value under each cell ("min"), only on the cells whose
-    center lies in a native cell with a value (nearest), so no depth reaches into a hole (spec 7.1, no fill-in)."""
+    center lies in a native cell with a value (nearest), so no depth reaches into a hole (spec 7.1, no fill-in).
+    near: the nearest read at res when the caller already has it."""
     values = read_nonna(path, read, res, "min").data
-    values[np.isnan(read_nonna(path, read, res).data)] = np.nan
+    values[np.isnan(read_nonna(path, read, res).data if near is None else near)] = np.nan
     return values
 
 
@@ -252,12 +242,8 @@ def _coarse_layers(sources: BlockSources, read, res: float, side: np.ndarray | N
     """The coarse sources as merge_ordered layers at res, in the order of plan 8 spec 6: NONNA-100 (Canadian
     column only), CRM, ETOPO. window(path) gives a source's native window over read."""
     layers = []
-    if sources.nonna100 is not None and side is not None:
-        def nonna100():
-            valid = np.isfinite(read_nonna(sources.nonna100, read, res).data) & side
-            return _nonna_values(sources.nonna100, read, res, valid)
-
-        layers.append((_INDEX["nonna100"], nonna100, None))
+    if sources.nonna100 is not None and side is not None:  # nearest: each native cell keeps its surveyed value
+        layers.append((_INDEX["nonna100"], lambda: read_nonna(sources.nonna100, read, res).data, side))
     if sources.crm_path is not None:
         layers.append((_INDEX["crm"], lambda: warp_depth(window(sources.crm_path), read, res, "bilinear"), None))
     etopo = [sources.etopo] if isinstance(sources.etopo, Path) else list(sources.etopo or [])
@@ -387,8 +373,9 @@ def build_block(
 
     Per cell the first source with data wins (plan 8 spec 6). canada is the Canadian column over read (None:
     all US). US side: fine CUDEM, coarse CRM then ETOPO. Canadian side: fine NONNA-10 then CUDEM, coarse
-    NONNA-100 then CRM then ETOPO. NONNA is warped from its native grid: nearest for where it has data, bilinear
-    for the depths, the shallowest value for nav_depth.
+    NONNA-100 then CRM then ETOPO. NONNA is warped from its native grid by nearest for the Fish grids (each
+    native cell drawn as an exact square of its surveyed value, owner 2026-11-12) and by the shallowest value
+    for nav_depth.
 
     Fine is the fine tier over the coarse sources; its features use the fine-tier cells only, its DEM the whole
     merge. Coarse is drawn on every coarse cell unless every fine cell in it is fine tier, decided per cell; its
@@ -416,21 +403,19 @@ def build_block(
     fine_side, coarse_side = _side(canada, read, FINE_RES_DEG), _side(canada, read, COARSE_RES_DEG)
     cudem_tiles = list(sources.cudem_tiles)
     meeting = cudem_tiles if tiles_for_bbox(cudem_tiles, read) else []
-    valid10 = None
+    near10 = None  # NONNA-10 by nearest on the Canadian column: the Fish values, its mask and nav_depth's mask
     if sources.nonna10 is not None and fine_side is not None:
-        valid10 = np.isfinite(read_nonna(sources.nonna10, read, FINE_RES_DEG).data) & fine_side
-        if not valid10.any():
-            valid10 = None
+        near10 = read_nonna(sources.nonna10, read, FINE_RES_DEG).data
+        near10[~fine_side] = np.nan
     fine = fine_source = cells = None
-    if meeting or valid10 is not None:
-        layers = [] if valid10 is None else [
-            (_INDEX["nonna10"], lambda: _nonna_values(sources.nonna10, read, FINE_RES_DEG, valid10), None)]
+    if meeting or (near10 is not None and np.isfinite(near10).any()):
+        layers = [] if near10 is None else [(_INDEX["nonna10"], lambda: near10, None)]
         layers += [(_INDEX["cudem"], lambda t=t: warp_depth(
             read_window("/vsicurl/" + t.url, _overlap(t.bounds, read)), read, FINE_RES_DEG, "near"), None)
             for t in meeting]
         fine, fine_source = merged(layers + _coarse_layers(sources, read, FINE_RES_DEG, fine_side, window),
                                    FINE_RES_DEG)
-        del layers, valid10
+        del layers
         cells = np.isin(fine_source, FINE_TIER) & np.isfinite(fine.data)
     coarse_layers = _coarse_layers(sources, read, COARSE_RES_DEG, coarse_side, window)
     coarse, coarse_source = merged(coarse_layers, COARSE_RES_DEG) if coarse_layers else (None, None)
@@ -461,9 +446,9 @@ def build_block(
         overzoomed=True, canada=canada)
 
     nav = nav_src = nonna_valid = None
-    nav_layers = [(_INDEX[name], lambda path=path: _nav_values(path, read, FINE_RES_DEG), fine_side)
-                  for name, path in (("nonna10", sources.nonna10), ("nonna100", sources.nonna100))
-                  if path is not None]
+    nonna = (("nonna10", sources.nonna10, near10), ("nonna100", sources.nonna100, None))
+    nav_layers = [(_INDEX[name], lambda path=path, near=near: _nav_values(path, read, FINE_RES_DEG, near), fine_side)
+                  for name, path, near in nonna if path is not None]
     if fine_side is not None and nav_layers:
         nav, nav_src = merge_ordered(nav_layers, read, FINE_RES_DEG)  # chart datum: no shift
         nonna_valid = np.isfinite(nav.data)
