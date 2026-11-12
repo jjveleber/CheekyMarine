@@ -608,6 +608,59 @@ def test_overview_nav_offshore_never_deeper_than_any_source(tmp_path, test_regio
     assert (r.nav_src[mixed] == blocks.SOURCE_NAMES.index("etopo")).all()  # the coarsest source of the cell
 
 
+def _geoid_west_of_130_raises(monkeypatch):
+    """The real geoid path's limit: GEOID18 stops at -130 W, so a node west of it raises GeoidError; zero elsewhere."""
+    def nodes(lons, lats, cache):
+        if np.min(lons) < -130.0:
+            raise geoid.GeoidError(f"EGM2008 to NAVD88 is undefined at some of lon {lons} (outside GEOID18)")
+        return np.zeros((len(lats), len(lons)))
+
+    monkeypatch.setattr(geoid, "egm2008_to_navd88_nodes", nodes)
+
+
+def test_overview_crm_offset_only_where_crm_won(tmp_path, test_region, monkeypatch):
+    """A strip from -135.7 W to -122 W with CRM cells only east of -128 W builds: the CRM offset is taken over the
+    cells CRM won, never over the whole strip (GEOID18 stops at -130 W). A CRM cell truly west of -130 W still
+    raises: the error is not swallowed."""
+    _geoid_west_of_130_raises(monkeypatch)
+    bbox = (-135.7, 48.9, -122.0, 48.95)
+    read = blocks.overview_bounds(bbox)
+    rows = round((read[3] - read[1]) * 3600)
+    east = (-128.0, read[1], read[2], read[3])
+    crm = tmp_path / "crm.tif"
+    _write_tif(crm, np.full((rows, round((east[2] - east[0]) * 3600)), -50.0, np.float32), east)
+    datum = area_datum(test_region, Path("unused"))
+    r = blocks.build_overview(bbox, _sources(crm=crm), datum, None, Polygon())
+    assert np.isfinite(r.coarse_grid.data).any()
+    west = (-131.0, read[1], read[2], read[3])
+    _write_tif(crm, np.full((rows, round((west[2] - west[0]) * 3600)), -50.0, np.float32), west)
+    with pytest.raises(geoid.GeoidError):
+        blocks.build_overview(bbox, _sources(crm=crm), datum, None, Polygon())
+
+
+def test_shift_by_window_matches_the_whole_grid(test_region, zero_geoid):
+    """_shift takes each source's offset over the window of the cells it won; at those cells the values are the
+    ones the whole-grid offset gives, bit for bit, so wave 1 output does not change."""
+    from chartpack.bathy.cudem import Grid
+
+    transform = (-122.6, 1 / 3600, 0.0, 48.0, 0.0, -1 / 3600)
+    data = np.random.default_rng(1).uniform(-50, 200, (360, 720)).astype(np.float32)
+    source = np.zeros(data.shape, np.int8)
+    source[40:200, 100:300] = blocks.SOURCE_NAMES.index("crm")
+    source[150:330, 400:700] = blocks.SOURCE_NAMES.index("cudem")
+    source[0:20, 0:20] = blocks.SOURCE_NAMES.index("etopo")
+    datum = area_datum(test_region, Path("unused"))
+    grid = Grid(data.copy(), float("nan"), transform, "")
+    blocks._shift(grid, source, datum)
+    want = data.copy()
+    for name in ("crm", "cudem", "etopo"):
+        take = source == blocks.SOURCE_NAMES.index(name)
+        want[take] = data[take] - datum(name, transform, data.shape, lakes=False)[take]
+    etopo = source == blocks.SOURCE_NAMES.index("etopo")
+    want[etopo & (data > 0) & (want < 0)] = 0.0
+    np.testing.assert_array_equal(grid.data, want)
+
+
 def test_overview_strips_give_one_read(tmp_path, test_region, zero_geoid, monkeypatch):
     """build_overview reads in strips to bound its memory; the strips give the grids of one read."""
     sources, hole = _overview_sources(tmp_path)

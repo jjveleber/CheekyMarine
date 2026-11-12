@@ -264,14 +264,23 @@ def _present(source: np.ndarray) -> list[int]:
 def _shift(grid: Grid, source: np.ndarray, datum: AreaDatum) -> None:
     """Each cell's depth shifted by its own source's datum offset (the station path, no lake rule), in place:
     CUDEM and CRM to MLLW, NONNA left on chart datum, ETOPO by its fixed shift. A water cell (depth above 0) of
-    a mean sea level source that the shift would take below 0 gets 0.0: it never makes a drying area."""
+    a mean sea level source that the shift would take below 0 gets 0.0: it never makes a drying area. Each offset is
+    taken over the window of the cells its source won, not the whole grid: a geoid grid need not reach cells the
+    source does not hold (GEOID18 stops at -130 W, the overview reaches -135.7 W), and the offsets on the global
+    nodes are the same either way."""
+    x0, dx, rx, y0, ry, dy = grid.transform
     for index in _present(source):
         take = source == index
-        was = grid.data[take]
-        now = was - datum(SOURCE_NAMES[index], grid.transform, grid.data.shape, lakes=False)[take]
+        rows, cols = np.flatnonzero(take.any(axis=1)), np.flatnonzero(take.any(axis=0))
+        r0, r1, c0, c1 = rows[0], rows[-1] + 1, cols[0], cols[-1] + 1
+        window = (x0 + c0 * dx, dx, rx, y0 + r0 * dy, ry, dy)
+        take = take[r0:r1, c0:c1]
+        values = grid.data[r0:r1, c0:c1]  # a view: written back in place
+        was = values[take]
+        now = was - datum(SOURCE_NAMES[index], window, take.shape, lakes=False)[take]
         if SOURCE_VERTICAL[SOURCE_NAMES[index]] == "msl":
             now = np.where((was > 0) & (now < 0), np.float32(0.0), now)
-        grid.data[take] = now
+        values[take] = now
         del take
 
 
