@@ -246,8 +246,8 @@ def derived_features(depth_m: np.ndarray, src: np.ndarray, transform, *, core, l
     - soundg per zoom (_soundings), from nonna10 and nonna100 cells only, src the source of the cell;
     - lndare and coalne from land, src "fwa", and nosurvey, each cut to core, over every BANDS zoom.
 
-    Every depth geometry is cut to core and to the valid input cells, less nosurvey and land. lat is unused since nothing is simplified here (kept in the
-    interface). For the offshore kind the caller passes the coarse merge and empty nosurvey and land."""
+    Every depth geometry is cut to core and to the valid input cells, less nosurvey and land.
+    lat is unused since nothing is simplified here (kept in the interface). For the offshore kind the caller passes the coarse merge and empty nosurvey and land."""
     core_box = box(*core)
     levels = sorted(float(v) for v in levels_m)
     # H from the whole input grid (the read area too), so it can only overstate the drying height
