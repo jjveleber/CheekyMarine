@@ -199,7 +199,7 @@ Research task, no code. One request at a time, 2 s apart, robots.txt first.
   - `test_block_outside_asset_extent_is_error` (a block whose read box reaches past the NONNA or coastline asset's extent fails the build naming the region, the asset and the fetch workflow; the same guard runs in `_build_enc`). The guard compares against the requested fetch extent recorded in `fetch-stats-<name>.json`, which the build downloads with the assets, not against the mosaic's raster bounds, which are smaller where NONNA has no data. The stats also hold a `sha256` per file, which the guard may check against each downloaded asset.
   - `test_build_bathy_reads_assets_not_wcs` (the CLI with a cache holding fixture assets makes no HTTP request; a missing asset is an error naming the file and the fetch workflow).
 - [ ] **Step 2:** Run. Expected: FAIL.
-- [ ] **Step 3:** Implement. Keep the plan 7 global grid anchoring and the features-clipped-to-core rule; NONNA is warped from EPSG:3857 to the fine lon/lat grid with nearest-neighbor for the mask, bilinear for the Fish values, and `min` for `nav_depth`.
+- [ ] **Step 3:** Implement. Keep the plan 7 global grid anchoring and the features-clipped-to-core rule; NONNA is warped from EPSG:3857 to the fine lon/lat grid with nearest-neighbor for the mask and the Fish values (owner ruling on PR #122: exact squares, no smoothing), and `min` for `nav_depth`.
 - [ ] **Step 4:** Run the chartpack tests. Expected: PASS.
 - [ ] **Step 5:** Commit `feat(chartpack): NONNA depth in the block build, sources by side of the border (#90)`.
 
