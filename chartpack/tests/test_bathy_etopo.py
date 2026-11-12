@@ -5,8 +5,9 @@ from test_bathy_blocks import AREA, NORTH, _block, _cell, _sources, _write_grid,
 
 from chartpack.bathy import blocks, etopo
 from chartpack.bathy.blocks import area_datum, build_block
-from chartpack.bathy.cudem import Grid
-from chartpack.bathy.etopo import CD_BELOW_MSL_M, ETOPO_URL, fetch_etopo
+from chartpack.bathy.cudem import Grid, read_window
+from chartpack.bathy.merge import merge_ordered
+from chartpack.bathy.etopo import CD_BELOW_MSL_M, ETOPO_URL, etopo_tiles, fetch_etopo
 from chartpack.datum import geoid, offsets
 
 
@@ -54,6 +55,23 @@ def test_etopo_does_not_use_geoid_or_wa_stations(small_grids, test_region, tmp_p
     assert _coarse(tmp_path, test_region, -100.0) == pytest.approx(96.0)
 
 
+def test_etopo_url_is_the_n60w135_tile():
+    assert ETOPO_URL.endswith("/ETOPO_2022_v1_15s_N60W135_surface.tif")
+    assert etopo._tile_url("N60W150").endswith("/ETOPO_2022_v1_15s_N60W150_surface.tif")
+
+
+def test_tiles_meeting_a_bbox():
+    assert etopo_tiles((-135.59, 53.0, -131.0, 55.0)) == ["N60W150", "N60W135"]
+    assert etopo_tiles((-130.0, 48.0, -125.0, 50.0)) == ["N60W135"]
+    assert etopo_tiles((-140.0, 48.0, -135.0, 50.0)) == ["N60W150"]  # an edge at 135 W does not meet the east tile
+
+
+@pytest.mark.parametrize("bbox, name", [((-160.0, 48.0, -155.0, 50.0), "N60W165"), ((-130.0, 20.0, -125.0, 30.0), "N30W135")])
+def test_tile_outside_the_two_is_error_naming_it(bbox, name):
+    with pytest.raises(ValueError, match=name):
+        etopo_tiles(bbox)
+
+
 def test_fetch_etopo_uses_cache(tmp_path, monkeypatch, fixtures_dir):
     calls = []
 
@@ -64,6 +82,68 @@ def test_fetch_etopo_uses_cache(tmp_path, monkeypatch, fixtures_dir):
         return dest
 
     monkeypatch.setattr(etopo, "download", fake_download)
-    path = fetch_etopo(tmp_path)
-    assert fetch_etopo(tmp_path) == path and path.exists()
-    assert calls == [ETOPO_URL]
+    bbox = (-136.0, 50.0, -134.0, 51.0)
+    paths = fetch_etopo(bbox, tmp_path)
+    assert fetch_etopo(bbox, tmp_path) == paths and all(p.exists() for p in paths)
+    assert [p.name for p in paths] == ["ETOPO_2022_v1_15s_N60W150_surface.tif", "ETOPO_2022_v1_15s_N60W135_surface.tif"]
+    assert calls == [etopo._tile_url("N60W150"), ETOPO_URL]
+
+
+def _tile(path, box, value, nodata=None):
+    """A 0.01 degree tile file over box holding value everywhere; nodata=None sets no NoData value."""
+    w, s, e, n = box
+    ds = gdal.GetDriverByName("GTiff").Create(str(path), round((e - w) / 0.01), round((n - s) / 0.01), 1, gdal.GDT_Float32)
+    ds.SetGeoTransform((w, 0.01, 0, n, 0, -0.01))
+    ds.SetProjection("EPSG:4326")
+    band = ds.GetRasterBand(1)
+    if nodata is not None:
+        band.SetNoDataValue(nodata)
+    band.Fill(value)
+    ds = None
+    return path
+
+
+def _merged(tiles, read):
+    res = 0.0025
+    window = lambda path, box=None: read_window(str(path), read if box is None else box)  # noqa: E731
+    layers = blocks._coarse_layers(_sources(etopo=tiles), read, res, None, window)
+    grid, source = merge_ordered(layers, read, res)
+    return grid.data, source
+
+
+def _two_tiles(tmp_path):
+    west = _tile(tmp_path / "west.tif", (-135.2, 47.0, -135.0, 47.2), -50.0)  # no NoData value set
+    east = _tile(tmp_path / "east.tif", (-135.0, 47.0, -134.8, 47.2), -80.0)
+    return [west, east]
+
+
+def test_block_straddling_the_tile_edge_has_both_and_no_gap(tmp_path):
+    depth, source = _merged(_two_tiles(tmp_path), (-135.1, 47.05, -134.9, 47.15))
+    assert np.isfinite(depth).all()  # no seam gap
+    assert set(np.unique(depth)) == {50.0, 80.0}  # both tiles, no zero elevation padding
+    assert (source == blocks.SOURCE_NAMES.index("etopo")).all()
+
+
+def test_block_west_of_the_edge_reads_the_west_tile_only(tmp_path):
+    depth, _ = _merged(_two_tiles(tmp_path), (-135.15, 47.05, -135.05, 47.15))
+    assert (depth == 50.0).all()
+
+
+def test_overhang_past_every_tile_stays_empty_not_land(tmp_path):
+    depth, source = _merged(_two_tiles(tmp_path), (-135.3, 47.05, -135.1, 47.15))  # west half past the west tile
+    cols = depth.shape[1]
+    assert (depth[:, : cols // 2 - 2] != depth[:, : cols // 2 - 2]).all()  # nan, not 0.0 elevation
+    assert (depth[:, cols // 2 + 2 :] == 50.0).all()
+    assert (source[:, : cols // 2 - 2] == 0).all()
+
+
+def test_block_outside_every_tile_adds_no_layer(tmp_path):
+    assert _merged_layers(_two_tiles(tmp_path), (-134.0, 47.05, -133.9, 47.15)) == []
+
+
+def _merged_layers(tiles, read):
+    return blocks._coarse_layers(_sources(etopo=tiles), read, 0.0025, None, lambda *a: pytest.fail("read a tile"))
+
+
+def test_etopo_land_cell_stays_land_through_build_block(small_grids, test_region, tmp_path):
+    assert _coarse(tmp_path, test_region, 5.0) == pytest.approx(-9.0)  # land: shifted like CRM land, never clamped to a water 0.0

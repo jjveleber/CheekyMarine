@@ -30,7 +30,7 @@ from chartpack.bathy.contours import (
     zoom_tolerance_deg,
 )
 from chartpack.bathy.cudem import CudemTile, Grid, read_window, tiles_for_bbox
-from chartpack.bathy.etopo import CD_BELOW_MSL_M
+from chartpack.bathy.etopo import CD_BELOW_MSL_M, clip_to_tile
 from chartpack.bathy.merge import clip_mask, coverage_polygons, fill_land, merge_ordered, merge_to_mllw, warp_depth
 from chartpack.bathy.nonna import read_nonna
 from chartpack.bathy.tiles import COARSE_ZOOMS
@@ -73,7 +73,7 @@ class BlockSources:
     crm_path: Path | None
     nonna10: Path | None
     nonna100: Path | None
-    etopo: Path | None
+    etopo: Path | Sequence[Path] | None  # the ETOPO tile files that meet the region; a lone Path is one tile
 
 
 @dataclass
@@ -249,9 +249,13 @@ def _coarse_layers(sources: BlockSources, read, res: float, side: np.ndarray | N
             return _nonna_values(sources.nonna100, read, res, valid)
 
         layers.append((_INDEX["nonna100"], nonna100, None))
-    for name, path in (("crm", sources.crm_path), ("etopo", sources.etopo)):
-        if path is not None:
-            layers.append((_INDEX[name], lambda path=path: warp_depth(window(path), read, res, "bilinear"), None))
+    if sources.crm_path is not None:
+        layers.append((_INDEX["crm"], lambda: warp_depth(window(sources.crm_path), read, res, "bilinear"), None))
+    etopo = [sources.etopo] if isinstance(sources.etopo, Path) else list(sources.etopo or [])
+    for path in etopo:  # one layer per tile, each read cut to the tile's extent (no padding); cells no tile covers stay nan
+        if (clip := clip_to_tile(path, read)) is not None:
+            layers.append((_INDEX["etopo"], lambda path=path, clip=clip: warp_depth(window(path, clip), read, res,
+                                                                                   "bilinear"), None))
     return layers
 
 
@@ -380,9 +384,9 @@ def build_block(
     """
     native = {}  # CRM and ETOPO windows over read, each read once for both grids
 
-    def window(path: Path) -> Grid:
+    def window(path: Path, box=None) -> Grid:  # box: the part of read a tile file holds (default all of read)
         if path not in native:
-            native[path] = read_window(str(path), read)
+            native[path] = read_window(str(path), read if box is None else box)
         return native[path]
 
     def merged(layers, res):  # the merge, each source on its datum (_shift), less the masked lakes

@@ -75,7 +75,7 @@ def _fix_west_edge(path: Path) -> None:
     ds = None
 
 
-def _check_float_tif(path: Path) -> None:
+def check_float_tif(path: Path) -> None:
     try:
         ds = gdal.Open(str(path))
     except RuntimeError as e:
@@ -95,7 +95,7 @@ def fetch_crm(bbox, cache_dir: Path) -> Path | None:
         return None
     download(crm_wcs_url(crm_request(bbox)), dest)
     try:
-        _check_float_tif(dest)
+        check_float_tif(dest)
         _fix_west_edge(dest)
     except DownloadError:
         dest.unlink(missing_ok=True)

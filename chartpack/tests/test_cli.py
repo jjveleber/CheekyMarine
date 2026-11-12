@@ -893,7 +893,7 @@ def test_fetch_bathy_fetches_etopo_only_when_listed(tmp_path, regions_dir, monke
     from chartpack import cli
 
     fetched = []
-    monkeypatch.setattr(cli, "fetch_etopo", lambda cache: fetched.append(cache) or cache / "etopo" / "e.tif")
+    monkeypatch.setattr(cli, "fetch_etopo", lambda extent, cache: fetched.append((extent, cache)) or [cache / "etopo" / "e.tif"])
     monkeypatch.setattr(cli, "fetch_crm", lambda bbox, cache: None)
     monkeypatch.setattr(cli, "download", lambda *a, **k: pytest.fail("no CUDEM list needed"))
     monkeypatch.setattr(geoid, "fetch_grids", lambda p: None)
@@ -903,7 +903,7 @@ def test_fetch_bathy_fetches_etopo_only_when_listed(tmp_path, regions_dir, monke
     assert fetched == []
     region.write_text(region.read_text().replace('sources = ["crm"]', 'sources = ["crm", "etopo"]'))
     assert main(["fetch-bathy", str(region), "--cache", str(tmp_path)]) == 0
-    assert fetched == [tmp_path]
+    assert len(fetched) == 1 and fetched[0][1] == tmp_path  # given the region's fetch extent
     assert capsys.readouterr().out.splitlines()[-1] == str(tmp_path / "etopo" / "e.tif")
 
 
@@ -911,7 +911,7 @@ def test_build_bathy_passes_the_etopo_path_only_when_listed(tmp_path, fixtures_d
     import shutil
 
     from chartpack import cli
-    from chartpack.bathy.etopo import etopo_path
+    from chartpack.bathy.etopo import etopo_paths
 
     seen = []
 
@@ -932,8 +932,13 @@ def test_build_bathy_passes_the_etopo_path_only_when_listed(tmp_path, fixtures_d
     region.write_text(region.read_text().replace('sources = ["cudem", "crm"]', 'sources = ["cudem", "crm", "etopo"]'))
     with pytest.raises(SystemExit, match="run fetch-bathy first"):  # the tile is not cached yet
         main(args)
-    etopo_path(cache).parent.mkdir(parents=True)
-    shutil.copy(fixtures_dir / "cudem_possession_bar.tif", etopo_path(cache))
+    from chartpack.grid import fetch_extent
+    from chartpack.region import load_region
+
+    tiles = etopo_paths(fetch_extent(load_region(region), region.parent), cache)
+    tiles[0].parent.mkdir(parents=True)
+    for tile in tiles:
+        shutil.copy(fixtures_dir / "cudem_possession_bar.tif", tile)
     with pytest.raises(Stop):
         main(args)
-    assert seen[-1] == etopo_path(cache)
+    assert seen[-1] == tiles
