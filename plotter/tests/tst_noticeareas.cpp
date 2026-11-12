@@ -14,6 +14,11 @@ private slots:
         QCOMPARE(NoticeAreas::fromGeoJson(kSquare).kindsIn(1, 1, 2, 2), NoticeAreas::Kinds(NoticeAreas::Bc));
         QCOMPARE(NoticeAreas::fromGeoJson(kSquare).kindsIn(8, 8, 12, 12), NoticeAreas::Kinds(NoticeAreas::Bc)); // partial overlap
     }
+    void boxContainingPolygonHits() {
+        const auto a = NoticeAreas::fromGeoJson(R"({"features":[{"properties":{"kind":"bc"},"geometry":{"type":"Polygon",
+"coordinates":[[[4,4],[5,4],[5,5],[4,5],[4,4]]]}}]})");
+        QCOMPARE(a.kindsIn(0, 0, 10, 10), NoticeAreas::Kinds(NoticeAreas::Bc));
+    }
     void boxOutsideMisses() {
         QCOMPARE(NoticeAreas::fromGeoJson(kSquare).kindsIn(11, 11, 12, 12), NoticeAreas::Kinds());
     }

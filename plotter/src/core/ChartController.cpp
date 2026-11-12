@@ -375,6 +375,7 @@ ChartController::ChartController(ChartMap& map, Settings& settings, VesselModel&
     m_noticeTimer.setInterval(250);
     connect(&m_noticeTimer, &QTimer::timeout, this, &ChartController::updateNotice);
     connect(&m_map, &ChartMap::cameraChanged, &m_noticeTimer, qOverload<>(&QTimer::start));
+    connect(&m_map, &ChartMap::viewportChanged, &m_noticeTimer, qOverload<>(&QTimer::start));
     connect(&m_settings, &Settings::shallowMChanged, this, &ChartController::applyDepthFilters);
     connect(&m_settings, &Settings::safetyMChanged, this, &ChartController::applyDepthFilters);
     connect(&m_settings, &Settings::deepMChanged, this, &ChartController::applyDepthFilters);

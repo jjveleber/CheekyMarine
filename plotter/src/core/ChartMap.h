@@ -43,6 +43,6 @@ public:
 signals:
     void styleLoaded();
     void userGesture(); // a pan by the user (zoom gestures keep follow mode)
-    void cameraChanged(); // any centre, zoom or bearing change, by the user or by code
+    void cameraChanged(); // any center, zoom or bearing change, by the user or by code
     void viewportChanged(); // the viewport size changed (viewportHeight() is the new one)
 };

@@ -491,6 +491,15 @@ private slots:
         r.map.setVisibleBounds(-123.5, 48.6, -123.2, 48.9);
         QTRY_COMPARE(r.ctrl->notice(), kBcNotice);
     }
+    void resizeIntoBcGetsBcNotice() {
+        Rig r;
+        bcRig(r);
+        r.make();
+        r.map.loaded();
+        r.map.bounds = QRectF(QPointF(-123.5, 48.6), QPointF(-123.2, 48.9)); // grew into BC, no camera signal
+        emit r.map.viewportChanged();
+        QTRY_COMPARE(r.ctrl->notice(), kBcNotice);
+    }
     void noticeChangedNotEmittedWhileKindsSame() {
         Rig r;
         bcRig(r);
