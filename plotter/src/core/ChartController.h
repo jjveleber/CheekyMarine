@@ -1,6 +1,7 @@
 #pragma once
 #include "core/ChartMap.h"
 #include "core/Geo.h"
+#include "core/NoticeAreas.h"
 #include "core/PackCatalog.h"
 #include <QHash>
 #include <QImage>
@@ -8,6 +9,7 @@
 #include <QList>
 #include <QObject>
 #include <QStringList>
+#include <QTimer>
 #include <QVariantList>
 #include <QVariantMap>
 #include <optional>
@@ -33,6 +35,8 @@ class ChartController : public QObject {
     // files kept although packs differ, or a single pack shown because the merged files are missing
     // or damaged. Empty after a normal install. Unlike `notice`, a style load never changes it.
     Q_PROPERTY(QStringList packNotices READ packNotices CONSTANT)
+    // The distinct cheekymarine:data_notice texts of the files shown (the CHS licence notice).
+    Q_PROPERTY(QStringList dataNotices READ dataNotices CONSTANT)
     // Per kind with a pack shown ("charts", "bathy"): "single", "merged", "merged-stale" (merged
     // files kept, packs differ) or "single-fallback" (merged files missing or damaged).
     Q_PROPERTY(QVariantMap packModes READ packModes CONSTANT)
@@ -68,6 +72,7 @@ public:
     bool fishAvailable() const { return m_bathy.has_value(); } // any usable bathy pack
     QString notice() const { return m_notice; }
     QStringList packNotices() const { return m_packNotices; }
+    QStringList dataNotices() const { return m_dataNotices; }
     QVariantMap packModes() const { return m_packModes; }
     QVariantList legend() const { return m_legend; }
     QVariantList legendCategories() const { return m_legendCategories; }
@@ -138,6 +143,7 @@ private:
     void applyTrackStyle();
     void refreshSelection();
     void applyCamera();
+    void updateNotice();
 
     ChartMap& m_map;
     Settings& m_settings;
@@ -157,6 +163,9 @@ private:
     bool m_follow = true;
     std::optional<LatLon> m_startPosition;
     QString m_notice;
+    NoticeAreas m_chartsAreas, m_bathyAreas; // of the files shown: Nav uses the charts', Fish the bathy's
+    QStringList m_dataNotices;
+    QTimer m_noticeTimer;
     QVariantList m_legend;
     QVariantList m_legendCategories;
     QString m_spriteBase;

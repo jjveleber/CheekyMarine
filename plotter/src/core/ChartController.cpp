@@ -2,6 +2,7 @@
 #include "core/AisModel.h"
 #include "core/Fields.h"
 #include "core/Legend.h"
+#include "core/NoticeAreas.h"
 #include "core/DepthFilters.h"
 #include "core/Overlays.h"
 #include "core/PackMerge.h"
@@ -320,6 +321,15 @@ ChartController::ChartController(ChartMap& map, Settings& settings, VesselModel&
     if (!charts.isEmpty()) {
         m_inUse = cf.inUse + bf.inUse;
         m_packNotices = cf.notices + bf.notices;
+        // Notice areas and data notices come from the files shown: the merged files, or the single packs'.
+        const auto readNotices = [this](const QString& path, NoticeAreas& areas) {
+            if (const auto v = metadataValue(path, QStringLiteral("cheekymarine:notice_areas")))
+                areas = NoticeAreas::fromGeoJson(v->toUtf8());
+            if (const auto v = metadataValue(path, QStringLiteral("cheekymarine:data_notice")))
+                if (!v->isEmpty() && !m_dataNotices.contains(*v)) m_dataNotices << *v;
+        };
+        readNotices(cf.files.value(QStringLiteral("enc")), m_chartsAreas);
+        if (m_bathy) readNotices(bf.files.value(QStringLiteral("bathy")), m_bathyAreas);
         m_packModes.insert(QStringLiteral("charts"), modeName(cf.mode));
         if (m_bathy) m_packModes.insert(QStringLiteral("bathy"), modeName(bf.mode));
         for (const QString& line : m_packNotices) qWarning().noquote() << "ChartController:" << line;
@@ -360,6 +370,11 @@ ChartController::ChartController(ChartMap& map, Settings& settings, VesselModel&
     connect(&m_map, &ChartMap::styleLoaded, this, &ChartController::onStyleLoaded);
     connect(&m_map, &ChartMap::userGesture, this, [this] { setFollow(false); });
     connect(&m_map, &ChartMap::viewportChanged, this, &ChartController::applyCamera);
+    // The last camera position is always evaluated: each signal restarts the timer.
+    m_noticeTimer.setSingleShot(true);
+    m_noticeTimer.setInterval(250);
+    connect(&m_noticeTimer, &QTimer::timeout, this, &ChartController::updateNotice);
+    connect(&m_map, &ChartMap::cameraChanged, &m_noticeTimer, qOverload<>(&QTimer::start));
     connect(&m_settings, &Settings::shallowMChanged, this, &ChartController::applyDepthFilters);
     connect(&m_settings, &Settings::safetyMChanged, this, &ChartController::applyDepthFilters);
     connect(&m_settings, &Settings::deepMChanged, this, &ChartController::applyDepthFilters);
@@ -475,16 +490,24 @@ void ChartController::loadStyle() {
     }
     m_style = m_styles.value(name);
     rebuildLegend();
-    const QString notice = m_style[QStringLiteral("metadata")][QStringLiteral("cheekymarine")]
-                               [QStringLiteral("notice")].toString();
-    if (notice != m_notice) {
-        m_notice = notice;
-        emit noticeChanged();
-    }
+    updateNotice();
     // State is set before the call: styleLoaded may arrive inside it.
     m_ready = false;
     m_loadPending = true;
     m_map.setStyleJson(QJsonDocument(m_style).toJson(QJsonDocument::Compact));
+}
+
+// The notice for the areas on screen; emits only when the text changes.
+void ChartController::updateNotice() {
+    if (m_style.isEmpty()) return;
+    const QRectF b = m_map.visibleBounds();
+    const NoticeAreas& areas = m_mode == QLatin1String("fish") ? m_bathyAreas : m_chartsAreas;
+    const QString notice = pickNotice(m_style[QStringLiteral("metadata")].toObject()[QStringLiteral("cheekymarine")].toObject(),
+                                      areas.kindsIn(b.left(), b.top(), b.right(), b.bottom()));
+    if (notice != m_notice) {
+        m_notice = notice;
+        emit noticeChanged();
+    }
 }
 
 void ChartController::onStyleLoaded() {

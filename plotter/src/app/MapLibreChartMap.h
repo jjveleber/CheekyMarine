@@ -28,6 +28,7 @@ public:
     double zoom() const override;
     double viewportHeight() const override;
     QPointF toScreen(double lat, double lon) const override;
+    QRectF visibleBounds() const override;
 
 private:
     MapLibreChartMap& m_item;

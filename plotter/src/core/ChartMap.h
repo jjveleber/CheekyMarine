@@ -5,6 +5,7 @@
 #include <QJsonValue>
 #include <QObject>
 #include <QPointF>
+#include <QRectF>
 #include <QString>
 
 // The chart controller's view of the map. The app implements it over QMapLibre::Map
@@ -35,9 +36,13 @@ public:
     virtual double viewportHeight() const = 0;
     // Screen position, in item pixels, of a coordinate.
     virtual QPointF toScreen(double lat, double lon) const = 0;
+    // The box around the four viewport corners, in degrees: x west, y south, width and height (a
+    // rotated map is covered).
+    virtual QRectF visibleBounds() const = 0;
 
 signals:
     void styleLoaded();
     void userGesture(); // a pan by the user (zoom gestures keep follow mode)
+    void cameraChanged(); // any centre, zoom or bearing change, by the user or by code
     void viewportChanged(); // the viewport size changed (viewportHeight() is the new one)
 };

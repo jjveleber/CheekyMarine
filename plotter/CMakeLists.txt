@@ -29,6 +29,7 @@ add_library(plottercore STATIC
     src/core/Settings.cpp
     src/core/PackCatalog.cpp
     src/core/PackMerge.cpp
+    src/core/NoticeAreas.cpp
     src/core/StyleLoader.cpp
     src/core/DepthFilters.cpp
     src/core/Geo.cpp
@@ -84,6 +85,7 @@ if(CM_PLOTTER_TESTS)
     plotter_add_test(tst_settings tests/tst_settings.cpp)
     plotter_add_test(tst_packcatalog tests/tst_packcatalog.cpp)
     plotter_add_test(tst_packmerge tests/tst_packmerge.cpp)
+    plotter_add_test(tst_noticeareas tests/tst_noticeareas.cpp)
     plotter_add_test(tst_styleloader tests/tst_styleloader.cpp)
     plotter_add_test(tst_depthfilters tests/tst_depthfilters.cpp)
     plotter_add_test(tst_geo tests/tst_geo.cpp)

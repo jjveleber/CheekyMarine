@@ -1,4 +1,5 @@
 #include "core/PackMerge.h"
+#include "core/NoticeAreas.h"
 #include <QCryptographicHash>
 #include <QDir>
 #include <QFile>
@@ -79,6 +80,8 @@ struct Member {
     QList<double> bounds;   // w, s, e, n; empty when absent
     QJsonArray layers;      // vector_layers
     QJsonArray valdco;
+    NoticeAreas noticeAreas;
+    QString dataNotice;
     bool hasJson = false;
 };
 
@@ -123,6 +126,10 @@ std::optional<Member> readMember(const PackInfo& p, const QString& file, QString
             m.layers = QJsonDocument::fromJson(v.toUtf8()).object().value(QStringLiteral("vector_layers")).toArray();
         } else if (k == QLatin1String("cheekymarine:valdco")) {
             m.valdco = QJsonDocument::fromJson(v.toUtf8()).array();
+        } else if (k == QLatin1String("cheekymarine:notice_areas")) {
+            m.noticeAreas = NoticeAreas::fromGeoJson(v.toUtf8());
+        } else if (k == QLatin1String("cheekymarine:data_notice")) {
+            m.dataNotice = v;
         }
     }
     QSqlQuery t(db);
@@ -215,6 +222,18 @@ QList<QPair<QString, QString>> mergedMetadata(const QList<Member>& ms, bool char
                 }
         out.append({QStringLiteral("cheekymarine:legend"), QString::fromUtf8(QJsonDocument(legend).toJson(QJsonDocument::Compact))});
     }
+
+    NoticeAreas areas;
+    QStringList dataNotices;
+    for (const Member& m : ms) {
+        areas.add(m.noticeAreas);
+        if (!m.dataNotice.isEmpty() && !dataNotices.contains(m.dataNotice))
+            dataNotices.append(m.dataNotice);
+    }
+    if (!areas.isEmpty())
+        out.append({QStringLiteral("cheekymarine:notice_areas"), QString::fromUtf8(areas.toGeoJson())});
+    if (!dataNotices.isEmpty())
+        out.append({QStringLiteral("cheekymarine:data_notice"), dataNotices.join(QStringLiteral("\n\n"))});
 
     out.append({QStringLiteral("cheekymarine:members"),
                 QString::fromUtf8(QJsonDocument(members).toJson(QJsonDocument::Compact))});
