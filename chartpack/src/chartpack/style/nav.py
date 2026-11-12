@@ -25,6 +25,10 @@ HAZARD_DEPTH_LAYERS = ("hazard-danger", "hazard-danger-outline")
 # One mark per hazard class (R34); the sprite builder bakes each, plain and in the danger ring, per palette.
 HAZARD_SHAPES = ("rock", "obstruction", "wreck")
 
+NOSURVEY_PATTERN = "nosurvey"  # the cross hatch over water with no survey; pat-nosurvey-<palette> in the sprite
+# Shown in place of the notice when any BC notice area of the enc is on screen (plan 8 spec 7.3).
+BC_NOTICE = "BC: depth and shoreline only. Hazards and navaids not shown. Not for navigation."
+
 BUOY_CLASSES = ["BOYLAT", "BOYCAR", "BOYSAW", "BOYISD", "BOYSPP"]
 
 
@@ -104,6 +108,18 @@ def _depth_areas(p: dict, depths: Depths) -> list[dict]:
     layers = [_fill(lid, "depare", colour, depth_filter(lid, depths)) for lid, colour in colours.items()]
     layers.append(_fill("depare-intertidal", "depare", p["DEPIT"], ["<", _num("DRVAL1"), 0]))
     return layers
+
+
+def _survey_marks(p: dict, palette: str) -> list[dict]:
+    """Plan 8 spec 6: a cross hatch over water with no survey, dots over the 100 m derived depth areas (NOAA
+    depare features have no src). Patterns carry the palette in their names (baked colors, no SDF tint)."""
+    return [
+        {"id": "nosurvey", "type": "fill", "source": "enc", "source-layer": "nosurvey",
+         "paint": {"fill-pattern": f"pat-{NOSURVEY_PATTERN}-{palette}"}},
+        {"id": "depare-coarse-survey", "type": "fill", "source": "enc", "source-layer": "depare",
+         "filter": ["==", ["get", "src"], "nonna100"],
+         "paint": {"fill-pattern": f"pat-coarse-survey-{palette}"}},
+    ]
 
 
 def _land_and_areas(p: dict) -> list[dict]:
@@ -242,6 +258,7 @@ def nav_style(palette: str, depths: Depths = Depths(), *, units: str = "ft", saf
     layers = [
         {"id": "background", "type": "background", "paint": {"background-color": p["NODTA"]}},
         *_depth_areas(p, depths),
+        *_survey_marks(p, palette),
         *_land_and_areas(p),
         *_contours(p, depths, safety_contour_m),
         *seabed_layers(p),
@@ -258,6 +275,7 @@ def nav_style(palette: str, depths: Depths = Depths(), *, units: str = "ft", saf
             "safety_contour_m": depths.safety_m if safety_contour_m is None else safety_contour_m,
             "units": units,
             "palette": palette,
+            "notices": {"bc": BC_NOTICE},
             "notice": "Derived from NOAA ENC. Not an official chart. Not certified for navigation.",
         }},
         "sources": {"enc": {"type": "vector", "url": "mbtiles://enc"}},

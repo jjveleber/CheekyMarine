@@ -12,7 +12,7 @@ ICONS = {
     "buoy-can", "buoy-nun", "buoy-spherical", "buoy-pillar", "buoy-spar", "beacon-lateral", "beacon-cardinal",
     "beacon-generic", "light-flare", "isolated-danger", "kelp", "resare-tick",
 } | {f"hazard-{shape}{danger}-{palette}" for shape in HAZARD_SHAPES for danger in ("", "-danger") for palette in PALETTES}
-ICONS |= {f"pat-{grade}-{palette}" for grade in ("coarse-survey", "rough") for palette in PALETTES}  # fish grade patterns
+ICONS |= {f"pat-{grade}-{palette}" for grade in ("coarse-survey", "rough", "nosurvey") for palette in PALETTES}  # grade patterns
 FONTS = {"Noto Sans Regular", "Noto Sans Bold"}
 
 
@@ -265,3 +265,46 @@ def test_seabed_sort_key_areas_by_size_then_enc_points_then_samples():
             {"src": "usgs-cmecs", "extent": "0.05"}, {"src": "enc", "extent": "0.01"},
             {"src": "enc"}, {"src": "usseabed"})]
         assert ranked == sorted(ranked) and len(set(ranked)) == 4
+
+
+NAV_BC_NOTICE = "BC: depth and shoreline only. Hazards and navaids not shown. Not for navigation."
+
+
+def test_nav_nosurvey_layer_is_pattern_fill_between_depth_and_land():
+    """Plan 8 spec 6: water with no survey is hatched, above the depth areas and below land."""
+    for palette in PALETTES:
+        s = nav_style(palette)
+        ids = [l["id"] for l in s["layers"]]
+        layer = _layer(s, "nosurvey")
+        assert layer["type"] == "fill" and layer["source"] == "enc" and layer["source-layer"] == "nosurvey"
+        assert layer["paint"] == {"fill-pattern": f"pat-nosurvey-{palette}"}
+        assert ids.index("depare-intertidal") < ids.index("nosurvey") < ids.index("lndare")
+
+
+def test_nav_notices_exact_strings():
+    for palette in PALETTES:
+        md = nav_style(palette)["metadata"]["cheekymarine"]
+        assert md["notices"] == {"bc": NAV_BC_NOTICE}
+        assert md["notice"] == "Derived from NOAA ENC. Not an official chart. Not certified for navigation."
+
+
+def test_coarse_survey_layer_filters_on_src():
+    """Only the 100 m derived depth areas get the dot mark; NOAA depare features have no src."""
+    for palette in PALETTES:
+        s = nav_style(palette)
+        ids = [l["id"] for l in s["layers"]]
+        layer = _layer(s, "depare-coarse-survey")
+        assert layer["type"] == "fill" and layer["source-layer"] == "depare"
+        assert layer["filter"] == ["==", ["get", "src"], "nonna100"]
+        assert layer["paint"] == {"fill-pattern": f"pat-coarse-survey-{palette}"}
+        assert ids.index("depare-intertidal") < ids.index("depare-coarse-survey") < ids.index("lndare")
+
+
+def test_wave1_style_layers_unchanged_before_new_ones():
+    """Old layer ids keep their relative order: removing the new layers leaves the earlier list."""
+    ids = [l["id"] for l in nav_style("day")["layers"]]
+    old = [i for i in ids if i not in ("nosurvey", "depare-coarse-survey")]
+    assert old[:6] == ["background", "depare-deep", "depare-medium", "depare-shallow", "depare-vshallow",
+                       "depare-intertidal"]
+    assert old[6] == "lndare" and old[-4:] == ["hazard-outline", "hazard-danger-outline", "hazard", "hazard-danger"]
+    assert len(old) == len(ids) - 2

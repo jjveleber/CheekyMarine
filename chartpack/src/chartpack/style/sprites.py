@@ -21,7 +21,7 @@ import numpy as np
 from PIL import Image, ImageDraw
 
 from chartpack.style.fish import GRADE_PATTERNS, pattern_icon
-from chartpack.style.nav import HAZARD_SHAPES, hazard_icon
+from chartpack.style.nav import HAZARD_SHAPES, NOSURVEY_PATTERN, hazard_icon
 from chartpack.style.palette import PALETTES
 from chartpack.style.sdf import bitmap_to_sdf
 
@@ -198,13 +198,15 @@ def _hazard_images(symbols_dir: Path, scale: int, palettes: dict) -> dict[str, n
 
 
 def _pattern_masks(scale: int) -> dict[str, np.ndarray]:
-    """The grade patterns, told apart by shape: sparse dots (coarse survey) and a diagonal hatch (rough). Both
-    repeat without a seam: the dot sits clear of the edges and the hatch line wraps from edge to edge."""
+    """The grade patterns, told apart by shape: sparse dots (coarse survey), a diagonal hatch (rough) and a cross
+    hatch (no survey). All repeat without a seam: the dot sits clear of the edges and the hatch lines wrap from
+    edge to edge."""
     n = _PATTERN_PX * scale
     y, x = np.mgrid[0:n, 0:n]
     dots = (x + 0.5 - n / 2) ** 2 + (y + 0.5 - n / 2) ** 2 <= scale**2
     hatch = (x + y) % n < scale
-    return dict(zip(GRADE_PATTERNS, (dots, hatch)))
+    cross = hatch | ((x - y) % n < scale)
+    return {**dict(zip(GRADE_PATTERNS, (dots, hatch))), NOSURVEY_PATTERN: cross}
 
 
 def _pattern_images(scale: int, palettes: dict) -> dict[str, np.ndarray]:
