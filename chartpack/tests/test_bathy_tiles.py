@@ -192,6 +192,16 @@ def test_coverage_layer(bathy_pack):
     assert "cudem" in {f["properties"]["source"] for f in feats}
 
 
+def test_coverage_sources_metadata(built, bathy_pack, test_region, tmp_path):
+    """cheekymarine:coverage lists the distinct coverage sources of the file (the bathy NOTICE reads it); a file
+    with no features lists none."""
+    want = sorted({f["properties"]["source"] for f in built["coverage"]})
+    assert want and json.loads(bathy_pack.metadata()["cheekymarine:coverage"]) == want
+    out = tile_bathy(tmp_path / "w", tmp_path / "empty.mbtiles", region=test_region, crm_request=None)
+    with MBTiles.open(out) as m:
+        assert json.loads(m.metadata()["cheekymarine:coverage"]) == []
+
+
 def test_bands_present(bathy_pack):
     bands = [f for *_, f in _features(bathy_pack, "band", [12])]
     assert bands and {"depth_min_ft", "minzoom"} <= set(bands[0]["properties"])

@@ -84,6 +84,14 @@ def _has_features(path: Path) -> bool:
     return path.is_file() and path.stat().st_size > 0
 
 
+def _coverage_sources(path: Path) -> list[str]:
+    """The distinct `source` values of a coverage layer file, sorted; none for a missing or empty file."""
+    if not _has_features(path):
+        return []
+    with path.open() as f:
+        return sorted({json.loads(line)["properties"]["source"] for line in f if line.strip()})
+
+
 def tile_bathy(
     work: Path, out: Path, *, region: Region, crm_request: str | None, zooms: tuple[int, int] = (MINZOOM, MAXZOOM),
     coarse: bool = False, cudem_tiles: Sequence[CudemTile] = (),
@@ -94,7 +102,8 @@ def tile_bathy(
     fine file, a region with no CRM-only water). Otherwise every layer needs features, except that the
     coarse file may lack contour and band (COARSE_OPTIONAL_LAYERS) when it has coverage. crm_request
     records the CRM requests the build made (None when crm is not in the region's bathy.sources). Only the
-    listed bathy sources are recorded.
+    listed bathy sources are recorded; cheekymarine:coverage lists the sources the coverage layer holds (the pack
+    NOTICE carries the CHS notice when one is NONNA).
     """
     out, work = Path(out), Path(work)
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -146,6 +155,7 @@ def tile_bathy(
             "cheekymarine:region": region.name,
             "cheekymarine:version": region.bathy_version,
             "cheekymarine:sources": json.dumps(sources),
+            "cheekymarine:coverage": json.dumps(_coverage_sources(files["coverage"])),
             "cheekymarine:built": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         })
         m.delete_metadata(["generator_options"])  # holds the temp work paths

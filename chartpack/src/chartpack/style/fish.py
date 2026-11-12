@@ -19,10 +19,27 @@ from chartpack.style.nav import (
 from chartpack.style.palette import PALETTES
 
 NOTICE = "Fishing chart: survey depths, approx. MLLW. Not certified for navigation."
+# Shown in place of NOTICE when any BC notice area of the bathy files is on screen (plan 8 spec 7.3).
+BC_NOTICE = "BC: CHS survey depths where available, rough elsewhere. Chart datum. Not for navigation."
+
+# The coverage grades marked by a fill pattern (plan 8 spec 6); "survey" depth has no mark.
+GRADE_PATTERNS = ("coarse-survey", "rough")
 
 # Tiers of the `minzoom` feature property: minor contours carry max(min_zoom, band low zoom).
 # Bands need no tiers: the tiles hold one complete band set per zoom range (bands_by_zoom).
 MINOR_TIERS = sorted({max(min_zoom(ft), lo) for ft in DEPTHS_FT + FINE_FT if ft not in MAJOR_FT for lo, hi, _ in BANDS if min_zoom(ft) <= hi})
+
+
+def pattern_icon(grade: str, palette: str) -> str:
+    """The sprite image of a grade's pattern. Patterns are baked in each palette's colors (fill-pattern takes no
+    SDF tint), so the name carries the palette, as hazard icons do."""
+    return f"pat-{grade}-{palette}"
+
+
+def _grades(palette: str) -> list[dict]:
+    return [{"id": f"grade-{grade}", "type": "fill", "source": "bathy", "source-layer": "coverage",
+             "filter": ["==", ["get", "grade"], grade], "paint": {"fill-pattern": pattern_icon(grade, palette)}}
+            for grade in GRADE_PATTERNS]
 
 
 def _tier(n: int) -> list:
@@ -115,6 +132,7 @@ def fish_style(palette: str, depths: Depths = Depths(), *, colors: dict | None =
         water_base,
         _band(p),
         hillshade,
+        *_grades(palette),
         *_pick(_land_and_areas(p), "lndare", "coalne"),
         *_contours(p),
         *_labels(p),
@@ -131,6 +149,7 @@ def fish_style(palette: str, depths: Depths = Depths(), *, colors: dict | None =
             "units": "ft",
             "palette": palette,
             "notice": NOTICE,
+            "notices": {"bc": BC_NOTICE},
         }},
         "sources": {
             "enc": {"type": "vector", "url": "mbtiles://enc"},

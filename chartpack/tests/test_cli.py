@@ -423,6 +423,13 @@ def test_build_bathy_end_to_end(tmp_path, fixtures_dir, regions_dir, monkeypatch
         assert [t["year"] for t in json.loads(md["cheekymarine:sources"])["cudem"]] == [2023]
         assert any(True for _ in m.tiles_at(12))
     _assert_bathy_sources(root, ["cudem", "crm"])
+    from chartpack.pack.assemble import BATHY_FILES
+
+    for name in BATHY_FILES:  # a US pack with no Canadian water: no CHS notice, no notice area
+        with MBTiles.open(root / name) as m:
+            md = m.metadata()
+        assert "cheekymarine:data_notice" not in md and json.loads(md["cheekymarine:notice_areas"])["features"] == []
+    assert "Canadian" not in (root / "NOTICE").read_text()
 
 
 def test_build_bathy_enc_fallback_drops_crm_contours(tmp_path, fixtures_dir, regions_dir, monkeypatch, capsys,
@@ -867,6 +874,25 @@ def test_build_bathy_reads_assets_not_wcs(tmp_path, fixtures_dir, regions_dir, m
     coarse = [json.loads(line)["properties"]
               for line in (work / "tippecanoe-coarse" / "coverage.geojsonseq").read_text().splitlines()]
     assert ("nonna100", "coarse-survey") in {(p["source"], p["grade"]) for p in coarse}
+    # a BC pack: the CHS notice and its owned tiles as the notice area, on all four files
+    from shapely.geometry import shape
+    from shapely.ops import unary_union
+
+    from chartpack.grid import owned_tiles, tiles_area
+    from chartpack.mbtiles import MBTiles
+    from chartpack.pack.assemble import BATHY_FILES, CHS_NOTICE
+    from chartpack.region import load_region
+
+    root = tmp_path / "out" / "bathy-test-cell-0.1.0"
+    assert "Canadian Hydrographic Service" in (root / "NOTICE").read_text()
+    owned = tiles_area(owned_tiles(load_region(region), region.parent))
+    for name in BATHY_FILES:
+        with MBTiles.open(root / name) as m:
+            md = m.metadata()
+        assert md["cheekymarine:data_notice"] == CHS_NOTICE
+        areas = json.loads(md["cheekymarine:notice_areas"])["features"]
+        assert [f["properties"] for f in areas] == [{"kind": "bc"}]
+        assert unary_union([shape(f["geometry"]) for f in areas]).symmetric_difference(owned).area < 1e-12
     (cache / "sources-bc-1" / "nonna100-toba.tif").unlink()
     with pytest.raises(SystemExit, match=r"nonna100-toba\.tif.*chartpack-sources\.yml"):
         main(["build-bathy", str(region), str(tmp_path / "out2"), "--cache", str(cache), "--work", str(work)])

@@ -8,6 +8,7 @@ The hazard marks (symbols/hazard/) are not SDF: each is baked in each palette's 
 inside the danger ring (DNGHL), so a hazard and its ring are one image that always shows or hides as one
 (R34, R41). An SDF image takes one colour, and two symbol layers cannot be made to collide as one. That
 is why hazard icon names carry the palette (hazard-rock-danger-night) and icon-color does not tint them.
+The grade fill patterns (plan 8 spec 6) are baked per palette the same way: fill-pattern takes no SDF tint.
 """
 
 import json
@@ -19,6 +20,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image, ImageDraw
 
+from chartpack.style.fish import GRADE_PATTERNS, pattern_icon
 from chartpack.style.nav import HAZARD_SHAPES, hazard_icon
 from chartpack.style.palette import PALETTES
 from chartpack.style.sdf import bitmap_to_sdf
@@ -29,6 +31,8 @@ _SDF_BUFFER = 3
 _GUTTER = 2
 _HAZARD_PX = 11  # the hazard mark and its ring, drawn at this size at 1x (R34)
 _HAZARD_PAD = 1  # transparent margin round it
+_PATTERN_PX = 8  # a grade pattern's repeat at 1x
+_PATTERN_ALPHA = 128  # light: the patterns overlay depth shading and contours
 _TOKEN = re.compile(r"[MLHVAZmlhvaz]|[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?")
 _ARGS = {"M": 2, "L": 2, "H": 1, "V": 1, "A": 7, "Z": 0}
 
@@ -193,10 +197,32 @@ def _hazard_images(symbols_dir: Path, scale: int, palettes: dict) -> dict[str, n
     return images
 
 
+def _pattern_masks(scale: int) -> dict[str, np.ndarray]:
+    """The grade patterns, told apart by shape: sparse dots (coarse survey) and a diagonal hatch (rough). Both
+    repeat without a seam: the dot sits clear of the edges and the hatch line wraps from edge to edge."""
+    n = _PATTERN_PX * scale
+    y, x = np.mgrid[0:n, 0:n]
+    dots = (x + 0.5 - n / 2) ** 2 + (y + 0.5 - n / 2) ** 2 <= scale**2
+    hatch = (x + y) % n < scale
+    return dict(zip(GRADE_PATTERNS, (dots, hatch)))
+
+
+def _pattern_images(scale: int, palettes: dict) -> dict[str, np.ndarray]:
+    """pattern_icon(grade, palette) -> RGBA image, in each palette's CHGRD at _PATTERN_ALPHA."""
+    images = {}
+    for grade, mask in _pattern_masks(scale).items():
+        for palette, p in palettes.items():
+            image = np.zeros(mask.shape + (4,), np.uint8)
+            image[mask, :3] = _rgb(p["CHGRD"])
+            image[mask, 3] = _PATTERN_ALPHA
+            images[pattern_icon(grade, palette)] = image
+    return images
+
+
 def _sheet(symbols: list[Path], symbols_dir: Path, scale: int, palettes: dict) -> tuple[Image.Image, dict]:
     size, buffer, gutter = _VIEWBOX * scale, _SDF_BUFFER * scale, _GUTTER * scale
     cells = [bitmap_to_sdf(rasterize_svg(p, size), buffer=buffer, radius=8.0 * scale) for p in symbols]
-    baked = _hazard_images(symbols_dir, scale, palettes)
+    baked = {**_hazard_images(symbols_dir, scale, palettes), **_pattern_images(scale, palettes)}
     width = size + 2 * buffer
     total = len(cells) * (width + gutter) + sum(im.shape[1] + gutter for im in baked.values()) - gutter
     sheet = np.zeros((width, total, 4), np.uint8)

@@ -72,5 +72,5 @@ COARSE_OPTIONAL_LAYERS: frozenset[str] = frozenset({"contour", "band"})
 BATHY_LAYER_SPECS: tuple[LayerSpec, ...] = (
     LayerSpec("contour", (), ("depth_ft", "major", "minzoom", "source"), "line"),
     LayerSpec("band", (), ("depth_min_ft", "depth_max_ft", "minzoom"), "polygon"),
-    LayerSpec("coverage", (), ("source", "resolution_m", "date"), "polygon"),
+    LayerSpec("coverage", (), ("source", "resolution_m", "date", "grade"), "polygon"),
 )

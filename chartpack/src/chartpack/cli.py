@@ -492,7 +492,7 @@ def _build_bathy(args: argparse.Namespace) -> int:
             empty_dem_mbtiles(files[name], minzoom=zooms[name][0], maxzoom=zooms[name][1], bounds=region.bbox)
     for name, path in files.items():
         keep_tiles(path, owned, minzoom=zooms[name][0], maxzoom=zooms[name][1])
-    print(_finish(assemble_bathy_pack(region, files, args.out), region))
+    print(_finish(assemble_bathy_pack(region, files, args.out, owned=owned), region))
     return 0
 
 

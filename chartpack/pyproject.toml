@@ -30,6 +30,7 @@ chartpack = "chartpack.cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
+"chartpack" = ["notices/*.txt"]
 "chartpack.render" = ["page.html", "vendor/*"]
 
 [tool.pytest.ini_options]
