@@ -321,6 +321,7 @@ def test_derive_stats_lists_water_faces(tmp_path, regions_dir, monkeypatch, cap)
     assert stats["water_faces"][0]["wet_share"] == pytest.approx(1 / 3, abs=0.02)
     assert stats["land_polygons"] == 0 and stats["nosurvey_polygons"] == 2
     assert stats["missing_in_100_km2"] > 0
+    assert stats["inputs"] == {name: entry["sha256"] for name, entry in files.items()}  # what it was derived from
     with gzip.open(out / "land-rv.geojson.gz", "rt") as f:
         assert json.load(f)["features"] == []
     with gzip.open(out / "nosurvey-rv.geojson.gz", "rt") as f:

@@ -257,7 +257,9 @@ def _read_polygons(path: Path):
 def _derived_assets(args: argparse.Namespace, region, name: str, boxes) -> tuple:
     """The land and no-survey assets of the region (derive-sources, release sources-bc-1) from the cache: (land,
     nosurvey, the extent of derive-stats-<name>.json, their depth_sources entries). A missing file, or a read box
-    past the extent, stops the build naming the file and the fetch workflow's derive stage."""
+    past the extent, stops the build naming the file and the fetch workflow's derive stage. So do derive-stats
+    inputs (the sha256 of the NONNA and coastline files the assets were derived from) that differ from what
+    fetch-stats-<name>.json records now, or are missing: a fetch run again without stage derive."""
     folder = args.cache / SOURCES_RELEASE
     land, mask, stats = (folder / f for f in (f"land-{name}.geojson.gz", f"nosurvey-{name}.geojson.gz",
                                               f"derive-stats-{name}.json"))
@@ -266,7 +268,14 @@ def _derived_assets(args: argparse.Namespace, region, name: str, boxes) -> tuple
             raise SystemExit(f"region {region.name}: {path} not found; run the fetch workflow {SOURCES_WORKFLOW}"
                              f" stage derive for region {region.name} and download its files from release"
                              f" {SOURCES_RELEASE}")
-    w, s, e, n = json.loads(stats.read_text())["extent"]
+    derived = json.loads(stats.read_text())
+    inputs = [f"coast-{name}.geojson.gz", *_nonna_files(region, name)]
+    _, fetched = _stats_entries(folder / f"fetch-stats-{name}.json", inputs, region)
+    if derived.get("inputs") != {file: fetched[file]["sha256"] for file in inputs}:
+        raise SystemExit(f"region {region.name}: {stats.name} does not record the NONNA and coastline files of the"
+                         f" current fetch ({', '.join(inputs)}), so the land and no-survey assets may be stale; run"
+                         f" the fetch workflow {SOURCES_WORKFLOW} stage derive for region {region.name} again")
+    w, s, e, n = derived["extent"]
     eps = 1e-9  # the stats round the extent to 9 decimals
     for bw, bs, be, bn in boxes:
         if bw < w - eps or bs < s - eps or be > e + eps or bn > n + eps:
@@ -582,6 +591,7 @@ def _derive_sources(args: argparse.Namespace) -> int:
     _write_polygons(args.out / f"nosurvey-{name}.geojson.gz", nosurvey)
     stats = {
         "extent": [round(v, 9) for v in extent],
+        "inputs": {file: sha for file, (_, sha) in assets.items()},  # the build checks them against fetch-stats
         "missing_in_100_km2": missing,
         "land_polygons": len(land.geoms),
         "nosurvey_polygons": len(nosurvey.geoms),

@@ -1417,7 +1417,7 @@ def test_build_enc_derived_region_end_to_end(tmp_path, fixtures_dir, regions_dir
         features = [{"type": "Feature", "properties": {}, "geometry": mapping(g)} for g in geoms]
         (folder / name).write_bytes(gzip.compress(json.dumps({"type": "FeatureCollection",
                                                               "features": features}).encode()))
-    (folder / "derive-stats-toba.json").write_text(json.dumps({"extent": [round(v, 9) for v in extent]}))
+    _write_derive_stats(folder, extent)
     _no_network(monkeypatch)
     assert main(["build-enc", str(region), str(tmp_path / "out"), "--cache", str(cache), "--work",
                  str(tmp_path / "work")]) == 0
@@ -1511,3 +1511,56 @@ def test_derived_coalne_drop_on_real_land_asset_geometry():
     expected = LineString([(-123.95, 49.52 + 0.04 * 1.05 / 2), (-123.95, 49.6)])
     assert real.intersection(outline.buffer(1e-9)).length == 0
     assert abs(real.length - expected.length) < 1e-6 and real.hausdorff_distance(expected) < 1e-6
+
+
+def _write_derive_stats(folder, extent, inputs=None):
+    """derive-stats-toba.json over extent, derived from the inputs (default: the files fetch-stats-toba.json lists
+    now, as derive-sources records them)."""
+    import json
+
+    if inputs is None:
+        files = json.loads((folder / "fetch-stats-toba.json").read_text())["files"]
+        inputs = {name: entry["sha256"] for name, entry in files.items()}
+    stats = {"extent": [round(v, 9) for v in extent], **({} if inputs is False else {"inputs": inputs})}
+    (folder / "derive-stats-toba.json").write_text(json.dumps(stats))
+
+
+@pytest.mark.parametrize("case", ["match", "new fetch", "old stats"])
+def test_build_enc_checks_the_derive_inputs(tmp_path, fixtures_dir, regions_dir, monkeypatch, zero_geoid, case):
+    """The land and no-survey assets must come from the NONNA and coastline files of the current fetch: derive-stats
+    records their sha256 and the build compares them with fetch-stats. A fetch run again without stage derive, or
+    derive-stats from before the hashes, stops the build telling the owner to run stage derive again."""
+    import gzip
+    import json
+
+    from shapely.geometry import box
+
+    from chartpack import cli
+    from chartpack.grid import fetch_extent
+    from chartpack.region import load_region
+
+    monkeypatch.setattr(cli, "load_canada", lambda regions: box(-123.0, 47.5, -122.0, 48.5))
+    region = _nonna_region(tmp_path, regions_dir)
+    shutil.copy(regions_dir / "bc-valdco.toml", region.parent)
+    cache = _bathy_cache(tmp_path, fixtures_dir, region, monkeypatch, [])
+    folder = cache / "sources-bc-1"
+    _write_assets(folder, region)
+    for name in ("land-toba.geojson.gz", "nosurvey-toba.geojson.gz"):
+        (folder / name).write_bytes(gzip.compress(b'{"type": "FeatureCollection", "features": []}'))
+    extent = fetch_extent(load_region(region), region.parent)
+    if case == "match":
+        _write_derive_stats(folder, extent)
+    elif case == "new fetch":
+        files = json.loads((folder / "fetch-stats-toba.json").read_text())["files"]
+        _write_derive_stats(folder, extent,
+                            {**{n: e["sha256"] for n, e in files.items()}, "nonna10-toba.tif": "0" * 64})
+    else:
+        _write_derive_stats(folder, extent, False)
+    monkeypatch.setattr(cli, "build_block", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("past the check")))
+    args = ["build-enc", str(region), str(tmp_path / "out"), "--cache", str(cache), "--work", str(tmp_path / "w")]
+    if case == "match":
+        with pytest.raises(RuntimeError, match="past the check"):
+            main(args)
+    else:
+        with pytest.raises(SystemExit, match=r"region test-cell: derive-stats-toba\.json .*stage derive .*again"):
+            main(args)
