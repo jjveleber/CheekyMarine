@@ -339,3 +339,19 @@ def test_coarse_file_may_lack_contour_and_band(tmp_path, test_region):
     write_manifest(root, pack="bathy", region=test_region, sources=[], notice="n", built=datetime.now(timezone.utc))
     errs = check_pack(root)
     assert errs == ["bathy.mbtiles: schema layer band missing", "bathy.mbtiles: schema layer contour missing"]
+
+
+def test_schema2_pack_without_new_layers_still_passes(charts_pack_root, fixtures_dir):
+    """Schema 2 gains the optional nosurvey layer and the src attribute (plan 8 Task 9): a pack built without
+    either passes the check as before."""
+    from chartpack.enc.schema import LAYERS, OPTIONAL_LAYERS, SCHEMA_VERSION
+    from chartpack.mbtiles import MBTiles
+
+    specs = {spec.name: spec for spec in LAYERS}
+    assert SCHEMA_VERSION == 2 and "nosurvey" in specs and "nosurvey" in OPTIONAL_LAYERS
+    assert all("src" in specs[name].attributes for name in ("depare", "depcnt", "soundg", "lndare", "coalne"))
+    with MBTiles.open(charts_pack_root / "enc.mbtiles") as m:
+        layers = {l["id"]: l for l in json.loads(m.metadata()["json"])["vector_layers"]}
+    assert "nosurvey" not in layers
+    assert not any("src" in layers[name].get("fields", {}) for name in ("depare", "depcnt", "soundg", "lndare", "coalne"))
+    assert check_pack(charts_pack_root, enc_zips=[fixtures_dir / "US4WA1HK.zip"]) == []

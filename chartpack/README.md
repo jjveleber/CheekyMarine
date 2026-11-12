@@ -137,6 +137,19 @@ zooms = [11, 13, 15]
 The `clip` path is resolved relative to the directory of the region file, not the current directory
 (`regions/clip/canada-wa.geojson` for the example). `scripts/make-clip.py` builds a clip polygon.
 
+The two clip files describe the US/Canada border from different NOAA data and have different jobs:
+- `regions/clip/canada-wa.geojson` (`scripts/make-clip.py`, from NOAA's US Maritime Limits and Boundaries): the
+  depth-source side in bathy builds and zoom-10 tile ownership. It stops at 49.5 N.
+- `regions/clip/canada-chs.geojson` (`scripts/make-canada-chs.py`, from the NOAA ENC cells that meet the plan 8
+  box): the Canada polygon, inside which nothing from the NOAA cells is shown (plan 8 spec 7.2). It is the union
+  of the CHS-notice areas of the seven band 3 cells that carry the notice, the Canadian areas (`ADMARE`,
+  `NATION=CA`) of the band 1 cells outside those cells' coverage, and the Canadian areas of the band 4 and 5
+  cells; it lists each cell it read with its edition. Run the script again when NOAA changes those cells. It
+  downloads from `charts.noaa.gov` only.
+`enc/bc.py` `load_canada` reads the Canada polygon and fails when the two files disagree by a strip wider than
+20 m inside `canada-wa.geojson` (away from its artificial edges) outside the Juan de Fuca strip, where they differ
+on purpose.
+
 ## Downloads
 
 NOAA's server may answer a plain fetch of `https://charts.noaa.gov/ENCs/<CELL>.zip`
@@ -162,6 +175,13 @@ one kind keeps the other kind's entries of a stats file already in `<dir>` (the 
 release) and refuses a changed extent. The fetch is polite (`fetching.py`): one request at a time with a 2 s
 pause after each response (longer when robots.txt asks for a longer Crawl-delay), robots.txt read first, one
 retry after 60 s on a 5xx or a transport failure, and a stop on HTTP 403 or 429 or on a redirect to another host.
+
+`chartpack derive-sources --region regions/<region>.toml --cache <dir> --out <dir>` (the same workflow, stage
+`derive`) reads a region's assets from `<cache>/sources-bc-1` and the Canada polygon, calls no host, and writes
+`land-<name>.geojson.gz` (land polygons built from the coastline inside the Canada polygon, `coast.land_polygons`),
+`nosurvey-<name>.geojson.gz` (water with no value in either NONNA grid, at the NONNA-10 grid, `enc/nosurvey.py`)
+and `derive-stats-<name>.json` (`missing_in_100_km2`, the polygon counts, and `water_faces`: the land faces the
+river correction turned to water). The workflow uploads the three files to `sources-bc-1`.
 
 ## Tests
 

@@ -9,7 +9,7 @@ import pytest
 from osgeo import gdal
 from shapely.geometry import shape
 
-from chartpack.enc.reader import read_cell
+from chartpack.enc.reader import read_canadian_area, read_cell, read_notes
 from chartpack.enc.scamin import extent_z0
 
 gdal.UseExceptions()
@@ -239,3 +239,27 @@ def test_seabed_labels_in_test_cell(fixtures_dir):
     assert by[("2,1,17", None)] == "Cy.M.Sh" and by[("9", None)] == "Rk"
     weed = {p.get("CATWED"): p["label"] for p in s if p["class"] == "WEDKLP"}
     assert weed == {1: "Kelp", 3: "Sg", None: "Wd"}
+
+
+def test_read_notes_returns_text(fixtures_dir):
+    notes = read_notes(fixtures_dir / "US4WA1HK.zip")
+    with zipfile.ZipFile(fixtures_dir / "US4WA1HK.zip") as zf:
+        text = zf.read("ENC_ROOT/US4WA1HK/US166HKA.TXT").decode("latin-1")
+    assert len(notes) == 1
+    area, note = notes[0]
+    assert note == text and "US4WA1HK - NORTHERN PUGET SOUND" in note
+    assert area.geom_type in ("Polygon", "MultiPolygon") and area.is_valid and area.area > 0
+
+
+def test_read_notes_marks_missing_text_file(fixtures_dir, tmp_path):
+    damaged = tmp_path / "US4WA1HK.zip"
+    with zipfile.ZipFile(fixtures_dir / "US4WA1HK.zip") as src, zipfile.ZipFile(damaged, "w") as dst:
+        for item in src.infolist():
+            if not item.filename.endswith("US166HKA.TXT"):
+                dst.writestr(item, src.read(item))
+    notes = read_notes(damaged)
+    assert len(notes) == 1 and notes[0][1] is None and notes[0][0].area > 0
+
+
+def test_read_canadian_area_empty_for_us_cell(fixtures_dir):
+    assert read_canadian_area(fixtures_dir / "US4WA1HK.zip").is_empty

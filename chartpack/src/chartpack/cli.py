@@ -1,6 +1,7 @@
 """chartpack command line."""
 
 import argparse
+import gzip
 import hashlib
 import json
 import re
@@ -12,7 +13,8 @@ import tomllib
 from datetime import datetime, timezone
 from pathlib import Path
 
-from shapely.geometry import box, shape
+import shapely
+from shapely.geometry import box, mapping, shape
 from shapely.ops import unary_union
 
 from chartpack import __version__
@@ -43,11 +45,13 @@ from chartpack.bathy.tiles import (
     tile_bathy,
 )
 from chartpack.cache import DownloadError, download
-from chartpack.coast import fetch_coastline
+from chartpack.coast import WATER_VOTE_M, fetch_coastline, land_polygons
 from chartpack.datum import geoid
 from chartpack.datum.offsets import load_datum
+from chartpack.enc.bc import load_canada
 from chartpack.enc.catalog import CATALOG_URL, cells_meeting, parse_catalog
 from chartpack.enc.fetch import fetch_cells
+from chartpack.enc.nosurvey import mask, missing_in_100, water_points, wet_area
 from chartpack.enc.reader import read_cell
 from chartpack.enc.tiles import OVERVIEW_ZOOMS, REGION_ZOOMS, build_enc_mbtiles
 from chartpack.fetching import USER_AGENT, PoliteSession
@@ -396,6 +400,54 @@ def _fetch_sources(args: argparse.Namespace) -> int:
     return 0
 
 
+def _read_lines(path: Path) -> list:
+    """The coastline lines of a fetched coast file (gzip GeoJSONSeq), multi-lines split into lines."""
+    with gzip.open(path, "rt", encoding="utf-8") as f:
+        return [line for row in f if row.strip() for line in shapely.get_parts(shape(json.loads(row)["geometry"]))]
+
+
+def _write_polygons(path: Path, geom) -> None:
+    features = [{"type": "Feature", "properties": {}, "geometry": mapping(p)} for p in geom.geoms]
+    with gzip.open(path, "wt", encoding="utf-8") as f:
+        json.dump({"type": "FeatureCollection", "features": features}, f, separators=(",", ":"))
+
+
+def _derive_sources(args: argparse.Namespace) -> int:
+    """A region's land polygons and no-survey mask from its fetched assets (the coastline and NONNA, from the
+    release sources-bc-1, already in --cache) and the Canada polygon, over the region's fetch extent. Writes
+    land-<name>.geojson.gz, nosurvey-<name>.geojson.gz and derive-stats-<name>.json to --out, <name> being the
+    region's [sources] assets. Calls no host."""
+    region = load_region(args.region)
+    name = _asset_name(args.region, region)
+    nonna = _nonna_files(region, name)
+    if f"nonna100-{name}.tif" not in nonna:
+        raise SystemExit(f"region {region.name}: derive-sources needs nonna100 among its [bathy] sources")
+    coast = f"coast-{name}.geojson.gz"
+    extent = fetch_extent(region, args.region.parent)
+    assets = _check_assets(args.region, region, args.cache, [coast, *nonna], [extent])
+    canada = load_canada(args.region.parent)
+    n10 = assets[f"nonna10-{name}.tif"][0] if f"nonna10-{name}.tif" in assets else None
+    n100 = assets[f"nonna100-{name}.tif"][0]
+    vote = n10 or n100  # the water vote and the wet cells: NONNA-10, else NONNA-100
+    land, water_faces = land_polygons(_read_lines(assets[coast][0]), extent, canada,
+                                      water_points(vote, extent, WATER_VOTE_M), wet_area(vote, extent))
+    nosurvey = mask(n10, n100, land, extent)
+    args.out.mkdir(parents=True, exist_ok=True)
+    _write_polygons(args.out / f"land-{name}.geojson.gz", land)
+    _write_polygons(args.out / f"nosurvey-{name}.geojson.gz", nosurvey)
+    stats = {
+        "extent": [round(v, 9) for v in extent],
+        "missing_in_100_km2": None if n10 is None else round(missing_in_100(n10, n100, extent), 3),
+        "land_polygons": len(land.geoms),
+        "nosurvey_polygons": len(nosurvey.geoms),
+        "water_faces": water_faces,
+    }
+    (args.out / f"derive-stats-{name}.json").write_text(json.dumps(stats, indent=2) + "\n")
+    for file in (f"land-{name}.geojson.gz", f"nosurvey-{name}.geojson.gz", f"derive-stats-{name}.json"):
+        print(args.out / file)
+    return 0
+
+
 def _canada(read, tile_owners: dict, region, clips: dict):
     """The Canadian column of plan 8 spec 6 over the read box: for each zoom-10 tile it meets, canada_side by the
     tile's owner (a tile no pack owns by the region's own rule), so two blocks see the same side in a shared read
@@ -571,6 +623,11 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--out", type=Path, required=True)
     p.add_argument("--only", choices=["both", "coast", "nonna"], default="both")
     p.set_defaults(func=_fetch_sources)
+    p = sub.add_parser("derive-sources", help="land polygons and the no-survey mask from a region's fetched assets")
+    p.add_argument("--region", type=Path, required=True)
+    p.add_argument("--cache", type=Path, required=True)
+    p.add_argument("--out", type=Path, required=True)
+    p.set_defaults(func=_derive_sources)
     p = sub.add_parser("build-enc")
     p.add_argument("region", type=Path)
     p.add_argument("out", type=Path)
