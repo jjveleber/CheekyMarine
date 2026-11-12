@@ -271,10 +271,13 @@ def test_no_coastline_is_all_water():
     assert land.is_empty and land.geom_type == "MultiPolygon" and flipped == []
 
 
-def test_derive_stats_lists_water_faces(tmp_path, regions_dir):
+@pytest.mark.parametrize("cap", [None, 500])
+def test_derive_stats_lists_water_faces(tmp_path, regions_dir, monkeypatch, cap):
     """derive-sources over a river mouth: the face behind the construction line is a third river (wet, 1 m deep,
     NONNA-10 only), so it turns to water and derive-stats lists it; no land is left, and the land beside the
-    river, which no grid covers, is the no-survey mask."""
+    river, which no grid covers, is the no-survey mask. A vote sampled down to 500 points gives the same."""
+    if cap is not None:
+        monkeypatch.setattr("chartpack.enc.nosurvey.MAX_VOTE_POINTS", cap)
     import hashlib
     import shutil
 

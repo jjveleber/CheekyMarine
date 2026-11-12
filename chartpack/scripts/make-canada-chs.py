@@ -84,8 +84,6 @@ def build(catalog: dict, work: Path) -> tuple[dict, list[str]]:
     fine = []
     for name in names[4] + names[5]:
         area = read_canadian_area(zips[name])
-        if area.is_empty:
-            continue
         fine.append(area)
         added = area.difference(others)
         print(f"{name}: adds {area_km2(added):.3f} km2")

@@ -51,7 +51,7 @@ from chartpack.datum.offsets import load_datum
 from chartpack.enc.bc import load_canada
 from chartpack.enc.catalog import CATALOG_URL, cells_meeting, parse_catalog
 from chartpack.enc.fetch import fetch_cells
-from chartpack.enc.nosurvey import mask, missing_in_100, water_points, wet_area
+from chartpack.enc.nosurvey import mask_cells, missing_km2, no_value, read_grids, water_points, wet_area
 from chartpack.enc.reader import read_cell
 from chartpack.enc.tiles import OVERVIEW_ZOOMS, REGION_ZOOMS, build_enc_mbtiles
 from chartpack.fetching import USER_AGENT, PoliteSession
@@ -428,16 +428,21 @@ def _derive_sources(args: argparse.Namespace) -> int:
     canada = load_canada(args.region.parent)
     n10 = assets[f"nonna10-{name}.tif"][0] if f"nonna10-{name}.tif" in assets else None
     n100 = assets[f"nonna100-{name}.tif"][0]
-    vote = n10 or n100  # the water vote and the wet cells: NONNA-10, else NONNA-100
-    land, water_faces = land_polygons(_read_lines(assets[coast][0]), extent, canada,
-                                      water_points(vote, extent, WATER_VOTE_M), wet_area(vote, extent))
-    nosurvey = mask(n10, n100, land, extent)
+    # Each grid is read once (NONNA-10 holds up to 4e8 cells in a region); the vote and the wet cells come from
+    # NONNA-10, else NONNA-100. The grids are let go before the land is built.
+    grids = read_grids(n10, n100, extent)
+    missing = round(missing_km2(grids, extent), 3) if grids.fine else None
+    water, wet, empty, grid = water_points(grids, WATER_VOTE_M), wet_area(grids), no_value(grids), grids.grid
+    del grids
+    land, water_faces = land_polygons(_read_lines(assets[coast][0]), extent, canada, water, wet)
+    del water, wet
+    nosurvey = mask_cells(empty, grid, land, extent)
     args.out.mkdir(parents=True, exist_ok=True)
     _write_polygons(args.out / f"land-{name}.geojson.gz", land)
     _write_polygons(args.out / f"nosurvey-{name}.geojson.gz", nosurvey)
     stats = {
         "extent": [round(v, 9) for v in extent],
-        "missing_in_100_km2": None if n10 is None else round(missing_in_100(n10, n100, extent), 3),
+        "missing_in_100_km2": missing,
         "land_polygons": len(land.geoms),
         "nosurvey_polygons": len(nosurvey.geoms),
         "water_faces": water_faces,

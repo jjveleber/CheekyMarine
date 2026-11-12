@@ -57,3 +57,29 @@ def test_missing_in_100_reports_area(tmp_path):
     assert missing_in_100(n10, n100, BOX) == pytest.approx(area_km2(EAST), abs=0.06)
     n100_all = _write_nonna_over(tmp_path / "all.tif", "nonna100", BOX, _const(-10.0, (-124.41, 50.39, -124.37, 50.42)))
     assert missing_in_100(n10, n100_all, BOX) == 0.0
+
+
+def test_water_points_stride_caps_the_count(tmp_path, monkeypatch):
+    from chartpack.enc import nosurvey
+
+    n10 = _write_nonna_over(tmp_path / "n10.tif", "nonna10", BOX, _const(-10.0, WEST))  # deep in the west half
+    n100 = _write_nonna_over(tmp_path / "n100.tif", "nonna100", BOX, _const(-10.0, WEST))
+    grids = nosurvey.read_grids(n10, n100, BOX)
+    deep = int(np.count_nonzero(grids.values < -2.0))
+    assert len(nosurvey.water_points(grids, 2.0).geoms) == deep  # under the cap: every deep cell
+    monkeypatch.setattr(nosurvey, "MAX_VOTE_POINTS", deep // 10)
+    points = shapely.get_coordinates(nosurvey.water_points(grids, 2.0))
+    assert deep // 40 < len(points) <= deep // 10  # the smallest stride under the cap
+    assert (points[:, 0] < -124.39).all()  # still only deep cells
+
+
+def test_grids_are_float32_with_nan(tmp_path):
+    from chartpack.enc.nosurvey import read_grids
+
+    n10 = _write_nonna_over(tmp_path / "n10.tif", "nonna10", BOX, _const(-10.0, WEST))
+    n100 = _write_nonna_over(tmp_path / "n100.tif", "nonna100", BOX, _const(-10.0, WEST))
+    for fine in (n10, None):
+        grids = read_grids(fine, n100, BOX)
+        assert grids.values.dtype == np.float32 and grids.fine == (fine is not None)
+        assert np.isnan(grids.values).any() and np.nanmax(grids.values) == -10.0
+        assert grids.has100.dtype == bool and grids.has100.shape == grids.values.shape

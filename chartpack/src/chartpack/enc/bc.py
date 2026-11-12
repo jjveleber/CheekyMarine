@@ -38,7 +38,12 @@ class BcError(Exception):
 
 def to_m(geom: shapely.Geometry) -> shapely.Geometry:
     """Lon/lat to BC Albers meters."""
-    return shapely.transform(geom, lambda xy: _xy(_TO_M, xy))
+    return shapely.transform(geom, to_m_xy)
+
+
+def to_m_xy(xy: np.ndarray) -> np.ndarray:
+    """Lon/lat coordinates (an n by 2 array) to BC Albers meters."""
+    return _xy(_TO_M, xy)
 
 
 def from_m(geom: shapely.Geometry) -> shapely.Geometry:

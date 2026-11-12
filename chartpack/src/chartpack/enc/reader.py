@@ -8,8 +8,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
-from osgeo import gdal
 import shapely
+from osgeo import gdal
 from shapely.geometry import mapping, shape
 from shapely.ops import unary_union
 

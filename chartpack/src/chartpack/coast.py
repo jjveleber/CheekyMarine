@@ -18,7 +18,7 @@ from shapely.geometry import LineString, MultiPolygon, Point, box as make_box
 from shapely.ops import nearest_points, polygonize, unary_union
 
 from chartpack.cache import DownloadError
-from chartpack.enc.bc import from_m, to_m
+from chartpack.enc.bc import from_m, to_m, to_m_xy
 
 WFS_BASE = "https://openmaps.gov.bc.ca/geo/pub/WHSE_BASEMAPPING.FWA_COASTLINES_SP/ows"
 LAYER = "pub:WHSE_BASEMAPPING.FWA_COASTLINES_SP"
@@ -194,7 +194,8 @@ def land_polygons(lines: Iterable[LineString], box: tuple[float, float, float, f
     END_SNAP_M of the outline is moved onto it, any other end raises CoastError. Faces sharing a coastline segment
     are of opposite kinds; in each set of faces so linked, the kind holding more water points (lon/lat centers of
     NONNA cells deeper than WATER_VOTE_M) is water. CoastError when the faces cannot be split into two kinds, when a
-    linked set's water points do not decide, or when more than 1% of the water points fall in land. Then, with wet
+    linked set's water points do not decide, or when more than 1% of the water points fall in land. A separate
+    piece of the area with no coastline is water. Then, with wet
     the NONNA cells at or below chart datum: a land face of at least RIVER_MIN_AREA_M2 more than RIVER_WATER_SHARE
     wet is water; a smaller face bounded by atlas lines alone (an islet) stays land whole; all other land is cut
     by wet."""
@@ -228,7 +229,7 @@ def land_polygons(lines: Iterable[LineString], box: tuple[float, float, float, f
     parity, component = _classes(faces, coast_keys)
 
     # The vote: per linked set, the class holding more water points is water. A set of one face has no coastline.
-    xy = shapely.get_coordinates(to_m(water))
+    xy = to_m_xy(shapely.get_coordinates(water))
     xy = xy[shapely.contains_xy(area, xy[:, 0], xy[:, 1])]
     land_ids, on_land = [], 0
     for c in sorted(set(component)):
