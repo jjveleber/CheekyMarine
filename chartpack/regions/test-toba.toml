@@ -1,7 +1,16 @@
-# Toba Inlet, one inlet for the plan 8 fetch spike (Task 3). Only `chartpack fetch-sources` reads it (name, bbox,
-# bathy.sources); it is never built, is not in grid.toml and is not among the regions test_regions.py names.
+# Toba Inlet, one inlet for the plan 8 fetch spike (Task 3). Only `chartpack fetch-sources` reads it; it is never
+# built, is not in grid.toml and is not among the regions test_regions.py names. The versions, [enc], dem_maxzoom
+# and [datum] are there because load_region requires them; the datum file is a placeholder only a build would read.
 name = "test-toba"
+charts_version = "0.1.0"
+bathy_version = "0.1.0"
 bbox = [-124.6, 50.3, -124.2, 50.6]
+
+[enc]
 
 [bathy]
 sources = ["nonna10", "nonna100"]
+dem_maxzoom = 14
+
+[datum]
+file = "datum/wa-stations.toml"

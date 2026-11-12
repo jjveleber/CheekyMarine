@@ -49,7 +49,7 @@ from chartpack.enc.fetch import fetch_cells
 from chartpack.enc.reader import read_cell
 from chartpack.enc.tiles import OVERVIEW_ZOOMS, REGION_ZOOMS, build_enc_mbtiles
 from chartpack.fetching import USER_AGENT, PoliteSession
-from chartpack.grid import content_tiles, keep_tiles, owned_tiles, tiles_area
+from chartpack.grid import content_tiles, fetch_extent, keep_tiles, owned_tiles, tiles_area
 from chartpack.pack.archive import archive_pack
 from chartpack.pack.assemble import BATHY_FILES, assemble_bathy_pack, assemble_charts_pack
 from chartpack.pack.check import check_pack
@@ -204,9 +204,6 @@ def _fetch_bathy(args: argparse.Namespace) -> int:
     return 0
 
 
-FETCH_MARGIN_DEG = 0.02  # plan 8 Task 5 replaces the grown box with fetch_extent
-
-
 class _CountedSession:
     """Counts the requests made through it (each get is one page of the coastline)."""
 
@@ -234,25 +231,22 @@ def _fetch_sources(args: argparse.Namespace) -> int:
 
     A run of both kinds writes fresh stats. A run of one kind keeps the other kind's entries of a stats file
     already in --out (the workflow downloads it from the release) and fails when that file's extent differs:
-    a changed box needs a run of both kinds. Each file entry holds its sha256, so a reader can tell the file
+    a changed extent needs a run of both kinds. Each file entry holds its sha256, so a reader can tell the file
     the stats describe from a stale one."""
-    # The region file is read directly: load_region accepts the NONNA source names from plan 8 Task 5 on.
-    with args.region.open("rb") as f:
-        data = tomllib.load(f)
-    name = data.get("sources", {}).get("assets", data["name"])
+    region = load_region(args.region)
+    with args.region.open("rb") as f:  # [sources] assets is read by this command alone, not by load_region
+        name = tomllib.load(f).get("sources", {}).get("assets", region.name)
     if not re.fullmatch(r"[a-z0-9-]+", name):
         print(f"fetch-sources: [sources] assets must match [a-z0-9-]+, got {name!r}", file=sys.stderr)
         return 1
-    bathy_sources = data.get("bathy", {}).get("sources", [])
-    w, s, e, n = (float(v) for v in data["bbox"])
-    m = FETCH_MARGIN_DEG
-    extent = [round(v, 9) for v in (w - m, s - m, e + m, n + m)]
+    bathy_sources = region.bathy_sources
+    extent = [round(v, 9) for v in fetch_extent(region, args.region.parent)]
     stats = args.out / f"fetch-stats-{name}.json"
     files = {}
     if args.only != "both" and stats.exists():
         previous = json.loads(stats.read_text())
         if previous["extent"] != extent:
-            print(f"fetch-sources: {stats} has extent {previous['extent']}, this run's is {extent}: the box changed,"
+            print(f"fetch-sources: {stats} has extent {previous['extent']}, this run's is {extent}: the extent changed,"
                   " so fetch both kinds (--only both)", file=sys.stderr)
             return 1
         files = previous["files"]

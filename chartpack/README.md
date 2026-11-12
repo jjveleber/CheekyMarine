@@ -93,7 +93,8 @@ Wave 1 (plan 7) has five region packs and an overview, one file each in `regions
 Each region pack owns whole zoom-10 tiles: `regions/grid.toml` gives a tile meeting several boxes to the
 first region it lists, so pack edges follow the tile grid, not the box edges (`sound-south` owns up to
 47.5172 N, `sound-central` up to 48.2247 N). `chartpack.grid.seams` lists the lines where two packs meet.
-Tiles wholly inside `clip/canada-wa.geojson` belong to no pack. The Columbia from Cathlamet and the east half of
+A region with a `clip` does not take a tile wholly inside it: the tile goes to a region listed later, or
+to no pack. A region with an `[area]` polygon owns the tiles meeting the polygon instead of its box. The Columbia from Cathlamet and the east half of
 Puget Island upriver (east of -123.398 W, south of 46.80 N) is outside wave 1. `test-cell.toml` is a small test region.
 
 `regions/<region>.toml`:
@@ -110,8 +111,14 @@ coarse_fallback = "crm"           # optional: "crm" (default) or "enc" for conto
 band4 = ["US4WA1HK"]
 
 [bathy]
-sources = ["cudem", "crm"]
+sources = ["cudem", "crm"]        # of cudem, crm, nonna10, nonna100, etopo; "crm" fallback needs crm, nonna100 or etopo
 dem_maxzoom = 14
+
+[area]                            # optional: GeoJSON polygon coordinates (outline, then holes); bbox is its bounds
+polygon = [[[-123.25, 47.45], [-122.1, 47.45], [-122.1, 48.2], [-123.25, 47.45]]]
+
+[charts]                          # optional: "enc" (default), "derived-inshore" or "derived-offshore"
+kind = "enc"
 
 [datum]                           # MLLW offsets per area from NOAA CO-OPS stations, relative to this file's directory
 file = "datum/wa-stations.toml"
