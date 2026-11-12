@@ -145,8 +145,6 @@ def assemble_charts_pack(region: Region, enc_mbtiles: Path, out_dir: Path,
     the ETOPO citation, a blank line between); a pack away from the polygon keeps its
     old metadata keys."""
     root = Path(out_dir) / f"charts-{region.name}-{region.charts_version}"
-    root.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(enc_mbtiles, root / "enc.mbtiles")
     with MBTiles.open(enc_mbtiles) as m:
         metadata = m.metadata()
     areas = charts_notice_areas(content, canada)
@@ -154,7 +152,9 @@ def assemble_charts_pack(region: Region, enc_mbtiles: Path, out_dir: Path,
     sources = {d["source"] for d in json.loads(metadata.get("cheekymarine:depth_sources", "[]"))}
     parts = ([CHS_NOTICE] if _NONNA & sources else []) + ([OGL_BC_NOTICE] if "fwa" in sources else []) + (
         [_etopo_text((PROJECT / "NOTICE").read_text())] if "etopo" in sources else [])
-    _check_chs_area(root.name, parts, areas)
+    _check_chs_area(root.name, parts, areas)  # before anything is written
+    root.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(enc_mbtiles, root / "enc.mbtiles")
     if parts:
         notice["cheekymarine:data_notice"] = "\n\n".join(parts)
     if notice:
@@ -279,12 +279,9 @@ def assemble_bathy_pack(region: Region, files: dict[str, Path], out_dir: Path,
     owners' tiles) and, when a coverage layer holds NONNA and/or ETOPO, cheekymarine:data_notice (the CHS notice,
     then the ETOPO citation, a blank line between)."""
     root = Path(out_dir) / f"bathy-{region.name}-{region.bathy_version}"
-    root.mkdir(parents=True, exist_ok=True)
-    for name in BATHY_FILES:
-        shutil.copyfile(files[name], root / name)
-    with MBTiles.open(root / "bathy.mbtiles") as m:
+    with MBTiles.open(files["bathy.mbtiles"]) as m:
         metadata = m.metadata()
-    with MBTiles.open(root / "bathy-coarse.mbtiles") as m:
+    with MBTiles.open(files["bathy-coarse.mbtiles"]) as m:
         coverage = json.loads(metadata.get("cheekymarine:coverage", "[]"))
         coverage += json.loads(m.metadata().get("cheekymarine:coverage", "[]"))
     chs = bool(_NONNA & set(coverage))
@@ -292,7 +289,10 @@ def assemble_bathy_pack(region: Region, files: dict[str, Path], out_dir: Path,
     notice = {"cheekymarine:notice_areas": json.dumps(areas)}
     parts = ([CHS_NOTICE] if chs else []) + (
         [_etopo_text((PROJECT / "NOTICE").read_text())] if "etopo" in coverage else [])
-    _check_chs_area(root.name, parts, areas)
+    _check_chs_area(root.name, parts, areas)  # before anything is written
+    root.mkdir(parents=True, exist_ok=True)
+    for name in BATHY_FILES:
+        shutil.copyfile(files[name], root / name)
     if parts:
         notice["cheekymarine:data_notice"] = "\n\n".join(parts)
     for name in BATHY_FILES:

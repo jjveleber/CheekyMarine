@@ -465,6 +465,8 @@ def test_chs_notice_without_a_notice_area_fails(test_region, enc_pack_path, tmp_
     files = _sourced_files(tmp_path / "b", NONNA_SOURCES, ["nonna100"])
     with pytest.raises(RuntimeError, match=r"bathy-test-cell-0\.1\.0: .*CHS notice.*no BC notice area"):
         assemble_bathy_pack(test_region, files, tmp_path / "b-out")  # no owned tiles and no owners
+    for out in ("c-out", "c-far", "b-out"):  # failed before anything was written
+        assert not (tmp_path / out).exists(), out
 
 
 def test_overview_bathy_notice_areas_from_the_tile_owners(test_region, tmp_path):
