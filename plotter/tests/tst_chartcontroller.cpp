@@ -204,7 +204,7 @@ bool setFileMeta(const QString& path, const QString& name, const QString& value)
 }
 
 // Adds metadata.cheekymarine.notices {"bc": kBcNotice} to every style file of the pack at `dir`.
-bool addBcNotices(const QString& dir) {
+bool addBcNotices(const QString& dir, const QString& text = kBcNotice) {
     for (const QString& f : QDir(dir + "/styles").entryList({"*.json"}, QDir::Files)) {
         QFile file(dir + "/styles/" + f);
         if (!file.open(QIODevice::ReadOnly)) return false;
@@ -212,7 +212,7 @@ bool addBcNotices(const QString& dir) {
         file.close();
         QJsonObject md = style["metadata"].toObject();
         QJsonObject cm = md["cheekymarine"].toObject();
-        cm["notices"] = QJsonObject{{"bc", kBcNotice}};
+        cm["notices"] = QJsonObject{{"bc", text}};
         md["cheekymarine"] = cm;
         style["metadata"] = md;
         if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) return false;
@@ -499,6 +499,24 @@ private slots:
         r.map.bounds = QRectF(QPointF(-123.5, 48.6), QPointF(-123.2, 48.9)); // grew into BC, no camera signal
         emit r.map.viewportChanged();
         QTRY_COMPARE(r.ctrl->notice(), kBcNotice);
+    }
+    // Spec 7.3: the Nav and Fish areas differ. Here only the bathy file has the BC area, and the two
+    // styles carry different BC texts.
+    void navAndFishUseTheirOwnAreasAndTexts() {
+        Rig r;
+        QVERIFY(r.settings);
+        const QString fishBc = QStringLiteral("Fish BC test notice.");
+        QVERIFY(setFileMeta(r.packsDir() + "/bathy-puget-north-1.0.0/bathy.mbtiles", "cheekymarine:notice_areas", kBcArea));
+        QVERIFY(addBcNotices(r.chartsDir()));
+        QVERIFY(addBcNotices(r.packsDir() + "/bathy-puget-north-1.0.0", fishBc));
+        r.map.bounds = QRectF(QPointF(-123.5, 48.6), QPointF(-123.2, 48.9));
+        r.make();
+        r.map.loaded();
+        QCOMPARE(r.ctrl->notice(), kUsNotice()); // Nav: no BC area in the charts file
+        r.ctrl->setMode("fish");
+        QCOMPARE(r.ctrl->notice(), fishBc);
+        r.ctrl->setMode("nav");
+        QCOMPARE(r.ctrl->notice(), kUsNotice());
     }
     void steadyCameraSignalsDoNotPostponeTheNotice() {
         Rig r;
