@@ -222,3 +222,34 @@ def test_flat_water_is_covered(value, label):
         areas = _layer(feats, "depare", lo)
         assert {(f.props["DRVAL1"], f.props["DRVAL2"]) for f in areas} == {label}, lo
         assert math.isclose(shapely.union_all([shape(f.geometry) for f in areas]).area, (N * D) ** 2, rel_tol=1e-9)
+
+
+@pytest.mark.parametrize("case", ["hole", "half"])
+def test_footprint_is_the_input_cells(case):
+    """At FINE_RES_DEG (reduced 4 times before contouring) a nan region not lined up with the reduction blocks gets
+    no depth geometry, and every valid input cell is covered at every band."""
+    from chartpack.bathy.blocks import FINE_RES_DEG
+
+    d = FINE_RES_DEG
+    transform, core = (X0, d, 0.0, Y0, 0.0, -d), (X0, Y0 - N * d, X0 + N * d, Y0)
+    depth = np.full((N, N), 20.0)
+    if case == "hole":
+        depth[41:44, 41:46] = np.nan  # one native NONNA-10 cell, 3 by 5 fine cells, across 4 by 4 blocks
+        depth[40, 41] = 2.0  # a shoal beside it pulls the neighborhood minimum over the hole
+        nan = box(X0 + 41 * d, Y0 - 44 * d, X0 + 46 * d, Y0 - 41 * d)
+    else:
+        depth[:, 81:] = np.nan  # column 81 is not on a 4-cell block edge
+        nan = box(X0 + 81 * d, Y0 - N * d, X0 + N * d, Y0)
+    feats = _derive(depth, transform=transform, core=core)
+    water = box(*core).difference(nan)
+    tiny = 1e-6 * d * d
+    _assert_clear_of(feats, nan)
+    for lo, _, _ in BANDS:
+        union = shapely.union_all([shape(f.geometry) for f in _layer(feats, "depare", lo)])
+        assert union.intersection(nan).area < tiny, lo
+        assert water.difference(union).area < tiny, lo
+
+
+def test_src_none_on_every_valid_cell_is_an_error():
+    with pytest.raises(ValueError, match="src is 0"):
+        _derive(_slope(), _src("none"))

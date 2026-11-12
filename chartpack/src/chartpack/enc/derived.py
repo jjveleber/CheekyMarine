@@ -246,8 +246,7 @@ def derived_features(depth_m: np.ndarray, src: np.ndarray, transform, *, core, l
     - soundg per zoom (_soundings), from nonna10 and nonna100 cells only, src the source of the cell;
     - lndare and coalne from land, src "fwa", and nosurvey, each cut to core, over every BANDS zoom.
 
-    Every depth geometry is cut to core and to the valid cells (at the reduced grid: a cell with any valid input
-    cell under it), less nosurvey and land. lat is unused since nothing is simplified here (kept in the
+    Every depth geometry is cut to core and to the valid input cells, less nosurvey and land. lat is unused since nothing is simplified here (kept in the
     interface). For the offshore kind the caller passes the coarse merge and empty nosurvey and land."""
     core_box = box(*core)
     levels = sorted(float(v) for v in levels_m)
@@ -262,8 +261,11 @@ def derived_features(depth_m: np.ndarray, src: np.ndarray, transform, *, core, l
         k = block_factor(transform, NAV_BASE_M)
         base, base_tr = block_min(depth_m, transform, k) if k > 1 else (depth_m, transform)
         base_src = _coarsest(src, valid, transform, k) if k > 1 else np.where(valid, src, 0)
+        if not src[valid].any():
+            raise ValueError("derived_features: src is 0 (none) on every valid depth cell")
         base_valid = np.isfinite(base)  # a reduced cell is valid when any input cell under it is
-        cut = core_box.intersection(_cells(base_valid, base_tr)).difference(shapely.union_all([nosurvey, land]))
+        # the footprint is the input's own valid cells: no depth over a nan input cell, none missing from a valid one
+        cut = core_box.intersection(_cells(valid, transform)).difference(shapely.union_all([nosurvey, land]))
         shapely.prepare(cut)
         if not cut.is_empty:
             tiles = _tiles(cut, core)
