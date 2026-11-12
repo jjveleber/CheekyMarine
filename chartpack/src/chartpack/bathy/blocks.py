@@ -30,6 +30,7 @@ from chartpack.bathy.contours import (
     zoom_tolerance_deg,
 )
 from chartpack.bathy.cudem import CudemTile, Grid, read_window, tiles_for_bbox
+from chartpack.bathy.etopo import CD_BELOW_MSL_M
 from chartpack.bathy.merge import clip_mask, coverage_polygons, fill_land, merge_ordered, merge_to_mllw, warp_depth
 from chartpack.bathy.nonna import read_nonna
 from chartpack.bathy.tiles import COARSE_ZOOMS
@@ -112,8 +113,8 @@ class AreaDatum:
     from -elevation for MLLW depth. It is the NAVD88 to MLLW offset per area for every source, plus the EGM2008
     to NAVD88 height change for EGM2008 sources (CRM), from the geoid grids fetch-bathy put in cache. Both are
     summed at the global grid nodes and resampled once (bilinear is linear), so a call allocates one
-    block-size array. It is zero for a "chart" source (NONNA, already on Canadian chart datum) and, until plan 8
-    Task 7 adds ETOPO's fixed shift, for the "msl" source (ETOPO).
+    block-size array. It is zero for a "chart" source (NONNA, already on Canadian chart datum) and the fixed
+    CD_BELOW_MSL_M for the "msl" source (ETOPO: no geoid grid, no station).
 
     Lakes (#88): with lakes=True a cell whose center is inside a lake polygon of the datum file takes the lake's
     offset instead, -low_level_navd88_m plus the height change, so its depth is the lake's low level minus the
@@ -129,8 +130,10 @@ class AreaDatum:
         self.cache = cache
 
     def __call__(self, source: str, transform, grid_shape: tuple[int, int], *, lakes: bool = True) -> np.ndarray:
-        if SOURCE_VERTICAL[source] in ("chart", "msl"):  # NONNA is on chart datum; Task 7 adds the ETOPO shift
+        if SOURCE_VERTICAL[source] == "chart":  # NONNA is on chart datum
             return np.zeros(grid_shape, np.float32)
+        if SOURCE_VERTICAL[source] == "msl":  # ETOPO: chart datum lies a fixed distance below mean sea level
+            return np.full(grid_shape, CD_BELOW_MSL_M, np.float32)
         lons, lats = node_axes(transform, grid_shape)
         nodes = navd88_to_mllw_nodes(self.stations, lons, lats)
         if SOURCE_VERTICAL[source] == "egm2008":  # NAVD88 height = EGM2008 height + the change
@@ -259,10 +262,15 @@ def _present(source: np.ndarray) -> list[int]:
 
 def _shift(grid: Grid, source: np.ndarray, datum: AreaDatum) -> None:
     """Each cell's depth shifted by its own source's datum offset (the station path, no lake rule), in place:
-    CUDEM and CRM to MLLW, NONNA left on chart datum."""
+    CUDEM and CRM to MLLW, NONNA left on chart datum, ETOPO by its fixed shift. A water cell (depth above 0) of
+    a mean sea level source that the shift would take below 0 gets 0.0: it never makes a drying area."""
     for index in _present(source):
         take = source == index
-        grid.data[take] -= datum(SOURCE_NAMES[index], grid.transform, grid.data.shape, lakes=False)[take]
+        was = grid.data[take]
+        now = was - datum(SOURCE_NAMES[index], grid.transform, grid.data.shape, lakes=False)[take]
+        if SOURCE_VERTICAL[SOURCE_NAMES[index]] == "msl":
+            now = np.where((was > 0) & (now < 0), np.float32(0.0), now)
+        grid.data[take] = now
         del take
 
 

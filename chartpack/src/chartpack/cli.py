@@ -29,6 +29,7 @@ from chartpack.bathy.blocks import (
 )
 from chartpack.bathy.crm import crm_path, crm_tile_requests, crm_wcs_url, fetch_crm
 from chartpack.bathy.crm import crm_request as crm_request_bounds  # crm_request names the metadata string below
+from chartpack.bathy.etopo import etopo_path, fetch_etopo
 from chartpack.bathy.cudem import URLLIST, parse_urllist, tiles_for_bbox
 from chartpack.bathy.dem import build_dem_mbtiles, empty_dem_mbtiles
 from chartpack.bathy.nonna import fetch_index, fetch_nonna, index_boxes
@@ -287,6 +288,8 @@ def _fetch_bathy(args: argparse.Namespace) -> int:
         for _, _, read in blocks:  # one CRM request per owned tile, over its read bounds cut to CRM's coverage
             if (path := fetch_crm(read, args.cache)) is not None:  # None: the tile is wholly outside CRM
                 print(path)
+    if "etopo" in region.bathy_sources:  # one tile for the whole region
+        print(fetch_etopo(args.cache))
     return 0
 
 
@@ -392,12 +395,13 @@ def _build_bathy(args: argparse.Namespace) -> int:
     owned = owned_tiles(region, args.region.parent)
     urllist = args.cache / "cudem" / "urllist8483.txt"
     has_cudem, has_crm = "cudem" in region.bathy_sources, "crm" in region.bathy_sources
+    has_etopo = "etopo" in region.bathy_sources
     has_coarse = bool(set(COARSE_SOURCES) & set(region.bathy_sources))
     if owned is None:
         needed = [crm_path(overview_bounds(region.bbox), args.cache)]
     else:
         blocks = list(iter_blocks(owned))
-        needed = ([urllist] if has_cudem else []) + [
+        needed = ([urllist] if has_cudem else []) + ([etopo_path(args.cache)] if has_etopo else []) + [
             path for _, _, read in blocks if has_crm and (path := crm_path(read, args.cache)) is not None]
         name = _asset_name(args.region, region)
         paths = _check_assets(args.region, region, args.cache, _nonna_files(region, name), [r for _, _, r in blocks])
@@ -448,9 +452,8 @@ def _build_bathy(args: argparse.Namespace) -> int:
             tiles = tiles_for_bbox(all_tiles, read)
             used.update((t.name, t) for t in tiles_for_bbox(tiles, core))  # the tiles drawn in the owned tile
             canada = _canada(read, tile_owners, region, clips)
-            # ETOPO joins with its reader (plan 8 Task 7).
             sources = BlockSources(tiles, crm_path(read, args.cache) if has_crm else None, assets["nonna10"],
-                                   assets["nonna100"], None)
+                                   assets["nonna100"], etopo_path(args.cache) if has_etopo else None)
             r = build_block(core, read, sources, datum, canada, lake_mask=lake_mask)
             covered = r.fine_coverage + ([] if enc_fallback else r.coarse_coverage)
             uncovered = box(*core).difference(unary_union([shape(f["geometry"]) for f in covered]))

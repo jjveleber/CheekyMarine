@@ -80,6 +80,11 @@ pages read 2026-11-11:
     https://www2.gov.bc.ca/gov/content/data/policy-standards/open-data/open-government-licence-bc
     Attribution: src/chartpack/notices/ogl-bc.txt, also in the release notes of sources-bc-1.
 
+ETOPO 2022 15 Arc-Second Global Relief Model (bathy/etopo.py): NOAA National Centers for Environmental
+Information. 2022: ETOPO 2022 15 Arc-Second Global Relief Model. NOAA National Centers for Environmental
+Information. https://doi.org/10.25921/fd45-gt74. CC0 1.0 public domain dedication.
+ETOPO depths are shifted by a fixed 4 m toward chart datum; no tide station data is used.
+
 Tide station datums (regions/datum/wa-stations.toml) are from the NOAA CO-OPS datums API, a US
 Government work.
 

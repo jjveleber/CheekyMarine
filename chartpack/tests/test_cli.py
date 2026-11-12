@@ -887,3 +887,53 @@ def test_block_outside_asset_extent_is_error(tmp_path, fixtures_dir, regions_dir
     monkeypatch.setattr(cli, "build_enc_mbtiles", lambda *a, **k: pytest.fail("built past the asset extent"))
     with pytest.raises(SystemExit, match=rf"test-cell.*{asset.replace('.', '[.]')}.*chartpack-sources\.yml"):
         main([command, str(region), str(tmp_path / "out"), "--cache", str(cache), "--work", str(tmp_path / "work")])
+
+
+def test_fetch_bathy_fetches_etopo_only_when_listed(tmp_path, regions_dir, monkeypatch, capsys):
+    from chartpack import cli
+
+    fetched = []
+    monkeypatch.setattr(cli, "fetch_etopo", lambda cache: fetched.append(cache) or cache / "etopo" / "e.tif")
+    monkeypatch.setattr(cli, "fetch_crm", lambda bbox, cache: None)
+    monkeypatch.setattr(cli, "download", lambda *a, **k: pytest.fail("no CUDEM list needed"))
+    monkeypatch.setattr(geoid, "fetch_grids", lambda p: None)
+    region = _grid_region(tmp_path, regions_dir)
+    region.write_text(region.read_text().replace('sources = ["cudem", "crm"]', 'sources = ["crm"]'))
+    assert main(["fetch-bathy", str(region), "--cache", str(tmp_path)]) == 0
+    assert fetched == []
+    region.write_text(region.read_text().replace('sources = ["crm"]', 'sources = ["crm", "etopo"]'))
+    assert main(["fetch-bathy", str(region), "--cache", str(tmp_path)]) == 0
+    assert fetched == [tmp_path]
+    assert capsys.readouterr().out.splitlines()[-1] == str(tmp_path / "etopo" / "e.tif")
+
+
+def test_build_bathy_passes_the_etopo_path_only_when_listed(tmp_path, fixtures_dir, regions_dir, monkeypatch, zero_geoid):
+    import shutil
+
+    from chartpack import cli
+    from chartpack.bathy.etopo import etopo_path
+
+    seen = []
+
+    class Stop(Exception):
+        pass
+
+    def spy(core, read, sources, *a, **k):
+        seen.append(sources.etopo)
+        raise Stop
+
+    monkeypatch.setattr(cli, "build_block", spy)
+    region = _bathy_region(tmp_path, regions_dir)
+    cache = _bathy_cache(tmp_path, fixtures_dir, region, monkeypatch, [])
+    args = ["build-bathy", str(region), str(tmp_path / "out"), "--cache", str(cache), "--work", str(tmp_path / "work")]
+    with pytest.raises(Stop):
+        main(args)
+    assert seen == [None]  # the region does not list etopo
+    region.write_text(region.read_text().replace('sources = ["cudem", "crm"]', 'sources = ["cudem", "crm", "etopo"]'))
+    with pytest.raises(SystemExit, match="run fetch-bathy first"):  # the tile is not cached yet
+        main(args)
+    etopo_path(cache).parent.mkdir(parents=True)
+    shutil.copy(fixtures_dir / "cudem_possession_bar.tif", etopo_path(cache))
+    with pytest.raises(Stop):
+        main(args)
+    assert seen[-1] == etopo_path(cache)
