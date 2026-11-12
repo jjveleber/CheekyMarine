@@ -78,3 +78,16 @@ an edge or a corner) and meets `regions/clip/canada-chs.geojson`, from the shipp
 (plan 8 Task 15, PR 125 review): 113 tiles. They are the reviewed gaps: Portland Canal and Observatory Inlet north
 of `bc-north`, the Vancouver Island interior column (154, 347) and (154, 348), and inland and deep-ocean edges.
 `test_every_bc_tile_has_one_owner` fails when the set changes; update the file only after reviewing the change.
+
+## BC coast tiles
+
+`bc-coast-tiles.json` lists, as `[x, y]`, every zoom-10 tile that holds BC Freshwater Atlas coastline (the
+coastline lines and the river-mouth closing lines, as derive-sources reads them), from the `coast-<region>.geojson.gz`
+assets of release `sources-bc-1` for the thirteen regions with NONNA (fetched 2026-11-12), written by
+`scripts/make-coast-tiles.py OUT COAST_FILE...` (no network): 262 tiles. `test_no_offshore_tile_holds_coastline`
+and `test_no_unowned_tile_holds_coastline` read it. Rerun the script after a region's coastline is fetched again.
+
+The list is complete only inside the fetch extents of those assets (each region's owned tiles plus a small margin).
+Every offshore tile lies inside its own asset's extent, so the offshore test sees all of its shore. Most unowned
+tiles lie outside every extent, so the unowned test sees only shore next to owned tiles; the pinned list in
+`bc-unowned-tiles.json` is the guard for the rest.

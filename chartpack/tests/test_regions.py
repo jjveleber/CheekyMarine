@@ -51,7 +51,7 @@ VIEWS = {
     "bc-offshore-south": {"offshore-south"},
     "bc-offshore-north": {"offshore-north"},
 }
-COAST_TILES = "bc-coast-tiles.json"  # written by the controller from the fetched coastline assets (Task 15 Step 4)
+COAST_TILES = "bc-coast-tiles.json"  # scripts/make-coast-tiles.py over the fetched coastline assets
 
 
 def _regions(regions_dir, names=ALL):
@@ -117,8 +117,8 @@ def _owned_all(regions_dir):
 # changed order changes a count.
 TILE_COUNTS = {"sound-south": 12, "sound-central": 12, "north-sound": 16, "strait": 13, "wa-coast": 92,
                "bc-south-georgia": 18, "bc-vi-west-south": 41, "bc-north-georgia": 28, "bc-johnstone": 39,
-               "bc-vi-west-north": 33, "bc-central": 79, "bc-north": 116, "haida-gwaii": 83, "bc-offshore-south": 98,
-               "bc-offshore-north": 159}
+               "bc-vi-west-north": 33, "bc-central": 79, "bc-north": 122, "haida-gwaii": 86, "bc-offshore-south": 98,
+               "bc-offshore-north": 150}
 UNOWNED_TILES = "bc-unowned-tiles.json"  # the reviewed gaps next to the owned tiles (tests/fixtures/README.md)
 UNOWNED_COAST_ALLOWED: set[tuple[int, int]] = set()  # unowned tiles known to hold coastline, owner-approved
 
@@ -150,14 +150,17 @@ def test_every_bc_tile_has_one_owner(regions_dir, fixtures_dir):
     assert {(154, 347), (154, 348)} <= gaps
 
 
+# Unowned tiles next to owned ones that hold coastline (Task 15 Step 4): Portland Canal and Observatory Inlet north of
+# bc-north, (141, 323) at -130.4297 to -130.0781 W and (142, 323) at -130.0781 to -129.7266 W, both 54.9776 to
+# 55.1789 N. The owner decides: grow bc-north, or approve them in UNOWNED_COAST_ALLOWED.
+UNOWNED_COAST = {(141, 323), (142, 323)}
+
+
+@pytest.mark.xfail(strict=True, reason="unowned tiles hold coastline: owner decision, see #90 (UNOWNED_COAST)")
 def test_no_unowned_tile_holds_coastline(regions_dir, fixtures_dir):
     """No unowned tile next to an owned one holds Freshwater Atlas coastline, but for the owner-approved
     UNOWNED_COAST_ALLOWED (empty): BC shore water always has a pack."""
-    path = fixtures_dir / COAST_TILES
-    if not path.is_file():
-        pytest.skip(f"tests/fixtures/{COAST_TILES} is written by the controller from the fetched coastline assets"
-                    " (plan 8 Task 15 Step 4)")
-    coast = {tuple(t) for t in json.loads(path.read_text())}
+    coast = {tuple(t) for t in json.loads((fixtures_dir / COAST_TILES).read_text())}
     _, owned = _owned_all(regions_dir)
     assert (_unowned_next_to_owned(regions_dir, owned) & coast) <= UNOWNED_COAST_ALLOWED
 
@@ -165,11 +168,7 @@ def test_no_unowned_tile_holds_coastline(regions_dir, fixtures_dir):
 def test_no_offshore_tile_holds_coastline(regions_dir, fixtures_dir):
     """Shore water is never offshore (plan 8 spec 4): no tile an offshore pack owns holds Freshwater Atlas
     coastline. The coast tiles come from the fetched coastline assets of every BC region."""
-    path = fixtures_dir / COAST_TILES
-    if not path.is_file():
-        pytest.skip(f"tests/fixtures/{COAST_TILES} is written by the controller from the fetched coastline assets"
-                    " (plan 8 Task 15 Step 4)")
-    coast = {tuple(t) for t in json.loads(path.read_text())}
+    coast = {tuple(t) for t in json.loads((fixtures_dir / COAST_TILES).read_text())}
     regions, owned = _owned_all(regions_dir)
     owner = {tile: name for name, tiles in owned.items() for tile in tiles}
     assert offshore_shore_tiles(owner, regions, coast) == set()
@@ -336,3 +335,11 @@ def test_wa_coast_reaches_the_sound_column(regions_dir):
     got = seams(owned)
     assert got[("sound-south", "wa-coast")] == [((south[0], south[1]), (south[0], south[3]))]
     assert ("sound-central", "wa-coast") in got
+
+
+def test_unowned_coast_tiles_are_the_known_ones(regions_dir, fixtures_dir):
+    """The unowned tiles that hold coastline (the strict xfail above) are exactly UNOWNED_COAST, so a new one, or
+    one the owner's fix removes, is noticed."""
+    coast = {tuple(t) for t in json.loads((fixtures_dir / COAST_TILES).read_text())}
+    _, owned = _owned_all(regions_dir)
+    assert (_unowned_next_to_owned(regions_dir, owned) & coast) - UNOWNED_COAST_ALLOWED == UNOWNED_COAST

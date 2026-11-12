@@ -3,7 +3,7 @@
 name = "bc-north"
 charts_version = "1.0.0"
 bathy_version = "1.0.0"
-bbox = [-131.2, 52.7, -127.8, 54.8]
+bbox = [-131.2, 52.6, -127.8, 54.8]  # south edge moved from 52.7 into the next tile row (plan 8 Task 15 Step 4)
 
 [charts]
 kind = "derived-inshore"
