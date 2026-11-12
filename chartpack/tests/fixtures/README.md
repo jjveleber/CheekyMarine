@@ -70,3 +70,11 @@ and member names, cut from the real download of 2026-10-29. Licences: chartpack/
 on 2026-11-11 from the plan 7 grid code (commit 872bd0c, before plan 8 Task 5): `owned_tiles` of each region in
 `regions/grid.toml`, with the five wave 1 region files and the real `grid.toml`. `test_wave1_owners_exact` checks
 that later grid code gives the same map: no wave 1 tile gained, lost or moved.
+
+## BC unowned tiles
+
+`bc-unowned-tiles.json` lists, as `[x, y]`, every zoom-10 tile no region pack owns that touches an owned tile (by
+an edge or a corner) and meets `regions/clip/canada-chs.geojson`, from the shipped region files and `grid.toml`
+(plan 8 Task 15, PR 125 review): 113 tiles. They are the reviewed gaps: Portland Canal and Observatory Inlet north
+of `bc-north`, the Vancouver Island interior column (154, 347) and (154, 348), and inland and deep-ocean edges.
+`test_every_bc_tile_has_one_owner` fails when the set changes; update the file only after reviewing the change.

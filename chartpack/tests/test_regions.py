@@ -114,17 +114,53 @@ def _owned_all(regions_dir):
     return regions, {name: owned_tiles(r, regions_dir) for name, r in regions.items()}
 
 
-def test_every_bc_tile_has_one_owner(regions_dir):
-    """No zoom-10 tile has two owners, and every tile meeting an inshore BC box is owned (the offshore areas are
-    polygons: a tile meeting one is owned too)."""
-    regions, owned = _owned_all(regions_dir)
+# Owned zoom-10 tiles per region with the shipped boxes, polygons and grid order (plan 8 Task 15): a moved box or a
+# changed order changes a count.
+TILE_COUNTS = {"sound-south": 12, "sound-central": 12, "north-sound": 16, "strait": 13, "wa-coast": 92,
+               "bc-south-georgia": 18, "bc-vi-west-south": 41, "bc-north-georgia": 28, "bc-johnstone": 39,
+               "bc-vi-west-north": 33, "bc-central": 79, "bc-north": 116, "haida-gwaii": 83, "bc-offshore-south": 98,
+               "bc-offshore-north": 159}
+UNOWNED_TILES = "bc-unowned-tiles.json"  # the reviewed gaps next to the owned tiles (tests/fixtures/README.md)
+UNOWNED_COAST_ALLOWED: set[tuple[int, int]] = set()  # unowned tiles known to hold coastline, owner-approved
+
+
+def _neighbors(tile):
+    x, y = tile
+    return {(x + a, y + b) for a in (-1, 0, 1) for b in (-1, 0, 1)} - {tile}
+
+
+def _unowned_next_to_owned(regions_dir, owned):
+    """The unowned zoom-10 tiles that touch an owned tile (edge or corner) and meet the Canada polygon."""
+    from chartpack.enc.bc import load_canada
+
+    canada = load_canada(regions_dir)
     every = set().union(*owned.values())
-    assert sum(len(t) for t in owned.values()) == len(every)
-    assert all(owned[name] for name in BC_INSHORE + BC_OFFSHORE)
-    for name in BC_INSHORE:
-        assert tiles_meeting(regions[name].bbox) <= every, name
-    for name in BC_OFFSHORE:
-        assert tiles_meeting_area(regions[name].area) <= every, name
+    near = set().union(*(_neighbors(t) for t in every)) - every
+    return {t for t in near if canada.intersection(box(*tile_bounds(GRID_ZOOM, *t))).area > 0}
+
+
+def test_every_bc_tile_has_one_owner(regions_dir, fixtures_dir):
+    """Each region owns the pinned number of tiles (a moved box or a changed grid order fails here until the table
+    is updated on purpose), and the unowned tiles next to the owned ones that meet the Canada polygon are exactly
+    the reviewed list: a new gap fails the test. The list holds the known gaps (Portland Canal and Observatory
+    Inlet, the Vancouver Island interior column (154, 347) and (154, 348), inland and deep-ocean edges)."""
+    _, owned = _owned_all(regions_dir)
+    assert {name: len(tiles) for name, tiles in owned.items()} == TILE_COUNTS
+    gaps = {tuple(t) for t in json.loads((fixtures_dir / UNOWNED_TILES).read_text())}
+    assert _unowned_next_to_owned(regions_dir, owned) == gaps
+    assert {(154, 347), (154, 348)} <= gaps
+
+
+def test_no_unowned_tile_holds_coastline(regions_dir, fixtures_dir):
+    """No unowned tile next to an owned one holds Freshwater Atlas coastline, but for the owner-approved
+    UNOWNED_COAST_ALLOWED (empty): BC shore water always has a pack."""
+    path = fixtures_dir / COAST_TILES
+    if not path.is_file():
+        pytest.skip(f"tests/fixtures/{COAST_TILES} is written by the controller from the fetched coastline assets"
+                    " (plan 8 Task 15 Step 4)")
+    coast = {tuple(t) for t in json.loads(path.read_text())}
+    _, owned = _owned_all(regions_dir)
+    assert (_unowned_next_to_owned(regions_dir, owned) & coast) <= UNOWNED_COAST_ALLOWED
 
 
 def test_no_offshore_tile_holds_coastline(regions_dir, fixtures_dir):
