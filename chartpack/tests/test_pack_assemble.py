@@ -315,3 +315,102 @@ def test_bathy_notice_wave1_unchanged(test_region, tmp_path):
             "  NOAA NCEI Coastal Relief Model (CRM) volume 8, 2025, a US Government work.\n"
             "  Request: https://crm.test\n\nBoundaries:") in notice
     assert "NONNA" not in notice and "ETOPO" not in notice
+
+
+# ---- plan 8 Task 11: the charts pack's BC notice metadata and NOTICE (spec 7.3, 11)
+
+def _with_depth_sources(enc_pack_path, tmp_path, sources):
+    """A copy of the session enc.mbtiles whose cheekymarine:depth_sources is sources."""
+    import shutil
+
+    path = tmp_path / "enc.mbtiles"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(enc_pack_path, path)
+    with MBTiles.open(path) as m:
+        m.set_metadata({"cheekymarine:depth_sources": json.dumps(sources)})
+    return path
+
+
+DEPTH_SOURCES = [{"source": "nonna100", "asset": "nonna100-toba.tif", "sha256": "a" * 64},
+                 {"source": "fwa", "asset": "land-toba.geojson.gz", "sha256": "b" * 64},
+                 {"source": "nosurvey", "asset": "nosurvey-toba.geojson.gz", "sha256": "c" * 64}]
+
+
+def test_notice_areas_are_owned_tiles_inside_polygon(test_region, enc_pack_path, tmp_path):
+    """One feature of kind bc: the owned tiles cut to the Canada polygon, land included, not simplified; the
+    Alaskan water of a BC-owned tile (outside the polygon) is not in it. A pack whose tiles miss it: no feature."""
+    from shapely.geometry import box, shape
+
+    from chartpack.grid import tile_bounds
+
+    tiles = {(163, 356), (164, 356)}
+    w, s, e, n = tile_bounds(10, 163, 356)
+    canada = box(w + 0.1, s - 1, e + 1, n + 1).union(box(w + 0.01, s + 0.1, w + 0.0101, s + 0.2))  # a 7 m channel
+    region = dataclasses.replace(test_region, charts_kind="derived-inshore")
+    root = assemble_charts_pack(region, enc_pack_path, tmp_path / "a", content=tiles, canada=canada)
+    with MBTiles.open(root / "enc.mbtiles") as m:
+        areas = json.loads(m.metadata()["cheekymarine:notice_areas"])["features"]
+    assert [f["properties"] for f in areas] == [{"kind": "bc"}]
+    got = shape(areas[0]["geometry"])
+    owned = box(w, s, *tile_bounds(10, 164, 356)[2:])
+    assert got.symmetric_difference(owned.intersection(canada)).area < 1e-14
+    assert not got.intersects(box(w, s, w + 0.009, n))  # Alaskan water of the tile
+    assert got.intersects(box(w + 0.0100001, s + 0.15, w + 0.01009, s + 0.15001))  # the channel is kept
+    far = assemble_charts_pack(region, enc_pack_path, tmp_path / "b", content=tiles, canada=box(0, 0, 1, 1))
+    with MBTiles.open(far / "enc.mbtiles") as m:
+        assert json.loads(m.metadata()["cheekymarine:notice_areas"])["features"] == []
+
+
+def test_charts_notice_has_chs_and_bc_credit(test_region, enc_pack_path, tmp_path):
+    from chartpack.pack.assemble import CHS_NOTICE, OGL_BC_NOTICE
+
+    root = assemble_charts_pack(test_region, _with_depth_sources(enc_pack_path, tmp_path, DEPTH_SOURCES),
+                                tmp_path / "bc")
+    notice = (root / "NOTICE").read_text()
+    assert CHS_NOTICE in notice and OGL_BC_NOTICE in notice
+    assert f"nonna100-toba.tif (sha256 {'a' * 64})" in notice and f"land-toba.geojson.gz (sha256 {'b' * 64})" in notice
+    with MBTiles.open(root / "enc.mbtiles") as m:
+        assert m.metadata()["cheekymarine:data_notice"] == CHS_NOTICE
+    land_only = assemble_charts_pack(
+        test_region, _with_depth_sources(enc_pack_path, tmp_path / "f", DEPTH_SOURCES[1:2]), tmp_path / "land")
+    notice = (land_only / "NOTICE").read_text()
+    assert OGL_BC_NOTICE in notice and "Canadian Hydrographic" not in notice
+    with MBTiles.open(land_only / "enc.mbtiles") as m:
+        assert "cheekymarine:data_notice" not in m.metadata()
+    wave1 = (assemble_charts_pack(test_region, enc_pack_path, tmp_path / "us") / "NOTICE").read_text()
+    assert "Canadian Hydrographic" not in wave1 and "British Columbia" not in wave1
+
+
+def test_valdco_gains_no_value_from_derived(test_region, tmp_path):
+    """A derived pack's cheekymarine:valdco is a subset of regions/bc-valdco.toml, and cheekymarine:depth_sources
+    keeps only the inputs its features come from."""
+    import tomllib
+
+    import numpy as np
+    from shapely.geometry import box
+
+    from chartpack.bathy.blocks import SOURCE_NAMES
+    from chartpack.enc.derived import derived_features
+    from chartpack.enc.tiles import build_enc_mbtiles
+
+    levels = tomllib.loads((PROJECT / "regions" / "bc-valdco.toml").read_text())["levels_m"]
+    d, x0, y0, size = 0.0002, -124.0, 49.0, 120
+    rows, cols = np.mgrid[0:size, 0:size]
+    depth = (-1.0 + 140.0 * rows / size + 2.0 * np.sin(cols / 7.0)).astype(np.float32)
+    core = (x0, y0 - size * d, x0 + size * d, y0)
+    src = np.full(depth.shape, SOURCE_NAMES.index("nonna10"), np.int8)
+    land = box(x0, y0 - 10 * d, x0 + 10 * d, y0)
+    feats = derived_features(depth, src, (x0, d, 0.0, y0, 0.0, -d), core=core, levels_m=levels,
+                             nosurvey=shapely.Polygon(), land=land, lat=48.99)
+    region = dataclasses.replace(test_region, charts_kind="derived-inshore")
+    inputs = [{"source": "nonna10", "asset": "nonna10-x.tif", "sha256": "a" * 64},
+              {"source": "nonna100", "asset": "nonna100-x.tif", "sha256": "b" * 64},
+              {"source": "fwa", "asset": "land-x.geojson.gz", "sha256": "c" * 64},
+              {"source": "nosurvey", "asset": "nosurvey-x.geojson.gz", "sha256": "d" * 64}]
+    out = build_enc_mbtiles([], tmp_path / "enc.mbtiles", region=region, work=tmp_path / "work", zooms=(10, 16),
+                            canada=box(-125, 48, -123, 50), derived=feats, depth_sources=inputs)
+    with MBTiles.open(out) as m:
+        metadata = m.metadata()
+    valdco = [float(v) for v in json.loads(metadata["cheekymarine:valdco"])]
+    assert valdco and set(valdco) <= {float(v) for v in levels}
+    assert json.loads(metadata["cheekymarine:depth_sources"]) == [inputs[0], inputs[2]]

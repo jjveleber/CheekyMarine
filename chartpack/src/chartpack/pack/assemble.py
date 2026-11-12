@@ -9,7 +9,7 @@ from pathlib import Path
 import shapely
 from shapely.geometry import mapping, shape
 
-from chartpack.grid import canada_side
+from chartpack.grid import canada_side, tiles_area
 from chartpack.mbtiles import MBTiles
 from chartpack.region import Region
 from chartpack.seabed import cmecs, usseabed
@@ -29,6 +29,8 @@ BATHY_FILES = ("bathy.mbtiles", "dem.mbtiles", "bathy-coarse.mbtiles", "dem-coar
 
 # The CHS NONNA Licence notice (plan 8 spec 11), kept once in notices/chs.txt (package data).
 CHS_NOTICE = resources.files("chartpack").joinpath("notices", "chs.txt").read_text(encoding="utf-8").rstrip()
+# The Open Government Licence - British Columbia attribution (the Freshwater Atlas shoreline), notices/ogl-bc.txt.
+OGL_BC_NOTICE = resources.files("chartpack").joinpath("notices", "ogl-bc.txt").read_text(encoding="utf-8").rstrip()
 _NONNA = frozenset({"nonna10", "nonna100"})
 _DATUM_SENTENCE = ("Canadian depths are on Canadian chart datum and US depths on MLLW; the two differ slightly at the"
                    " border.")
@@ -75,7 +77,35 @@ def _notice(metadata: dict[str, str], name: str, version: str, cmecs_blocks: tup
     usgs = [text for src, text in (("usseabed", usseabed.NOTICE), ("usgs-cmecs", cmecs.notice(cmecs_blocks))) if src in srcs]
     survey = ("Bottom composition also from the U.S. Geological Survey (public domain; the USGS is the source):\n"
               + "\n".join(usgs) + "\n\n") if usgs else ""
-    return _NOTICE_HEAD.format(name=name, version=version, cells=cells) + survey + fonts
+    return _NOTICE_HEAD.format(name=name, version=version, cells=cells) + _derived_notice(metadata) + survey + fonts
+
+
+def _derived_notice(metadata: dict[str, str]) -> str:
+    """The NOTICE block of a charts pack's derived inputs (cheekymarine:depth_sources, plan 8 spec 11): the NONNA
+    assets with the datum sentence and the CHS notice, the shoreline with its credit; empty for a pack with none."""
+    depth = {d["source"]: d for d in json.loads(metadata.get("cheekymarine:depth_sources", "[]"))}
+    nonna = "".join(
+        f"  CHS {label} bathymetry, Canadian Hydrographic Service, Fisheries and Oceans Canada,\n"
+        "  under the CHS NONNA Licence and the Open Government Licence, Canada (the CHS notice below).\n"
+        f"  Asset: {depth[product]['asset']} (sha256 {depth[product]['sha256']})\n"
+        for product, label in (("nonna10", "NONNA-10"), ("nonna100", "NONNA-100")) if product in depth)
+    shore = "" if "fwa" not in depth else (
+        "  Land and shoreline from the BC Freshwater Atlas coastline, Province of British Columbia.\n"
+        f"  Asset: {depth['fwa']['asset']} (sha256 {depth['fwa']['sha256']})\n{OGL_BC_NOTICE}\n")
+    if not (nonna or shore):
+        return ""
+    chs = f"{_DATUM_SENTENCE}\n\n{CHS_NOTICE}\n\n" if nonna else ""
+    return ("Inside the Canada polygon no NOAA chart content is shown; depth and shoreline there are derived:\n"
+            f"{nonna}{shore}\n{chs}")
+
+
+def charts_notice_areas(content: set[tuple[int, int]] | None, canada: shapely.Geometry | None) -> dict:
+    """cheekymarine:notice_areas of a charts pack (plan 8 spec 7.3): its owned tiles (for the overview, every owned
+    tile of the grid) cut to the Canada polygon, land included, as one feature of kind bc, not simplified, so a
+    narrow channel is never lost. No feature when they do not meet it."""
+    area = _polygons(tiles_area(content).intersection(canada)) if content and canada is not None else shapely.Polygon()
+    features = [] if area.is_empty else [{"type": "Feature", "properties": {"kind": "bc"}, "geometry": mapping(area)}]
+    return {"type": "FeatureCollection", "features": features}
 
 
 def write_styles(root: Path, pack: str, safety_contour_m: float | None = None, night: dict | None = None) -> None:
@@ -99,12 +129,21 @@ def _sprites_glyphs_readme(root: Path, sprite_name: str, title: str) -> None:
     (root / "README.md").write_text(f"# {title}\n\n{_contract_section()}")
 
 
-def assemble_charts_pack(region: Region, enc_mbtiles: Path, out_dir: Path) -> Path:
+def assemble_charts_pack(region: Region, enc_mbtiles: Path, out_dir: Path,
+                         content: set[tuple[int, int]] | None = None, canada: shapely.Geometry | None = None) -> Path:
+    """The charts pack directory. enc.mbtiles gets cheekymarine:notice_areas (charts_notice_areas of content, the
+    pack's owned tiles or the overview's content tiles, and canada) and, when its depth_sources hold NONNA,
+    cheekymarine:data_notice (the CHS notice)."""
     root = Path(out_dir) / f"charts-{region.name}-{region.charts_version}"
     root.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(enc_mbtiles, root / "enc.mbtiles")
     with MBTiles.open(enc_mbtiles) as m:
         metadata = m.metadata()
+    notice = {"cheekymarine:notice_areas": json.dumps(charts_notice_areas(content, canada))}
+    if _NONNA & {d["source"] for d in json.loads(metadata.get("cheekymarine:depth_sources", "[]"))}:
+        notice["cheekymarine:data_notice"] = CHS_NOTICE
+    with MBTiles.open(root / "enc.mbtiles") as m:
+        m.set_metadata(notice)
     safety_contour = _safety_contour_m(metadata)
 
     write_styles(root, "charts", safety_contour)

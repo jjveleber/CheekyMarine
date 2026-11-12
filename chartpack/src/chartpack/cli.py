@@ -392,7 +392,7 @@ def _build_enc(args: argparse.Namespace) -> int:
                             area=area, canada=canada if meets else None, derived=derived,
                             depth_sources=depth_sources)
     keep_tiles(enc, owned, minzoom=zooms[0], maxzoom=zooms[1], content=content)
-    print(_finish(assemble_charts_pack(region, enc, args.out), region))
+    print(_finish(assemble_charts_pack(region, enc, args.out, content=content, canada=canada), region))
     return 0
 
 
