@@ -858,6 +858,7 @@ TestCase {
         property var packsInUse: []
         property var packNotices: []
         property var dataNotices: []
+        property bool bcInstalled: false
         property var packModes: ({})
         property var packs: []
         property string daemonVersion: ""
@@ -897,16 +898,21 @@ TestCase {
         appInfoStub.packs = []
         appInfoStub.packsInUse = packs("charts", 2, "")
         appInfoStub.dataNotices = [chsNotice]
+        appInfoStub.bcInstalled = false // data notices alone (an ETOPO-only pack) do not make the BC line
         let splash = createTemporaryObject(splashComp, testCase, { width: 1024, height: 600, appInfo: appInfoStub })
+        compare(H.byName(splash, "splashNotice").text, "")
+        appInfoStub.bcInstalled = true
+        splash = createTemporaryObject(splashComp, testCase, { width: 1024, height: 600, appInfo: appInfoStub })
         compare(H.byName(splash, "splashNotice").text, line)
         splash = createTemporaryObject(splashComp, testCase, { width: 1024, height: 600, appInfo: appInfoStub, noticeShown: false })
         compare(H.byName(splash, "splashNotice").text, "")
         appInfoStub.packsInUse = packs("charts", 2, "charts notice")
         splash = createTemporaryObject(splashComp, testCase, { width: 1024, height: 600, appInfo: appInfoStub })
         compare(H.byName(splash, "splashNotice").text, "charts notice\n" + line)
-        appInfoStub.dataNotices = []
+        appInfoStub.bcInstalled = false
         splash = createTemporaryObject(splashComp, testCase, { width: 1024, height: 600, appInfo: appInfoStub })
         compare(H.byName(splash, "splashNotice").text, "charts notice")
+        appInfoStub.dataNotices = []
         appInfoStub.packsInUse = packs("charts", 2, "")
         splash = createTemporaryObject(splashComp, testCase, { width: 1024, height: 600, appInfo: appInfoStub })
         compare(H.byName(splash, "splashNotice").text, "")

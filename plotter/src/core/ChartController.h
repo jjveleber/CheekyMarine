@@ -38,6 +38,8 @@ class ChartController : public QObject {
     // The distinct paragraphs (blank-line separated) of the cheekymarine:data_notice texts of the files shown,
     // in first-seen order: the CHS, shoreline and ETOPO credits.
     Q_PROPERTY(QStringList dataNotices READ dataNotices CONSTANT)
+    // True when a charts or bathy file shown has a BC notice area (a BC pack is installed).
+    Q_PROPERTY(bool bcInstalled READ bcInstalled CONSTANT)
     // Per kind with a pack shown ("charts", "bathy"): "single", "merged", "merged-stale" (merged
     // files kept, packs differ) or "single-fallback" (merged files missing or damaged).
     Q_PROPERTY(QVariantMap packModes READ packModes CONSTANT)
@@ -74,6 +76,7 @@ public:
     QString notice() const { return m_notice; }
     QStringList packNotices() const { return m_packNotices; }
     QStringList dataNotices() const { return m_dataNotices; }
+    bool bcInstalled() const { return !m_chartsAreas.isEmpty() || !m_bathyAreas.isEmpty(); }
     QVariantMap packModes() const { return m_packModes; }
     QVariantList legend() const { return m_legend; }
     QVariantList legendCategories() const { return m_legendCategories; }

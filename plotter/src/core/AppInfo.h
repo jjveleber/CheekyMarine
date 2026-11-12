@@ -28,12 +28,14 @@ class AppInfo : public QObject {
     Q_PROPERTY(QVariantMap packModes READ packModes CONSTANT)
     // ChartController::dataNotices: the data notice paragraphs (CHS, shoreline, ETOPO) of the files shown, shown in full in About.
     Q_PROPERTY(QStringList dataNotices READ dataNotices CONSTANT)
+    // ChartController::bcInstalled: a file shown has a BC notice area (the Splash BC line).
+    Q_PROPERTY(bool bcInstalled READ bcInstalled CONSTANT)
 
 public:
     // `scanned` is every pack found; `inUse` the ones the loaded styles read (ChartController::packsInUse).
     explicit AppInfo(const QList<PackInfo>& scanned, const QList<PackInfo>& inUse = {}, const QString& setVersion = {},
                      const QStringList& packNotices = {}, const QVariantMap& packModes = {},
-                     const QStringList& dataNotices = {}, QObject* parent = nullptr);
+                     const QStringList& dataNotices = {}, bool bcInstalled = false, QObject* parent = nullptr);
 
     QString appVersion() const;
     QString setVersion() const { return m_setVersion; }
@@ -44,6 +46,7 @@ public:
     QStringList packNotices() const { return m_packNotices; }
     QVariantMap packModes() const { return m_packModes; }
     QStringList dataNotices() const { return m_dataNotices; }
+    bool bcInstalled() const { return m_bcInstalled; }
 
 public slots:
     // From N2kClient::daemonVersion (every hello). A new hello clears an earlier mismatch: the
@@ -65,6 +68,7 @@ private:
     QStringList m_packNotices;
     QVariantMap m_packModes;
     QStringList m_dataNotices;
+    bool m_bcInstalled = false;
 };
 
 // The `set` of a cheekymarine.lock (installer/README.md, "Lock format"), or empty when the file is

@@ -553,6 +553,28 @@ private slots:
         QTest::qWait(500);
         QCOMPARE(r.ctrl->notice(), kUsNotice());
     }
+    void bcInstalledFollowsNoticeAreas() {
+        {
+            Rig r;
+            QVERIFY(r.settings);
+            r.make();
+            QVERIFY(!r.ctrl->bcInstalled());
+        }
+        {
+            Rig r;
+            QVERIFY(r.settings);
+            QVERIFY(setFileMeta(r.chartsDir() + "/enc.mbtiles", "cheekymarine:notice_areas", kBcArea));
+            r.make();
+            QVERIFY(r.ctrl->bcInstalled());
+        }
+        {
+            Rig r;
+            QVERIFY(r.settings);
+            QVERIFY(setFileMeta(r.packsDir() + "/bathy-puget-north-1.0.0/bathy.mbtiles", "cheekymarine:notice_areas", kBcArea));
+            r.make();
+            QVERIFY(r.ctrl->bcInstalled());
+        }
+    }
     void dataNoticesHoldsEachParagraphOnce() {
         Rig r;
         QVERIFY(r.settings);

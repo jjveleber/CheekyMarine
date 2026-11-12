@@ -53,7 +53,7 @@ Rectangle {
     readonly property string noticeText: {
         const first = splash.appInfo.packsInUse.find(p => p.kind === "charts" && p.onDisk !== false && p.notice !== "")
         return [first !== undefined && splash.noticeShown ? first.notice : "",
-                splash.noticeShown && splash.appInfo.dataNotices.length > 0 ? "BC: not for navigation. See About for the CHS notice." : ""]
+                splash.noticeShown && splash.appInfo.bcInstalled ? "BC: not for navigation. See About for the CHS notice." : ""]
             .concat(splash.appInfo.packNotices)
             .filter(t => t !== "").join("\n")
     }
