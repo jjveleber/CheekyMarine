@@ -60,3 +60,10 @@ and member names, cut from the real download of 2026-10-29. Licences: chartpack/
   146, 221 (all outside the test cell); `CMECS_OffshoreTacoma` FIDs 3601, 3494, 457, 731;
   `CMECS_OffshoreBurien` FIDs 1865, 20, 1599, 1503, 2632, 1000. Their sizes differ from the published
   zips, so tests that fetch them patch the pinned sizes.
+
+## Wave 1 owners
+
+`wave1-owners.json` is the zoom-10 owner map of wave 1 (`[x, y, region]` per tile, sorted by x then y), written
+on 2026-11-11 from the plan 7 grid code (commit 872bd0c, before plan 8 Task 5): `owned_tiles` of each region in
+`regions/grid.toml`, with the five wave 1 region files and the real `grid.toml`. `test_wave1_owners_exact` checks
+that later grid code gives the same map: no wave 1 tile gained, lost or moved.

@@ -44,22 +44,63 @@ def tiles_meeting(bbox, z: int = GRID_ZOOM) -> set[tuple[int, int]]:
     return {(x, y) for x in range(x0, x1 + 1) for y in range(y0, y1 + 1)}
 
 
-def assign(regions: list[Region], order: list[str], clip: shapely.Geometry | None) -> dict[tuple[int, int], str]:
-    """Each zoom-10 tile meeting a region box goes to the first name in `order` whose box meets it;
-    a tile fully inside `clip` goes to no one."""
+def tiles_meeting_area(geom: shapely.Geometry, z: int = GRID_ZOOM) -> set[tuple[int, int]]:
+    """XYZ tiles whose interior meets the polygon's interior (an edge touch does not count)."""
+    shapely.prepare(geom)
+    return {t for t in tiles_meeting(geom.bounds, z)
+            if geom.intersects(tile := box(*tile_bounds(z, *t))) and not geom.touches(tile)}
+
+
+def _read_clip(path: Path) -> shapely.Geometry:
+    data = json.loads(Path(path).read_text())
+    return shape(data.get("geometry", data))
+
+
+def assign(regions: list[Region], order: list[str]) -> dict[tuple[int, int], str]:
+    """Each zoom-10 tile meeting a region's area (its [area] polygon, else its box) goes to the first name in
+    `order` that meets it and can take it. A region with a clip does not take a tile wholly inside its clip
+    (water only on the Canadian side), so the tile falls through to a region listed later (plan 8 spec 4)."""
     by_name = {r.name: r for r in regions if not r.overview}
     if unlisted := sorted(set(by_name) - set(order)):
         raise RegionError(f"region(s) not in the grid order: {', '.join(unlisted)}")
     if unknown := [n for n in order if n not in by_name]:
         raise RegionError(f"grid order names region(s) that were not given: {', '.join(unknown)}")
+    # Inshore water must never fall under an offshore pack's rules: the inshore regions (US enc packs and BC
+    # derived-inshore packs) are listed first.
+    offshore = [i for i, n in enumerate(order) if by_name[n].charts_kind == "derived-offshore"]
+    inshore = [i for i, n in enumerate(order) if by_name[n].charts_kind != "derived-offshore"]
+    if offshore and inshore and offshore[0] < inshore[-1]:
+        raise RegionError(f"grid order lists offshore region {order[offshore[0]]} before inshore region"
+                          f" {order[inshore[-1]]}")
+    clips: dict[Path, shapely.Geometry] = {}
     owner: dict[tuple[int, int], str] = {}
     for name in order:
-        for tile in tiles_meeting(by_name[name].bbox):
-            owner.setdefault(tile, name)
-    if clip is not None:
-        shapely.prepare(clip)
-        owner = {t: n for t, n in owner.items() if not clip.contains(box(*tile_bounds(GRID_ZOOM, *t)))}
+        region = by_name[name]
+        clip = None
+        if region.clip is not None:
+            if region.clip not in clips:
+                clips[region.clip] = _read_clip(region.clip)
+                shapely.prepare(clips[region.clip])
+            clip = clips[region.clip]
+        tiles = tiles_meeting(region.bbox) if region.area is None else tiles_meeting_area(region.area)
+        for tile in tiles:
+            if tile in owner or (clip is not None and clip.contains(box(*tile_bounds(GRID_ZOOM, *tile)))):
+                continue
+            owner[tile] = name
     return owner
+
+
+def canada_side(clip: shapely.Geometry, tile: tuple[int, int], owner: Region) -> shapely.Geometry:
+    """The part of the zoom-10 tile in the Canadian column of plan 8 spec 6: the whole tile for a BC owner
+    (charts kind other than enc), else the tile cut by `clip` (the Canadian side of a US pack's tile)."""
+    whole = box(*tile_bounds(GRID_ZOOM, *tile))
+    return whole if owner.charts_kind != "enc" else whole.intersection(clip)
+
+
+def offshore_shore_tiles(owner: dict[tuple[int, int], str], regions: dict[str, Region],
+                         coast_tiles: set[tuple[int, int]]) -> set[tuple[int, int]]:
+    """Tiles owned by an offshore region that hold coastline: shore water is never offshore, so this must be empty."""
+    return {t for t, name in owner.items() if regions[name].charts_kind == "derived-offshore" and t in coast_tiles}
 
 
 def load_grid(path: Path) -> list[str]:
@@ -76,6 +117,12 @@ def owned_tiles(region: Region, regions_dir: Path) -> set[tuple[int, int]] | Non
     """The zoom-10 tiles this region pack owns; None for the overview, which owns no zoom-10 tile."""
     if region.overview:
         return None
+    return {tile for tile, owner in owners(region, regions_dir).items() if owner.name == region.name}
+
+
+def owners(region: Region, regions_dir: Path) -> dict[tuple[int, int], Region]:
+    """Every zoom-10 tile of the grid order in regions_dir/grid.toml with the region that owns it (assign), with
+    `region` standing for its own file; region must be in the order."""
     regions_dir = Path(regions_dir)
     order = load_grid(regions_dir / "grid.toml")
     if region.name not in order:
@@ -89,14 +136,8 @@ def owned_tiles(region: Region, regions_dir: Path) -> set[tuple[int, int]] | Non
         if not path.is_file():
             raise RegionError(f"grid order names {name} but {path} does not exist")
         regions.append(load_region(path))
-    clips = {r.clip for r in regions if r.clip is not None}
-    geoms = []
-    for p in sorted(clips):
-        data = json.loads(p.read_text())
-        geoms.append(shape(data.get("geometry", data)))
-    clip = shapely.union_all(geoms) if geoms else None
-    owner = assign(regions, order, clip)
-    return {tile for tile, name in owner.items() if name == region.name}
+    by_name = {r.name: r for r in regions}
+    return {tile: by_name[name] for tile, name in assign(regions, order).items()}
 
 
 def content_tiles(region: Region, regions_dir: Path) -> set[tuple[int, int]]:
@@ -108,6 +149,27 @@ def content_tiles(region: Region, regions_dir: Path) -> set[tuple[int, int]]:
     regions_dir = Path(regions_dir)
     return set().union(*(owned_tiles(load_region(regions_dir / f"{name}.toml"), regions_dir)
                          for name in load_grid(regions_dir / "grid.toml")))
+
+
+def fetch_extent(region: Region, regions_dir: Path) -> tuple[float, float, float, float]:
+    """(W, S, E, N) the fetch workflow pulls for a region: its content tiles' bounds when it is in grid.toml, else
+    its bbox, grown by BLOCK_MARGIN_DEG and snapped outward to the overview cell for the overview, else to the
+    coarse cell. Each read is snapped outward the same way (iter_blocks, overview_bounds), so every read is inside
+    the extent, which is at most one cell past the grown bounds."""
+    # Imported here, not at the top: chartpack.bathy.blocks imports this module.
+    from chartpack.bathy.blocks import BLOCK_MARGIN_DEG, COARSE_RES_DEG, OVERVIEW_RES_DEG, snap_out
+
+    regions_dir = Path(regions_dir)
+    grid = regions_dir / "grid.toml"
+    if grid.is_file() and region.name in load_grid(grid):
+        tiles = content_tiles(region, regions_dir)
+        if not tiles:
+            raise RegionError(f"region {region.name} owns no zoom-10 tile, so it has no fetch extent")
+        w, s, e, n = tiles_area(tiles).bounds
+    else:
+        w, s, e, n = region.bbox
+    m = BLOCK_MARGIN_DEG
+    return snap_out((w - m, s - m, e + m, n + m), OVERVIEW_RES_DEG if region.overview else COARSE_RES_DEG)
 
 
 def tiles_area(tiles: set[tuple[int, int]], margin_deg: float = 0.0) -> shapely.Geometry:

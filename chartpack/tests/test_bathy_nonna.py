@@ -191,9 +191,11 @@ def test_index_boxes_filters_and_sorts(tmp_path):
     ]
 
 
-def test_nonna_sign_and_nodata(tmp_path):
+@pytest.mark.parametrize("alg", ["near", "min"])
+def test_nonna_sign_and_nodata(tmp_path, alg):
     """Raw NONNA is elevation (depths negative, drying heights positive); read_nonna gives depth positive down,
-    so a drying height reads as a negative depth, and nan where the grid has no data."""
+    so a drying height reads as a negative depth, and nan where the grid has no data, with nearest or min
+    resampling (min on depth keeps the native value of a cell that lies in one native cell)."""
     path = write_nonna(tmp_path / "n.tif", np.array([[NODATA, -30.0, 1.5]], np.float32), "nonna100", A_COL // 8,
                        A_ROW // 8)
     ds = gdal.Open(str(path))
@@ -201,7 +203,7 @@ def test_nonna_sign_and_nodata(tmp_path):
     lon = [math.degrees((x0 + (i + 0.5) * px) / 6378137.0) for i in range(3)]
     lat = math.degrees(2 * math.atan(math.exp((y0 + py / 2) / 6378137.0)) - math.pi / 2)
     res = 0.0001
-    grid = nonna.read_nonna(path, (lon[0] - 0.0005, lat - 0.0005, lon[2] + 0.0005, lat + 0.0005), res)
+    grid = nonna.read_nonna(path, (lon[0] - 0.0005, lat - 0.0005, lon[2] + 0.0005, lat + 0.0005), res, alg)
     gx0, gdx, _, gy0, _, gdy = grid.transform
     assert gdx == pytest.approx(res) and gdy == pytest.approx(-res)
     row = int((lat - gy0) / gdy)
@@ -209,6 +211,27 @@ def test_nonna_sign_and_nodata(tmp_path):
     assert math.isnan(values[0]) and values[1:] == [30.0, -1.5]
     assert math.isnan(grid.data[0, 0])  # outside the raster
     assert grid.data.dtype == np.float32 and math.isnan(grid.nodata)
+
+
+
+def test_read_nonna_near_and_min(tmp_path):
+    """Two native columns, 10 m and 20 m deep, read at a quarter of a native cell on a grid offset from the cell
+    edges: nearest gives only 10 and 20 (the cell under each center), and min on depth gives 10 (the shallower)
+    in the target cell that straddles the shared edge with its center on the deep side."""
+    path = write_nonna(tmp_path / "n.tif", np.tile(np.array([-10.0, -20.0], np.float32), (3, 1)), "nonna100",
+                       A_COL // 8, A_ROW // 8)
+    x0, px, _, y0, _, py = gdal.Open(str(path)).GetGeoTransform()
+    lon = [math.degrees((x0 + i * px) / 6378137.0) for i in range(3)]  # cell edges
+    lat = math.degrees(2 * math.atan(math.exp((y0 + 1.5 * py) / 6378137.0)) - math.pi / 2)  # the middle row
+    res = (lon[1] - lon[0]) / 4
+    off = 3 * res / 4  # the grid sits off the cell edges by 3/4 of a target cell
+    bbox = (lon[0] + off, lat - res, lon[2] + off, lat + res)
+    near, low = (nonna.read_nonna(path, bbox, res, alg).data for alg in ("near", "min"))
+    assert set(np.unique(near[np.isfinite(near)])) == {10.0, 20.0}
+    assert set(np.unique(low[np.isfinite(low)])) == {10.0, 20.0}
+    both = np.isfinite(near) & np.isfinite(low)
+    assert ((near == 20.0) & (low == 10.0))[both].any()  # the straddling cell
+    assert (low[both] <= near[both]).all()  # never deeper than the nearest value
 
 
 def test_stats_count_only_chunks_in_the_mosaic(tmp_path, fixtures_dir, monkeypatch):

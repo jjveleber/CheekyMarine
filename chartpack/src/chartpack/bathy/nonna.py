@@ -176,12 +176,19 @@ def fetch_nonna(product: str, boxes: list[tuple], out: Path, session) -> dict:
     return {"chunks": len(used), "bytes": out.stat().st_size, "seconds": round(time.monotonic() - start, 3)}
 
 
-def read_nonna(path: Path, bbox, res_deg: float) -> Grid:
-    """The mosaic over bbox (W, S, E, N) in EPSG:4326 at res_deg, nearest neighbor so each cell keeps a native
-    value: depth in meters, positive down (a drying height reads negative), nan where the grid has no data."""
+# read_nonna resampling: GDAL's name for each. "min" is the shallowest depth of the native cells under a target
+# cell, which on the stored elevations (depth negated) is their max.
+_RESAMPLING = {"near": "near", "min": "max"}
+
+
+def read_nonna(path: Path, bbox, res_deg: float, alg: str = "near") -> Grid:
+    """The mosaic over bbox (W, S, E, N) in EPSG:4326 at res_deg: depth in meters, positive down (a drying height
+    reads negative), nan where the grid has no data. alg: "near" (each cell keeps the value of the native cell
+    under its center: the Fish depths and the mask of where NONNA has data) or "min" (the shallowest native
+    value under the cell, so a shoal cell survives: the Nav depths)."""
     w, s, e, n = bbox
     ds = gdal.Warp("", str(path), format="MEM", dstSRS="EPSG:4326", outputBounds=(w, s, e, n),
-                   xRes=res_deg, yRes=res_deg, resampleAlg="near", dstNodata=NODATA)
+                   xRes=res_deg, yRes=res_deg, resampleAlg=_RESAMPLING[alg], dstNodata=NODATA)
     data = ds.GetRasterBand(1).ReadAsArray().astype(np.float32)
     data[data >= 3e38] = np.nan
     return Grid(data=-data, nodata=float("nan"), transform=tuple(ds.GetGeoTransform()), crs=ds.GetProjection())

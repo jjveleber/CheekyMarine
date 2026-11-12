@@ -12,6 +12,7 @@ ICONS = {
     "buoy-can", "buoy-nun", "buoy-spherical", "buoy-pillar", "buoy-spar", "beacon-lateral", "beacon-cardinal",
     "beacon-generic", "light-flare", "isolated-danger", "kelp", "resare-tick",
 } | {f"hazard-{shape}{danger}-{palette}" for shape in HAZARD_SHAPES for danger in ("", "-danger") for palette in PALETTES}
+ICONS |= {f"pat-{grade}-{palette}" for grade in ("coarse-survey", "rough") for palette in PALETTES}  # fish grade patterns
 FONTS = {"Noto Sans Regular", "Noto Sans Bold"}
 
 

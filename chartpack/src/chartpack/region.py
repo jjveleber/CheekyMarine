@@ -1,14 +1,20 @@
 """Region definition: which cells, bathymetry sources and datum file make a pack."""
 
+import math
 import re
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 
-from chartpack.datum import SOURCE_VERTICAL
+import shapely
+from shapely.geometry import Polygon
+
 from chartpack.seabed.cmecs import BLOCKS
 
 SEABED_SOURCES = ("enc", "usseabed", "usgs-cmecs")  # spec 6.10
+BATHY_SOURCES = ("cudem", "crm", "nonna10", "nonna100", "etopo")  # plan 8 spec 6
+COARSE_SOURCES = ("crm", "nonna100", "etopo")
+CHARTS_KINDS = ("enc", "derived-inshore", "derived-offshore")  # NOAA ENC charts, or derived from NONNA (plan 8 spec 4)
 
 
 class RegionError(Exception):
@@ -39,6 +45,8 @@ class Region:
     seabed_sources: tuple[str, ...] = ("enc",)
     cmecs_blocks: tuple[str, ...] = ()  # keys of seabed.cmecs.BLOCKS
     overview: bool = False  # the zoom 6 to 9 overview pack: owns no zoom-10 tile
+    area: shapely.Geometry | None = None  # [area] polygon (lon, lat); None: the area is the bbox
+    charts_kind: str = "enc"  # one of CHARTS_KINDS
 
 
 def _need(table: dict, key: str, where: str = ""):
@@ -52,6 +60,22 @@ def _overview(data: dict) -> bool:
     if not isinstance(value, bool):
         raise RegionError("overview must be true or false")
     return value
+
+
+def _area(data: dict, bbox: tuple[float, float, float, float]) -> shapely.Geometry | None:
+    """The [area] polygon (GeoJSON polygon coordinates: an outline, then holes), or None; bbox must be its bounds."""
+    if "area" not in data:
+        return None
+    rings = _need(data["area"], "polygon", "area.")
+    try:
+        area = Polygon(rings[0], rings[1:])
+    except (IndexError, TypeError, ValueError) as error:
+        raise RegionError(f"area.polygon is not GeoJSON polygon coordinates: {error}") from None
+    if not area.is_valid:
+        raise RegionError(f"area.polygon is not a valid polygon: {shapely.is_valid_reason(area)}")
+    if not all(math.isclose(a, b, abs_tol=1e-9) for a, b in zip(area.bounds, bbox)):
+        raise RegionError(f"bbox {list(bbox)} must be the bounds of area.polygon, {list(area.bounds)}")
+    return area
 
 
 def load_region(path: Path) -> Region:
@@ -87,11 +111,12 @@ def load_region(path: Path) -> Region:
     if not bathy_sources:
         raise RegionError("bathy.sources must list at least one source")
     for source in bathy_sources:
-        if source not in SOURCE_VERTICAL:
+        if source not in BATHY_SOURCES:
             raise RegionError(f"unknown bathy source: {source}")
 
-    if coarse_fallback == "crm" and "crm" not in bathy_sources:
-        raise RegionError("coarse_fallback = 'crm' needs crm in bathy.sources (set coarse_fallback = 'enc' for CUDEM only)")
+    if coarse_fallback == "crm" and not set(COARSE_SOURCES) & set(bathy_sources):
+        raise RegionError("coarse_fallback = 'crm' needs a coarse source (crm, nonna100 or etopo) in bathy.sources"
+                          " (set coarse_fallback = 'enc' for CUDEM only)")
     overview = _overview(data)
     if overview and bathy_sources != ["crm"]:
         raise RegionError('an overview region needs bathy.sources = ["crm"]: it is built from one CRM read')
@@ -106,6 +131,11 @@ def load_region(path: Path) -> Region:
         raise RegionError("seabed.sources must include enc, the baseline bottom marks")
     if ("usgs-cmecs" in seabed_sources) != bool(cmecs_blocks):
         raise RegionError("seabed.cmecs_blocks must be listed exactly when seabed.sources has usgs-cmecs")
+
+    area = _area(data, bbox)
+    charts_kind = data.get("charts", {}).get("kind", "enc")
+    if charts_kind not in CHARTS_KINDS:
+        raise RegionError(f"charts.kind must be one of {', '.join(CHARTS_KINDS)}, not {charts_kind!r}")
 
     clip = data.get("clip")
     views = [
@@ -133,4 +163,6 @@ def load_region(path: Path) -> Region:
         seabed_sources=seabed_sources,
         cmecs_blocks=cmecs_blocks,
         overview=overview,
+        area=area,
+        charts_kind=charts_kind,
     )

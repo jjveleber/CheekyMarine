@@ -1,10 +1,12 @@
-"""Merge CUDEM windows over a coarse fallback into one MLLW depth grid, with coverage and clip helpers.
+"""Merge depth sources into one depth grid (CUDEM over a coarse fallback, or an ordered source list), with coverage
+and clip helpers.
 
 Pure numpy: to_mllw_depth, fill_land, tag_source (shapely only). GDAL only in the warp,
 polygonize and rasterize steps.
 """
 
 import json
+from collections.abc import Callable, Iterable
 
 import numpy as np
 from osgeo import gdal, ogr, osr
@@ -51,6 +53,38 @@ def _warp_depth(grid: Grid, offset_m: float, bbox, res_deg: float, alg: str) -> 
     )
     elev = out.GetRasterBand(1).ReadAsArray()
     return to_mllw_depth(elev, float("nan"), offset_m)
+
+
+def warp_depth(grid: Grid, bbox, res_deg: float, alg: str) -> np.ndarray:
+    """One elevation grid warped onto the lon/lat grid over bbox at res_deg, as depth (positive down, nan no data)."""
+    return _warp_depth(grid, 0.0, bbox, res_deg, alg)
+
+
+def merge_ordered(
+    layers: Iterable[tuple[int, Callable[[], np.ndarray], np.ndarray | None]], bbox, res_deg: float
+) -> tuple[Grid, np.ndarray]:
+    """Depth on the lon/lat grid over bbox (W, S, E, N) at res_deg from layers in priority order: per cell the
+    first layer with a finite value wins, among the layers allowed there.
+
+    Each layer is (index, read, where): read() gives its depth on the target grid (nan: no data) and is called
+    once, in order, its array freed before the next; where (bool, target shape) holds the cells it may fill, None
+    every cell. The second result is the int8 index of the winning layer per cell, 0 where none has a value.
+    """
+    depth = source = None
+    for index, read, where in layers:
+        values = read()
+        if depth is None:
+            depth, source = np.full(values.shape, np.nan, np.float32), np.zeros(values.shape, np.int8)
+        take = np.isnan(depth) & np.isfinite(values)
+        if where is not None:
+            take &= where
+        depth[take] = values[take]
+        source[take] = index
+        del values, take
+    srs = osr.SpatialReference()
+    srs.ImportFromEPSG(4326)
+    transform = (bbox[0], res_deg, 0.0, bbox[3], 0.0, -res_deg)
+    return Grid(depth, float("nan"), transform, srs.ExportToWkt()), source
 
 
 def merge_to_mllw(

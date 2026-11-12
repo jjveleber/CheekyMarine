@@ -1,6 +1,9 @@
 import dataclasses
 import json
 
+import pytest
+import shapely
+
 from chartpack.mbtiles import MBTiles
 from chartpack.pack.assemble import PROJECT, assemble_charts_pack
 from chartpack.style.validate import check_style_sprites_glyphs
@@ -91,8 +94,11 @@ def test_bathy_pack_layout(test_region, tmp_path):
     root = assemble_bathy_pack(test_region, files, tmp_path / "out")
     assert root == tmp_path / "out" / "bathy-test-cell-0.1.0"
     names = sorted(str(p.relative_to(root)) for p in root.rglob("*") if p.is_file())
-    for name in BATHY_FILES:
-        assert (root / name).read_bytes() == files[name].read_bytes()
+    for name in BATHY_FILES:  # the built files, plus the notice metadata
+        with MBTiles.open(root / name) as copy, MBTiles.open(files[name]) as built:
+            assert list(copy.tiles_at(11)) == list(built.tiles_at(11))
+            md = copy.metadata()
+            assert md.pop("cheekymarine:notice_areas") and md == built.metadata()
     for want in ("bathy.mbtiles", "dem.mbtiles", "styles/fish-day.json", "styles/fish-dusk.json", "styles/fish-night.json",
                  "sprites/fish.json", "sprites/fish.png", "sprites/fish@2x.json", "sprites/fish@2x.png",
                  "glyphs/Noto Sans Bold/0-255.pbf", "README.md", "NOTICE", "OFL.txt"):
@@ -108,3 +114,204 @@ def test_bathy_pack_layout(test_region, tmp_path):
     assert "lakes.geojson (sha256 cd34)" in notice and "US Army Corps of Engineers" in notice
     assert "wa-stations.toml (sha256 ab12)" in notice and "GEOID18" in notice and "approximate MLLW" in notice
     assert "Pack contract" in (root / "README.md").read_text()
+
+
+# Plan 8 spec 11, verbatim (the maker filled in as the CheekyMarine project).
+CHS_PARAGRAPHS = (
+    "This product was made by the CheekyMarine project and contains intellectual property of the Canadian Hydrographic"
+    " Service (CHS) of the Department of Fisheries and Oceans.",
+    "This product does not meet the requirements of the Navigation Safety Regulations, 2020 under the Canada Shipping"
+    " Act, 2001. Charts and publications issued by or on the authority of CHS must be used to meet the requirements of"
+    " those regulations.",
+    "The copyright in the data are and remain the property of His Majesty the King in Right of Canada and shall not be"
+    " sold, licensed, leased, assigned or given to a third party.",
+    "The incorporation of CHS data in this product does not constitute an endorsement or an approval of this product by"
+    " the Canadian Hydrographic Service, the Department of Fisheries and Oceans or His Majesty the King in Right of"
+    " Canada.",
+)
+OGL_CANADA = ("Contains information licensed under the Open Government Licence – Canada.\n"
+              "https://open.canada.ca/en/open-government-licence-canada")
+DATUM_SENTENCE = ("Canadian depths are on Canadian chart datum and US depths on MLLW; the two differ slightly at the"
+                  " border.")
+
+
+def _bathy_files(tmp_path, coverage: dict[str, list[str] | None]) -> dict:
+    """The four bathy files with test metadata; coverage gives each vector file's cheekymarine:coverage list
+    (None: no key, as in a wave 1 file)."""
+    import numpy as np
+
+    from chartpack.bathy.dem import build_dem_mbtiles
+    from chartpack.pack.assemble import BATHY_FILES
+
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    for name in ("bathy.mbtiles", "bathy-coarse.mbtiles"):
+        with MBTiles.create(tmp_path / name, fmt="pbf") as m:
+            m.set_metadata({"cheekymarine:sources": json.dumps({
+                "crm": "https://crm.test", "datum": {"file": "wa-stations.toml", "sha256": "ab12"}})})
+            if coverage.get(name) is not None:
+                m.set_metadata({"cheekymarine:coverage": json.dumps(coverage[name])})
+    for name in ("dem.mbtiles", "dem-coarse.mbtiles"):
+        build_dem_mbtiles(np.full((40, 40), 20.0, np.float32), (-122.3, 0.001, 0, 47.9, 0, -0.001), tmp_path / name,
+                          maxzoom=11)
+    return {name: tmp_path / name for name in BATHY_FILES}
+
+
+def test_chs_notice_is_the_packaged_text():
+    """CHS_NOTICE is notices/chs.txt read through the package (one copy of the text), and the file ships in a
+    non-editable install (package data)."""
+    import tomllib
+    from importlib import resources
+
+    from chartpack.pack.assemble import CHS_NOTICE
+
+    assert CHS_NOTICE == resources.files("chartpack").joinpath("notices", "chs.txt").read_text(encoding="utf-8").rstrip()
+    assert CHS_NOTICE == "\n\n".join(CHS_PARAGRAPHS) + "\n\n" + OGL_CANADA
+    data = tomllib.loads((PROJECT / "pyproject.toml").read_text())["tool"]["setuptools"]["package-data"]
+    assert "notices/*.txt" in data["chartpack"]
+
+
+@pytest.mark.parametrize("coverage, chs", [
+    ({"bathy.mbtiles": ["nonna10"], "bathy-coarse.mbtiles": ["crm", "etopo"]}, True),
+    ({"bathy.mbtiles": [], "bathy-coarse.mbtiles": ["nonna100"]}, True),
+    ({"bathy.mbtiles": ["cudem"], "bathy-coarse.mbtiles": ["crm", "etopo"]}, False),
+    ({}, False),  # wave 1 files: no coverage list
+])
+def test_bathy_notice_has_chs_text_only_with_nonna(test_region, tmp_path, coverage, chs):
+    from chartpack.pack.assemble import BATHY_FILES, CHS_NOTICE, assemble_bathy_pack
+
+    root = assemble_bathy_pack(test_region, _bathy_files(tmp_path / "in", coverage), tmp_path / "out")
+    notice = (root / "NOTICE").read_text()
+    for text in CHS_PARAGRAPHS + (OGL_CANADA, DATUM_SENTENCE):
+        assert (text in notice) is chs, text
+    assert ("Canadian Hydrographic" in notice) is chs
+    assert "British Columbia" not in notice  # the shoreline credit is for charts packs only
+    assert "approximate MLLW" in notice and "SIL Open Font License" in notice
+    for name in BATHY_FILES:
+        with MBTiles.open(root / name) as m:
+            assert m.metadata().get("cheekymarine:data_notice") == (CHS_NOTICE if chs else None), name
+
+
+def _tiles_union(tiles):
+    from shapely.geometry import box
+    from shapely.ops import unary_union
+
+    from chartpack.grid import GRID_ZOOM, tile_bounds
+
+    return unary_union([box(*tile_bounds(GRID_ZOOM, *t)) for t in tiles])
+
+
+def test_notice_areas_metadata_is_geojson(test_region, tmp_path):
+    """cheekymarine:notice_areas on all four bathy files: a FeatureCollection of kind bc, the Canadian column of the
+    pack's owned tiles (whole tiles for a BC pack, the clip side for a US pack), not simplified; empty when the
+    pack has none (a US pack with no clip, or tiles wholly on the US side, or no owned tiles)."""
+    import dataclasses
+
+    from shapely.geometry import shape
+
+    from chartpack.pack.assemble import BATHY_FILES, assemble_bathy_pack
+
+    tiles = {(163, 356), (164, 356)}  # two neighbors at Possession Bar
+    w, s, e, n = _tiles_union(tiles).bounds
+    # a clip with a notch, cutting the west tile only: the cut keeps every vertex
+    notch = [(w - 1, (s + n) / 2), ((w + e) / 2 - 0.01, (s + n) / 2), ((w + e) / 2 - 0.02, n - 0.01),
+             ((w + e) / 2 - 0.03, (s + n) / 2 + 1e-4), ((w + e) / 2 - 0.03, n + 1), (w - 1, n + 1)]
+    clip_path = tmp_path / "clip.geojson"
+    clip = {"type": "Polygon", "coordinates": [[*notch, notch[0]]]}
+    clip_path.write_text(json.dumps({"type": "Feature", "properties": {}, "geometry": clip}))
+    cases = [
+        (dataclasses.replace(test_region, charts_kind="derived-inshore"), tiles, _tiles_union(tiles)),
+        (dataclasses.replace(test_region, clip=clip_path), tiles, _tiles_union(tiles).intersection(shape(clip))),
+        (test_region, tiles, None),  # a US pack with no clip
+        (dataclasses.replace(test_region, clip=clip_path), {(164, 357)}, None),  # wholly on the US side
+        (dataclasses.replace(test_region, charts_kind="derived-inshore"), None, None),  # no owned tiles given
+    ]
+    for i, (region, owned, want) in enumerate(cases):
+        root = assemble_bathy_pack(region, _bathy_files(tmp_path / f"in{i}", {}), tmp_path / f"out{i}", owned=owned)
+        for name in BATHY_FILES:
+            with MBTiles.open(root / name) as m:
+                areas = json.loads(m.metadata()["cheekymarine:notice_areas"])
+            assert areas["type"] == "FeatureCollection", (i, name)
+            if want is None:
+                assert areas["features"] == [], (i, name)
+                continue
+            [feature] = areas["features"]
+            assert feature["type"] == "Feature" and feature["properties"] == {"kind": "bc"}
+            got = shape(feature["geometry"])
+            assert got.is_valid and got.symmetric_difference(want).area < 1e-12, (i, name)
+            assert shapely.get_num_coordinates(got) == shapely.get_num_coordinates(want)  # not simplified
+
+
+# PR #122 review F1: the pack NOTICE and source metadata name every depth source the pack holds.
+
+def _sourced_files(tmp_path, sources: dict, coverage: list[str]) -> dict:
+    """The four bathy files with the given cheekymarine:sources (the datum added) and the coverage list on both
+    vector files."""
+    files = _bathy_files(tmp_path, {"bathy.mbtiles": coverage, "bathy-coarse.mbtiles": coverage})
+    for name in ("bathy.mbtiles", "bathy-coarse.mbtiles"):
+        with MBTiles.open(files[name]) as m:
+            m.set_metadata({"cheekymarine:pack": "bathy", "cheekymarine:sources": json.dumps(
+                {**sources, "datum": {"file": "wa-stations.toml", "sha256": "ab12"}})})
+    return files
+
+
+NONNA_SOURCES = {"nonna10": {"name": "nonna10-toba.tif", "sha256": "aa11"},
+                 "nonna100": {"name": "nonna100-toba.tif", "sha256": "bb22"}}
+ETOPO_SOURCES = {"etopo": [{"name": "N60W135", "file": "ETOPO_2022_v1_15s_N60W135_surface.tif"}]}
+ETOPO_LINE = "ETOPO depths are shifted by a fixed 4 m toward chart datum; no tide station data is used."
+
+
+def test_bathy_notice_names_nonna(test_region, tmp_path):
+    from chartpack.pack.assemble import assemble_bathy_pack
+
+    root = assemble_bathy_pack(test_region, _sourced_files(tmp_path / "in", NONNA_SOURCES, ["nonna10", "nonna100"]),
+                               tmp_path / "out")
+    notice = (root / "NOTICE").read_text()
+    bathy = notice[notice.index("Bathymetry:"):notice.index("Boundaries:")]
+    assert "NONNA-10" in bathy and "nonna10-toba.tif (sha256 aa11)" in bathy
+    assert "NONNA-100" in bathy and "nonna100-toba.tif (sha256 bb22)" in bathy
+    assert "CHS NONNA Licence" in bathy and "Open Government Licence" in bathy
+    assert "ETOPO" not in notice and "Coastal Relief Model" not in notice
+    from chartpack.pack.manifest import describe_pack
+
+    _, sources, _ = describe_pack(root)
+    assert {"source": "nonna10", "name": "nonna10-toba.tif", "sha256": "aa11"} in sources
+    assert {"source": "nonna100", "name": "nonna100-toba.tif", "sha256": "bb22"} in sources
+
+
+def test_bathy_notice_names_etopo(test_region, tmp_path):
+    from chartpack.pack.assemble import assemble_bathy_pack
+
+    root = assemble_bathy_pack(test_region, _sourced_files(tmp_path / "in", ETOPO_SOURCES, ["etopo"]), tmp_path / "out")
+    notice = (root / "NOTICE").read_text()
+    bathy = notice[notice.index("Bathymetry:"):notice.index("Boundaries:")]
+    assert "ETOPO 2022 15 Arc-Second Global Relief Model" in bathy and "https://doi.org/10.25921/fd45-gt74" in bathy
+    assert "CC0 1.0" in bathy and ETOPO_LINE in bathy and "N60W135" in bathy
+    assert "bathy/etopo.py" not in notice and "NONNA" not in notice
+    from chartpack.pack.manifest import describe_pack
+
+    _, sources, _ = describe_pack(root)
+    assert {"source": "etopo", "name": "N60W135", "file": "ETOPO_2022_v1_15s_N60W135_surface.tif"} in sources
+
+
+def test_bathy_notice_etopo_listed_but_not_drawn(test_region, tmp_path):
+    """A region that lists ETOPO whose coverage holds none (CRM filled the water): no ETOPO credit."""
+    from chartpack.pack.assemble import assemble_bathy_pack
+
+    files = _sourced_files(tmp_path / "in", {"crm": "https://crm.test", **ETOPO_SOURCES}, ["crm"])
+    notice = (assemble_bathy_pack(test_region, files, tmp_path / "out") / "NOTICE").read_text()
+    assert "ETOPO" not in notice and "Coastal Relief Model" in notice
+
+
+def test_bathy_notice_wave1_unchanged(test_region, tmp_path):
+    """A wave 1 style pack (CUDEM and CRM, no coverage list): the Bathymetry block is the plan 7 text."""
+    from chartpack.pack.assemble import assemble_bathy_pack
+
+    cudem = [{"name": "t1", "url": "u", "year": 2023, "version": 1}]
+    files = _sourced_files(tmp_path / "in", {"cudem": cudem, "crm": "https://crm.test"}, ["cudem", "crm"])
+    notice = (assemble_bathy_pack(test_region, files, tmp_path / "out") / "NOTICE").read_text()
+    assert ("Bathymetry:\n"
+            "  NOAA NCEI Continuously Updated Digital Elevation Model (CUDEM) 1/9 arc-second tiles,\n"
+            "  DOI 10.25921/ds9v-ky35, a US Government work.\n  CUDEM tiles used:\n  t1 (2023 v1)\n"
+            "  NOAA NCEI Coastal Relief Model (CRM) volume 8, 2025, a US Government work.\n"
+            "  Request: https://crm.test\n\nBoundaries:") in notice
+    assert "NONNA" not in notice and "ETOPO" not in notice

@@ -3,8 +3,13 @@
 import json
 import re
 import shutil
+from importlib import resources
 from pathlib import Path
 
+import shapely
+from shapely.geometry import mapping, shape
+
+from chartpack.grid import canada_side
 from chartpack.mbtiles import MBTiles
 from chartpack.region import Region
 from chartpack.seabed import cmecs, usseabed
@@ -21,6 +26,12 @@ FONTS = {"Noto Sans Regular": "NotoSans-Regular.ttf", "Noto Sans Bold": "NotoSan
 
 # Python twin of kBathyFiles in plotter/src/core/PackCatalog.h (same order).
 BATHY_FILES = ("bathy.mbtiles", "dem.mbtiles", "bathy-coarse.mbtiles", "dem-coarse.mbtiles")
+
+# The CHS NONNA Licence notice (plan 8 spec 11), kept once in notices/chs.txt (package data).
+CHS_NOTICE = resources.files("chartpack").joinpath("notices", "chs.txt").read_text(encoding="utf-8").rstrip()
+_NONNA = frozenset({"nonna10", "nonna100"})
+_DATUM_SENTENCE = ("Canadian depths are on Canadian chart datum and US depths on MLLW; the two differ slightly at the"
+                   " border.")
 
 _NOTICE_HEAD = """CheekyMarine charts pack {name} {version}
 
@@ -105,8 +116,28 @@ def assemble_charts_pack(region: Region, enc_mbtiles: Path, out_dir: Path) -> Pa
     return root
 
 
-def _bathy_notice(metadata: dict[str, str], name: str, version: str) -> str:
+def _etopo_citation(licences: str) -> str:
+    """The ETOPO 2022 citation and its fixed shift line from the project NOTICE, indented as a Bathymetry entry."""
+    m = re.search(r"^ETOPO 2022 15 Arc-Second.*?no tide station data is used\.$", licences, re.M | re.S)
+    if m is None:
+        raise RuntimeError(f"{PROJECT / 'NOTICE'} has no ETOPO 2022 citation")
+    return "".join(f"  {line}\n" for line in m.group(0).replace(" (bathy/etopo.py)", "").splitlines())
+
+
+def _bathy_notice(metadata: dict[str, str], name: str, version: str, chs: bool = False,
+                  coverage: frozenset[str] = frozenset()) -> str:
+    """The bathy pack NOTICE; chs adds the datum sentence and the CHS notice (the pack holds NONNA depth).
+    coverage (the sources the coverage layers hold) adds the NONNA assets and the ETOPO citation the pack draws."""
     sources = json.loads(metadata["cheekymarine:sources"])
+    licences = (PROJECT / "NOTICE").read_text()
+    nonna = "".join(
+        f"  CHS {label} bathymetry, Canadian Hydrographic Service, Fisheries and Oceans Canada,\n"
+        "  under the CHS NONNA Licence and the Open Government Licence, Canada (the CHS notice below).\n"
+        f"  Asset: {sources[product]['name']} (sha256 {sources[product]['sha256']})\n"
+        for product, label in (("nonna10", "NONNA-10"), ("nonna100", "NONNA-100"))
+        if product in coverage and product in sources)
+    etopo = "" if "etopo" not in coverage else _etopo_citation(licences) + "".join(
+        f"  ETOPO tile used: {tile['name']} ({tile['file']})\n" for tile in sources.get("etopo", []))
     cudem = "" if "cudem" not in sources else (
         "  NOAA NCEI Continuously Updated Digital Elevation Model (CUDEM) 1/9 arc-second tiles,\n"
         "  DOI 10.25921/ds9v-ky35, a US Government work.\n  CUDEM tiles used:\n"
@@ -126,8 +157,8 @@ def _bathy_notice(metadata: dict[str, str], name: str, version: str) -> str:
         "  (US Army Corps of Engineers, a US Government work), inside polygons from NOAA ENC\n"
         "  (a US Government work) in "
         f"{datum['lakes_file']} (sha256 {datum['lakes_sha256']}).\n")
-    licences = (PROJECT / "NOTICE").read_text()
     fonts = _fonts_notice(licences)
+    chs_text = f"{_DATUM_SENTENCE}\n\n{CHS_NOTICE}\n\n" if chs else ""
     return f"""CheekyMarine bathy pack {name} {version}
 
 This pack is a derived product. It is not an official chart.
@@ -135,26 +166,62 @@ It is not certified for navigation. Do not rely on it as the only means of navig
 Depths are survey depths converted to approximate MLLW.
 
 Bathymetry:
-{cudem}{crm}
+{cudem}{crm}{nonna}{etopo}
 Boundaries: NOAA maritime boundaries (the water clip), a US Government work.
 
 Datum: elevations are converted to MLLW with offsets interpolated between NOAA CO-OPS tide
   stations (a US Government work), listed in {datum["file"]} (sha256 {datum["sha256"]}).
 {lakes}{geoid}{fallback}
-""" + fonts + "\nSymbols are drawn in-house after US Chart No. 1 (public domain).\n"
+""" + chs_text + fonts + "\nSymbols are drawn in-house after US Chart No. 1 (public domain).\n"
 
 
-def assemble_bathy_pack(region: Region, files: dict[str, Path], out_dir: Path) -> Path:
-    """The bathy pack directory from the four built files, keyed by their BATHY_FILES names."""
+def _polygons(geom: shapely.Geometry) -> shapely.Geometry:
+    """The polygonal part of a union (a tile only touching the clip adds an edge, not area)."""
+    parts = [g for g in shapely.get_parts(geom) if g.geom_type in ("Polygon", "MultiPolygon")]
+    return shapely.union_all(parts) if parts else shapely.Polygon()
+
+
+def notice_areas(region: Region, owned: set[tuple[int, int]] | None) -> dict:
+    """cheekymarine:notice_areas of a bathy pack (plan 8 spec 7.3): the Canadian column (spec 6) of its owned tiles,
+    canada_side by the pack itself, as one feature of kind bc, not simplified. No feature when there is none: a US
+    pack with no clip or with every tile on the US side, and the overview (owned None), which is clipped to US
+    water."""
+    parts = []
+    if owned and (region.charts_kind != "enc" or region.clip is not None):
+        clip = None
+        if region.charts_kind == "enc":
+            data = json.loads(region.clip.read_text())
+            clip = shape(data.get("geometry", data))
+        parts = [canada_side(clip, tile, region) for tile in sorted(owned)]
+    area = _polygons(shapely.union_all(parts)) if parts else shapely.Polygon()
+    features = [] if area.is_empty else [{"type": "Feature", "properties": {"kind": "bc"}, "geometry": mapping(area)}]
+    return {"type": "FeatureCollection", "features": features}
+
+
+def assemble_bathy_pack(region: Region, files: dict[str, Path], out_dir: Path,
+                        owned: set[tuple[int, int]] | None = None) -> Path:
+    """The bathy pack directory from the four built files, keyed by their BATHY_FILES names, each given the
+    notice metadata: cheekymarine:notice_areas (notice_areas over the owned tiles) and, when a coverage layer holds
+    NONNA, cheekymarine:data_notice (the CHS notice)."""
     root = Path(out_dir) / f"bathy-{region.name}-{region.bathy_version}"
     root.mkdir(parents=True, exist_ok=True)
     for name in BATHY_FILES:
         shutil.copyfile(files[name], root / name)
     with MBTiles.open(root / "bathy.mbtiles") as m:
         metadata = m.metadata()
+    with MBTiles.open(root / "bathy-coarse.mbtiles") as m:
+        coverage = json.loads(metadata.get("cheekymarine:coverage", "[]"))
+        coverage += json.loads(m.metadata().get("cheekymarine:coverage", "[]"))
+    chs = bool(_NONNA & set(coverage))
+    notice = {"cheekymarine:notice_areas": json.dumps(notice_areas(region, owned))}
+    if chs:
+        notice["cheekymarine:data_notice"] = CHS_NOTICE
+    for name in BATHY_FILES:
+        with MBTiles.open(root / name) as m:
+            m.set_metadata(notice)
 
     write_styles(root, "bathy")
 
     _sprites_glyphs_readme(root, "fish", f"bathy-{region.name}-{region.bathy_version}")
-    (root / "NOTICE").write_text(_bathy_notice(metadata, region.name, region.bathy_version))
+    (root / "NOTICE").write_text(_bathy_notice(metadata, region.name, region.bathy_version, chs, frozenset(coverage)))
     return root

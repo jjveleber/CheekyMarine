@@ -57,6 +57,8 @@ def describe_pack(pack_root: Path) -> tuple[str, list[dict], str]:
         sources = [
             *({"source": "cudem", **tile} for tile in sources.get("cudem", [])),
             *([{"source": "crm", "request": sources["crm"]}] if "crm" in sources else []),
+            *({"source": product, **sources[product]} for product in ("nonna10", "nonna100") if product in sources),
+            *({"source": "etopo", **tile} for tile in sources.get("etopo", [])),
             {"source": "datum", **sources["datum"]},
         ]
     style = json.loads(sorted((root / "styles").glob("*-day.json"))[0].read_text())

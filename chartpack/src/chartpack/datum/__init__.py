@@ -10,8 +10,10 @@ import numpy as np
 
 GRID_DEG = 0.05
 
-# The height each source's elevations are given in; plan 8 adds sources in "mllw" (no shift).
-SOURCE_VERTICAL = {"cudem": "navd88", "crm": "egm2008"}
+# The height each source's elevations are given in (plan 8 spec 8): NONNA is on Canadian chart datum ("chart", no
+# shift); ETOPO's EGM2008 heights are taken as mean sea level ("msl"), never through the CRM geoid and Washington
+# station path.
+SOURCE_VERTICAL = {"cudem": "navd88", "crm": "egm2008", "nonna10": "chart", "nonna100": "chart", "etopo": "msl"}
 
 _ROWS_PER_CHUNK = 512
 

@@ -192,6 +192,37 @@ def test_coverage_layer(bathy_pack):
     assert "cudem" in {f["properties"]["source"] for f in feats}
 
 
+def test_coverage_sources_metadata(built, bathy_pack, test_region, tmp_path):
+    """cheekymarine:coverage lists the distinct coverage sources of the file (the bathy NOTICE reads it); a file
+    with no features lists none."""
+    want = sorted({f["properties"]["source"] for f in built["coverage"]})
+    assert want and json.loads(bathy_pack.metadata()["cheekymarine:coverage"]) == want
+    out = tile_bathy(tmp_path / "w", tmp_path / "empty.mbtiles", region=test_region, crm_request=None)
+    with MBTiles.open(out) as m:
+        assert json.loads(m.metadata()["cheekymarine:coverage"]) == []
+
+
+
+def test_sources_metadata_records_nonna_and_etopo(tmp_path, test_region):
+    """PR #122 review F1: a region listing NONNA and ETOPO records the NONNA assets (name, sha256) and the ETOPO
+    tiles in cheekymarine:sources, beside the datum; a source the region does not list is not recorded."""
+    import dataclasses
+
+    region = dataclasses.replace(test_region, bathy_sources=["nonna10", "nonna100", "etopo"])
+    nonna = {"nonna10": {"name": "nonna10-toba.tif", "sha256": "aa11"},
+             "nonna100": {"name": "nonna100-toba.tif", "sha256": "bb22"}}
+    etopo = [{"name": "N60W135", "file": "ETOPO_2022_v1_15s_N60W135_surface.tif"}]
+    out = tile_bathy(tmp_path / "w", tmp_path / "b.mbtiles", region=region, crm_request=None, nonna=nonna, etopo=etopo)
+    with MBTiles.open(out) as m:
+        sources = json.loads(m.metadata()["cheekymarine:sources"])
+    assert set(sources) == {"nonna10", "nonna100", "etopo", "datum"}
+    assert sources["nonna10"] == nonna["nonna10"] and sources["etopo"] == etopo
+    region = dataclasses.replace(test_region, bathy_sources=["nonna100"])
+    out = tile_bathy(tmp_path / "w", tmp_path / "c.mbtiles", region=region, crm_request=None, nonna=nonna, etopo=etopo)
+    with MBTiles.open(out) as m:
+        assert set(json.loads(m.metadata()["cheekymarine:sources"])) == {"nonna100", "datum"}
+
+
 def test_bands_present(bathy_pack):
     bands = [f for *_, f in _features(bathy_pack, "band", [12])]
     assert bands and {"depth_min_ft", "minzoom"} <= set(bands[0]["properties"])

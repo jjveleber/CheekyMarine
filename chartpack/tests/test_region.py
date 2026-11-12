@@ -102,3 +102,45 @@ def test_empty_bathy_sources_is_error(tmp_path, regions_dir):
 def test_crm_fallback_without_crm_is_error(tmp_path, regions_dir):
     with pytest.raises(RegionError, match="coarse_fallback"):
         load_region(_with_sources(tmp_path, regions_dir, '["cudem"]'))
+
+
+@pytest.mark.parametrize("sources", ['["nonna10", "nonna100"]', '["nonna10", "etopo"]', '["crm"]'])
+def test_coarse_fallback_accepts_nonna100_or_etopo(tmp_path, regions_dir, sources):
+    r = load_region(_with_sources(tmp_path, regions_dir, sources))
+    assert r.coarse_fallback == "crm" and r.bathy_sources == [s.strip(' "') for s in sources[1:-1].split(",")]
+
+
+def test_coarse_fallback_without_a_coarse_source_is_error(tmp_path, regions_dir):
+    with pytest.raises(RegionError, match="coarse source"):
+        load_region(_with_sources(tmp_path, regions_dir, '["nonna10", "cudem"]'))
+
+
+def test_area_and_charts_kind_default(regions_dir):
+    r = load_region(regions_dir / "test-cell.toml")
+    assert r.area is None and r.charts_kind == "enc"
+
+
+RING = "[[[-126.6, 48.45], [-128.302, 48.45], [-126.6, 49.4], [-126.6, 48.45]]]"
+
+
+def _with_area(tmp_path, regions_dir, bbox, polygon=RING, kind="derived-offshore"):
+    text = (regions_dir / "test-cell.toml").read_text().replace("bbox = [-122.4, 47.7, -122.1, 48.0]", f"bbox = {bbox}")
+    path = tmp_path / "r.toml"
+    path.write_text(text + f'\n[area]\npolygon = {polygon}\n\n[charts]\nkind = "{kind}"\n')
+    return path
+
+
+def test_area_polygon_and_charts_kind(tmp_path, regions_dir):
+    r = load_region(_with_area(tmp_path, regions_dir, "[-128.302, 48.45, -126.6, 49.4]"))
+    assert r.charts_kind == "derived-offshore"
+    assert r.area.geom_type == "Polygon" and r.area.bounds == (-128.302, 48.45, -126.6, 49.4)
+
+
+@pytest.mark.parametrize("bbox, polygon, kind, match", [
+    ("[-128.4, 48.45, -126.6, 49.4]", RING, "derived-offshore", "bounds"),
+    ("[-128.302, 48.45, -126.6, 49.4]", "[[[-126.6, 48.45], [-128.302, 48.45]]]", "derived-offshore", "area.polygon"),
+    ("[-128.302, 48.45, -126.6, 49.4]", RING, "bsb", "charts.kind"),
+])
+def test_area_and_charts_kind_errors(tmp_path, regions_dir, bbox, polygon, kind, match):
+    with pytest.raises(RegionError, match=match):
+        load_region(_with_area(tmp_path, regions_dir, bbox, polygon, kind))

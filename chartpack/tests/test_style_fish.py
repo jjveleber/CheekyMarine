@@ -153,3 +153,26 @@ def test_coarse_tiers_show_every_coarse_z12_level():
             layer = layers[f"{kind}-z{n}-coarse"]
             assert layer["source"] == "bathy-coarse" and layer["minzoom"] == n
             assert ["==", ["get", "minzoom"], n] in layer["filter"]
+
+
+@pytest.mark.parametrize("palette", sorted(PALETTES))
+def test_fish_grade_layers_use_patterns(palette):
+    """Plan 8 spec 6: the coarse survey and rough grades are marked by a light pattern over the coverage layer, on
+    the fine and the coarse source; the patterns carry the palette in their names (baked colors)."""
+    s = fish_style(palette)
+    ids = [l["id"] for l in s["layers"]]
+    for grade in ("coarse-survey", "rough"):
+        for suffix, source in (("", "bathy"), ("-coarse", "bathy-coarse")):
+            layer = _layer(s, f"grade-{grade}{suffix}")
+            assert layer["type"] == "fill" and layer["source"] == source and layer["source-layer"] == "coverage"
+            assert layer["filter"] == ["==", ["get", "grade"], grade]
+            assert layer["paint"]["fill-pattern"] == f"pat-{grade}-{palette}"
+            # over the depth shading, under the land
+            assert ids.index(f"hillshade{suffix}") < ids.index(layer["id"]) < ids.index("lndare")
+
+
+def test_fish_notices_has_bc_string():
+    for palette in PALETTES:
+        md = fish_style(palette)["metadata"]["cheekymarine"]
+        assert md["notices"] == {"bc": "BC: CHS survey depths where available, rough elsewhere. Chart datum. Not for navigation."}
+        assert md["notice"] == "Fishing chart: survey depths, approx. MLLW. Not certified for navigation."

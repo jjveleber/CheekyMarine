@@ -71,6 +71,12 @@ def check_style_sprites_glyphs(style: dict, sprite_json: dict, glyph_fonts: set[
                     errors.append(f"{layer['id']}: icon-image has a branch that cannot be resolved")
                 elif icon not in sprite_json:
                     errors.append(f"{layer['id']}: icon {icon!r} not in sprite")
+        if "fill-pattern" in layer.get("paint", {}):
+            for pattern in _outputs(layer["paint"]["fill-pattern"]):
+                if pattern is None:
+                    errors.append(f"{layer['id']}: fill-pattern has a branch that cannot be resolved")
+                elif pattern not in sprite_json:
+                    errors.append(f"{layer['id']}: pattern {pattern!r} not in sprite")
         for font in layout.get("text-font", []):
             if font not in glyph_fonts:
                 errors.append(f"{layer['id']}: font {font!r} not in glyphs")
