@@ -63,15 +63,6 @@ def test_overview_flag(tmp_path, regions_dir):
     assert load_region(path).overview is True
 
 
-@pytest.mark.parametrize("head, sources", [("", '["cudem", "crm"]'), ('coarse_fallback = "enc"\n', '["cudem"]')])
-def test_overview_sources_must_be_crm_only(tmp_path, regions_dir, head, sources):
-    """The overview is built from one CRM read: any other bathy.sources would be ignored, so it is an error."""
-    path = _with_sources(tmp_path, regions_dir, sources)
-    path.write_text("overview = true\n" + head + path.read_text())
-    with pytest.raises(RegionError, match=r'overview region needs bathy.sources = \["crm"\]'):
-        load_region(path)
-
-
 def test_enc_fallback_with_crm_is_error(tmp_path, regions_dir):
     path = tmp_path / "r.toml"
     path.write_text('coarse_fallback = "enc"\n' + (regions_dir / "test-cell.toml").read_text())

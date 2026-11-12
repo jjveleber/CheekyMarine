@@ -118,8 +118,9 @@ def load_region(path: Path) -> Region:
         raise RegionError("coarse_fallback = 'crm' needs a coarse source (crm, nonna100 or etopo) in bathy.sources"
                           " (set coarse_fallback = 'enc' for CUDEM only)")
     overview = _overview(data)
-    if overview and bathy_sources != ["crm"]:
-        raise RegionError('an overview region needs bathy.sources = ["crm"]: it is built from one CRM read')
+    if overview and set(bathy_sources) - set(COARSE_SOURCES):
+        raise RegionError("an overview region lists coarse sources only (crm, nonna100, etopo) in bathy.sources:"
+                          " it is drawn at zoom 6 to 9, never from CUDEM or NONNA-10")
 
     seabed = data.get("seabed", {})
     seabed_sources = tuple(seabed.get("sources", ["enc"]))

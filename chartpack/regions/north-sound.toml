@@ -1,8 +1,8 @@
 # San Juans, Rosario Strait, Deception Pass, Skagit and Padilla bays, Bellingham and the east end of the
 # Strait (spec 4). Its tiles start at 48.2247 N; tiles wholly on the Canadian side are clipped.
 name = "north-sound"
-charts_version = "1.0.0"
-bathy_version = "1.0.0"
+charts_version = "1.1.0"
+bathy_version = "1.1.0"
 bbox = [-123.35, 48.2, -122.25, 49.05]
 clip = "clip/canada-wa.geojson"
 
@@ -25,7 +25,7 @@ band5 = [
 ]
 
 [bathy]
-sources = ["cudem", "crm"]
+sources = ["cudem", "crm", "nonna10", "nonna100"]  # NONNA on the Canadian side (plan 8 spec 6)
 dem_maxzoom = 14
 
 [datum]
@@ -40,3 +40,15 @@ name = "friday-harbor"
 lon = -123.01
 lat = 48.54
 zooms = [11, 13, 15]
+
+[[render.views]]
+name = "victoria-haro-strait"  # the border seam: NOAA content stops at the border, BC depth and shoreline beyond
+lon = -123.30
+lat = 48.45
+zooms = [9, 11, 13, 15]
+
+[[render.views]]
+name = "active-pass"
+lon = -123.29
+lat = 48.86
+zooms = [9, 11, 13, 15]

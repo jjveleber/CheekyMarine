@@ -140,6 +140,14 @@ def owners(region: Region, regions_dir: Path) -> dict[tuple[int, int], Region]:
     return {tile: by_name[name] for tile, name in assign(regions, order).items()}
 
 
+def grid_owners(regions_dir: Path) -> dict[tuple[int, int], Region]:
+    """Every zoom-10 tile a region pack in regions_dir/grid.toml owns, with that region (assign)."""
+    regions_dir = Path(regions_dir)
+    order = load_grid(regions_dir / "grid.toml")
+    regions = {name: load_region(regions_dir / f"{name}.toml") for name in order}
+    return {tile: regions[name] for tile, name in assign(list(regions.values()), order).items()}
+
+
 def content_tiles(region: Region, regions_dir: Path) -> set[tuple[int, int]]:
     """The zoom-10 tiles a pack's content is selected and cropped over: a region pack's owned tiles
     (owned_tiles); for the overview, every tile a region pack in grid.toml owns."""

@@ -5,8 +5,8 @@
 # the column between them is not left to no pack: Raymond on the Willapa River, the Chehalis above Cosmopolis,
 # the Columbia to Skamokawa and the west half of Puget Island.
 name = "wa-coast"
-charts_version = "1.0.0"
-bathy_version = "1.0.0"
+charts_version = "1.1.0"
+bathy_version = "1.1.0"
 bbox = [-127.0, 46.15, -123.3984375, 48.6]
 clip = "clip/canada-wa.geojson"
 
@@ -29,7 +29,7 @@ band5 = [
 ]
 
 [bathy]
-sources = ["cudem", "crm"]
+sources = ["cudem", "crm", "nonna10", "nonna100"]  # NONNA on the Canadian side (plan 8 spec 6)
 dem_maxzoom = 14
 
 [datum]

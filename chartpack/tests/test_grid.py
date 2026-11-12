@@ -1,4 +1,5 @@
 import json
+import shutil
 from pathlib import Path
 
 import pytest
@@ -273,9 +274,11 @@ def _fixture_owners(fixtures_dir):
 
 
 def test_wave1_owners_exact(regions_dir, fixtures_dir):
-    """The wave 1 owner map is the one written from the plan 7 code (tests/fixtures/README.md): no tile gained,
-    none lost, none moved."""
-    assert assign(_wave1_files(regions_dir), load_grid(regions_dir / "grid.toml")) == _fixture_owners(fixtures_dir)
+    """The wave 1 owner map is the one written from the plan 7 code (tests/fixtures/README.md), now with the real
+    grid of every region, BC included: no wave 1 tile gained, none lost, none moved."""
+    order = load_grid(regions_dir / "grid.toml")
+    owner = assign([load_region(regions_dir / f"{name}.toml") for name in order], order)
+    assert {tile: name for tile, name in owner.items() if name in WAVE1} == _fixture_owners(fixtures_dir)
 
 
 def test_wholly_canadian_tile_in_us_box_goes_to_bc(regions_dir, fixtures_dir):
@@ -284,7 +287,7 @@ def test_wholly_canadian_tile_in_us_box_goes_to_bc(regions_dir, fixtures_dir):
     The Victoria tile (-123.37, 48.42) is about half US water (the Strait south of the border), so it is the
     shared case; Saanich Inlet's tile, inside the strait box, is wholly Canadian."""
     bc = _region("bc-south-georgia", (-123.95, 48.3, -122.2, 49.6), charts_kind="derived-inshore")
-    owner = assign(_wave1_files(regions_dir) + [bc], load_grid(regions_dir / "grid.toml") + [bc.name])
+    owner = assign(_wave1_files(regions_dir) + [bc], list(WAVE1) + [bc.name])
     clip = shape(json.loads((regions_dir / "clip/canada-wa.geojson").read_text())["geometry"])
     saanich = tile_of(GRID_ZOOM, -123.50, 48.55)
     assert saanich in tiles_meeting(WAVE1["strait"]) and clip.contains(box(*tile_bounds(GRID_ZOOM, *saanich)))
@@ -325,15 +328,19 @@ def test_fetch_extent_covers_owned_tiles_plus_margin(regions_dir):
     assert extent[0] < r.bbox[0] - m  # the owned tiles reach past the box
 
 
-def test_fetch_extent_outside_the_grid_is_the_grown_bbox(regions_dir):
-    """test-toba is not in grid.toml: its bbox grown by the block margin, snapped outward to the coarse cell
-    (its edges are already on that cell), and it holds the read of every tile meeting the bbox' interior."""
+def test_fetch_extent_outside_the_grid_is_the_grown_bbox(tmp_path, regions_dir):
+    """A region not in grid.toml (Toba Inlet, the plan 8 fetch spike): its bbox grown by the block margin, snapped
+    outward to the coarse cell (its edges are already on that cell)."""
     from chartpack.bathy.blocks import COARSE_RES_DEG, snap_out
 
-    toba = load_region(regions_dir / "test-toba.toml")
+    shutil.copy(regions_dir / "grid.toml", tmp_path)
+    path = tmp_path / "toba.toml"
+    path.write_text((regions_dir / "test-cell.toml").read_text().replace('name = "test-cell"', 'name = "toba"')
+                    .replace("bbox = [-122.4, 47.7, -122.1, 48.0]", "bbox = [-124.6, 50.3, -124.2, 50.6]"))
+    toba = load_region(path)
     tw, ts, te, tn = toba.bbox
     m = BLOCK_MARGIN_DEG
-    extent = fetch_extent(toba, regions_dir)
+    extent = fetch_extent(toba, tmp_path)
     assert extent == snap_out((tw - m, ts - m, te + m, tn + m), COARSE_RES_DEG)
     assert extent == pytest.approx((tw - m, ts - m, te + m, tn + m), abs=1e-9)
 
@@ -362,8 +369,9 @@ def test_grid_zoom_must_be_10(tmp_path):
         load_grid(tmp_path / "grid.toml")
 
 
-def test_shipped_grid_is_wave1():
-    assert load_grid(Path(__file__).resolve().parent.parent / "regions" / "grid.toml") == list(WAVE1)
+def test_shipped_grid_starts_with_wave1():
+    """The wave 1 order unchanged, then the BC packs (plan 8 spec 4; test_regions.py checks the whole order)."""
+    assert load_grid(Path(__file__).resolve().parent.parent / "regions" / "grid.toml")[:len(WAVE1)] == list(WAVE1)
 
 
 def test_owned_tiles(tmp_path, regions_dir):

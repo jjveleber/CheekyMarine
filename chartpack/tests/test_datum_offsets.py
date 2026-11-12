@@ -14,7 +14,7 @@ from osgeo import gdal, osr
 from shapely.geometry import box, mapping, shape
 from shapely.ops import unary_union
 
-from chartpack.bathy.blocks import area_datum, build_overview, overview_bounds
+from chartpack.bathy.blocks import BlockSources, area_datum, build_overview, overview_bounds
 from chartpack.datum import geoid
 from chartpack.datum.offsets import Station, datum_provenance, load_datum, navd88_to_mllw_grid
 
@@ -165,7 +165,8 @@ def test_overview_applies_lake_rule(test_region, tmp_path, zero_geoid):
     ds = None
     lake = box(-122.35, 47.55, -122.25, 47.65)
     region = _lake_region(test_region, tmp_path, mapping(lake))
-    result = build_overview(bbox, crm, area_datum(region, tmp_path), None)
+    result = build_overview(bbox, BlockSources([], crm, None, None, None), area_datum(region, tmp_path), None,
+                            shapely.Polygon())
     grid = result.coarse_grid
     station = navd88_to_mllw_grid(load_datum(region.datum_file).stations, grid.transform, grid.data.shape)
     np.testing.assert_allclose(grid.data, -station, atol=1e-5)

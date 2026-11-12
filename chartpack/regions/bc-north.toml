@@ -1,0 +1,35 @@
+# Princess Royal, Douglas Channel and Kitimat, Grenville Channel, Prince Rupert, Portland Inlet (plan 8 spec 4).
+# Charts are derived from NONNA and the BC Freshwater Atlas inside the Canada polygon.
+name = "bc-north"
+charts_version = "1.0.0"
+bathy_version = "1.0.0"
+bbox = [-131.2, 52.7, -127.8, 54.8]
+
+[charts]
+kind = "derived-inshore"
+
+# Every Active cell of bands 1 to 3 whose catalog polygon meets the owned tiles (zoom-10 tiles, grid.toml), from
+# `chartpack cells` and the catalog of 2026-11-12. Their features are cut at the Canada polygon.
+[enc]
+band1 = ["US1GLBDD"]
+band2 = ["US2PACYW"]
+band3 = ["US3AK1DY"]
+
+[bathy]
+sources = ["nonna10", "nonna100", "etopo"]
+dem_maxzoom = 14
+
+[datum]
+file = "datum/wa-stations.toml"  # CRM south of 49 N; NONNA is on chart datum and ETOPO takes a fixed shift
+
+[[render.views]]
+name = "prince-rupert"
+lon = -130.33
+lat = 54.31
+zooms = [9, 11, 13, 15]
+
+[[render.views]]
+name = "dixon-entrance"  # NOAA content stops at the A-B line; a NONNA hole
+lon = -131.10
+lat = 54.62
+zooms = [9, 11, 13, 15]
