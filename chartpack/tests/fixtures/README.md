@@ -36,7 +36,8 @@ every other cell the retired `puget-north` region named, appended from the catal
 other cell the wave 1 region files (`regions/sound-south.toml` to `overview.toml`) name, appended from the
 catalog of 2026-11-09, then every other cell the plan 8 region files (the BC regions and the rebuilt `overview`)
 name, appended from the catalog of 2026-11-12: `US1GLBDC`, `US2PACYU`, `US2PACYW`, `US3AK1DW`, `US3AK1DX`,
-`US3AK1DY`.
+`US3AK1DY`, then the band 4 and 5 cells `bc-north` and `bc-offshore-north` name (`US4AK5*`, `US5KTN*`), from the
+same catalog.
 
 `cudem_urllist_excerpt.txt` is the 64 Washington lines (folders `wash_pugetsound`, `wash_bellingham`,
 `wash_juandefuca`, `wash_outercoast`) of the live `urllist8483.txt` (942 lines in all), fetched 2026-10-28.

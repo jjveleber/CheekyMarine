@@ -8,12 +8,15 @@ bbox = [-131.2, 52.7, -127.8, 54.8]
 [charts]
 kind = "derived-inshore"
 
-# Every Active cell of bands 1 to 3 whose catalog polygon meets the owned tiles (zoom-10 tiles, grid.toml), from
-# `chartpack cells` and the catalog of 2026-11-12. Their features are cut at the Canada polygon.
+# Every Active cell of bands 1 to 5 whose catalog polygon meets the owned tiles (zoom-10 tiles, grid.toml), from
+# `chartpack cells` and the catalog of 2026-11-12. Their features are cut at the Canada polygon; bands 4 and 5 keep
+# NOAA's finest detail in the Alaskan water of the owned tiles.
 [enc]
 band1 = ["US1GLBDD"]
 band2 = ["US2PACYW"]
 band3 = ["US3AK1DY"]
+band4 = ["US4AK5FO", "US4AK5FP", "US4AK5FQ", "US4AK5GO", "US4AK5GP", "US4AK5GQ"]
+band5 = ["US5KTNCE", "US5KTNDE"]
 
 [bathy]
 sources = ["nonna10", "nonna100", "etopo"]

@@ -28,7 +28,9 @@ REBUILT = ["north-sound", "strait", "wa-coast", "overview"]  # 1.1.0: with Canad
 ALL = GRID + ["overview"]
 BANDS = {"sound-south": (3, 4, 5), "sound-central": (3, 4, 5), "north-sound": (3, 4, 5),
          "strait": (1, 2, 3, 4, 5), "wa-coast": (1, 2, 3, 4, 5), "overview": (1, 2, 3),
-         **{name: (1, 2, 3) for name in BC_INSHORE + BC_OFFSHORE}}  # BC: the bands the catalog gives, of 1 to 3
+         **{name: (1, 2, 3) for name in BC_INSHORE + BC_OFFSHORE},  # BC: the bands the catalog gives, of 1 to 3
+         # and every band where the owned tiles hold US (Alaskan) water, so it keeps NOAA's finest detail
+         "bc-north": (1, 2, 3, 4, 5), "bc-offshore-north": (1, 2, 3, 4, 5)}
 INSHORE_ZOOMS, OFFSHORE_ZOOMS = (9, 11, 13, 15), (7, 9, 11)
 VIEWS = {
     "sound-south": {"tacoma-narrows"},
@@ -218,8 +220,9 @@ def test_wave1_cells_match_catalog(regions_dir, fixtures_dir):
     for r in _regions(regions_dir).values():
         if r.name in WAVE1:
             assert sorted(r.cells) == list(BANDS[r.name]), r.name
-        else:  # a BC pack lists the bands of 1 to 3 the catalog gives a cell for
+        else:  # a BC pack lists the bands of BANDS the catalog gives a cell for
             assert set(r.cells) <= set(BANDS[r.name]) and all(r.cells.values()), r.name
+            assert {4, 5} <= set(r.cells) or 4 not in BANDS[r.name], r.name
         for band in BANDS[r.name]:
             names = r.cells.get(band, [])
             assert names == sorted(set(names)), (r.name, band)
