@@ -65,14 +65,13 @@ def assign(regions: list[Region], order: list[str]) -> dict[tuple[int, int], str
         raise RegionError(f"region(s) not in the grid order: {', '.join(unlisted)}")
     if unknown := [n for n in order if n not in by_name]:
         raise RegionError(f"grid order names region(s) that were not given: {', '.join(unknown)}")
-    # Inshore water must never fall under an offshore pack's rules: the inshore regions are listed first.
-    kinds = [by_name[n].charts_kind for n in order]
-    if "derived-offshore" in kinds and "derived-inshore" in kinds:
-        first_off = kinds.index("derived-offshore")
-        last_in = len(kinds) - 1 - kinds[::-1].index("derived-inshore")
-        if first_off < last_in:
-            raise RegionError(f"grid order lists offshore region {order[first_off]} before inshore region"
-                              f" {order[last_in]}")
+    # Inshore water must never fall under an offshore pack's rules: the inshore regions (US enc packs and BC
+    # derived-inshore packs) are listed first.
+    offshore = [i for i, n in enumerate(order) if by_name[n].charts_kind == "derived-offshore"]
+    inshore = [i for i, n in enumerate(order) if by_name[n].charts_kind != "derived-offshore"]
+    if offshore and inshore and offshore[0] < inshore[-1]:
+        raise RegionError(f"grid order lists offshore region {order[offshore[0]]} before inshore region"
+                          f" {order[inshore[-1]]}")
     clips: dict[Path, shapely.Geometry] = {}
     owner: dict[tuple[int, int], str] = {}
     for name in order:
@@ -147,18 +146,24 @@ def content_tiles(region: Region, regions_dir: Path) -> set[tuple[int, int]]:
 
 
 def fetch_extent(region: Region, regions_dir: Path) -> tuple[float, float, float, float]:
-    """(W, S, E, N) the fetch workflow pulls for a region: its content tiles' bounds grown by BLOCK_MARGIN_DEG when
-    it is in grid.toml (it holds every owned tile grown by that margin), else its bbox grown by the same margin."""
-    from chartpack.bathy.blocks import BLOCK_MARGIN_DEG  # blocks imports this module
+    """(W, S, E, N) the fetch workflow pulls for a region: its content tiles' bounds when it is in grid.toml, else
+    its bbox, grown by BLOCK_MARGIN_DEG and snapped outward to the overview cell for the overview, else to the
+    coarse cell. Each read is snapped outward the same way (iter_blocks, overview_bounds), so every read is inside
+    the extent, which is at most one cell past the grown bounds."""
+    # Imported here, not at the top: chartpack.bathy.blocks imports this module.
+    from chartpack.bathy.blocks import BLOCK_MARGIN_DEG, COARSE_RES_DEG, OVERVIEW_RES_DEG, snap_out
 
     regions_dir = Path(regions_dir)
     grid = regions_dir / "grid.toml"
     if grid.is_file() and region.name in load_grid(grid):
-        w, s, e, n = tiles_area(content_tiles(region, regions_dir)).bounds
+        tiles = content_tiles(region, regions_dir)
+        if not tiles:
+            raise RegionError(f"region {region.name} owns no zoom-10 tile, so it has no fetch extent")
+        w, s, e, n = tiles_area(tiles).bounds
     else:
         w, s, e, n = region.bbox
     m = BLOCK_MARGIN_DEG
-    return w - m, s - m, e + m, n + m
+    return snap_out((w - m, s - m, e + m, n + m), OVERVIEW_RES_DEG if region.overview else COARSE_RES_DEG)
 
 
 def tiles_area(tiles: set[tuple[int, int]], margin_deg: float = 0.0) -> shapely.Geometry:

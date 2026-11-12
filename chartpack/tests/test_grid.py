@@ -118,6 +118,15 @@ def test_offshore_before_inshore_raises_in_assign():
         assign([a, b], ["off", "in"])
 
 
+def test_offshore_before_a_us_region_raises_in_assign():
+    """enc (US) owners are inshore too: an offshore region listed before one is an error."""
+    us = _region("us", (-123.0, 47.0, -122.0, 47.6))
+    off = _region("off", (-124.0, 47.0, -123.0, 47.6), charts_kind="derived-offshore")
+    assert set(assign([us, off], ["us", "off"]).values()) == {"us", "off"}
+    with pytest.raises(RegionError, match="off.*before.*us"):
+        assign([us, off], ["off", "us"])
+
+
 OFFSHORE_SOUTH = [[[-132.864, 51.0], [-129.2, 51.0], [-129.184, 50.85], [-128.6, 50.85], [-128.595, 49.407],
                    [-126.6, 49.4], [-126.6, 48.45], [-128.302, 48.45], [-129.469, 49.135], [-130.024, 49.683],
                    [-132.44, 50.756], [-132.864, 51.0]]]  # spec appendix
@@ -132,6 +141,18 @@ def test_polygon_area_tiles():
     assert tiles < tiles_meeting(area.bounds)
     for t in tiles:
         assert area.intersection(box(*tile_bounds(GRID_ZOOM, *t))).area > 0, t
+
+
+def test_polygon_area_hole():
+    """A tile wholly inside a hole is not met; a tile the hole ring crosses is."""
+    hole = box(*tile_bounds(GRID_ZOOM, 163, 356)).buffer(0.001, join_style="mitre")
+    crossed = box(*tile_bounds(GRID_ZOOM, 166, 356)).buffer(-0.05)  # inside tile (166, 356)
+    outline = box(-123.5, 47.0, -121.0, 48.5)
+    area = Polygon(outline.exterior.coords, [hole.exterior.coords, crossed.exterior.coords])
+    tiles = tiles_meeting_area(area)
+    assert (163, 356) not in tiles
+    assert (166, 356) in tiles
+    assert tiles == tiles_meeting(outline.bounds) - {(163, 356)}
 
 
 def test_polygon_area_edge_touch_does_not_count():
@@ -278,21 +299,61 @@ def test_wholly_canadian_tile_in_us_box_goes_to_bc(regions_dir, fixtures_dir):
     assert {t: owner[t] for t in wave1} == wave1
 
 
+def _inside(box_, extent):
+    w, s, e, n = box_
+    return extent[0] <= w and extent[1] <= s and e <= extent[2] and n <= extent[3]
+
+
 def test_fetch_extent_covers_owned_tiles_plus_margin(regions_dir):
-    """A region in the grid: its content tiles' bounds grown by the block margin, so it holds every owned tile
-    grown by that margin. A region not in the grid: its bbox grown by the same margin."""
+    """A region in the grid: every block read (iter_blocks, snapped outward to the coarse cell) is inside the
+    extent, and the extent is no more than one coarse cell past the owned tiles grown by the block margin. On
+    north-sound's west edge the snapped read reaches past the unsnapped tile bounds plus margin."""
+    from chartpack.bathy.blocks import COARSE_RES_DEG, iter_blocks
+
     r = load_region(regions_dir / "north-sound.toml")
+    owned = owned_tiles(r, regions_dir)
     w, s, e, n = tiles_area(content_tiles(r, regions_dir)).bounds
     m = BLOCK_MARGIN_DEG
     extent = fetch_extent(r, regions_dir)
-    assert extent == pytest.approx((w - m, s - m, e + m, n + m), abs=1e-12)
+    reads = [read for _, _, read in iter_blocks(owned)]
+    assert min(rw for rw, _, _, _ in reads) < w - m  # the case the snap makes
+    for read in reads:
+        assert _inside(read, extent), read
+    slack = COARSE_RES_DEG + 1e-9
+    assert _inside(extent, (w - m - slack, s - m - slack, e + m + slack, n + m + slack))
+    assert _inside((w - m, s - m, e + m, n + m), extent)
     assert extent[0] < r.bbox[0] - m  # the owned tiles reach past the box
-    for tile in owned_tiles(r, regions_dir):
-        tw, ts, te, tn = tile_bounds(GRID_ZOOM, *tile)
-        assert extent[0] <= tw - m and extent[1] <= ts - m and te + m <= extent[2] and tn + m <= extent[3]
+
+
+def test_fetch_extent_outside_the_grid_is_the_grown_bbox(regions_dir):
+    """test-toba is not in grid.toml: its bbox grown by the block margin, snapped outward to the coarse cell
+    (its edges are already on that cell), and it holds the read of every tile meeting the bbox' interior."""
+    from chartpack.bathy.blocks import COARSE_RES_DEG, snap_out
+
     toba = load_region(regions_dir / "test-toba.toml")
     tw, ts, te, tn = toba.bbox
-    assert fetch_extent(toba, regions_dir) == pytest.approx((tw - m, ts - m, te + m, tn + m), abs=1e-12)
+    m = BLOCK_MARGIN_DEG
+    extent = fetch_extent(toba, regions_dir)
+    assert extent == snap_out((tw - m, ts - m, te + m, tn + m), COARSE_RES_DEG)
+    assert extent == pytest.approx((tw - m, ts - m, te + m, tn + m), abs=1e-9)
+
+
+def test_fetch_extent_holds_the_overview_read(regions_dir):
+    """The overview is not in the grid; its one coarse read (overview_bounds of its bbox) is inside the extent."""
+    from chartpack.bathy.blocks import overview_bounds
+
+    ov = load_region(regions_dir / "overview.toml")
+    assert _inside(overview_bounds(ov.bbox), fetch_extent(ov, regions_dir))
+
+
+def test_fetch_extent_of_a_grid_region_owning_nothing_is_error(tmp_path, regions_dir):
+    """b is listed after a and its box is inside a's tiles, so it owns none: an error naming it, not NaN bounds."""
+    (tmp_path / "grid.toml").write_text('zoom = 10\norder = ["a", "b"]\n')
+    (tmp_path / "a.toml").write_text((regions_dir / "test-cell.toml").read_text().replace("test-cell", "a"))
+    w, s, e, n = load_region(tmp_path / "a.toml").bbox
+    b = _region("b", (w + 0.05, s + 0.05, e - 0.05, n - 0.05))
+    with pytest.raises(RegionError, match="region b owns no zoom-10 tile"):
+        fetch_extent(b, tmp_path)
 
 
 def test_grid_zoom_must_be_10(tmp_path):
