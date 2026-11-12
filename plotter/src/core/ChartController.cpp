@@ -370,12 +370,16 @@ ChartController::ChartController(ChartMap& map, Settings& settings, VesselModel&
     connect(&m_map, &ChartMap::styleLoaded, this, &ChartController::onStyleLoaded);
     connect(&m_map, &ChartMap::userGesture, this, [this] { setFollow(false); });
     connect(&m_map, &ChartMap::viewportChanged, this, &ChartController::applyCamera);
-    // The last camera position is always evaluated: each signal restarts the timer.
+    // Started by the first signal only, so a steady camera feed cannot postpone the notice; the bounds are
+    // read when the timer fires, so the last position is still evaluated.
     m_noticeTimer.setSingleShot(true);
     m_noticeTimer.setInterval(250);
     connect(&m_noticeTimer, &QTimer::timeout, this, &ChartController::updateNotice);
-    connect(&m_map, &ChartMap::cameraChanged, &m_noticeTimer, qOverload<>(&QTimer::start));
-    connect(&m_map, &ChartMap::viewportChanged, &m_noticeTimer, qOverload<>(&QTimer::start));
+    const auto startNoticeTimer = [this] {
+        if (!m_noticeTimer.isActive()) m_noticeTimer.start();
+    };
+    connect(&m_map, &ChartMap::cameraChanged, this, startNoticeTimer);
+    connect(&m_map, &ChartMap::viewportChanged, this, startNoticeTimer);
     connect(&m_settings, &Settings::shallowMChanged, this, &ChartController::applyDepthFilters);
     connect(&m_settings, &Settings::safetyMChanged, this, &ChartController::applyDepthFilters);
     connect(&m_settings, &Settings::deepMChanged, this, &ChartController::applyDepthFilters);

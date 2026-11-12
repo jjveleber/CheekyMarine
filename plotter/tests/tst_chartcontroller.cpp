@@ -500,6 +500,19 @@ private slots:
         emit r.map.viewportChanged();
         QTRY_COMPARE(r.ctrl->notice(), kBcNotice);
     }
+    void steadyCameraSignalsDoNotPostponeTheNotice() {
+        Rig r;
+        bcRig(r);
+        r.make();
+        r.map.loaded();
+        r.map.bounds = QRectF(QPointF(-123.5, 48.6), QPointF(-123.2, 48.9));
+        // A camera signal every 100 ms (a fast follow-mode feed): the notice must not wait for them to stop.
+        for (int i = 0; i < 10; ++i) {
+            emit r.map.cameraChanged();
+            QTest::qWait(100);
+        }
+        QCOMPARE(r.ctrl->notice(), kBcNotice);
+    }
     void noticeChangedNotEmittedWhileKindsSame() {
         Rig r;
         bcRig(r);
