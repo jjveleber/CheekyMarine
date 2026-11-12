@@ -82,21 +82,32 @@ def _notice(metadata: dict[str, str], name: str, version: str, cmecs_blocks: tup
 
 def _derived_notice(metadata: dict[str, str]) -> str:
     """The NOTICE block of a charts pack's derived inputs (cheekymarine:depth_sources, plan 8 spec 11): the NONNA
-    assets with the datum sentence and the CHS notice, the shoreline with its credit; empty for a pack with none."""
-    depth = {d["source"]: d for d in json.loads(metadata.get("cheekymarine:depth_sources", "[]"))}
+    assets with the datum sentence and the CHS notice, the shoreline with its credit, CRM with its MLLW conversion
+    and the ETOPO citation with its fixed shift (so each depth source's datum is noted); empty for a pack with none.
+    Every asset of a source is listed (the overview has a NONNA-100 asset per region)."""
+    entries = json.loads(metadata.get("cheekymarine:depth_sources", "[]"))
+
+    def assets(source: str) -> str:
+        return "".join(f"  Asset: {d['asset']} (sha256 {d['sha256']})\n" for d in entries if d["source"] == source)
+
     nonna = "".join(
         f"  CHS {label} bathymetry, Canadian Hydrographic Service, Fisheries and Oceans Canada,\n"
         "  under the CHS NONNA Licence and the Open Government Licence, Canada (the CHS notice below).\n"
-        f"  Asset: {depth[product]['asset']} (sha256 {depth[product]['sha256']})\n"
-        for product, label in (("nonna10", "NONNA-10"), ("nonna100", "NONNA-100")) if product in depth)
-    shore = "" if "fwa" not in depth else (
+        + assets(product) for product, label in (("nonna10", "NONNA-10"), ("nonna100", "NONNA-100"))
+        if assets(product))
+    shore = "" if not assets("fwa") else (
         "  Land and shoreline from the BC Freshwater Atlas coastline, Province of British Columbia.\n"
-        f"  Asset: {depth['fwa']['asset']} (sha256 {depth['fwa']['sha256']})\n{OGL_BC_NOTICE}\n")
-    if not (nonna or shore):
+        f"{assets('fwa')}{OGL_BC_NOTICE}\n")
+    crm = "" if not assets("crm") else (
+        "  NOAA NCEI Coastal Relief Model (CRM) volume 8, 2025, a US Government work.\n"
+        "  CRM depths are converted to approximate MLLW with offsets between NOAA CO-OPS tide stations.\n"
+        + assets("crm"))
+    etopo = "" if not assets("etopo") else _etopo_citation((PROJECT / "NOTICE").read_text()) + assets("etopo")
+    if not (nonna or shore or crm or etopo):
         return ""
     chs = f"{_DATUM_SENTENCE}\n\n{CHS_NOTICE}\n\n" if nonna else ""
     return ("Inside the Canada polygon no NOAA chart content is shown; depth and shoreline there are derived:\n"
-            f"{nonna}{shore}\n{chs}")
+            f"{nonna}{crm}{etopo}{shore}\n{chs}")
 
 
 def _check_chs_area(name: str, parts: list[str], areas: dict) -> None:

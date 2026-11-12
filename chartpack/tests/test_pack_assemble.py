@@ -564,3 +564,34 @@ def test_bathy_notice_wording_by_depth_column(test_region, tmp_path):
             " side.\n") in overview
     assert "US-side depths are survey depths" not in overview
     assert "Boundaries:" not in overview and "\nDatum: CRM elevations are converted to MLLW" in overview
+
+
+def test_charts_notice_notes_crm_and_etopo(test_region, enc_pack_path, tmp_path):
+    """A charts pack whose derived depth draws CRM and ETOPO: the NOTICE cites ETOPO with its fixed shift and lists
+    CRM with its MLLW conversion, so "the datum noted for each" holds; every NONNA-100 asset is listed (the overview
+    has one per region). A pack with neither keeps the block as it was."""
+    crm = {"source": "crm", "asset": "crm_1.tif", "sha256": "e" * 64}
+    etopo = [{"source": "etopo", "asset": f"ETOPO_{t}.tif", "sha256": "d" * 64} for t in ("N60W135", "N60W150")]
+    other = {"source": "nonna100", "asset": "nonna100-other.tif", "sha256": "f" * 64}
+    root = assemble_charts_pack(test_region, _with_depth_sources(enc_pack_path, tmp_path / "a",
+                                                                 DEPTH_SOURCES + [other, crm] + etopo),
+                                tmp_path / "all", content=BC_TILES, canada=EVERYWHERE)
+    notice = (root / "NOTICE").read_text()
+    assert "Coastal Relief Model (CRM)" in notice and "CRM depths are converted to approximate MLLW" in notice
+    assert f"crm_1.tif (sha256 {'e' * 64})" in notice
+    assert ETOPO_LINE in notice and "https://doi.org/10.25921/fd45-gt74" in notice
+    assert "ETOPO_N60W135.tif" in notice and "ETOPO_N60W150.tif" in notice
+    assert "nonna100-toba.tif" in notice and "nonna100-other.tif" in notice
+    plain = (assemble_charts_pack(test_region, _with_depth_sources(enc_pack_path, tmp_path / "b", DEPTH_SOURCES),
+                                  tmp_path / "plain", content=BC_TILES, canada=EVERYWHERE) / "NOTICE").read_text()
+    assert "Coastal Relief Model" not in plain and "ETOPO" not in plain
+    block = plain[plain.index("Inside the Canada polygon"):plain.index(OGL_BC_TEXT_END)]
+    assert block == ("Inside the Canada polygon no NOAA chart content is shown; depth and shoreline there are derived:\n"
+                     "  CHS NONNA-100 bathymetry, Canadian Hydrographic Service, Fisheries and Oceans Canada,\n"
+                     "  under the CHS NONNA Licence and the Open Government Licence, Canada (the CHS notice below).\n"
+                     f"  Asset: nonna100-toba.tif (sha256 {'a' * 64})\n"
+                     "  Land and shoreline from the BC Freshwater Atlas coastline, Province of British Columbia.\n"
+                     f"  Asset: land-toba.geojson.gz (sha256 {'b' * 64})\n")
+
+
+OGL_BC_TEXT_END = "Contains information licensed under the Open Government Licence – British Columbia."
