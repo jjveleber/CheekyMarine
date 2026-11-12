@@ -60,22 +60,22 @@ def test_higher_band_not_drawn_below_its_range():
 def test_soundings_use_scamin():
     pt = Feature(
         "soundg",
-        {"type": "Point", "coordinates": [0.5, 0.5]},
+        {"type": "Point", "coordinates": [-122.5, 48.0]},
         {"cell": "US4AAAAA", "band": 4, "class": "SOUNDG", "depth": "3.2", "SCAMIN": 44999},
     )
-    out = quilt([(_cell("US4AAAAA", 4, (0, 0, 1, 1)), [pt])])
-    # 44999 -> zoom 12 (R44, 512 px world): absent at z11, present from z12 (band 4 ends at 12, then band 5)
+    out = quilt([(_cell("US4AAAAA", 4, (-123, 47.5, -122, 48.5)), [pt])])
+    # 44999 at 48 N -> zoom 12 (R44, 512 px world): absent at z11, present from z12 (band 4 ends at 12, then band 5)
     assert [_range(f) for f in out] == [(12, 12), (13, 16)]
 
 
 def test_thinned_feature_dropped_when_minzoom_exceeds_range():
     area = Feature(
         "area",
-        mapping(box(0, 0, 1, 1)),
+        mapping(box(-123, 47.5, -122, 48.5)),
         {"cell": "US3AAAAA", "band": 3, "class": "SEAARE", "SCAMIN": 5999},
     )
-    out = quilt([(_cell("US3AAAAA", 3, (0, 0, 1, 1)), [area])])
-    assert [_range(f) for f in out] == [(15, 16)]  # 5999 -> zoom 15, past band 3's top zoom 10
+    out = quilt([(_cell("US3AAAAA", 3, (-123, 47.5, -122, 48.5)), [area])])
+    assert [_range(f) for f in out] == [(15, 16)]  # 5999 at 48 N -> zoom 15, past band 3's top zoom 10
 
 
 def test_seabed_area_minzoom_is_the_larger_of_scamin_and_size():
@@ -453,6 +453,43 @@ EXPECTED_BANDS_3_TO_5 = [('area',
   {'band': 5, 'cell': 'US5AAAAA', 'class': 'WRECKS', 'tippecanoe': {'maxzoom': 16, 'minzoom': 13}})]
 
 
-def test_bands_3_to_5_unchanged():
-    # EXPECTED_BANDS_3_TO_5 was captured from quilt() at commit 9fec335, before bands 1 and 2 were quilted.
+def test_bands_3_to_5_unchanged(monkeypatch):
+    # EXPECTED_BANDS_3_TO_5 was captured from quilt() at commit 9fec335, before bands 1 and 2 were quilted, when
+    # every SCAMIN zoom was taken at 48 N. The synthetic cells sit near the equator, so the latitude is pinned
+    # to 48 here; the feature latitude itself is checked in test_quilt_same_feature_same_minzoom_across_seam.
+    from chartpack.enc import quilt as quilt_module
+
+    real = quilt_module.minzoom_for_scamin
+    monkeypatch.setattr(quilt_module, "minzoom_for_scamin", lambda scamin, band, lat: real(scamin, band, 48.0))
     assert _canon(quilt(_synthetic_cells())) == EXPECTED_BANDS_3_TO_5
+
+
+def test_quilt_same_feature_same_minzoom_across_seam():
+    """#18: a feature on a seam, quilted by two packs with different cell sets, gets one zoom from its own
+    latitude. SCAMIN 59999 shows from zoom 11 north of 51.625 N and from 12 south of it: the sounding (51.7 N)
+    and the north cell's center (53.75 N) are north of that line, the south cell's center (50.5 N) south of it,
+    so a latitude per cell or per pack would give the two calls different zooms."""
+    sounding = Feature(
+        "soundg",
+        {"type": "Point", "coordinates": [-130.0, 51.7]},
+        {"cell": "CA3AAAAA", "band": 3, "class": "SOUNDG", "depth": "3.2", "SCAMIN": 59999},
+    )
+    north = quilt([(_cell("CA3AAAAA", 3, (-131, 51.5, -129, 56)), [sounding])])
+    south = quilt([(_cell("CA3AAAAA", 3, (-131, 49, -129, 52)), [sounding])])
+    zooms = lambda out: sorted(f.props["tippecanoe"]["minzoom"] for f in out)
+    assert zooms(north) == zooms(south) == [11, 13]
+
+
+@pytest.mark.parametrize(
+    "geometry",
+    [{"type": "Polygon", "coordinates": []}, {"type": "GeometryCollection", "geometries": []}],
+)
+@pytest.mark.parametrize("scamin", [29999, None])
+def test_empty_geometry_passes_through(geometry, scamin):
+    """A thinned feature with an empty geometry has no latitude: it passes through as before #18, from the
+    band's low zoom (there is nothing to draw, so its zoom has no effect)."""
+    props = {"cell": "US5AAAAA", "band": 5, "class": "SEAARE"}
+    if scamin is not None:
+        props["SCAMIN"] = scamin
+    out = quilt([(_cell("US5AAAAA", 5, (-123, 47.5, -122, 48.5)), [Feature("area", geometry, props)])])
+    assert [_range(f) for f in out] == [(13, 16)]

@@ -30,11 +30,22 @@ OVERVIEW_BANDS = ((6, 9, 300.0),)  # the overview pack: major levels only
 REF_LAT = 48.0  # downsample factors are fixed at this latitude so every block (and pack) uses the same ones
 
 
-def zoom_tolerance_deg(zoom: int) -> float:
+def zoom_tolerance_deg(zoom: int, lat: float) -> float:
     """Douglas-Peucker tolerance of one 256 px Web Mercator pixel (R33), which is about 2 screen pixels in
     MapLibre's 512 px world (R46, kept for pack size: a true 1 px measured 301.4 MB): the ground resolution
-    at latitude 48 (about 100 m at z10, 3 m at z15) in degrees of latitude; z16 uses the z15 value."""
-    return 156543.03392804097 * math.cos(math.radians(48)) / 2 ** min(zoom, 15) / M_PER_DEG
+    at `lat` (at 48 N about 100 m at z10, 3 m at z15) in degrees of latitude; z16 uses the z15 value. `lat`
+    (#18) is rounded to the nearest 0.25 degree, like minzoom_for_scamin's. It is set per block (center_lat):
+    blocks in one tile row use one value in every pack; adjacent rows can differ by one step, under 1% of the
+    tolerance, and simplifying keeps line ends, so lines still meet at block edges."""
+    lat = round(lat * 4) / 4
+    return 156543.03392804097 * math.cos(math.radians(lat)) / 2 ** min(zoom, 15) / M_PER_DEG
+
+
+def center_lat(depth_m: np.ndarray, transform, core=None) -> float:
+    """The latitude the per-zoom tolerances use (#18): the center of the block core, or of the grid without one."""
+    if core is not None:
+        return (core[1] + core[3]) / 2
+    return transform[3] + transform[5] * depth_m.shape[0] / 2
 
 
 def min_zoom(depth_ft: int) -> int:
@@ -171,7 +182,7 @@ def contours_by_zoom(
     depth_m: np.ndarray, transform, *, fine: bool, bands=BANDS, core=None, overzoomed: bool = False
 ) -> list[dict]:
     """Contours per zoom band: with BANDS, z10-11 from ~150 m cells, z12-13 from ~30 m, z14-16 native, each
-    simplified to about one pixel at the band's top zoom (zoom_tolerance_deg).
+    simplified to about one pixel at the band's top zoom (zoom_tolerance_deg) at center_lat.
 
     The tippecanoe key carries the band's zoom range; the `minzoom` property carries
     max(min_zoom(depth), band low) for the style filter (the band low for a major line). Depths whose
@@ -181,11 +192,12 @@ def contours_by_zoom(
     overzoomed: the file stops at the last band's top and the map overzooms it (bathy-coarse, z12), so the
     last band carries every DEPTHS_FT level; the style tiers show each from its `minzoom` property.
     """
+    lat = center_lat(depth_m, transform, core)
     feats = []
     for i, (lo, hi, target, grid, tr) in enumerate(zoom_grids(depth_m, transform, bands)):
         top = max(min_zoom(ft) for ft in DEPTHS_FT) if overzoomed and i == len(bands) - 1 else hi
         levels = band_levels(DEPTHS_FT + FINE_FT if fine and not target else DEPTHS_FT, top)
-        for f in build_contours(grid, tr, levels_ft=levels, simplify_deg=zoom_tolerance_deg(hi), core=core):
+        for f in build_contours(grid, tr, levels_ft=levels, simplify_deg=zoom_tolerance_deg(hi, lat), core=core):
             p = f["properties"]
             p["minzoom"] = lo if p["major"] else max(p["minzoom"], lo)
             f["tippecanoe"] = {"minzoom": lo, "maxzoom": hi}

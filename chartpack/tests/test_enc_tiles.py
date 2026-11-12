@@ -224,12 +224,12 @@ def _seabed_at(enc_pack, z):
 
 
 def _enc_seabed_first_zoom(f):
-    """Band 4 (drawn from z11): the later of the SCAMIN zoom and, for areas and lines, the zoom at which the
-    feature is about 48 px across (R37)."""
+    """Band 4 (drawn from z11): the later of the SCAMIN zoom at the feature's centroid latitude (#18) and, for
+    areas and lines, the zoom at which the feature is about 48 px across (R37)."""
     from chartpack.enc.scamin import minzoom_for_extent, minzoom_for_scamin
 
     size = minzoom_for_extent(f.props["extent"]) if "extent" in f.props else 0
-    return max(minzoom_for_scamin(f.props["SCAMIN"], 4), size)
+    return max(minzoom_for_scamin(f.props["SCAMIN"], 4, shape(f.geometry).centroid.y), size)
 
 
 @pytest.mark.parametrize("z", [13, 16])

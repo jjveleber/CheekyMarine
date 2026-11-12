@@ -67,8 +67,8 @@ def test_bands_by_zoom_simplify_at_the_top_zoom_of_each_range(ridge_depth, monke
     seen = []
     real = bands.build_bands
     monkeypatch.setattr(bands, "build_bands", lambda *a, **k: seen.append(k["simplify_deg"]) or real(*a, **k))
-    bands.bands_by_zoom(ridge_depth, TRANSFORM)
-    assert seen == [zoom_tolerance_deg(11), zoom_tolerance_deg(13), zoom_tolerance_deg(15)]
+    bands.bands_by_zoom(ridge_depth, TRANSFORM)  # the ridge's center, 47.9 N, rounds to 48
+    assert seen == [zoom_tolerance_deg(11, 48.0), zoom_tolerance_deg(13, 48.0), zoom_tolerance_deg(15, 48.0)]
 
 
 def test_deepest_band_is_past_1000():

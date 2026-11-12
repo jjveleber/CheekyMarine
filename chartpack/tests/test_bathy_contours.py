@@ -115,7 +115,7 @@ def test_straight_contour_survives_default_min_points():
 def test_zoom_tolerance_is_one_pixel_at_latitude_48(zoom):
     """R33: Douglas-Peucker tolerance = the 256 px Web Mercator ground resolution at 48 N, z16 uses z15."""
     metres = 156543.03392804097 * math.cos(math.radians(48)) / 2 ** min(zoom, 15)
-    assert zoom_tolerance_deg(zoom) == pytest.approx(metres / 111320.0)
+    assert zoom_tolerance_deg(zoom, 48.0) == pytest.approx(metres / 111320.0)
     assert 95 < 156543.03392804097 * math.cos(math.radians(48)) / 2**10 < 105  # about 100 m at z10
 
 
@@ -123,8 +123,8 @@ def test_finer_zoom_contours_keep_more_vertices(ridge_depth):
     """The ridge with a gentle north-south wiggle (contour offset about 40 m, wavelength 4 km): about one pixel
     at z15 (3 m) keeps the bends that one pixel at z10 (100 m) straightens."""
     wiggly = ridge_depth + 0.5 * np.sin(2 * np.pi * np.arange(200) / 40)[:, None]
-    z10 = build_contours(wiggly, TRANSFORM, levels_ft=[100], simplify_deg=zoom_tolerance_deg(10))
-    z15 = build_contours(wiggly, TRANSFORM, levels_ft=[100], simplify_deg=zoom_tolerance_deg(15))
+    z10 = build_contours(wiggly, TRANSFORM, levels_ft=[100], simplify_deg=zoom_tolerance_deg(10, 48.0))
+    z15 = build_contours(wiggly, TRANSFORM, levels_ft=[100], simplify_deg=zoom_tolerance_deg(15, 48.0))
     count = lambda feats: sum(len(f["geometry"]["coordinates"]) for f in feats)
     assert len(z10) == len(z15) and count(z15) > count(z10)
 
@@ -135,8 +135,8 @@ def test_contours_by_zoom_simplify_at_the_top_zoom_of_each_range(ridge_depth, mo
     seen = []
     real = contours.build_contours
     monkeypatch.setattr(contours, "build_contours", lambda *a, **k: seen.append(k["simplify_deg"]) or real(*a, **k))
-    contours.contours_by_zoom(ridge_depth, TRANSFORM, fine=False)
-    assert seen == [zoom_tolerance_deg(11), zoom_tolerance_deg(13), zoom_tolerance_deg(15)]
+    contours.contours_by_zoom(ridge_depth, TRANSFORM, fine=False)  # the ridge's center, 47.9 N, rounds to 48
+    assert seen == [zoom_tolerance_deg(11, 48.0), zoom_tolerance_deg(13, 48.0), zoom_tolerance_deg(15, 48.0)]
 
 
 def test_levels_match_spec():
@@ -178,3 +178,24 @@ def test_coarse_top_band_holds_every_level():
     assert low == {ft for ft in range(10, 301, 10) if min_zoom(ft) <= 11 or ft in MAJOR_FT}
     overview = contours_by_zoom(slope, TRANSFORM, fine=False, bands=OVERVIEW_BANDS)
     assert {f["properties"]["depth_ft"] for f in overview} <= MAJOR_FT
+
+
+def test_tolerance_scales_with_cos_lat():
+    """#18: the ground resolution of one pixel shrinks with cos(latitude)."""
+    ratio = zoom_tolerance_deg(12, 54.0) / zoom_tolerance_deg(12, 48.0)
+    assert ratio == pytest.approx(math.cos(math.radians(54)) / math.cos(math.radians(48)), abs=1e-9)
+
+
+def test_tolerance_latitude_rounded_to_quarter_degree():
+    assert zoom_tolerance_deg(12, 53.9) == zoom_tolerance_deg(12, 54.0)
+
+
+def test_contours_by_zoom_use_the_core_latitude(ridge_depth, monkeypatch):
+    """#18: the tolerance comes from the latitude of the block core's center, not a fixed 48 N."""
+    from chartpack.bathy import contours
+
+    seen = []
+    real = contours.build_contours
+    monkeypatch.setattr(contours, "build_contours", lambda *a, **k: seen.append(k["simplify_deg"]) or real(*a, **k))
+    contours.contours_by_zoom(ridge_depth, TRANSFORM, fine=False, core=(-122.5, 53.9, -122.3, 54.1))
+    assert seen == [zoom_tolerance_deg(11, 54.0), zoom_tolerance_deg(13, 54.0), zoom_tolerance_deg(15, 54.0)]

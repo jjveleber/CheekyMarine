@@ -13,22 +13,22 @@ from chartpack.enc.scamin import BAND_ZOOMS, extent_z0, minzoom_for_extent, minz
     [(None, 4, 11), (179999, 4, 11), (44999, 4, 12), (11999, 5, 14), (5999, 5, 15), (1, 5, 16)],
 )
 def test_minzoom_for_scamin(scamin, band, expected):
-    assert minzoom_for_scamin(scamin, band) == expected
+    assert minzoom_for_scamin(scamin, band, 48.0) == expected
 
 
 @pytest.mark.parametrize("scamin,band,expected", [(259999, 3, 9), (59999, 4, 12), (29999, 5, 13), (17999, 5, 13)])
 def test_puget_north_scamins(scamin, band, expected):
     """R44: band 4 soundings (59999) show from z12, band 5 soundings (17999, 29999) from z13."""
-    assert minzoom_for_scamin(scamin, band) == expected
+    assert minzoom_for_scamin(scamin, band, 48.0) == expected
 
 
 def test_non_positive_scamin_gives_band_low_zoom():
-    assert minzoom_for_scamin(0, 5) == BAND_ZOOMS[5][0]
-    assert minzoom_for_scamin(-3, 4) == BAND_ZOOMS[4][0]
+    assert minzoom_for_scamin(0, 5, 48.0) == BAND_ZOOMS[5][0]
+    assert minzoom_for_scamin(-3, 4, 48.0) == BAND_ZOOMS[4][0]
 
 
 def test_huge_scamin_clamped_up_to_band_low_zoom():
-    assert minzoom_for_scamin(10**9, 5) == 13
+    assert minzoom_for_scamin(10**9, 5, 48.0) == 13
 
 
 def _mercator_px(lon, lat):
@@ -56,3 +56,37 @@ def test_minzoom_for_extent_is_the_first_zoom_at_48_px():
     assert minzoom_for_extent(48 / 2**11) == 10  # exactly 48 px at z10
     assert minzoom_for_extent(1e-9) == 16  # clamped to the pack maxzoom
     assert minzoom_for_extent(10.0) == 2 and minzoom_for_extent(100.0) == 0
+
+
+# minzoom_for_scamin(scamin, band) before #18 (hard-coded 48 N), captured from commit a1c4f0f.
+_OLD_AT_48 = {
+    (21999, 3): 13, (21999, 4): 13, (21999, 5): 13,
+    (29999, 3): 13, (29999, 4): 13, (29999, 5): 13,
+    (59999, 3): 12, (59999, 4): 12, (59999, 5): 13,
+    (89999, 3): 11, (89999, 4): 11, (89999, 5): 13,
+    (499999, 3): 9, (499999, 4): 11, (499999, 5): 13,
+}
+
+
+@pytest.mark.parametrize("scamin,band", sorted(_OLD_AT_48))
+def test_scamin_zoom_matches_old_value_at_48(scamin, band):
+    """#18: packs built at 48 N keep the zooms they had with the hard-coded latitude."""
+    assert minzoom_for_scamin(scamin, band, 48.0) == _OLD_AT_48[scamin, band]
+
+
+@pytest.mark.parametrize(
+    "scamin,at_48,at_54", [(21999, 13, 13), (29999, 13, 12), (59999, 12, 11), (89999, 11, 11), (499999, 9, 8)]
+)
+def test_scamin_zoom_shifts_at_54(scamin, at_48, at_54):
+    """#18: the ground under a SCAMIN is smaller farther north, so some features show one zoom earlier. Band 3
+    starts at zoom 6, so none of these values is clamped."""
+    assert minzoom_for_scamin(scamin, 3, 48.0) == at_48
+    assert minzoom_for_scamin(scamin, 3, 54.0) == at_54
+
+
+def test_scamin_latitude_rounded_to_quarter_degree():
+    """The latitude is rounded to the nearest 0.25 degree, so the zoom changes only on eighths of a degree. For
+    SCAMIN 29999 the unrounded change is near 51.56 N, the rounded one at 51.625 N: 51.60 N rounds to 51.5 (13),
+    51.63 N to 51.75 (12)."""
+    assert minzoom_for_scamin(29999, 3, 51.60) == 13
+    assert minzoom_for_scamin(29999, 3, 51.63) == 12
