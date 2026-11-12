@@ -800,8 +800,11 @@ def _build_bathy(args: argparse.Namespace) -> int:
         crm_request = crm_wcs_url(crm_request_bounds(overview_bounds(region.bbox))) if crm else None
         tile_owners = grid_owners(args.region.parent)  # each tile's depth side is its owner's (_canada)
         canada = _canada(overview_bounds(region.bbox), tile_owners, region, {})
+        # No depth where no pack owns a tile: the read outside the owned tiles is masked like a lake.
+        unowned = box(*overview_bounds(region.bbox)).difference(tiles_area(set(tile_owners)))
+        mask = unowned if lake_mask is None else unary_union([lake_mask, unowned])
         result = build_overview(region.bbox, BlockSources([], crm, None, vrt, etopo or None), datum, canada,
-                                shapely.Polygon(), lake_mask=lake_mask)
+                                shapely.Polygon(), lake_mask=mask)
         _append_layers(coarse_work, result.coarse_contours, result.coarse_bands, result.coarse_coverage)
         build_dem_mbtiles(result.coarse_grid.data, result.coarse_grid.transform, files["dem-coarse.mbtiles"],
                           minzoom=OVERVIEW_ZOOMS[0], maxzoom=OVERVIEW_ZOOMS[1], skip_empty=True)

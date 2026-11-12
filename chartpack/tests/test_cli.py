@@ -594,6 +594,46 @@ def test_build_bathy_masks_lakes_in_the_overview(tmp_path, regions_dir, monkeypa
     assert clips[0] is not None and clips[0].covers(lake)
 
 
+def test_build_bathy_overview_draws_no_depth_outside_owned_tiles(tmp_path, regions_dir, monkeypatch, zero_geoid):
+    """The overview bbox reaches past the owned tiles (an unowned tile east of the grid's one tile): the mask handed
+    to build_overview covers everything in its read outside the owned tiles and nothing inside them, so no depth is
+    drawn where no pack owns a tile (and so no BC notice area could be missing there)."""
+    from shapely.geometry import box
+
+    from chartpack import cli
+    from chartpack.bathy.blocks import overview_bounds
+    from chartpack.bathy.crm import crm_path
+    from chartpack.grid import owned_tiles, tile_bounds, tiles_area
+    from chartpack.region import load_region
+
+    region = _bathy_region(tmp_path, regions_dir)
+    pack = Path(shutil.copy(region, region.with_name("test-cell.toml")))
+    bbox = "bbox = [-122.3846, 47.8954, -122.2, 47.9046]"  # east into the next zoom-10 column
+    text = region.read_text().replace('sources = ["cudem", "crm"]', 'sources = ["crm"]')
+    region.write_text("overview = true\n" + text.replace('name = "test-cell"', 'name = "ov"')
+                      .replace("bbox = [-122.3846, 47.8954, -122.3754, 47.9046]", bbox))
+    _mask_lake(region, box(-122.30, 47.70, -122.29, 47.71))  # one lake, away from the owned tile
+    path = crm_path(overview_bounds(load_region(region).bbox), tmp_path / "cache")
+    path.parent.mkdir(parents=True)
+    path.touch()
+    masks = []
+
+    def fake_overview(bbox, sources, datum, canada, nosurvey, *, lake_mask=None):
+        masks.append(lake_mask)
+        raise RuntimeError("stop")
+
+    monkeypatch.setattr(cli, "build_overview", fake_overview)
+    with pytest.raises(RuntimeError, match="stop"):
+        main(["build-bathy", str(region), str(tmp_path / "out"), "--cache", str(tmp_path / "cache"),
+              "--work", str(tmp_path / "work")])
+    owned = tiles_area(owned_tiles(load_region(pack), pack.parent))
+    read = box(*overview_bounds(load_region(region).bbox))
+    (mask,) = masks
+    assert mask.covers(read.difference(owned)) and mask.intersection(owned).area < 1e-12
+    unowned = box(*tile_bounds(10, 164, 356)).intersection(read)
+    assert unowned.area > 0 and mask.covers(unowned)
+
+
 def test_build_bathy_tile_outside_crm_has_no_coarse_layer(tmp_path, fixtures_dir, regions_dir, monkeypatch, capsys,
                                                            zero_geoid):
     """A tile wholly outside CRM's coverage: fetch-bathy asks nothing for it and build-bathy draws its CUDEM fine
