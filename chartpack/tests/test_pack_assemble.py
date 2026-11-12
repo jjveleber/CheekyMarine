@@ -388,6 +388,21 @@ def test_charts_notice_has_chs_and_bc_credit(test_region, enc_pack_path, tmp_pat
     assert "Canadian Hydrographic" not in wave1 and "British Columbia" not in wave1
 
 
+def test_charts_data_notice_adds_etopo_after_chs_and_shoreline(test_region, enc_pack_path, tmp_path):
+    """A derived-offshore charts pack draws ETOPO depth: its citation follows the CHS and shoreline parts."""
+    from chartpack.pack.assemble import CHS_NOTICE, OGL_BC_NOTICE
+
+    etopo = {"source": "etopo", "asset": "etopo.tif", "sha256": "d" * 64}
+    root = assemble_charts_pack(test_region, _with_depth_sources(enc_pack_path, tmp_path, DEPTH_SOURCES + [etopo]),
+                                tmp_path / "all")
+    with MBTiles.open(root / "enc.mbtiles") as m:
+        assert m.metadata()["cheekymarine:data_notice"] == f"{CHS_NOTICE}\n\n{OGL_BC_NOTICE}\n\n{ETOPO_PARAGRAPH}"
+    only = assemble_charts_pack(test_region, _with_depth_sources(enc_pack_path, tmp_path / "e", [etopo]),
+                                tmp_path / "only")
+    with MBTiles.open(only / "enc.mbtiles") as m:
+        assert m.metadata()["cheekymarine:data_notice"] == ETOPO_PARAGRAPH
+
+
 def test_valdco_gains_no_value_from_derived(test_region, tmp_path):
     """A derived pack's cheekymarine:valdco is a subset of regions/bc-valdco.toml, and cheekymarine:depth_sources
     keeps only the inputs its features come from."""

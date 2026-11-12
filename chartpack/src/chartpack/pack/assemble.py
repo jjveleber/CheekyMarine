@@ -133,8 +133,8 @@ def assemble_charts_pack(region: Region, enc_mbtiles: Path, out_dir: Path,
                          content: set[tuple[int, int]] | None = None, canada: shapely.Geometry | None = None) -> Path:
     """The charts pack directory. enc.mbtiles gets cheekymarine:notice_areas (charts_notice_areas of content, the
     pack's owned tiles or the overview's content tiles, and canada) when it has a feature and, when its
-    depth_sources hold NONNA and/or the shoreline (fwa), cheekymarine:data_notice (the CHS notice, then the
-    OGL BC credit, a blank line between); a pack away from the polygon keeps its
+    depth_sources hold NONNA, the shoreline (fwa) and/or ETOPO, cheekymarine:data_notice (the CHS notice, the OGL BC credit,
+    the ETOPO citation, a blank line between); a pack away from the polygon keeps its
     old metadata keys."""
     root = Path(out_dir) / f"charts-{region.name}-{region.charts_version}"
     root.mkdir(parents=True, exist_ok=True)
@@ -144,7 +144,8 @@ def assemble_charts_pack(region: Region, enc_mbtiles: Path, out_dir: Path,
     areas = charts_notice_areas(content, canada)
     notice = {"cheekymarine:notice_areas": json.dumps(areas)} if areas["features"] else {}
     sources = {d["source"] for d in json.loads(metadata.get("cheekymarine:depth_sources", "[]"))}
-    parts = ([CHS_NOTICE] if _NONNA & sources else []) + ([OGL_BC_NOTICE] if "fwa" in sources else [])
+    parts = ([CHS_NOTICE] if _NONNA & sources else []) + ([OGL_BC_NOTICE] if "fwa" in sources else []) + (
+        [_etopo_text((PROJECT / "NOTICE").read_text())] if "etopo" in sources else [])
     if parts:
         notice["cheekymarine:data_notice"] = "\n\n".join(parts)
     if notice:
