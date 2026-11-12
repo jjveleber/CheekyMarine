@@ -5,12 +5,13 @@ import tomllib
 from pathlib import Path
 
 import numpy as np
+import pytest
 import shapely
 from shapely.geometry import Polygon, box, shape
 
 from chartpack.bathy.blocks import SOURCE_NAMES
 from chartpack.bathy.contours import BANDS, block_factor
-from chartpack.enc.derived import block_min, derived_features
+from chartpack.enc.derived import DEEPEST_M, block_min, derived_features
 
 ROOT = Path(__file__).resolve().parent.parent
 LEVELS = tomllib.loads((ROOT / "regions" / "bc-valdco.toml").read_text())["levels_m"]
@@ -60,39 +61,56 @@ def test_contour_values_are_all_in_levels():
     levels = {format(float(v), ".15g") for v in LEVELS}
     contours = _layer(feats, "depcnt")
     assert contours and {f.props["VALDCO"] for f in contours} <= levels
-    pairs = set(zip(sorted(LEVELS, key=float), sorted(LEVELS, key=float)[1:]))
+    ordered = sorted(float(v) for v in LEVELS)
+    pairs = set(zip(ordered, ordered[1:])) | {(ordered[-1], DEEPEST_M)}
     for f in _layer(feats, "depare"):
         lo, hi = f.props["DRVAL1"], f.props["DRVAL2"]
-        assert (float(lo) < 0 and hi == "0") or (float(lo), float(hi)) in {(float(a), float(b)) for a, b in pairs}
+        assert (float(lo) < 0 and hi == "0") or (float(lo), float(hi)) in pairs
+    deepest = _derive(np.full((N, N), 3000.0))
+    assert {(f.props["DRVAL1"], f.props["DRVAL2"]) for f in _layer(deepest, "depare")} == {
+        (format(ordered[-1], ".15g"), format(DEEPEST_M, ".15g"))}
 
 
-def _plain_with_shoal():
-    depth = np.full((N, N), 50.0)
-    depth[83, 77] = 3.0
-    return depth
+def _assert_shoal_kept(feats, square, depth=3.0):
+    """At every band: every depare meeting the shoal square's interior has DRVAL1 <= depth and one covers the
+    square; the square lies wholly on the shallow side of every depcnt deeper than depth (no such line meets it)."""
+    for lo, _, _ in BANDS:
+        meeting = [f for f in _layer(feats, "depare", lo)
+                   if shape(f.geometry).intersection(square).area > 1e-9 * square.area]
+        assert meeting and all(float(f.props["DRVAL1"]) <= depth for f in meeting), (lo, [f.props for f in meeting])
+        assert any(shape(f.geometry).intersection(square).area > (1 - 1e-9) * square.area for f in meeting), lo
+        deeper = [f for f in _layer(feats, "depcnt", lo) if float(f.props["VALDCO"]) > depth]
+        assert not any(shape(f.geometry).intersects(square) for f in deeper), lo
 
 
-def test_shoal_survives_downsampling():
+@pytest.mark.parametrize("row, col", [(83, 83), (80, 80), (87, 87), (0, 0)])  # block center, corners, grid edge
+def test_shoal_survives_downsampling(row, col):
     assert block_factor(TRANSFORM, BANDS[0][2]) == 8
-    feats = _derive(_plain_with_shoal())
-    point = shapely.Point(_center(83, 77))
-    shoal = [f for f in _layer(feats, "depare", BANDS[0][0]) if float(f.props["DRVAL1"]) <= 3.0]
-    assert shoal and any(shape(f.geometry).distance(point) < 8 * D for f in shoal)
+    depth = np.full((N, N), 50.0)
+    depth[row, col] = 3.0
+    feats = _derive(depth)
+    _assert_shoal_kept(feats, box(X0 + col * D, Y0 - (row + 1) * D, X0 + (col + 1) * D, Y0 - row * D))
     assert float(min(_layer(feats, "soundg", BANDS[0][0]), key=lambda f: float(f.props["depth"])).props["depth"]) == 3.0
 
 
 def test_shoal_survives_end_to_end(tmp_path, test_region):
-    from test_bathy_blocks import _real_block
+    from test_bathy_blocks import _R, _real_block
 
     data = np.full((41, 41), -50.0)
     data[20, 20] = -3.0
-    result, _ = _real_block(tmp_path, data, test_region)
+    result, (x0, px, y0, py) = _real_block(tmp_path, data, test_region)
     nav = result.nav_depth
     core = (nav.transform[0], nav.transform[3] + nav.data.shape[0] * nav.transform[5],
             nav.transform[0] + nav.data.shape[1] * nav.transform[1], nav.transform[3])
     feats = derived_features(nav.data, result.nav_src, nav.transform, core=core, levels_m=LEVELS, nosurvey=EMPTY,
                              land=EMPTY, lat=49.0)
-    assert any(float(f.props["DRVAL1"]) <= 3.0 for f in _layer(feats, "depare", BANDS[0][0]))
+
+    def lat(y):
+        return math.degrees(2 * math.atan(math.exp(y / _R)) - math.pi / 2)
+
+    square = box(math.degrees((x0 + 20 * px) / _R), lat(y0 + 21 * py), math.degrees((x0 + 21 * px) / _R),
+                 lat(y0 + 20 * py))
+    _assert_shoal_kept(feats, square)
 
 
 def _assert_clear_of(feats, area):
@@ -163,3 +181,44 @@ def test_land_features_carry_fwa_src():
     assert all(f.props["src"] == "fwa" for f in lnd + coast)
     assert all(box(*CORE).covers(shape(f.geometry)) for f in lnd + coast)
     assert math.isclose(sum(shape(f.geometry).area for f in lnd), 40 * D * 20 * D, rel_tol=1e-9)
+
+
+def test_depth_stays_on_valid_cells():
+    """Water with no value that is neither mask nor land gets no depth area: cut to the valid cells."""
+    depth = np.full((N, N), np.nan)
+    depth[:, :81] = 20.0
+    feats = _derive(depth)
+    edge = X0 + 81 * D
+    for lo, _, _ in BANDS:
+        areas = shapely.union_all([shape(f.geometry) for f in _layer(feats, "depare", lo)])
+        assert areas.bounds[2] <= edge + 1e-9, lo
+    assert all(shape(f.geometry).bounds[2] <= edge + 1e-9 for f in feats if f.layer in DEPTH_LAYERS)
+
+
+def test_band_areas_tile_the_water():
+    """At every band the depth areas do not overlap and leave no gap in the valid cells less mask and land."""
+    depth = _slope()
+    depth[83, 77] = 3.0
+    depth[120:, 100:] = np.nan
+    nosurvey = shapely.Point(_center(100, 40)).buffer(20 * D)
+    land = Polygon([_center(10, 10), _center(10, 90), _center(70, 60), _center(60, 5)])
+    feats = _derive(depth, nosurvey=nosurvey, land=land)
+    water = box(*CORE).difference(box(X0 + 100 * D, Y0 - N * D, X0 + N * D, Y0 - 120 * D)).difference(
+        shapely.union_all([nosurvey, land]))
+    tiny = 1e-6 * D * D
+    for lo, _, _ in BANDS:
+        areas = [shape(f.geometry) for f in _layer(feats, "depare", lo)]
+        union = shapely.union_all(areas)
+        assert sum(a.area for a in areas) - union.area < tiny, lo
+        assert water.difference(union).area < tiny, lo
+        assert union.difference(water).area < tiny, lo
+
+
+@pytest.mark.parametrize("value, label", [(0.0, ("0", "0.9")), (-0.1, ("-0.1", "0")), (2.0, ("1.8", "2"))])
+def test_flat_water_is_covered(value, label):
+    """A plateau exactly on a level (float32 drying -0.1 included) is covered by the band holding it."""
+    feats = _derive(np.full((N, N), value))
+    for lo, _, _ in BANDS:
+        areas = _layer(feats, "depare", lo)
+        assert {(f.props["DRVAL1"], f.props["DRVAL2"]) for f in areas} == {label}, lo
+        assert math.isclose(shapely.union_all([shape(f.geometry) for f in areas]).area, (N * D) ** 2, rel_tol=1e-9)
