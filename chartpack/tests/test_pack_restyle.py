@@ -54,3 +54,11 @@ def test_restyle_refuses_a_pack_of_another_schema(charts_pack_root_copy, capsys)
     assert "rebuild" in capsys.readouterr().err
     assert (root / "styles" / "nav-night.json").read_text() == before
     assert json.loads((root / "manifest.json").read_text())["schema"] == "0.0.1-old"
+
+
+def test_restyle_keeps_the_charts_kind(charts_pack_root_copy):
+    manifest = json.loads((charts_pack_root_copy / "manifest.json").read_text())
+    manifest["charts"] = {"kind": "derived-inshore"}
+    (charts_pack_root_copy / "manifest.json").write_text(json.dumps(manifest))
+    restyle_pack(charts_pack_root_copy)
+    assert json.loads((charts_pack_root_copy / "manifest.json").read_text())["charts"] == {"kind": "derived-inshore"}

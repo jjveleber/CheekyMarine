@@ -11,11 +11,13 @@ from shapely.geometry import Polygon, box, shape
 from shapely.ops import unary_union
 from shapely.validation import make_valid
 
+from chartpack.enc.bc import DERIVED_SRC
 from chartpack.enc.reader import read_cell
 from chartpack.enc.scamin import BAND_ZOOMS
 from chartpack.enc.schema import (
     BATHY_LAYER_SPECS,
     COARSE_OPTIONAL_LAYERS,
+    DERIVED_LAYERS,
     LAYERS,
     OPTIONAL_LAYERS,
     SAFETY_LAYERS,
@@ -43,6 +45,11 @@ PACK_CAP_BYTES = 1_500_000_000
 _MANIFEST_KEYS = ("pack", "region", "version", "schema", "built", "files", "sources", "notice")
 _EXTENT = 4096
 _COVERAGE_MIN = 0.9999
+# The Canada polygon is shrunk by this many tile units before the "nothing NOAA inside" rules (plan 8 spec 7.2):
+# tippecanoe, as the packs are built, keeps a line or polygon within 1 unit of its place and rounds to half a unit,
+# so a correctly cut feature stays at least 2.5 units clear (about 400 m at zoom 6, 6 m at zoom 16).
+CANADA_TOLERANCE_UNITS = 4
+_NEAR_UNITS = 512  # the polygon is cut this far around a tile before it goes to tile units: past the tile buffer
 
 
 def _lonlat(z: int, x: int, y: int, coords: np.ndarray) -> np.ndarray:
@@ -97,6 +104,13 @@ def _check_vector_layers(name: str, metadata: dict, specs, optional: frozenset[s
     return errors
 
 
+def _layer_ids(metadata: dict) -> set[str]:
+    try:
+        return {layer["id"] for layer in json.loads(metadata["json"])["vector_layers"]}
+    except (KeyError, ValueError):
+        return set()
+
+
 def _band_zooms(metadata: dict) -> set[int]:
     """Zooms inside the band range of any source cell (band is the third character of the cell name),
     limited to the file's own minzoom..maxzoom so a region pack is not asked for the overview's zooms."""
@@ -140,8 +154,103 @@ def _check_safety_layers(m: MBTiles, metadata: dict) -> list[str]:
     return errors
 
 
-def _check_against_sources(m: MBTiles, metadata: dict, enc_zips: list[Path]) -> list[str]:
-    """Hazards and depth/land coverage at the top zoom against the source cells."""
+def _check_derived_layers(m: MBTiles, metadata: dict, kind: str) -> list[str]:
+    """A derived charts pack (charts.kind) holds its DERIVED_LAYERS at every zoom from the file's minzoom to its
+    maxzoom. Pack-wide, as _check_safety_layers."""
+    errors = []
+    for z in range(int(metadata["minzoom"]), int(metadata["maxzoom"]) + 1):
+        missing = set(DERIVED_LAYERS[kind])
+        for _, _, data in m.tiles_at(z):
+            missing -= decode_pbf(data).keys()
+            if not missing:
+                break
+        errors += [f"enc.mbtiles: derived layer {layer} has no features at zoom {z}"
+                   for layer in DERIVED_LAYERS[kind] if layer in missing]
+    return errors
+
+
+def _zooms(metadata: dict) -> range:
+    return range(int(metadata["minzoom"]), int(metadata["maxzoom"]) + 1)
+
+
+def _check_no_depth_in_nosurvey(m: MBTiles) -> list[str]:
+    """No derived depth (depare, depcnt or soundg with a src) meets a nosurvey polygon of the same tile shrunk by
+    CANADA_TOLERANCE_UNITS (plan 8 spec 7.1). The depth is cut exactly at the mask edge before tiling, but
+    tippecanoe simplifies and rounds both sides, so on a diagonal or curved edge a depth edge lands up to about
+    2.5 units inside the tiled mask (measured 2.16 at zoom 16, PR 123 review): the same allowance as the Canada
+    rule. One error per feature, naming the tile."""
+    errors = []
+    for z in _zooms(m.metadata()):
+        for x, y, data in m.tiles_at(z):
+            layers = decode_pbf(data)
+            if not layers.get("nosurvey"):
+                continue
+            mask = shapely.union_all([make_valid(shape(f["geometry"])) for f in layers["nosurvey"]]).buffer(
+                -CANADA_TOLERANCE_UNITS)
+            shapely.prepare(mask)
+            for layer in ("depare", "depcnt", "soundg"):
+                errors += [f"enc.mbtiles: {layer} depth inside a nosurvey area in tile {z}/{x}/{y}"
+                           for f in layers.get(layer, []) if "src" in f["properties"]
+                           and mask.intersects(make_valid(shape(f["geometry"])))]
+    return errors
+
+
+def _tile_units(z: int, x: int, y: int, geom: shapely.Geometry) -> shapely.Geometry:
+    """A lon/lat geometry in the tile units of tile z/x/y (4,096 per tile, y down), the inverse of _lonlat."""
+    n = 2**z
+
+    def to_units(c):
+        px = ((c[:, 0] + 180.0) / 360.0 * n - x) * _EXTENT
+        py = ((1 - np.arcsinh(np.tan(np.radians(c[:, 1]))) / math.pi) / 2 * n - y) * _EXTENT
+        return np.column_stack([px, py])
+
+    return shapely.transform(geom, to_units)
+
+
+def _canada_in_tiles(m: MBTiles, canada: shapely.Geometry):
+    """(z, x, y, layers, shrunk) for every tile of every zoom of the file that meets canada: shrunk is canada in
+    the tile's units shrunk by CANADA_TOLERANCE_UNITS (None: nothing of it is left there)."""
+    shapely.prepare(canada)
+    for z in _zooms(m.metadata()):
+        for x, y, data in m.tiles_at(z):
+            (w, n), (e, s) = _lonlat(z, x, y, np.array([[-_NEAR_UNITS, -_NEAR_UNITS],
+                                                        [_EXTENT + _NEAR_UNITS, _EXTENT + _NEAR_UNITS]]))
+            near = box(w, s, e, n)
+            if not canada.intersects(near):
+                continue
+            shrunk = _tile_units(z, x, y, canada.intersection(near)).buffer(-CANADA_TOLERANCE_UNITS)
+            if not shrunk.is_empty:
+                shapely.prepare(shrunk)
+                yield z, x, y, decode_pbf(data), shrunk
+
+
+def _check_no_noaa_in_canada(m: MBTiles, canada: shapely.Geometry) -> list[str]:
+    """No feature of any layer (seabed included) meets canada shrunk by CANADA_TOLERANCE_UNITS, in every tile at
+    every zoom, unless it is a nosurvey area or its src is in DERIVED_SRC (plan 8 spec 7.2). True intersection, so
+    a line across the polygon with no vertex inside is caught. One error per feature, naming the tile and layer."""
+    errors = []
+    for z, x, y, layers, shrunk in _canada_in_tiles(m, canada):
+        for layer, feats in layers.items():
+            if layer == "nosurvey":
+                continue
+            errors += [f"enc.mbtiles: {layer} feature inside the Canada polygon in tile {z}/{x}/{y}" for f in feats
+                       if f["properties"].get("src") not in DERIVED_SRC
+                       and shrunk.intersects(make_valid(shape(f["geometry"])))]
+    return errors
+
+
+def _check_no_enc_contour_in_canada(m: MBTiles, canada: shapely.Geometry) -> list[str]:
+    """No contour with source enc (the ENC fallback lines) meets canada shrunk as in _check_no_noaa_in_canada."""
+    return [f"contour feature with source enc inside the Canada polygon in tile {z}/{x}/{y}"
+            for z, x, y, layers, shrunk in _canada_in_tiles(m, canada) for f in layers.get("contour", [])
+            if f["properties"].get("source") == "enc" and shrunk.intersects(shape(f["geometry"]))]
+
+
+def _check_against_sources(m: MBTiles, metadata: dict, enc_zips: list[Path],
+                           canada: shapely.Geometry | None = None) -> list[str]:
+    """Hazards and depth/land coverage at the top zoom against the source cells. nosurvey areas count as cover
+    beside depare and lndare. A source hazard that lies wholly inside canada (the Canada polygon, where every NOAA
+    feature is cut) is not expected in the tiles; one across it is expected at a point of its part outside."""
     z = int(metadata["maxzoom"])
     owned = _owned_area(metadata)
     tile_box = box(0, 0, _EXTENT, _EXTENT)
@@ -154,7 +263,7 @@ def _check_against_sources(m: MBTiles, metadata: dict, enc_zips: list[Path]) -> 
             if owned is not None and not owned.intersects(geom.representative_point()):
                 continue  # tippecanoe's tile buffer carries hazards from ground another pack owns
             hazards.setdefault(hazard_key(feat["properties"]), []).append(geom)
-        for layer in ("depare", "lndare"):
+        for layer in ("depare", "lndare", "nosurvey"):
             for feat in layers.get(layer, []):
                 for poly in _polygons(make_valid(shape(feat["geometry"])).intersection(tile_box)):
                     shell = _lonlat(z, x, y, np.array(poly.exterior.coords))
@@ -178,6 +287,10 @@ def _check_against_sources(m: MBTiles, metadata: dict, enc_zips: list[Path]) -> 
                 continue  # a finer band's cell takes this ground over in the quilt
             key = hazard_key(f.props)
             source_keys.add(key)
+            if canada is not None and canada.intersects(geom := shape(f.geometry)):
+                if canada.covers(geom):
+                    continue  # cut at the Canada polygon
+                point = geom.difference(canada).representative_point()  # the part the build keeps
             if not any(g.distance(point) <= tol for g in hazards.get(key, [])):
                 errors.append(f"hazard {key} at {point.x:.6f},{point.y:.6f} from {meta.name} missing at zoom {z}")
     errors += [f"hazard {key} in the tiles at zoom {z} is not in the source cells" for key in sorted(set(hazards) - source_keys, key=str)]
@@ -211,7 +324,10 @@ def _check_styles(root: Path, pack: str) -> list[str]:
     return errors
 
 
-def check_pack(pack_root: Path, *, enc_zips: list[Path] | None = None) -> list[str]:
+def check_pack(pack_root: Path, *, enc_zips: list[Path] | None = None,
+               canada: shapely.Geometry | None = None) -> list[str]:
+    """Every check of the pack. canada (the Canada polygon, enc.bc.load_canada) turns on the rules of plan 8 spec
+    7.2: nothing but derived features inside it in a charts pack, no ENC contour inside it in a bathy pack."""
     root = Path(pack_root)
     try:
         manifest = json.loads((root / MANIFEST).read_text())
@@ -221,6 +337,7 @@ def check_pack(pack_root: Path, *, enc_zips: list[Path] | None = None) -> list[s
     if absent:
         return [f"{MANIFEST}: missing keys {', '.join(absent)}"]
     errors = []
+    kind = (manifest.get("charts") or {}).get("kind", "enc")
     if manifest["schema"] != SCHEMA_VERSION:
         errors.append(f"{MANIFEST}: schema {manifest['schema']!r} is not {SCHEMA_VERSION}")
     errors += _check_files(root, manifest)
@@ -248,12 +365,24 @@ def check_pack(pack_root: Path, *, enc_zips: list[Path] | None = None) -> list[s
                     continue
                 if name == "bathy-coarse.mbtiles":  # coverage alone is allowed (CRM-only cells all land)
                     errors += _check_vector_layers(name, metadata, BATHY_LAYER_SPECS, OPTIONAL_LAYERS | COARSE_OPTIONAL_LAYERS)
+                elif name == "enc.mbtiles" and kind != "enc":  # a derived pack needs its derived layers only
+                    optional = frozenset(spec.name for spec in LAYERS) - set(DERIVED_LAYERS[kind])
+                    errors += _check_vector_layers(name, metadata, LAYERS, optional)
                 else:
                     errors += _check_vector_layers(name, metadata, LAYERS if name == "enc.mbtiles" else BATHY_LAYER_SPECS)
                 if name == "enc.mbtiles":
-                    errors += _check_safety_layers(m, metadata)
+                    if kind == "enc":
+                        errors += _check_safety_layers(m, metadata)
+                    else:
+                        errors += _check_derived_layers(m, metadata, kind)
+                    if "nosurvey" in _layer_ids(metadata):
+                        errors += _check_no_depth_in_nosurvey(m)
+                    if canada is not None:
+                        errors += _check_no_noaa_in_canada(m, canada)
                     if enc_zips:
-                        errors += _check_against_sources(m, metadata, enc_zips)
+                        errors += _check_against_sources(m, metadata, enc_zips, canada)
+                elif canada is not None:
+                    errors += [f"{name}: {e}" for e in _check_no_enc_contour_in_canada(m, canada)]
         except sqlite3.Error as exc:
             errors.append(f"{name}: not readable ({exc})")
     errors += _check_styles(root, manifest["pack"])

@@ -55,7 +55,8 @@ def test_counts_match_golden(enc_pack, golden):
         for _, _, data in enc_pack.tiles_at(z):
             for name, feats in decode_pbf(data).items():
                 per_layer[name] += len(feats)
-        counts[str(z)] = {l.name: per_layer.get(l.name, 0) for l in LAYERS}
+        # nosurvey is derived (plan 8), never read from a NOAA cell
+        counts[str(z)] = {l.name: per_layer.get(l.name, 0) for l in LAYERS if l.name != "nosurvey"}
     assert counts == golden("US4WA1HK_tiles.json")
 
 
@@ -190,7 +191,7 @@ def test_metadata(enc_pack, fixtures_dir):
     ]
     valdco = json.loads(md["cheekymarine:valdco"])
     assert valdco and valdco == sorted(valdco, key=float) and len(set(valdco)) == len(valdco)
-    assert {l["id"] for l in json.loads(md["json"])["vector_layers"]} == {l.name for l in LAYERS}
+    assert {l["id"] for l in json.loads(md["json"])["vector_layers"]} == {l.name for l in LAYERS} - {"nosurvey"}
 
 
 def _cell_without(fixtures_dir, layer):

@@ -74,6 +74,7 @@ def _grid_region(tmp_path, regions_dir):
 
     (tmp_path / "regions").mkdir()
     (tmp_path / "regions" / "grid.toml").write_text('zoom = 10\norder = ["test-cell"]\n')
+    shutil.copytree(regions_dir / "clip", tmp_path / "regions" / "clip")  # build-enc loads the Canada polygon
     return Path(shutil.copy(regions_dir / "test-cell.toml", tmp_path / "regions"))
 
 
@@ -140,7 +141,7 @@ def test_build_enc_crops_band1_to_the_owned_tiles(tmp_path, fixtures_dir, region
     from chartpack.enc.reader import CellMeta, Feature
     from chartpack.grid import GRID_ZOOM, owned_tiles, tile_bounds
     from chartpack.region import load_region
-    from shapely.geometry import box, mapping, shape
+    from shapely.geometry import Polygon, box, mapping, shape
 
     # The margin covers tippecanoe's default tile buffer (5 of 256 px) at the region's lowest zoom.
     assert BLOCK_MARGIN_DEG >= 5 / 256 * 360 / 2**tiles.REGION_ZOOMS[0]
@@ -160,8 +161,11 @@ def test_build_enc_crops_band1_to_the_owned_tiles(tmp_path, fixtures_dir, region
               for name, p in points.items()]
              + [Feature("depare", mapping(box(w - 5, s, e, n)),  # reaches 5 degrees west of the owned tiles
                         {"cell": "US1AAAAA", "band": 1, "class": "DEPARE", "DRVAL1": "0.0", "DRVAL2": "5.5"})])
-    read_cell = cli.read_cell
+    read_cell, read_notes, read_canadian_area = cli.read_cell, cli.read_notes, cli.read_canadian_area
     monkeypatch.setattr(cli, "read_cell", lambda path: band1 if path.name.startswith("US1") else read_cell(path))
+    monkeypatch.setattr(cli, "read_notes", lambda path: [] if path.name.startswith("US1") else read_notes(path))
+    monkeypatch.setattr(cli, "read_canadian_area",
+                        lambda path: Polygon() if path.name.startswith("US1") else read_canadian_area(path))
     monkeypatch.setattr(tiles, "run", lambda cmd: None)
     with pytest.raises(Exception):  # the patched run writes no mbtiles: only the tippecanoe input matters
         main(["build-enc", str(region), str(tmp_path / "out"), "--cache", str(tmp_path / "cache"),
@@ -184,7 +188,7 @@ def test_build_enc_crops_the_overview_to_every_owned_tile(tmp_path, fixtures_dir
     from chartpack.enc.reader import CellMeta, Feature
     from chartpack.grid import GRID_ZOOM, owned_tiles, tile_bounds
     from chartpack.region import load_region
-    from shapely.geometry import box, mapping
+    from shapely.geometry import Polygon, box, mapping
 
     (tmp_path / "cache" / "enc").mkdir(parents=True)
     (tmp_path / "cache" / "enc" / "US1AAAAA-1.0.zip").touch()
@@ -199,6 +203,8 @@ def test_build_enc_crops_the_overview_to_every_owned_tile(tmp_path, fixtures_dir
              [Feature("hazard", {"type": "Point", "coordinates": list(p)},
                       {"cell": "US1AAAAA", "band": 1, "class": "OBSTRN", "OBJNAM": name}) for name, p in points.items()])
     monkeypatch.setattr(cli, "read_cell", lambda path: band1)
+    monkeypatch.setattr(cli, "read_notes", lambda path: [])
+    monkeypatch.setattr(cli, "read_canadian_area", lambda path: Polygon())
     monkeypatch.setattr(tiles, "run", lambda cmd: None)
     with pytest.raises(Exception):  # the patched run writes no mbtiles: only the tippecanoe input matters
         main(["build-enc", str(overview), str(tmp_path / "out"), "--cache", str(tmp_path / "cache"),
@@ -222,6 +228,8 @@ def test_build_enc_uses_cached_zip(tmp_path, fixtures_dir, regions_dir):
     with MBTiles.open(root / "enc.mbtiles") as m:
         md = m.metadata()
         assert md["cheekymarine:region"] == "test-cell" and (md["minzoom"], md["maxzoom"]) == ("10", "16")
+        # away from the Canada polygon: none of the plan 8 metadata keys, so the old keys exactly
+        assert not {"cheekymarine:notice_areas", "cheekymarine:data_notice", "cheekymarine:depth_sources"} & set(md)
         owned = json.loads(md["cheekymarine:owned"])
         assert owned and all(isinstance(t, list) and len(t) == 2 for t in owned)
         assert {z for z in range(17) if any(True for _ in m.tiles_at(z))} <= set(range(10, 17))
@@ -322,6 +330,7 @@ def _bathy_region(tmp_path, regions_dir):
     ).replace("dem_maxzoom = 14", "dem_maxzoom = 12")
     (tmp_path / "regions").mkdir()
     shutil.copytree(regions_dir / "datum", tmp_path / "regions" / "datum")
+    shutil.copytree(regions_dir / "clip", tmp_path / "regions" / "clip")  # the builds load the Canada polygon
     (tmp_path / "regions" / "grid.toml").write_text('zoom = 10\norder = ["test-cell"]\n')
     path = tmp_path / "regions" / "bathy-test.toml"
     path.write_text(toml)
@@ -691,6 +700,7 @@ def test_build_enc_merges_usgs_seabed(tmp_path, fixtures_dir, regions_dir):
 
     region = _seabed_region(tmp_path, regions_dir)
     (tmp_path / "grid.toml").write_text('zoom = 10\norder = ["test-cell"]\n')
+    shutil.copytree(regions_dir / "clip", tmp_path / "clip")
     cache = tmp_path / "cache"
     (cache / "enc").mkdir(parents=True)
     shutil.copy(fixtures_dir / "US4WA1HK.zip", cache / "enc" / "US4WA1HK-1.3.zip")
@@ -904,13 +914,17 @@ def test_build_bathy_reads_assets_not_wcs(tmp_path, fixtures_dir, regions_dir, m
 
 
 @pytest.mark.parametrize("command, asset", [("build-bathy", "nonna10-toba.tif"),
-                                            ("build-enc", "coast-toba.geojson.gz")])
+                                            ("build-enc", "nonna10-toba.tif")])
 def test_block_outside_asset_extent_is_error(tmp_path, fixtures_dir, regions_dir, monkeypatch, zero_geoid, command,
                                              asset):
     """A read box past the extent the fetch workflow pulled (fetch-stats-toba.json) fails the build, naming the
-    region, the asset and the fetch workflow, before anything is built."""
+    region, the asset and the fetch workflow, before anything is built. build-enc reads the assets when its tiles
+    meet the Canada polygon (here a stand-in over the region)."""
+    from shapely.geometry import box
+
     from chartpack import cli
 
+    monkeypatch.setattr(cli, "load_canada", lambda regions: box(-123.0, 47.5, -122.0, 48.5))
     region = _nonna_region(tmp_path, regions_dir)
     cache = _bathy_cache(tmp_path, fixtures_dir, region, monkeypatch, [])
     _write_assets(cache / "sources-bc-1", region, shrink=0.01)
@@ -1064,3 +1078,489 @@ def test_build_bathy_checks_the_assets_against_the_stats(tmp_path, fixtures_dir,
     with pytest.raises(SystemExit, match=r"nonna10-toba\.tif.*chartpack-sources\.yml|fetch-stats-toba\.json.*"
                                          r"chartpack-sources\.yml"):
         main(["build-bathy", str(region), str(tmp_path / "out"), "--cache", str(cache), "--work", str(tmp_path / "w")])
+
+
+# ---- plan 8 Task 11: the charts build at the Canada polygon (spec 7.1, 7.2)
+
+def test_enc_region_without_canada_builds_as_before(tmp_path, fixtures_dir, regions_dir, monkeypatch):
+    """A region none of whose owned tiles meets the Canada polygon: the guards run on its cells, and the layer files
+    reaching tippecanoe are the old path's (build_enc_mbtiles with no polygon and nothing derived)."""
+    from chartpack import cli
+    from chartpack.bathy.blocks import BLOCK_MARGIN_DEG
+    from chartpack.enc import tiles
+    from chartpack.enc.reader import read_cell
+    from chartpack.grid import owned_tiles, tiles_area
+    from chartpack.region import load_region
+
+    (tmp_path / "cache" / "enc").mkdir(parents=True)
+    shutil.copy(fixtures_dir / "US4WA1HK.zip", tmp_path / "cache" / "enc" / "US4WA1HK-1.3.zip")
+    region = _grid_region(tmp_path, regions_dir)
+    guards = []
+    check_notices, check_canadian_areas = cli.check_notices, cli.check_canadian_areas
+    monkeypatch.setattr(cli, "check_notices", lambda cells, canada: guards.append(
+        ("notices", [name for name, _ in cells])) or check_notices(cells, canada))
+    monkeypatch.setattr(cli, "check_canadian_areas", lambda cells, canada, owned: guards.append(
+        ("areas", [c[0] for c in cells])) or check_canadian_areas(cells, canada, owned))
+    monkeypatch.setattr(cli, "build_block", lambda *a, **k: pytest.fail("no block is derived"))
+    monkeypatch.setattr(tiles, "run", lambda cmd: None)
+    with pytest.raises(Exception):  # the patched run writes no mbtiles: only the tippecanoe input matters
+        main(["build-enc", str(region), str(tmp_path / "out"), "--cache", str(tmp_path / "cache"),
+              "--work", str(tmp_path / "new")])
+    assert guards == [("notices", ["US4WA1HK"]), ("areas", ["US4WA1HK"])]
+    loaded = load_region(region)
+    with pytest.raises(Exception):
+        tiles.build_enc_mbtiles([read_cell(fixtures_dir / "US4WA1HK.zip")], tmp_path / "old" / "enc.mbtiles",
+                                region=loaded, work=tmp_path / "old", zooms=tiles.REGION_ZOOMS,
+                                area=tiles_area(owned_tiles(loaded, region.parent), BLOCK_MARGIN_DEG))
+    new = sorted(p.name for p in (tmp_path / "new" / "tippecanoe").glob("*.geojsonseq"))
+    assert new and new == sorted(p.name for p in (tmp_path / "old").glob("*.geojsonseq"))
+    for name in new:
+        assert (tmp_path / "new" / "tippecanoe" / name).read_text() == (tmp_path / "old" / name).read_text(), name
+
+
+def _levels(regions_dir):
+    import tomllib
+
+    return tomllib.loads((regions_dir / "bc-valdco.toml").read_text())["levels_m"]
+
+
+NORTH, SOUTH = (163, 356), (163, 357)  # two zoom-10 tiles stacked north-south near Kingston
+EAST = (164, 356)  # east of NORTH: their shared edge (x = 164, not a multiple of 3) is not on a 96 px cell edge
+_UNIT16 = 360 / 2**16 / 4096  # one tile unit at zoom 16, in degrees of longitude
+
+
+@pytest.fixture
+def small_blocks(monkeypatch, zero_geoid):
+    """The block grids at 0.0004 and 0.0012 degree (as test_bathy_blocks), so a whole zoom-10 block stays small."""
+    from chartpack.bathy import blocks
+
+    monkeypatch.setattr(blocks, "FINE_RES_DEG", 0.0004)
+    monkeypatch.setattr(blocks, "COARSE_RES_DEG", 0.0012)
+
+
+def _slope_nonna(tmp_path, tiles):
+    """A NONNA-100 mosaic over the read boxes of tiles: depth from 2 m in the north to about 90 m in the south, with
+    a wiggle across, so every band of the derived features has many depth areas."""
+    import numpy as np
+    from test_bathy_blocks import _write_nonna_over
+
+    from chartpack.bathy.blocks import iter_blocks
+
+    reads = [read for _, _, read in iter_blocks(set(tiles))]
+    area = (min(r[0] for r in reads) - 0.01, min(r[1] for r in reads) - 0.01, max(r[2] for r in reads) + 0.01,
+            max(r[3] for r in reads) + 0.01)
+    return _write_nonna_over(tmp_path / "n100.tif", "nonna100", area, lambda lon, lat: -(
+        2.0 + 160.0 * (area[3] - lat) + 3.0 * np.sin(lon * 300.0)))
+
+
+def _region(regions_dir, kind):
+    import dataclasses
+
+    from chartpack.region import load_region
+
+    return dataclasses.replace(load_region(regions_dir / "test-cell.toml"), charts_kind=kind)
+
+
+def _derive_tile(tile, region, owners, canada, nonna100, regions_dir, *, etopo=None, land=None, outline=None):
+    from shapely.geometry import Polygon
+
+    from chartpack import cli
+    from chartpack.bathy.blocks import BlockSources, area_datum, iter_blocks
+
+    _, core, read = next(iter_blocks({tile}))
+    land = Polygon() if land is None else land
+    return core, cli._derived_block(tile, core, read, BlockSources([], None, None, nonna100, etopo),
+                                    area_datum(region, Path("unused")), region, owners, canada,
+                                    levels_m=_levels(regions_dir), land=land, nosurvey=Polygon(),
+                                    outline=canada.boundary if outline is None else outline)
+
+
+def _band_areas(features, lo, **match):
+    from shapely import union_all
+    from shapely.geometry import shape
+
+    return union_all([shape(f.geometry) for f in features if f.layer == "depare" and f.props["tippecanoe"]["minzoom"]
+                      == lo and all(f.props.get(k) == v for k, v in match.items())])
+
+
+def _thin(geom):
+    """No part of geom is wider than one zoom-16 tile unit."""
+    return geom.is_empty or geom.buffer(-_UNIT16 / 2).is_empty
+
+
+def test_noaa_and_derived_meet_on_one_line(tmp_path, regions_dir, small_blocks):
+    """A US-owned tile across the polygon: the NOAA depare cut at the polygon and the derived depare made for the
+    charts side leave no gap and no overlap wider than one tile unit, at every band."""
+    from shapely.geometry import box, mapping
+
+    from chartpack.bathy.contours import BANDS
+    from chartpack.enc.bc import apply_rules
+    from chartpack.enc.reader import Feature
+    from chartpack.grid import tile_bounds
+
+    region = _region(regions_dir, "enc")
+    nonna100 = _slope_nonna(tmp_path, [NORTH])
+    w, s, e, n = tile_bounds(10, *NORTH)
+    mid = (s + n) / 2 + 0.00013
+    canada = box(w - 1, mid, e + 1, n + 1).union(box(w + 0.1, s + 0.05, w + 0.15, mid))  # a notch into the US part
+    core, derived = _derive_tile(NORTH, region, {NORTH: region}, canada, nonna100, regions_dir)
+    noaa = Feature("depare", mapping(box(*core)), {"cell": "US4AAAAA", "band": 4, "class": "DEPARE", "DRVAL1": "0",
+                                                   "DRVAL2": "5", "tippecanoe": {"minzoom": 10, "maxzoom": 16}})
+    out = apply_rules([noaa], derived, canada)
+    kept = _band_areas(out, 10, cell="US4AAAAA")
+    assert kept.equals(box(*core).difference(canada))
+    for lo, _, _ in BANDS:
+        mine = _band_areas(out, lo, src="nonna100")
+        assert not mine.is_empty, lo
+        assert _thin(mine.intersection(kept)), lo
+        assert _thin(box(*core).difference(mine.union(kept))), lo
+
+
+def test_adjacent_blocks_depare_meet_at_every_band(tmp_path, regions_dir, small_blocks):
+    """Two adjacent BC-owned blocks, each derived from its own read box: no gap and no overlap in depare along their
+    shared core edge, at every band (nav_depth reaches past the core, so the core edge is inside both grids)."""
+    from shapely.geometry import box
+
+    from chartpack.bathy.contours import BANDS
+
+    region = _region(regions_dir, "derived-inshore")
+    owners = {NORTH: region, SOUTH: region}
+    canada = box(-130, 40, -110, 55)
+    nonna100 = _slope_nonna(tmp_path, [NORTH, SOUTH])
+    north, a = _derive_tile(NORTH, region, owners, canada, nonna100, regions_dir)
+    south, b = _derive_tile(SOUTH, region, owners, canada, nonna100, regions_dir)
+    assert north[1] == south[3]
+    both = box(*north).union(box(*south))
+    for lo, _, _ in BANDS:
+        da, db = _band_areas(a, lo), _band_areas(b, lo)
+        assert box(*north).covers(da) and box(*south).covers(db), lo
+        assert _thin(da.intersection(db)), lo
+        assert _thin(both.difference(da.union(db))), lo
+
+
+def test_adjacent_blocks_one_sounding_per_cell(tmp_path, regions_dir, small_blocks):
+    """A 96 px sounding cell across the shared core edge of two blocks gets one sounding at each zoom, from the block
+    holding its center. A zoom-10 tile edge is on a sounding cell edge only when its index is a multiple of 3
+    (256 px tiles, 96 px cells), so NORTH and EAST, meeting at x = 164, share straddling cells at every zoom."""
+    import math
+    from collections import Counter
+
+    from shapely.geometry import box
+
+    from chartpack.enc.derived import SOUNDING_PX
+    from chartpack.grid import tile_bounds
+
+    region = _region(regions_dir, "derived-inshore")
+    owners = {NORTH: region, EAST: region}
+    nonna100 = _slope_nonna(tmp_path, [NORTH, EAST])
+    canada = box(-130, 40, -110, 55)
+    edge = tile_bounds(10, *EAST)[0]
+    cells = Counter()
+    for tile in (NORTH, EAST):
+        _, feats = _derive_tile(tile, region, owners, canada, nonna100, regions_dir)
+        for f in feats:
+            if f.layer == "soundg":
+                z = f.props["tippecanoe"]["minzoom"]
+                lon, lat = f.geometry["coordinates"]
+                world = 256 * 2**z
+                kx = math.floor((lon + 180) / 360 * world / SOUNDING_PX)
+                ky = math.floor((1 - math.asinh(math.tan(math.radians(lat))) / math.pi) / 2 * world / SOUNDING_PX)
+                cells[(z, kx, ky)] += 1
+    assert cells and max(cells.values()) == 1, [k for k, v in cells.items() if v > 1][:5]
+    for z in range(10, 17):  # the column of cells across the edge keeps its soundings at every zoom
+        straddling = math.floor((edge + 180) / 360 * 256 * 2**z / SOUNDING_PX)
+        assert (edge + 180) / 360 * 256 * 2**z / SOUNDING_PX % 1 > 0, z
+        assert any(k[0] == z and k[1] == straddling for k in cells), z
+
+
+def test_derived_coalne_not_on_polygon_or_box_edge(tmp_path, regions_dir, small_blocks):
+    """The land asset is cut to its box and to the Canada polygon by the derive stage: no derived coalne is drawn
+    along either cut (the 49th parallel on land is not a coastline); the real coast is kept."""
+    from shapely import union_all
+    from shapely.geometry import LineString, box, shape
+
+    from chartpack.enc.bc import apply_rules
+    from chartpack.grid import tile_bounds
+
+    w, s, e, n = tile_bounds(10, *NORTH)
+    region = _region(regions_dir, "derived-inshore")
+    canada = box(w - 1, s + 0.1, e + 1, n + 1)  # its south edge crosses the tile on land
+    extent = (w - 1, s - 1, w + 0.2, n + 1)  # the land asset's box edge at w + 0.2, inside the tile
+    land = box(w + 0.05, s + 0.05, w + 0.3, s + 0.15).intersection(canada).intersection(box(*extent))
+    outline = canada.boundary.union(box(*extent).boundary)
+    nonna100 = _slope_nonna(tmp_path, [NORTH])
+    _, feats = _derive_tile(NORTH, region, {NORTH: region}, canada, nonna100, regions_dir, land=land,
+                            outline=outline)
+    real = union_all([shape(f.geometry) for f in apply_rules([], feats, canada) if f.layer == "coalne"])
+    assert real.intersection(outline.buffer(1e-9)).length == 0
+    expected = LineString([(w + 0.05, s + 0.1), (w + 0.05, s + 0.15), (w + 0.2, s + 0.15)])
+    assert real.length == pytest.approx(expected.length, rel=1e-6)
+    assert real.buffer(1e-7).covers(expected.difference(outline.buffer(2e-7)))
+
+
+def test_offshore_inside_polygon_from_nonna100_then_coarse(tmp_path, regions_dir, small_blocks):
+    """An offshore BC tile inside the polygon: derived depare with src nonna100 where NONNA-100 has data, etopo
+    elsewhere, at every band; no NOAA depare is left there."""
+    import numpy as np
+    from shapely.geometry import Point, box, mapping, shape
+    from test_bathy_blocks import _write_grid, _write_nonna_over
+
+    from chartpack.bathy.contours import BANDS
+    from chartpack.enc.bc import apply_rules
+    from chartpack.enc.reader import Feature
+    from chartpack.grid import tile_bounds
+
+    w, s, e, n = tile_bounds(10, *NORTH)
+    cx, cy = (w + e) / 2, (s + n) / 2
+    patch = (cx - 0.05, cy - 0.05, cx + 0.05, cy + 0.05)
+    nonna100 = _write_nonna_over(tmp_path / "n100.tif", "nonna100", patch, lambda lon, lat: -(  # a seamount
+        21.0 + 1000.0 * np.hypot(lon - cx, lat - cy)))
+    etopo = _write_grid(tmp_path / "etopo.tif", -300.0, (-123.0, 47.25, -122.0, 48.25))
+    region = _region(regions_dir, "derived-offshore")
+    canada = box(-130, 40, -110, 55)
+    core, derived = _derive_tile(NORTH, region, {NORTH: region}, canada, nonna100, regions_dir, etopo=etopo)
+    noaa = Feature("depare", mapping(box(*core)), {"cell": "US1AAAAA", "band": 1, "class": "DEPARE",
+                                                   "DRVAL1": "0", "DRVAL2": "5000",
+                                                   "tippecanoe": {"minzoom": 10, "maxzoom": 16}})
+    out = apply_rules([noaa], derived, canada)
+    assert not [f for f in out if f.layer == "depare" and "src" not in f.props]
+    for lo, _, _ in BANDS:
+        at = {name: [f.props["src"] for f in out if f.layer == "depare" and f.props["tippecanoe"]["minzoom"] == lo
+                     and shape(f.geometry).contains(p)]
+              for name, p in (("seamount", Point(cx, cy)), ("deep", Point(w + 0.02, n - 0.02)))}
+        assert at == {"seamount": ["nonna100"], "deep": ["etopo"]}, lo
+
+
+def test_no_enc_fallback_contour_inside_canada(tmp_path, fixtures_dir, regions_dir, monkeypatch, capsys, zero_geoid):
+    """The ENC fallback contours of a bathy pack are cut at the Canada polygon (the Juan de Fuca strip is inside it
+    though canada-wa.geojson, the depth side, calls it US): a contour across it keeps only its outside part, one
+    wholly inside is dropped."""
+    import json
+
+    from shapely import union_all
+    from shapely.geometry import box, shape
+
+    from chartpack import cli
+    from chartpack.bathy import blocks
+
+    region = _bathy_region(tmp_path, regions_dir)
+    region.write_text('coarse_fallback = "enc"\n' + region.read_text().replace('sources = ["cudem", "crm"]', 'sources = ["cudem"]'))
+    cache = _bathy_cache(tmp_path, fixtures_dir, region, monkeypatch, ["https://example.test/ncei19_n48x00_w122x50_2023v1.tif"])
+    shutil.rmtree(cache / "crm")
+
+    def fake_read_window(src, bbox):
+        grid = _fixture_window(fixtures_dir, bbox)
+        grid.data[:, : grid.data.shape[1] // 2] = grid.nodata  # the CUDEM tile covers only the east half
+        return grid
+
+    monkeypatch.setattr(blocks, "read_window", fake_read_window)
+
+    def enc_lines(work):
+        assert main(["build-bathy", str(region), str(tmp_path / work), "--cache", str(cache), "--work",
+                     str(tmp_path / work / "w")]) == 0
+        capsys.readouterr()
+        rows = [json.loads(line) for line in (tmp_path / work / "w" / "tippecanoe" / "contour.geojsonseq").read_text()
+                .splitlines()]
+        return [shape(f["geometry"]) for f in rows if f["properties"]["source"] == "enc"]
+
+    before = enc_lines("before")  # the Canada polygon far away
+    strip = box(-122.45, 47.85, -122.383, 47.95)  # over the west part of the ENC-fallback half
+    assert any(strip.contains(line) for line in before) and any(line.crosses(strip.boundary) for line in before)
+    monkeypatch.setattr(cli, "load_canada", lambda regions: strip)
+    after = enc_lines("after")
+    assert after and union_all(after).intersection(strip).length < 1e-12
+    assert union_all(after).symmetric_difference(union_all(before).difference(strip)).length < 1e-9
+
+
+def test_check_passes_the_repo_canada_polygon(charts_pack_root_copy, regions_dir, monkeypatch, capsys):
+    from chartpack import cli
+    from chartpack.enc.bc import load_canada
+
+    got = []
+    monkeypatch.setattr(cli, "check_pack", lambda root, *, enc_zips=None, canada=None: got.append(canada) or [])
+    assert main(["check", str(charts_pack_root_copy)]) == 0
+    assert len(got) == 1 and got[0].equals(load_canada(regions_dir))
+
+
+def test_build_enc_derived_region_end_to_end(tmp_path, fixtures_dir, regions_dir, monkeypatch, capsys, zero_geoid):
+    """build-enc of a BC inshore region across the Canada polygon (a stand-in with a diagonal edge through the tile,
+    densified as load_canada does): no NOAA feature is left inside it, the derived depth and land are, the inputs
+    and the notices are recorded, and the pack passes the check with that polygon. The no-survey asset is a
+    triangle over the NONNA data, so both of the check's tolerances meet edges tippecanoe moved."""
+    import gzip
+    import json
+
+    import shapely
+    from shapely.geometry import Polygon, box, mapping, shape
+
+    from chartpack.enc.bc import SEGMENT_DEG
+
+    from chartpack import cli
+    from chartpack.grid import fetch_extent, owned_tiles, tiles_area
+    from chartpack.mbtiles import MBTiles
+    from chartpack.pack.assemble import CHS_NOTICE, OGL_BC_NOTICE
+    from chartpack.pack.check import check_pack
+    from chartpack.region import load_region
+
+    canada = shapely.segmentize(Polygon([(-122.6, 47.5), (-122.0, 47.5), (-122.0, 48.5), (-122.3, 48.5),
+                                         (-122.41, 47.95), (-122.42, 47.86)]), SEGMENT_DEG)
+    monkeypatch.setattr(cli, "load_canada", lambda regions: canada)
+    region = _nonna_region(tmp_path, regions_dir)
+    shutil.copy(regions_dir / "bc-valdco.toml", region.parent)
+    cache = _bathy_cache(tmp_path, fixtures_dir, region, monkeypatch, [])
+    folder = cache / "sources-bc-1"
+    _write_assets(folder, region)
+    extent = fetch_extent(load_region(region), region.parent)
+    nosurvey = Polygon([(-122.399, 47.881), (-122.37, 47.919), (-122.361, 47.885)])
+    land = box(-122.395, 47.885, -122.390, 47.890).difference(nosurvey)
+    for name, geoms in (("land-toba.geojson.gz", [land]), ("nosurvey-toba.geojson.gz", [nosurvey])):
+        features = [{"type": "Feature", "properties": {}, "geometry": mapping(g)} for g in geoms]
+        (folder / name).write_bytes(gzip.compress(json.dumps({"type": "FeatureCollection",
+                                                              "features": features}).encode()))
+    _write_derive_stats(folder, extent)
+    _no_network(monkeypatch)
+    assert main(["build-enc", str(region), str(tmp_path / "out"), "--cache", str(cache), "--work",
+                 str(tmp_path / "work")]) == 0
+    capsys.readouterr()
+    root = tmp_path / "out" / "charts-test-cell-0.1.0"
+    with MBTiles.open(root / "enc.mbtiles") as m:
+        md = m.metadata()
+    assert [d["source"] for d in json.loads(md["cheekymarine:depth_sources"])] == ["nonna10", "nonna100", "fwa",
+                                                                                 "nosurvey"]
+    assert md["cheekymarine:data_notice"] == CHS_NOTICE
+    areas = json.loads(md["cheekymarine:notice_areas"])["features"]
+    owned = tiles_area(owned_tiles(load_region(region), region.parent))
+    assert len(areas) == 1 and shape(areas[0]["geometry"]).symmetric_difference(owned.intersection(canada)).area < 1e-12
+    notice = (root / "NOTICE").read_text()
+    assert CHS_NOTICE in notice and OGL_BC_NOTICE in notice
+    assert json.loads((root / "manifest.json").read_text())["charts"] == {"kind": "derived-inshore"}
+    assert check_pack(root, canada=canada) == []
+
+
+def test_build_enc_canadian_tiles_without_nonna_fail(tmp_path, fixtures_dir, regions_dir, monkeypatch):
+    """A region whose owned tiles meet the Canada polygon but which lists no NONNA source would draw blank Canadian
+    water (the NOAA cut, nothing derived): the build stops naming the region, before anything is tiled."""
+    from shapely.geometry import box
+
+    from chartpack import cli
+
+    (tmp_path / "cache" / "enc").mkdir(parents=True)
+    shutil.copy(fixtures_dir / "US4WA1HK.zip", tmp_path / "cache" / "enc" / "US4WA1HK-1.3.zip")
+    region = _grid_region(tmp_path, regions_dir)
+    monkeypatch.setattr(cli, "load_canada", lambda regions: box(-123.0, 47.5, -122.0, 48.5))
+    monkeypatch.setattr(cli, "build_enc_mbtiles", lambda *a, **k: pytest.fail("built with blank Canadian water"))
+    with pytest.raises(SystemExit, match=r"region test-cell: .*Canada polygon.*NONNA"):
+        main(["build-enc", str(region), str(tmp_path / "out"), "--cache", str(tmp_path / "cache"),
+              "--work", str(tmp_path / "work")])
+
+
+def test_build_enc_overview_meeting_canada_stops(tmp_path, fixtures_dir, regions_dir, monkeypatch):
+    """The overview owns no tile, so nothing derived would fill its Canadian water after the NOAA cut: an overview
+    whose content tiles meet the Canada polygon stops before the build, naming plan 8 Task 15. One away from the
+    polygon builds as before (test_build_enc_crops_the_overview_to_every_owned_tile and the fixtures)."""
+    from shapely.geometry import box
+
+    from chartpack import cli
+
+    (tmp_path / "cache" / "enc").mkdir(parents=True)
+    shutil.copy(fixtures_dir / "US4WA1HK.zip", tmp_path / "cache" / "enc" / "US4WA1HK-1.3.zip")
+    pack = _grid_region(tmp_path, regions_dir)
+    overview = pack.with_name("ov.toml")
+    overview.write_text("overview = true\n" + pack.read_text().replace('name = "test-cell"', 'name = "ov"')
+                        .replace('sources = ["cudem", "crm"]', 'sources = ["crm"]'))
+    monkeypatch.setattr(cli, "load_canada", lambda regions: box(-123.0, 47.5, -122.0, 48.5))
+    monkeypatch.setattr(cli, "build_enc_mbtiles", lambda *a, **k: pytest.fail("built with blank Canadian water"))
+    with pytest.raises(SystemExit, match=r"region ov: .*Canada polygon.*overview.*Task 15"):
+        main(["build-enc", str(overview), str(tmp_path / "out"), "--cache", str(tmp_path / "cache"),
+              "--work", str(tmp_path / "work")])
+
+
+def test_derived_coalne_drop_on_real_land_asset_geometry():
+    """The same drop on land as coast.land_polygons makes it (faces in BC Albers meters, back to lon/lat, cut to the
+    box and to a densified polygon with a long diagonal edge): its cut edges lie on the outline to float noise
+    (measured 3e-14 degree, far under _OUTLINE_TOL_DEG), no coalne is left on the box edge or the polygon's
+    boundary, and the real coast is kept whole."""
+    from types import SimpleNamespace
+
+    import numpy as np
+    import shapely
+    from shapely.geometry import LineString, Polygon, box, shape
+    from test_coast import LAND_BOX, _water_points
+
+    from chartpack import cli
+    from chartpack.bathy.cudem import Grid
+    from chartpack.coast import land_polygons
+    from chartpack.enc.bc import SEGMENT_DEG
+
+    canada = shapely.segmentize(Polygon([(-125.0, 49.52), (-123.0, 49.56), (-123.0, 50.0), (-125.0, 50.0)]),
+                                SEGMENT_DEG)
+    coast = LineString([(-123.95, 49.49), (-123.95, 49.61)])  # land to the west, cut by the diagonal edge
+    area = box(*LAND_BOX).intersection(canada)
+    expected_land = area.intersection(box(-124.0, 49.4, -123.95, 49.7))
+    land, _ = land_polygons([coast], LAND_BOX, canada, _water_points(area, expected_land), Polygon())
+    assert land.symmetric_difference(expected_land).area < 1e-9
+    outline = canada.boundary.union(box(*LAND_BOX).boundary)
+    cut_edges = [p for p in shapely.points(shapely.get_coordinates(land.boundary)) if coast.distance(p) > 1e-6]
+    assert max(outline.distance(p) for p in cut_edges) < cli._OUTLINE_TOL_DEG / 1000
+    core = (-124.05, 49.45, -123.85, 49.65)
+    nav = Grid(np.full((4, 4), np.nan, np.float32), np.nan, (core[0], 0.05, 0.0, core[3], 0.0, -0.05), "")
+    r = SimpleNamespace(nav_depth=nav, nav_src=np.zeros((4, 4), np.int8), coarse_grid=None, coarse_source=None)
+    feats = cli._tile_derived(r, "derived-inshore", core, box(*core), levels_m=[0, 5], land=land,
+                              nosurvey=Polygon(), outline=outline)
+    real = shapely.union_all([shape(f.geometry) for f in feats if f.layer == "coalne"])
+    expected = LineString([(-123.95, 49.52 + 0.04 * 1.05 / 2), (-123.95, 49.6)])
+    assert real.intersection(outline.buffer(1e-9)).length == 0
+    assert abs(real.length - expected.length) < 1e-6 and real.hausdorff_distance(expected) < 1e-6
+
+
+def _write_derive_stats(folder, extent, inputs=None):
+    """derive-stats-toba.json over extent, derived from the inputs (default: the files fetch-stats-toba.json lists
+    now, as derive-sources records them)."""
+    import json
+
+    if inputs is None:
+        files = json.loads((folder / "fetch-stats-toba.json").read_text())["files"]
+        inputs = {name: entry["sha256"] for name, entry in files.items()}
+    stats = {"extent": [round(v, 9) for v in extent], **({} if inputs is False else {"inputs": inputs})}
+    (folder / "derive-stats-toba.json").write_text(json.dumps(stats))
+
+
+@pytest.mark.parametrize("case", ["match", "new fetch", "old stats"])
+def test_build_enc_checks_the_derive_inputs(tmp_path, fixtures_dir, regions_dir, monkeypatch, zero_geoid, case):
+    """The land and no-survey assets must come from the NONNA and coastline files of the current fetch: derive-stats
+    records their sha256 and the build compares them with fetch-stats. A fetch run again without stage derive, or
+    derive-stats from before the hashes, stops the build telling the owner to run stage derive again."""
+    import gzip
+    import json
+
+    from shapely.geometry import box
+
+    from chartpack import cli
+    from chartpack.grid import fetch_extent
+    from chartpack.region import load_region
+
+    monkeypatch.setattr(cli, "load_canada", lambda regions: box(-123.0, 47.5, -122.0, 48.5))
+    region = _nonna_region(tmp_path, regions_dir)
+    shutil.copy(regions_dir / "bc-valdco.toml", region.parent)
+    cache = _bathy_cache(tmp_path, fixtures_dir, region, monkeypatch, [])
+    folder = cache / "sources-bc-1"
+    _write_assets(folder, region)
+    for name in ("land-toba.geojson.gz", "nosurvey-toba.geojson.gz"):
+        (folder / name).write_bytes(gzip.compress(b'{"type": "FeatureCollection", "features": []}'))
+    extent = fetch_extent(load_region(region), region.parent)
+    if case == "match":
+        _write_derive_stats(folder, extent)
+    elif case == "new fetch":
+        files = json.loads((folder / "fetch-stats-toba.json").read_text())["files"]
+        _write_derive_stats(folder, extent,
+                            {**{n: e["sha256"] for n, e in files.items()}, "nonna10-toba.tif": "0" * 64})
+    else:
+        _write_derive_stats(folder, extent, False)
+    monkeypatch.setattr(cli, "build_block", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("past the check")))
+    args = ["build-enc", str(region), str(tmp_path / "out"), "--cache", str(cache), "--work", str(tmp_path / "w")]
+    if case == "match":
+        with pytest.raises(RuntimeError, match="past the check"):
+            main(args)
+    else:
+        with pytest.raises(SystemExit, match=r"region test-cell: derive-stats-toba\.json .*stage derive .*again"):
+            main(args)

@@ -3,10 +3,12 @@
 import json
 import tempfile
 import zipfile
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
+import shapely
 from osgeo import gdal
 from shapely.geometry import mapping, shape
 from shapely.ops import unary_union
@@ -149,3 +151,48 @@ def read_cell(zip_path: Path, *, apply_updates: bool = True) -> tuple[CellMeta, 
         raise ValueError(f"{name}: no M_COVR feature with CATCOV=1")
     covr = mapping(unary_union(covr_parts))
     return CellMeta(name, band, edtn, updn, isdt, covr, skipped), features
+
+
+@contextmanager
+def _cell_layers(zip_path: Path):
+    """(the cell opened with its updates applied, the zip member names by file name) while the context lasts."""
+    with tempfile.TemporaryDirectory() as tmp, zipfile.ZipFile(zip_path) as zf:
+        base000 = next(n for n in zf.namelist() if n.endswith(".000"))
+        name = Path(base000).stem
+        members = {Path(n).name: n for n in zf.namelist() if Path(n).parent == Path(base000).parent}
+        for file, member in members.items():
+            if file.startswith(name + "."):
+                (Path(tmp) / file).write_bytes(zf.read(member))
+        ds = gdal.OpenEx(str(Path(tmp) / f"{name}.000"), gdal.OF_VECTOR, open_options=["UPDATES=APPLY"])
+        try:
+            yield ds, zf, members
+        finally:
+            ds = None  # release the files before the temp dir goes
+
+
+def _areas(ds, layer_name: str):
+    """(feature, polygon) for each area feature of the layer; none when the cell has no such layer."""
+    layer = ds.GetLayerByName(layer_name)
+    if layer is None:
+        return
+    for feature in layer:
+        geometry = _geometry(feature)
+        if geometry is not None and geometry["type"].upper() in _POLYGONS:
+            yield feature, shape(geometry)
+
+
+def read_notes(zip_path: Path) -> list[tuple[shapely.Geometry, str | None]]:
+    """Each M_NPUB area of the cell with the text (ISO 8859-1) of the file its TXTDSC names; None when that file
+    is missing from the zip."""
+    notes = []
+    with _cell_layers(zip_path) as (ds, zf, members):
+        for feature, area in _areas(ds, "M_NPUB"):
+            member = members.get(_value(feature, "TXTDSC") or "")
+            notes.append((area, None if member is None else zf.read(member).decode("latin-1")))
+    return notes
+
+
+def read_canadian_area(zip_path: Path) -> shapely.Geometry:
+    """The union of the cell's ADMARE areas with NATION=CA (empty when none)."""
+    with _cell_layers(zip_path) as (ds, _, _):
+        return unary_union([area for feature, area in _areas(ds, "ADMARE") if _value(feature, "NATION") == "CA"])

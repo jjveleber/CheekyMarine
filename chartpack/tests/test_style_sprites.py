@@ -22,7 +22,7 @@ def test_all_hazard_symbols_rasterize_nonblank(symbols_dir):
 
 
 HAZARD_ICONS = {f"hazard-{s}{d}-{p}" for s in HAZARD_SHAPES for d in ("", "-danger") for p in PALETTES}
-PATTERNS = {f"pat-{g}-{p}" for g in ("coarse-survey", "rough") for p in PALETTES}
+PATTERNS = {f"pat-{g}-{p}" for g in ("coarse-survey", "rough", "nosurvey") for p in PALETTES}
 
 
 def test_sprite_sheet(tmp_path, symbols_dir):
@@ -122,3 +122,30 @@ def test_validator_checks_fill_patterns(tmp_path, symbols_dir):
     errors = check_style_sprites_glyphs(fish_style("dusk"), idx, {"Noto Sans Regular", "Noto Sans Bold"})
     assert errors == ["grade-rough-coarse: pattern 'pat-rough-dusk' not in sprite",
                       "grade-rough: pattern 'pat-rough-dusk' not in sprite"]
+
+
+@pytest.mark.parametrize("night", [None, "red"])
+def test_nosurvey_pattern_in_three_sheets(tmp_path, symbols_dir, night):
+    """pat-nosurvey is a baked cross hatch in every palette, at 1x and 2x, told apart from the dots and the diagonal
+    hatch by its shape and from every depth band color of its palette by its foreground color."""
+    colors = night_palette(night) if night else None
+    build_sprites(symbols_dir, tmp_path, "nav", colors)
+    palettes = {**PALETTES, "night": colors} if colors else PALETTES
+    for scale, suffix in ((1, ""), (2, "@2x")):
+        idx, sheet = _rgba(tmp_path, suffix, "nav")
+        for palette, p in palettes.items():
+            entry = idx[f"pat-nosurvey-{palette}"]
+            assert entry["sdf"] is False and entry["pixelRatio"] == scale
+            assert entry["width"] == entry["height"] == 8 * scale
+            im = _pixels(sheet, entry)
+            alpha = im[..., 3]
+            ink = tuple(int(p["CHGRD"][i : i + 2], 16) for i in (1, 3, 5))
+            assert (alpha > 0).any() and (im[alpha > 0][:, :3] == ink).all() and alpha.max() <= 160
+            assert p["CHGRD"] not in {p[t] for t in ("DEPDW", "DEPMD", "DEPMS", "DEPVS", "DEPIT")}
+            mask = alpha > 0
+            for grade in GRADE_PATTERNS:
+                assert (mask != (_pixels(sheet, idx[f"pat-{grade}-{palette}"])[..., 3] > 0)).any()
+            # a cross hatch: the diagonal one way and the anti-diagonal the other, wrapping edge to edge (seamless)
+            n = 8 * scale
+            y, x = np.mgrid[0:n, 0:n]
+            assert mask[(x - y) % n == 0].all() and mask[(x + y) % n == 0].all()

@@ -8,7 +8,9 @@ name: chartpack-sources
 # chartpack/src/chartpack/fetching.py.
 #
 # Start it by hand (workflow_dispatch) with a region file name and a stage. `only` limits a fetch to the
-# coastline or the NONNA grids.
+# coastline or the NONNA grids. Stage derive downloads the region's assets from sources-bc-1, runs
+# `chartpack derive-sources` (no host is called) and uploads land-<name>.geojson.gz, nosurvey-<name>.geojson.gz and
+# derive-stats-<name>.json to the release.
 
 on:
   workflow_dispatch:
@@ -20,7 +22,7 @@ on:
       stage:
         description: Stage
         type: choice
-        options: [fetch]
+        options: [fetch, derive]
         required: true
       only:
         description: Which sources to fetch
@@ -58,8 +60,8 @@ jobs:
             echo "region input must match [a-z0-9-]+" >&2
             exit 1
           fi
-          if [[ ! "${INPUT_STAGE}" =~ ^fetch$ ]]; then
-            echo "stage input must be fetch" >&2
+          if [[ ! "${INPUT_STAGE}" =~ ^(fetch|derive)$ ]]; then
+            echo "stage input must be fetch or derive" >&2
             exit 1
           fi
           if [[ ! "${INPUT_ONLY}" =~ ^(both|coast|nonna)$ ]]; then
@@ -90,7 +92,7 @@ jobs:
           .venv/bin/pip install -e .
 
       - name: Download the existing fetch stats for a one-kind run
-        if: inputs.only != 'both'
+        if: inputs.stage == 'fetch' && inputs.only != 'both'
         working-directory: chartpack
         run: |
           # fetch-sources keeps the other kind's entries of this file (and refuses a changed extent).
@@ -106,12 +108,14 @@ jobs:
           fi
 
       - name: Fetch the sources
+        if: inputs.stage == 'fetch'
         working-directory: chartpack
         run: |
           .venv/bin/chartpack fetch-sources --region "regions/${INPUT_REGION}.toml" --out sources --only "${INPUT_ONLY}"
           ls -l sources
 
       - name: Check every asset is under 2 GiB
+        if: inputs.stage == 'fetch'
         working-directory: chartpack
         run: |
           limit=2147483648
@@ -124,6 +128,7 @@ jobs:
           done
 
       - name: Upload to the release sources-bc-1
+        if: inputs.stage == 'fetch'
         working-directory: chartpack
         run: |
           code=0
@@ -156,3 +161,37 @@ jobs:
             gh release upload sources-bc-1 "${data[@]}" --clobber
           fi
           gh release upload sources-bc-1 "$stats" --clobber
+
+      - name: Download the region's assets
+        if: inputs.stage == 'derive'
+        working-directory: chartpack
+        run: |
+          # The fetch stats and whichever of the coastline and NONNA files the release holds for the region;
+          # derive-sources checks each one it needs against the sha256 in the stats.
+          assets="$(scripts/release-assets.sh sources-bc-1)"
+          patterns=()
+          for f in "fetch-stats-${ASSETS_NAME}.json" "coast-${ASSETS_NAME}.geojson.gz" \
+                   "nonna10-${ASSETS_NAME}.tif" "nonna100-${ASSETS_NAME}.tif"; do
+            if grep -qx "$f" <<< "${assets}"; then
+              patterns+=(-p "$f")
+            fi
+          done
+          if [ "${#patterns[@]}" -eq 0 ]; then
+            echo "no assets of ${ASSETS_NAME} in sources-bc-1: run stage fetch first" >&2
+            exit 1
+          fi
+          mkdir -p cache/sources-bc-1
+          gh release download sources-bc-1 "${patterns[@]}" -D cache/sources-bc-1
+
+      - name: Derive land and the no-survey mask
+        if: inputs.stage == 'derive'
+        working-directory: chartpack
+        run: |
+          .venv/bin/chartpack derive-sources --region "regions/${INPUT_REGION}.toml" --cache cache --out derived
+          ls -l derived
+
+      - name: Upload the derived files to the release sources-bc-1
+        if: inputs.stage == 'derive'
+        working-directory: chartpack
+        run: |
+          gh release upload sources-bc-1 derived/* --clobber

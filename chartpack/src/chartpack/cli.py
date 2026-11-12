@@ -1,6 +1,7 @@
 """chartpack command line."""
 
 import argparse
+import gzip
 import hashlib
 import json
 import re
@@ -12,7 +13,8 @@ import tomllib
 from datetime import datetime, timezone
 from pathlib import Path
 
-from shapely.geometry import box, shape
+import shapely
+from shapely.geometry import box, mapping, shape
 from shapely.ops import unary_union
 
 from chartpack import __version__
@@ -43,13 +45,16 @@ from chartpack.bathy.tiles import (
     tile_bathy,
 )
 from chartpack.cache import DownloadError, download
-from chartpack.coast import fetch_coastline
+from chartpack.coast import WATER_VOTE_M, fetch_coastline, land_polygons
 from chartpack.datum import geoid
 from chartpack.datum.offsets import load_datum
+from chartpack.enc.bc import check_canadian_areas, check_notices, load_canada
 from chartpack.enc.catalog import CATALOG_URL, cells_meeting, parse_catalog
 from chartpack.enc.fetch import fetch_cells
-from chartpack.enc.reader import read_cell
-from chartpack.enc.tiles import OVERVIEW_ZOOMS, REGION_ZOOMS, build_enc_mbtiles
+from chartpack.enc.nosurvey import mask_cells, missing_km2, no_value, read_grids, water_points, wet_area
+from chartpack.enc.derived import derived_features
+from chartpack.enc.reader import read_canadian_area, read_cell, read_notes
+from chartpack.enc.tiles import OVERVIEW_ZOOMS, REGION_ZOOMS, _crop, build_enc_mbtiles
 from chartpack.fetching import USER_AGENT, PoliteSession
 from chartpack.grid import (
     canada_side,
@@ -62,7 +67,7 @@ from chartpack.grid import (
     tiles_meeting,
 )
 from chartpack.pack.archive import archive_pack
-from chartpack.pack.assemble import BATHY_FILES, assemble_bathy_pack, assemble_charts_pack
+from chartpack.pack.assemble import BATHY_FILES, PROJECT, assemble_bathy_pack, assemble_charts_pack
 from chartpack.pack.check import check_pack
 from chartpack.pack.manifest import describe_pack, write_manifest
 from chartpack.pack.restyle import restyle_pack
@@ -77,6 +82,13 @@ from chartpack.seabed.usseabed import FILES, fetch_usseabed, read_usseabed
 SOURCES_RELEASE = "sources-bc-1"
 SOURCES_URL = f"https://github.com/jjveleber/CheekyMarine/releases/download/{SOURCES_RELEASE}/"
 SOURCES_WORKFLOW = "chartpack-sources.yml"
+# A charts build reads NONNA over the charts side of each read box grown by this, more than a fine cell, so the
+# derived depth covers the charts side to its edge before it is cut there (_derived_block).
+_SIDE_GROW_DEG = 0.001
+# Derived coalne this close to the land asset's box edge or the Canada polygon's boundary is dropped: the derive
+# stage cut the land there, so that stretch of its boundary is not coast (_tile_derived). 1e-7 degree is about
+# 1.1 cm north-south and 0.7 cm east-west at 50 N; land_polygons' cut edges lie within 3e-14 degree of the lines.
+_OUTLINE_TOL_DEG = 1e-7
 
 
 def _asset_name(region_path: Path, region) -> str:
@@ -236,10 +248,144 @@ def _usgs_seabed(region, cache: Path, area=None) -> list:
     return features
 
 
+def _read_polygons(path: Path):
+    """The polygons of a derived asset (gzip GeoJSON FeatureCollection, _write_polygons) as one MultiPolygon."""
+    with gzip.open(path, "rt", encoding="utf-8") as f:
+        return shapely.MultiPolygon([shape(feat["geometry"]) for feat in json.load(f)["features"]])
+
+
+def _derived_assets(args: argparse.Namespace, region, name: str, boxes) -> tuple:
+    """The land and no-survey assets of the region (derive-sources, release sources-bc-1) from the cache: (land,
+    nosurvey, the extent of derive-stats-<name>.json, their depth_sources entries). A missing file, or a read box
+    past the extent, stops the build naming the file and the fetch workflow's derive stage. So do derive-stats
+    inputs (the sha256 of the NONNA and coastline files the assets were derived from) that differ from what
+    fetch-stats-<name>.json records now, or are missing: a fetch run again without stage derive."""
+    folder = args.cache / SOURCES_RELEASE
+    land, mask, stats = (folder / f for f in (f"land-{name}.geojson.gz", f"nosurvey-{name}.geojson.gz",
+                                              f"derive-stats-{name}.json"))
+    for path in (stats, land, mask):
+        if not path.is_file():
+            raise SystemExit(f"region {region.name}: {path} not found; run the fetch workflow {SOURCES_WORKFLOW}"
+                             f" stage derive for region {region.name} and download its files from release"
+                             f" {SOURCES_RELEASE}")
+    derived = json.loads(stats.read_text())
+    inputs = [f"coast-{name}.geojson.gz", *_nonna_files(region, name)]
+    _, fetched = _stats_entries(folder / f"fetch-stats-{name}.json", inputs, region)
+    if derived.get("inputs") != {file: fetched[file]["sha256"] for file in inputs}:
+        raise SystemExit(f"region {region.name}: {stats.name} does not record the NONNA and coastline files of the"
+                         f" current fetch ({', '.join(inputs)}), so the land and no-survey assets may be stale; run"
+                         f" the fetch workflow {SOURCES_WORKFLOW} stage derive for region {region.name} again")
+    w, s, e, n = derived["extent"]
+    eps = 1e-9  # the stats round the extent to 9 decimals
+    for bw, bs, be, bn in boxes:
+        if bw < w - eps or bs < s - eps or be > e + eps or bn > n + eps:
+            raise SystemExit(f"region {region.name}: the read box {(bw, bs, be, bn)} reaches past the extent"
+                             f" {[w, s, e, n]} of {land.name} ({stats.name}); run the fetch workflow"
+                             f" {SOURCES_WORKFLOW} stage derive for region {region.name} again")
+    sources = [{"source": source, "asset": path.name, "sha256": _sha256(path)}
+               for source, path in (("fwa", land), ("nosurvey", mask))]
+    return _read_polygons(land), _read_polygons(mask), (w, s, e, n), sources
+
+
+def _near(geom, read) -> shapely.Geometry:
+    """geom cut to the read box (W, S, E, N)."""
+    return geom.intersection(box(*read))
+
+
+def _tile_derived(r, kind: str, core, side, *, levels_m, land, nosurvey, outline) -> list:
+    """The derived Nav features of one owned tile (plan 8 spec 7.1, 7.2). Inshore (charts kind enc or
+    derived-inshore): from nav_depth, with the no-survey mask and the atlas land. Offshore (derived-offshore): from
+    the coarse merge, which takes NONNA-100 first on the charts side, with neither. Cut to `side` (the tile's
+    charts side) when it is less than the tile; coalne also less its parts within _OUTLINE_TOL_DEG of `outline`
+    (the land asset's box edge and the Canada polygon's boundary, where the derive stage cut the land: not coast)."""
+    offshore = kind == "derived-offshore"
+    grid, src = (r.coarse_grid, r.coarse_source) if offshore else (r.nav_depth, r.nav_src)
+    if grid is None:
+        return []
+    empty = shapely.Polygon()
+    features = derived_features(grid.data, src, grid.transform, core=core, levels_m=levels_m,
+                                nosurvey=empty if offshore else nosurvey, land=empty if offshore else land,
+                                lat=(core[1] + core[3]) / 2)
+    if not side.covers(box(*core)):
+        features = _crop(features, side)
+    coast = [f for f in features if f.layer == "coalne"]
+    if coast and not outline.is_empty:
+        features = [f for f in features if f.layer != "coalne"] + _crop(
+            coast, box(*core).difference(outline.buffer(_OUTLINE_TOL_DEG)))
+    return features
+
+
+def _derived_block(tile, core, read, sources: BlockSources, datum, region, tile_owners: dict, canada, *, levels_m,
+                   land, nosurvey, outline) -> list:
+    """The derived features of one owned tile: build_block over the charts side of the read box (_canada with the
+    Canada polygon) grown by _SIDE_GROW_DEG, so nav_depth reaches past the core and past the charts side's edge,
+    then _tile_derived, which cuts them to the core and the charts side. None of the tile on the charts side:
+    nothing."""
+    side = canada_side(canada, tile, region)
+    reach = _canada(read, tile_owners, region, {}, canada)
+    if reach is None or side.area == 0:
+        return []
+    r = build_block(core, read, sources, datum, reach.buffer(_SIDE_GROW_DEG))
+    return _tile_derived(r, region.charts_kind, core, side, levels_m=levels_m, land=_near(land, read),
+                         nosurvey=_near(nosurvey, read), outline=_near(outline, read))
+
+
+def _derived_charts(args: argparse.Namespace, region, owned, canada) -> tuple[list, list[dict]]:
+    """The derived features of every owned tile on the charts side, and their inputs for depth_sources. A region
+    that lists no NONNA source would leave its Canadian water blank (every NOAA feature is cut there): it stops
+    the build."""
+    name = _asset_name(args.region, region)
+    nonna = _nonna_files(region, name)
+    if not nonna:
+        raise SystemExit(f"region {region.name}: its owned tiles meet the Canada polygon, where no NOAA feature is"
+                         " drawn, but its [bathy] sources list no NONNA (nonna10, nonna100) to derive depth from")
+    blocks = list(iter_blocks(owned))
+    reads = [read for _, _, read in blocks]
+    checked = _check_assets(args.region, region, args.cache, nonna, reads)
+    depth_sources = [{"source": file.split("-")[0], "asset": file, "sha256": sha} for file, (_, sha) in checked.items()]
+    paths = {file.split("-")[0]: path for file, (path, _) in checked.items()}
+    offshore = region.charts_kind == "derived-offshore"
+    land = nosurvey = shapely.Polygon()
+    outline = canada.boundary
+    etopo, crm = [], {}
+    if offshore:  # the coarse merge: NONNA-100, then CRM, then ETOPO
+        if "etopo" in region.bathy_sources:
+            etopo = etopo_paths(fetch_extent(region, args.region.parent), args.cache)
+        if "crm" in region.bathy_sources:
+            crm = {read: crm_path(read, args.cache) for read in reads}
+        for path in etopo + [p for p in crm.values() if p is not None]:
+            if not path.exists():
+                raise SystemExit(f"{path} not found; run fetch-bathy first")
+        if crm and (missing := geoid.missing_grids(args.cache / "proj")):
+            raise SystemExit(f"{missing[0]} missing or damaged; run fetch-bathy first")
+        paths.pop("nonna10", None)
+    else:
+        land, nosurvey, extent, assets = _derived_assets(args, region, name, reads)
+        depth_sources += assets
+        outline = shapely.union_all([outline, box(*extent).boundary])
+    with (args.region.parent / "bc-valdco.toml").open("rb") as f:
+        levels = tomllib.load(f)["levels_m"]
+    datum = area_datum(region, args.cache / "proj")
+    tile_owners = owners(region, args.region.parent)
+    features = []
+    for tile, core, read in blocks:
+        sources = BlockSources([], crm.get(read), paths.get("nonna10"), paths.get("nonna100"), etopo or None)
+        features += _derived_block(tile, core, read, sources, datum, region, tile_owners, canada, levels_m=levels,
+                                   land=land, nosurvey=nosurvey, outline=outline)
+    if offshore:
+        depth_sources += [{"source": "crm", "asset": p.name, "sha256": _sha256(p)} for p in crm.values() if p]
+        depth_sources += [{"source": "etopo", "asset": p.name, "sha256": _sha256(p)} for p in etopo]
+    return features, depth_sources
+
+
 def _build_enc(args: argparse.Namespace) -> int:
+    """The charts pack. Every build loads the Canada polygon and runs the CHS guards on the loaded cells (spec 7.2).
+    A pack whose tiles meet the polygon cuts every NOAA feature (and every bottom sample) at it and adds the derived
+    Nav features of its charts side (_derived_charts); any other pack builds as before."""
     region = load_region(args.region)
     names = [n for band in sorted(region.cells) for n in region.cells[band]]
-    cells = [read_cell(_newest_cached_zip(args.cache, name)) for name in names]
+    zips = [_newest_cached_zip(args.cache, name) for name in names]
+    cells = [read_cell(path) for path in zips]
     owned = owned_tiles(region, args.region.parent)  # before the slow build: a bad grid fails fast
     zooms = OVERVIEW_ZOOMS if region.overview else REGION_ZOOMS
     # The quilt output is kept on the owned tiles (the overview: every owned tile) plus a margin wider than
@@ -247,14 +393,21 @@ def _build_enc(args: argparse.Namespace) -> int:
     # still renders over the seam, and a band 1 cell spanning far past wave 1 adds nothing beyond it.
     content = content_tiles(region, args.region.parent)
     area = tiles_area(content, BLOCK_MARGIN_DEG)
-    name = _asset_name(args.region, region)
-    if _nonna_files(region, name):  # a region with Canadian sources: the coastline the derived charts read
-        _check_assets(args.region, region, args.cache, [f"coast-{name}.geojson.gz"], [area.bounds])
+    canada = load_canada(args.region.parent)
+    check_notices([(meta.name, read_notes(path)) for (meta, _), path in zip(cells, zips)], canada)
+    check_canadian_areas([(meta.name, meta.band, read_canadian_area(path), shape(meta.covr))
+                          for (meta, _), path in zip(cells, zips)], canada, tiles_area(content))
+    meets = tiles_area(content).intersection(canada).area > 0
+    if meets and owned is None:  # the overview owns no tile, so nothing derived would fill its Canadian water
+        raise SystemExit(f"region {region.name}: its content tiles meet the Canada polygon, where no NOAA feature is"
+                         " drawn, and the overview's derived depth and land are not built yet (plan 8 Task 15)")
+    derived, depth_sources = _derived_charts(args, region, owned, canada) if meets and owned else ([], [])
     enc = build_enc_mbtiles(cells, args.work / "enc.mbtiles", region=region, work=args.work / "tippecanoe",
                             seabed=_usgs_seabed(region, args.cache, None if owned is None else area), zooms=zooms,
-                            area=area)
+                            area=area, canada=canada if meets else None, derived=derived,
+                            depth_sources=depth_sources)
     keep_tiles(enc, owned, minzoom=zooms[0], maxzoom=zooms[1], content=content)
-    print(_finish(assemble_charts_pack(region, enc, args.out), region))
+    print(_finish(assemble_charts_pack(region, enc, args.out, content=content, canada=canada), region))
     return 0
 
 
@@ -290,7 +443,7 @@ def _check(args: argparse.Namespace) -> int:
             paths = []  # check_pack reports the manifest problem
         errors = [f"{p}: ENC zip not found in --enc-cache" for p in paths if not p.is_file()]
         zips = [p for p in paths if p.is_file()]
-    errors += check_pack(args.packdir, enc_zips=zips)
+    errors += check_pack(args.packdir, enc_zips=zips, canada=load_canada(PROJECT / "regions"))
     for error in errors:
         print(error)
     return 1 if errors else 0
@@ -396,13 +549,71 @@ def _fetch_sources(args: argparse.Namespace) -> int:
     return 0
 
 
-def _canada(read, tile_owners: dict, region, clips: dict):
+def _read_lines(path: Path) -> list:
+    """The coastline lines of a fetched coast file (gzip GeoJSONSeq), multi-lines split into lines."""
+    with gzip.open(path, "rt", encoding="utf-8") as f:
+        return [line for row in f if row.strip() for line in shapely.get_parts(shape(json.loads(row)["geometry"]))]
+
+
+def _write_polygons(path: Path, geom) -> None:
+    features = [{"type": "Feature", "properties": {}, "geometry": mapping(p)} for p in geom.geoms]
+    with gzip.open(path, "wt", encoding="utf-8") as f:
+        json.dump({"type": "FeatureCollection", "features": features}, f, separators=(",", ":"))
+
+
+def _derive_sources(args: argparse.Namespace) -> int:
+    """A region's land polygons and no-survey mask from its fetched assets (the coastline and NONNA, from the
+    release sources-bc-1, already in --cache) and the Canada polygon, over the region's fetch extent. Writes
+    land-<name>.geojson.gz, nosurvey-<name>.geojson.gz and derive-stats-<name>.json to --out, <name> being the
+    region's [sources] assets. Calls no host."""
+    region = load_region(args.region)
+    name = _asset_name(args.region, region)
+    nonna = _nonna_files(region, name)
+    if f"nonna100-{name}.tif" not in nonna:
+        raise SystemExit(f"region {region.name}: derive-sources needs nonna100 among its [bathy] sources")
+    coast = f"coast-{name}.geojson.gz"
+    extent = fetch_extent(region, args.region.parent)
+    assets = _check_assets(args.region, region, args.cache, [coast, *nonna], [extent])
+    canada = load_canada(args.region.parent)
+    n10 = assets[f"nonna10-{name}.tif"][0] if f"nonna10-{name}.tif" in assets else None
+    n100 = assets[f"nonna100-{name}.tif"][0]
+    # Each grid is read once (NONNA-10 holds up to 4e8 cells in a region); the vote and the wet cells come from
+    # NONNA-10, else NONNA-100. The grids are let go before the land is built.
+    grids = read_grids(n10, n100, extent)
+    missing = round(missing_km2(grids, extent), 3) if grids.fine else None
+    water, wet, empty, grid = water_points(grids, WATER_VOTE_M), wet_area(grids), no_value(grids), grids.grid
+    del grids
+    land, water_faces = land_polygons(_read_lines(assets[coast][0]), extent, canada, water, wet)
+    del water, wet
+    nosurvey = mask_cells(empty, grid, land, extent)
+    args.out.mkdir(parents=True, exist_ok=True)
+    _write_polygons(args.out / f"land-{name}.geojson.gz", land)
+    _write_polygons(args.out / f"nosurvey-{name}.geojson.gz", nosurvey)
+    stats = {
+        "extent": [round(v, 9) for v in extent],
+        "inputs": {file: sha for file, (_, sha) in assets.items()},  # the build checks them against fetch-stats
+        "missing_in_100_km2": missing,
+        "land_polygons": len(land.geoms),
+        "nosurvey_polygons": len(nosurvey.geoms),
+        "water_faces": water_faces,
+    }
+    (args.out / f"derive-stats-{name}.json").write_text(json.dumps(stats, indent=2) + "\n")
+    for file in (f"land-{name}.geojson.gz", f"nosurvey-{name}.geojson.gz", f"derive-stats-{name}.json"):
+        print(args.out / file)
+    return 0
+
+
+def _canada(read, tile_owners: dict, region, clips: dict, canada=None):
     """The Canadian column of plan 8 spec 6 over the read box: for each zoom-10 tile it meets, canada_side by the
     tile's owner (a tile no pack owns by the region's own rule), so two blocks see the same side in a shared read
-    margin. None when no part of the box is Canadian. clips caches the clip polygons by path."""
+    margin. None when no part of the box is Canadian. clips caches the clip polygons by path. canada (a charts
+    build, spec 7.2): the Canada polygon, the clip of every US owner in place of its own."""
     parts = []
     for tile in tiles_meeting(read):
         owner = tile_owners.get(tile, region)
+        if canada is not None:
+            parts.append(canada_side(canada, tile, owner))
+            continue
         if owner.charts_kind == "enc" and owner.clip is None:  # a US pack with no clip: all US side
             continue
         clip = None
@@ -491,6 +702,7 @@ def _build_bathy(args: argparse.Namespace) -> int:
         depcnt = enc_depcnt(cells)  # quilted once; each block clips it to its uncovered water
         del cells
         tile_owners, clips = owners(region, args.region.parent), {}
+        chs = load_canada(args.region.parent) if has_cudem else None  # no ENC line inside it (spec 7.2)
         for tile, core, read in blocks:
             tiles = tiles_for_bbox(all_tiles, read)
             used.update((t.name, t) for t in tiles_for_bbox(tiles, core))  # the tiles drawn in the owned tile
@@ -501,8 +713,9 @@ def _build_bathy(args: argparse.Namespace) -> int:
             covered = r.fine_coverage + ([] if enc_fallback else r.coarse_coverage)
             uncovered = box(*core).difference(unary_union([shape(f["geometry"]) for f in covered]))
             # A region without CUDEM writes no fine layers (a fine file with contours alone fails tile_bathy). No
-            # ENC line is drawn on the Canadian column (its coarse sources cover it) or in a masked lake.
-            leave_out = [g for g in (canada, lake_mask) if g is not None]
+            # ENC line is drawn on the Canadian column (its coarse sources cover it), inside the Canada polygon or in
+            # a masked lake.
+            leave_out = [g for g in (canada, None if chs is None else _near(chs, read), lake_mask) if g is not None]
             enc_lines = enc_fallback_contours(depcnt, uncovered, unary_union(leave_out) if leave_out else None
                                               ) if has_cudem else []
             _append_layers(fine_work, r.fine_contours + enc_lines, r.fine_bands, r.fine_coverage)
@@ -571,6 +784,11 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--out", type=Path, required=True)
     p.add_argument("--only", choices=["both", "coast", "nonna"], default="both")
     p.set_defaults(func=_fetch_sources)
+    p = sub.add_parser("derive-sources", help="land polygons and the no-survey mask from a region's fetched assets")
+    p.add_argument("--region", type=Path, required=True)
+    p.add_argument("--cache", type=Path, required=True)
+    p.add_argument("--out", type=Path, required=True)
+    p.set_defaults(func=_derive_sources)
     p = sub.add_parser("build-enc")
     p.add_argument("region", type=Path)
     p.add_argument("out", type=Path)
