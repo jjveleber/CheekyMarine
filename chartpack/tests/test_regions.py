@@ -15,7 +15,6 @@ from chartpack.grid import (
     seams,
     tile_bounds,
     tiles_meeting,
-    tiles_meeting_area,
 )
 from chartpack.region import RegionError, load_region
 
