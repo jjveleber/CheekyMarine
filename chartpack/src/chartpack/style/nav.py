@@ -110,7 +110,7 @@ def _depth_areas(p: dict, depths: Depths) -> list[dict]:
     return layers
 
 
-def _survey_marks(p: dict, palette: str) -> list[dict]:
+def _survey_marks(palette: str) -> list[dict]:
     """Plan 8 spec 6: a cross hatch over water with no survey, dots over the 100 m derived depth areas (NOAA
     depare features have no src). Patterns carry the palette in their names (baked colors, no SDF tint)."""
     return [
@@ -258,7 +258,7 @@ def nav_style(palette: str, depths: Depths = Depths(), *, units: str = "ft", saf
     layers = [
         {"id": "background", "type": "background", "paint": {"background-color": p["NODTA"]}},
         *_depth_areas(p, depths),
-        *_survey_marks(p, palette),
+        *_survey_marks(palette),
         *_land_and_areas(p),
         *_contours(p, depths, safety_contour_m),
         *seabed_layers(p),
