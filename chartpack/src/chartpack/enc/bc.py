@@ -100,8 +100,9 @@ def load_canada(regions_dir: Path) -> shapely.Geometry:
 
 
 def _outside_m(area: shapely.Geometry, grown_m: shapely.Geometry) -> shapely.Geometry:
-    """The part of area (lon/lat) outside grown_m (meters), in meters."""
-    return to_m(area).difference(grown_m)
+    """The part of area (lon/lat) outside grown_m (meters), in meters. The area is densified like the polygon
+    (SEGMENT_DEG), so a long shared edge projects to the same line on both sides."""
+    return to_m(shapely.segmentize(area, SEGMENT_DEG)).difference(grown_m)
 
 
 def check_notices(cells: list[tuple[str, list[tuple[shapely.Geometry, str | None]]]], canada: shapely.Geometry) -> None:
