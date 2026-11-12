@@ -48,11 +48,13 @@ Rectangle {
         return false
     }
     // The first charts pack's notice (when the setting allows; the first on disk that has one, as a gone
-    // merged member has none), then every pack notice line: those are faults to fix, not a disclaimer,
-    // so the setting does not hide them.
+    // merged member has none), then the BC line when a data notice applies (also when the setting allows).
+    // Then every pack notice line: those are faults to fix, not a disclaimer, so the setting does not hide them.
     readonly property string noticeText: {
         const first = splash.appInfo.packsInUse.find(p => p.kind === "charts" && p.onDisk !== false && p.notice !== "")
-        return [first !== undefined && splash.noticeShown ? first.notice : ""].concat(splash.appInfo.packNotices)
+        return [first !== undefined && splash.noticeShown ? first.notice : "",
+                splash.noticeShown && splash.appInfo.bcInstalled ? "BC: not for navigation. See About for the CHS notice." : ""]
+            .concat(splash.appInfo.packNotices)
             .filter(t => t !== "").join("\n")
     }
 

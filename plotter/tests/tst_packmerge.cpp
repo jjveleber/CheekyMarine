@@ -1,3 +1,4 @@
+#include "core/NoticeAreas.h"
 #include "core/PackCatalog.h"
 #include "core/PackMerge.h"
 #include <QDir>
@@ -23,7 +24,7 @@ struct Mb {
     QList<Row> rows;
     bool mapImages = false; // tile-join layout: map + images, tiles a view
     QString format = "pbf";
-    QString minzoom, maxzoom, bounds, json, valdco;
+    QString minzoom, maxzoom, bounds, json, valdco, noticeAreas, dataNotice;
 };
 
 QString meta(const QString& path, const QString& name) {
@@ -85,6 +86,8 @@ void writeMb(const QString& path, const Mb& m) {
         put("bounds", m.bounds);
         put("json", m.json);
         put("cheekymarine:valdco", m.valdco);
+        put("cheekymarine:notice_areas", m.noticeAreas);
+        put("cheekymarine:data_notice", m.dataNotice);
         if (m.mapImages) {
             QVERIFY(q.exec("CREATE TABLE map (zoom_level INTEGER, tile_column INTEGER, tile_row INTEGER, tile_id TEXT)"));
             QVERIFY(q.exec("CREATE UNIQUE INDEX map_index ON map (zoom_level, tile_column, tile_row)"));
@@ -263,6 +266,49 @@ private slots:
         for (const QString& f : kBathyFiles)
             QVERIFY(QFileInfo::exists(o.path() + "/bathy/" + f));
         QCOMPARE(count(o.path() + "/bathy/bathy.mbtiles", "SELECT count(*) FROM tiles WHERE tile_data IN (x'78', x'79')"), 2);
+    }
+    void mergeUnionsNoticeAreas() {
+        QTemporaryDir t, o;
+        const auto feature = [](int x) {
+            return QString(R"({"type":"FeatureCollection","features":[{"type":"Feature","properties":{"kind":"bc"},"geometry":{"type":"Polygon","coordinates":[[[%1,0],[%2,0],[%2,1],[%1,1],[%1,0]]]}}]})").arg(x).arg(x + 1);
+        };
+        Mb x = mb({{10, 1, 1, "x"}}, "10", "10"), y = mb({{10, 2, 2, "y"}}, "10", "10");
+        x.noticeAreas = feature(0);
+        y.noticeAreas = feature(5);
+        const auto a = pack(t.path(), "charts", "a", "1.0.0", {{"enc.mbtiles", x}});
+        const auto b = pack(t.path(), "charts", "b", "1.0.0", {{"enc.mbtiles", y}});
+        const auto r = mergePacks({a, b}, o.path());
+        QVERIFY2(r.has_value(), qPrintable(r.error()));
+        const QJsonArray features = QJsonDocument::fromJson(meta(o.path() + "/charts/enc.mbtiles", "cheekymarine:notice_areas").toUtf8()).object()["features"].toArray();
+        QCOMPARE(features.size(), 2);
+        const auto areas = NoticeAreas::fromGeoJson(meta(o.path() + "/charts/enc.mbtiles", "cheekymarine:notice_areas").toUtf8());
+        QCOMPARE(areas.kindsIn(0.2, 0.2, 0.4, 0.4), NoticeAreas::Kinds(NoticeAreas::Bc));
+        QCOMPARE(areas.kindsIn(5.2, 0.2, 5.4, 0.4), NoticeAreas::Kinds(NoticeAreas::Bc));
+    }
+    void mergeAcceptsMembersWithoutNoticeAreas() {
+        QTemporaryDir t, o;
+        Mb x = mb({{10, 1, 1, "x"}}, "10", "10"), y = mb({{10, 2, 2, "y"}}, "10", "10");
+        y.noticeAreas = R"({"type":"FeatureCollection","features":[{"type":"Feature","properties":{"kind":"bc"},"geometry":{"type":"Polygon","coordinates":[[[0,0],[1,0],[1,1],[0,0]]]}}]})";
+        const auto a = pack(t.path(), "charts", "a", "1.0.0", {{"enc.mbtiles", x}});
+        const auto b = pack(t.path(), "charts", "b", "1.0.0", {{"enc.mbtiles", y}});
+        const auto r = mergePacks({a, b}, o.path());
+        QVERIFY2(r.has_value(), qPrintable(r.error()));
+        const QJsonArray features = QJsonDocument::fromJson(meta(o.path() + "/charts/enc.mbtiles", "cheekymarine:notice_areas").toUtf8()).object()["features"].toArray();
+        QCOMPARE(features.size(), 1);
+        QCOMPARE(meta(o.path() + "/charts/enc.mbtiles", "cheekymarine:data_notice"), QString());
+    }
+    void mergeJoinsDistinctDataNotices() {
+        QTemporaryDir t, o;
+        Mb x = mb({{10, 1, 1, "x"}}, "10", "10"), y = mb({{10, 2, 2, "y"}}, "10", "10"), z = mb({{10, 3, 3, "z"}}, "10", "10");
+        x.dataNotice = "Notice one.";
+        y.dataNotice = "Notice one.";
+        z.dataNotice = "Notice two.";
+        const auto a = pack(t.path(), "charts", "a", "1.0.0", {{"enc.mbtiles", x}});
+        const auto b = pack(t.path(), "charts", "b", "1.0.0", {{"enc.mbtiles", y}});
+        const auto c = pack(t.path(), "charts", "c", "1.0.0", {{"enc.mbtiles", z}});
+        const auto r = mergePacks({a, b, c}, o.path());
+        QVERIFY2(r.has_value(), qPrintable(r.error()));
+        QCOMPARE(meta(o.path() + "/charts/enc.mbtiles", "cheekymarine:data_notice"), QString("Notice one.\n\nNotice two."));
     }
     void unitesMetadata() {
         QTemporaryDir t, o;

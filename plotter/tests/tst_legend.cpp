@@ -38,6 +38,15 @@ QVariantMap rowLabelled(const QVariantList& rows, const QString& label) {
 
 QColor col(const std::optional<QColor>& c) { return c.value_or(QColor()); }
 
+// The fixture style plus fill layers with these ids (the legend reads the id and type, not the pattern).
+QJsonObject withLayers(QJsonObject style, const QStringList& ids) {
+    QJsonArray layers = style["layers"].toArray();
+    for (const QString& id : ids)
+        layers.append(QJsonObject{{"id", id}, {"type", "fill"}});
+    style["layers"] = layers;
+    return style;
+}
+
 const QVariantList kSeabed{QVariantMap{{"abbr", "S"}, {"meaning", "sand"}, {"kind", "material"}}};
 } // namespace
 
@@ -178,6 +187,42 @@ private slots:
         style["layers"] = layers;
         const QVariantList rows = category(legendCategories("fish", style, "day", kSeabed), "depths")["rows"].toList();
         for (const QVariant& r : rows) QVERIFY(r.toMap()["layers"].toList() != QVariantList{"band-fill"});
+    }
+
+    void legendHasNoSurveyRowWhenLayerPresent() {
+        const QJsonObject bc = withLayers(fixture("nav-day"), {"nosurvey", "depare-coarse-survey"});
+        const QVariantList rows = allRows(legendCategories("nav", bc, "day", kSeabed));
+        const QVariantMap none = rowLabelled(rows, "No survey data");
+        QCOMPARE(none["kind"].toString(), QStringLiteral("sprite"));
+        QCOMPARE(none["sprite"].toString(), QStringLiteral("pat-nosurvey-day"));
+        QCOMPARE(none["layers"].toList(), QVariantList{QStringLiteral("nosurvey")});
+        const QVariantMap coarse = rowLabelled(rows, "Coarse survey depth (100 m grid)");
+        QCOMPARE(coarse["sprite"].toString(), QStringLiteral("pat-coarse-survey-day"));
+        QCOMPARE(coarse["layers"].toList(), QVariantList{QStringLiteral("depare-coarse-survey")});
+        const QVariantList night = allRows(legendCategories("nav", bc, "night", kSeabed));
+        QCOMPARE(rowLabelled(night, "No survey data")["sprite"].toString(), QStringLiteral("pat-nosurvey-night"));
+    }
+
+    void legendOmitsBcRowsForWave1Style() {
+        for (const char* n : {"nav-day", "fish-day"}) {
+            const QString name = QString::fromLatin1(n);
+            const QVariantList rows = allRows(legendCategories(name.split('-')[0], fixture(name), "day", kSeabed));
+            QVERIFY(rowLabelled(rows, "No survey data").isEmpty());
+            QVERIFY(rowLabelled(rows, "Coarse survey depth (100 m grid)").isEmpty());
+            QVERIFY(rowLabelled(rows, "Rough depth, worldwide grid").isEmpty());
+        }
+    }
+
+    void fishLegendHasGradeRows() {
+        const QJsonObject bc = withLayers(fixture("fish-day"), {"grade-coarse-survey", "grade-rough"});
+        const QVariantList rows = allRows(legendCategories("fish", bc, "dusk", kSeabed));
+        const QVariantMap coarse = rowLabelled(rows, "Coarse survey depth (100 m grid)");
+        QCOMPARE(coarse["sprite"].toString(), QStringLiteral("pat-coarse-survey-dusk"));
+        QCOMPARE(coarse["layers"].toList(), QVariantList{QStringLiteral("grade-coarse-survey")});
+        const QVariantMap rough = rowLabelled(rows, "Rough depth, worldwide grid");
+        QCOMPARE(rough["sprite"].toString(), QStringLiteral("pat-rough-dusk"));
+        QCOMPARE(rough["layers"].toList(), QVariantList{QStringLiteral("grade-rough")});
+        QVERIFY(rowLabelled(rows, "No survey data").isEmpty());
     }
 
     void rowFieldsFromTheStyle() {

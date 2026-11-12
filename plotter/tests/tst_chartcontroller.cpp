@@ -57,6 +57,7 @@ public:
     QHash<QString, QImage> imageData;   // last image added per id
     QHash<QString, QJsonObject> layers; // runtime layers added since the last style load
     QList<Camera> cameras;
+    QRectF bounds{-122.6, 47.8, 0.8, 0.4}; // x west, y south, width, height (Puget Sound, no BC)
 
     void setStyleJson(const QByteArray& style) override {
         const QJsonObject s = QJsonDocument::fromJson(style).object();
@@ -112,6 +113,11 @@ public:
     void setZoom(double zoom) override { zoomValue = zoom; }
     double zoom() const override { return zoomValue; }
     double viewportHeight() const override { return height; }
+    QRectF visibleBounds() const override { return bounds; }
+    void setVisibleBounds(double west, double south, double east, double north) {
+        bounds = QRectF(QPointF(west, south), QPointF(east, north));
+        emit cameraChanged();
+    }
     QPointF toScreen(double lat, double lon) const override {
         return {(lon + 122.23) * 10000.0 + 512, (47.98 - lat) * 10000.0 + 300};
     }
@@ -172,6 +178,47 @@ bool addBathySource(const QString& path) {
     style["sources"] = sources;
     if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) return false;
     return f.write(QJsonDocument(style).toJson()) > 0;
+}
+
+const QString kBcNotice = QStringLiteral("BC test notice.");
+// A 1 x 1 degree BC square at 48.5..49.5 N, 123..124 W (lon -124..-123).
+const QByteArray kBcArea = R"({"type":"FeatureCollection","features":[{"type":"Feature","properties":{"kind":"bc"},
+"geometry":{"type":"Polygon","coordinates":[[[-124,48.5],[-123,48.5],[-123,49.5],[-124,49.5],[-124,48.5]]]}}]})";
+
+// Sets metadata `name` of the MBTiles at `path`, creating the file and its table when missing.
+bool setFileMeta(const QString& path, const QString& name, const QString& value) {
+    const QString conn = "fm-" + path + name;
+    bool ok = false;
+    {
+        QSqlDatabase db = QSqlDatabase::addDatabase("QSQLITE", conn);
+        db.setDatabaseName(path);
+        QSqlQuery q(db);
+        ok = db.open() && q.exec("CREATE TABLE IF NOT EXISTS metadata (name TEXT, value TEXT)");
+        q.prepare("INSERT INTO metadata VALUES (?, ?)");
+        q.addBindValue(name);
+        q.addBindValue(value);
+        ok = ok && q.exec();
+    }
+    QSqlDatabase::removeDatabase(conn);
+    return ok;
+}
+
+// Adds metadata.cheekymarine.notices {"bc": kBcNotice} to every style file of the pack at `dir`.
+bool addBcNotices(const QString& dir, const QString& text = kBcNotice) {
+    for (const QString& f : QDir(dir + "/styles").entryList({"*.json"}, QDir::Files)) {
+        QFile file(dir + "/styles/" + f);
+        if (!file.open(QIODevice::ReadOnly)) return false;
+        QJsonObject style = QJsonDocument::fromJson(file.readAll()).object();
+        file.close();
+        QJsonObject md = style["metadata"].toObject();
+        QJsonObject cm = md["cheekymarine"].toObject();
+        cm["notices"] = QJsonObject{{"bc", text}};
+        md["cheekymarine"] = cm;
+        style["metadata"] = md;
+        if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) return false;
+        file.write(QJsonDocument(style).toJson());
+    }
+    return true;
 }
 
 struct Rig {
@@ -391,6 +438,167 @@ private slots:
         QVERIFY(r.ctrl->fishAvailable());
         QCOMPARE(r.ctrl->notice(),
                  QStringLiteral("Derived from NOAA ENC. Not an official chart. Not certified for navigation."));
+    }
+
+    // BC notice areas in the single charts and bathy packs; the styles carry a BC notice.
+    static void bcRig(Rig& r, bool withNotices = true) {
+        QVERIFY(r.settings);
+        QVERIFY(setFileMeta(r.chartsDir() + "/enc.mbtiles", "cheekymarine:notice_areas", kBcArea));
+        QVERIFY(setFileMeta(r.packsDir() + "/bathy-puget-north-1.0.0/bathy.mbtiles", "cheekymarine:notice_areas", kBcArea));
+        if (withNotices) {
+            QVERIFY(addBcNotices(r.chartsDir()));
+            QVERIFY(addBcNotices(r.packsDir() + "/bathy-puget-north-1.0.0"));
+        }
+    }
+    static const QString kUsNotice() {
+        return QStringLiteral("Derived from NOAA ENC. Not an official chart. Not certified for navigation.");
+    }
+
+    void mixedViewGetsBcNotice() {
+        Rig r;
+        bcRig(r);
+        r.make();
+        QCOMPARE(r.ctrl->notice(), kUsNotice());
+        QSignalSpy spy(r.ctrl.get(), &ChartController::noticeChanged);
+        r.map.loaded();
+        r.map.setVisibleBounds(-123.5, 48.0, -122.5, 49.0); // straddles the US/BC line
+        QTRY_COMPARE(r.ctrl->notice(), kBcNotice);
+        QCOMPARE(spy.count(), 1);
+    }
+    void usOnlyViewKeepsDefault() {
+        Rig r;
+        bcRig(r);
+        r.make();
+        r.map.loaded();
+        r.map.setVisibleBounds(-122.6, 47.8, -122.0, 48.2);
+        QTest::qWait(500);
+        QCOMPARE(r.ctrl->notice(), kUsNotice());
+    }
+    void viewInBcAtStyleLoadGetsBcNotice() {
+        Rig r;
+        bcRig(r);
+        r.map.bounds = QRectF(QPointF(-123.5, 48.6), QPointF(-123.2, 48.9));
+        r.make();
+        QCOMPARE(r.ctrl->notice(), kBcNotice);
+    }
+    void fishInBcGetsFishBcNotice() {
+        Rig r;
+        bcRig(r);
+        r.make();
+        r.map.loaded();
+        r.ctrl->setMode("fish");
+        QVERIFY(r.ctrl->notice().startsWith("Fishing chart"));
+        r.map.setVisibleBounds(-123.5, 48.6, -123.2, 48.9);
+        QTRY_COMPARE(r.ctrl->notice(), kBcNotice);
+    }
+    void resizeIntoBcGetsBcNotice() {
+        Rig r;
+        bcRig(r);
+        r.make();
+        r.map.loaded();
+        r.map.bounds = QRectF(QPointF(-123.5, 48.6), QPointF(-123.2, 48.9)); // grew into BC, no camera signal
+        emit r.map.viewportChanged();
+        QTRY_COMPARE(r.ctrl->notice(), kBcNotice);
+    }
+    // Spec 7.3: the Nav and Fish areas differ. Here only the bathy file has the BC area, and the two
+    // styles carry different BC texts.
+    void navAndFishUseTheirOwnAreasAndTexts() {
+        Rig r;
+        QVERIFY(r.settings);
+        const QString fishBc = QStringLiteral("Fish BC test notice.");
+        QVERIFY(setFileMeta(r.packsDir() + "/bathy-puget-north-1.0.0/bathy.mbtiles", "cheekymarine:notice_areas", kBcArea));
+        QVERIFY(addBcNotices(r.chartsDir()));
+        QVERIFY(addBcNotices(r.packsDir() + "/bathy-puget-north-1.0.0", fishBc));
+        r.map.bounds = QRectF(QPointF(-123.5, 48.6), QPointF(-123.2, 48.9));
+        r.make();
+        r.map.loaded();
+        QCOMPARE(r.ctrl->notice(), kUsNotice()); // Nav: no BC area in the charts file
+        r.ctrl->setMode("fish");
+        QCOMPARE(r.ctrl->notice(), fishBc);
+        r.ctrl->setMode("nav");
+        QCOMPARE(r.ctrl->notice(), kUsNotice());
+    }
+    void steadyCameraSignalsDoNotPostponeTheNotice() {
+        Rig r;
+        bcRig(r);
+        r.make();
+        r.map.loaded();
+        r.map.bounds = QRectF(QPointF(-123.5, 48.6), QPointF(-123.2, 48.9));
+        // A camera signal every 100 ms (a fast follow-mode feed): the notice must not wait for them to stop.
+        for (int i = 0; i < 10; ++i) {
+            emit r.map.cameraChanged();
+            QTest::qWait(100);
+        }
+        QCOMPARE(r.ctrl->notice(), kBcNotice);
+    }
+    void noticeChangedNotEmittedWhileKindsSame() {
+        Rig r;
+        bcRig(r);
+        r.make();
+        r.map.loaded();
+        QSignalSpy spy(r.ctrl.get(), &ChartController::noticeChanged);
+        r.map.setVisibleBounds(-123.5, 48.6, -123.2, 48.9);
+        QTRY_COMPARE(r.ctrl->notice(), kBcNotice);
+        r.map.setVisibleBounds(-123.6, 48.7, -123.3, 48.95);
+        r.map.setVisibleBounds(-123.4, 48.6, -123.1, 48.9);
+        QTest::qWait(500);
+        QCOMPARE(spy.count(), 1);
+    }
+    void styleWithoutNoticesKeepsOldBehavior() {
+        Rig r;
+        bcRig(r, false);
+        r.make();
+        r.map.loaded();
+        r.map.setVisibleBounds(-123.5, 48.6, -123.2, 48.9);
+        QTest::qWait(500);
+        QCOMPARE(r.ctrl->notice(), kUsNotice());
+    }
+    void bcInstalledFollowsNoticeAreas() {
+        {
+            Rig r;
+            QVERIFY(r.settings);
+            r.make();
+            QVERIFY(!r.ctrl->bcInstalled());
+        }
+        {
+            Rig r;
+            QVERIFY(r.settings);
+            QVERIFY(setFileMeta(r.chartsDir() + "/enc.mbtiles", "cheekymarine:notice_areas", kBcArea));
+            r.make();
+            QVERIFY(r.ctrl->bcInstalled());
+        }
+        {
+            Rig r;
+            QVERIFY(r.settings);
+            QVERIFY(setFileMeta(r.packsDir() + "/bathy-puget-north-1.0.0/bathy.mbtiles", "cheekymarine:notice_areas", kBcArea));
+            r.make();
+            QVERIFY(r.ctrl->bcInstalled());
+        }
+    }
+    void dataNoticesHoldsEachParagraphOnce() {
+        Rig r;
+        QVERIFY(r.settings);
+        const QString chs = "CHS one.\n\nCHS two.";
+        QVERIFY(setFileMeta(r.chartsDir() + "/enc.mbtiles", "cheekymarine:data_notice", chs + "\n\nOGL BC."));
+        QVERIFY(setFileMeta(r.packsDir() + "/bathy-puget-north-1.0.0/bathy.mbtiles", "cheekymarine:data_notice",
+                            chs + "\n\nETOPO."));
+        r.make();
+        QCOMPARE(r.ctrl->dataNotices(), (QStringList{"CHS one.", "CHS two.", "OGL BC.", "ETOPO."}));
+    }
+    void dataNoticesIgnoreEmptyParagraphsAndCrlf() {
+        Rig r;
+        QVERIFY(r.settings);
+        QVERIFY(setFileMeta(r.chartsDir() + "/enc.mbtiles", "cheekymarine:data_notice", "One.\r\n\r\nTwo.\n\n\n\n  \n\nThree."));
+        r.make();
+        QCOMPARE(r.ctrl->dataNotices(), (QStringList{"One.", "Two.", "Three."}));
+    }
+    void dataNoticesListsDistinctTexts() {
+        Rig r;
+        QVERIFY(r.settings);
+        QVERIFY(setFileMeta(r.chartsDir() + "/enc.mbtiles", "cheekymarine:data_notice", "CHS one."));
+        QVERIFY(setFileMeta(r.packsDir() + "/bathy-puget-north-1.0.0/bathy.mbtiles", "cheekymarine:data_notice", "CHS one."));
+        r.make();
+        QCOMPARE(r.ctrl->dataNotices(), QStringList{"CHS one."});
     }
 
     void fishLoadsFishDay() {

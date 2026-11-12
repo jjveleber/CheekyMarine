@@ -116,6 +116,20 @@ QPointF MapLibreChartPort::toScreen(double lat, double lon) const {
     return m_item.map().pixelForCoordinate(QMapLibre::Coordinate(lat, lon));
 }
 
+QRectF MapLibreChartPort::visibleBounds() const {
+    const QMapLibre::Map& map = m_item.map();
+    const double w = m_item.width(), h = m_item.height();
+    double west = 180, south = 90, east = -180, north = -90;
+    for (const QPointF& corner : {QPointF(0, 0), QPointF(w, 0), QPointF(w, h), QPointF(0, h)}) {
+        const QMapLibre::Coordinate c = map.coordinateForPixel(corner);
+        west = std::min(west, c.second);
+        east = std::max(east, c.second);
+        south = std::min(south, c.first);
+        north = std::max(north, c.first);
+    }
+    return QRectF(QPointF(west, south), QPointF(east, north));
+}
+
 MapLibreChartMap::MapLibreChartMap(QQuickItem* parent) : QQuickItem(parent), m_port(*this) {
     setFlag(ItemHasContents, true);
     m_settings.setCacheDatabasePath(QStringLiteral(":memory:")); // packs are local; no tile cache
@@ -125,6 +139,9 @@ MapLibreChartMap::MapLibreChartMap(QQuickItem* parent) : QQuickItem(parent), m_p
     // Connected before the first load: the style-loaded change arrives inside setStyleJson.
     connect(m_map.get(), &QMapLibre::Map::mapChanged, this, [this](QMapLibre::Map::MapChange change) {
         if (change == QMapLibre::Map::MapChangeDidFinishLoadingStyle) emit m_port.styleLoaded();
+        if (change == QMapLibre::Map::MapChangeRegionIsChanging || change == QMapLibre::Map::MapChangeRegionDidChange
+            || change == QMapLibre::Map::MapChangeRegionDidChangeAnimated)
+            emit m_port.cameraChanged();
     });
     connect(m_map.get(), &QMapLibre::Map::mapLoadingFailed, this,
             [](QMapLibre::Map::MapLoadingFailure f, const QString& reason) {

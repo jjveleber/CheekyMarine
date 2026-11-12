@@ -313,7 +313,7 @@ int main(int argc, char* argv[]) {
         if (!p.refused.isEmpty()) qWarning() << "pack refused:" << p.dir << p.refused;
     // sets/<v>/plotter/bin/ up two: the lock of the set this binary belongs to.
     AppInfo appInfo(chart.packs(), chart.packsInUse(), readSetVersion(QCoreApplication::applicationDirPath() + "/../../cheekymarine.lock"),
-                    chart.packNotices(), chart.packModes());
+                    chart.packNotices(), chart.packModes(), chart.dataNotices(), chart.bcInstalled());
     connectAppInfo(client, appInfo);
     // The active track always draws, the finished ones when shown.
     if (cli.isSet(seedTrackOpt)) chart.setSeedTrack(syntheticTrack(seedN));

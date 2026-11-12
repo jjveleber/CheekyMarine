@@ -188,7 +188,9 @@ def test_bathy_notice_has_chs_text_only_with_nonna(test_region, tmp_path, covera
     assert "approximate MLLW" in notice and "SIL Open Font License" in notice
     for name in BATHY_FILES:
         with MBTiles.open(root / name) as m:
-            assert m.metadata().get("cheekymarine:data_notice") == (CHS_NOTICE if chs else None), name
+            etopo = "etopo" in {c for v in coverage.values() for c in (v or [])}
+            expected = "\n\n".join(([CHS_NOTICE] if chs else []) + ([ETOPO_PARAGRAPH] if etopo else []))
+            assert m.metadata().get("cheekymarine:data_notice") == (expected or None), name
 
 
 def _tiles_union(tiles):
@@ -257,6 +259,11 @@ def _sourced_files(tmp_path, sources: dict, coverage: list[str]) -> dict:
 NONNA_SOURCES = {"nonna10": {"name": "nonna10-toba.tif", "sha256": "aa11"},
                  "nonna100": {"name": "nonna100-toba.tif", "sha256": "bb22"}}
 ETOPO_SOURCES = {"etopo": [{"name": "N60W135", "file": "ETOPO_2022_v1_15s_N60W135_surface.tif"}]}
+ETOPO_PARAGRAPH = (
+    "ETOPO 2022 15 Arc-Second Global Relief Model: NOAA National Centers for Environmental\n"
+    "Information. 2022: ETOPO 2022 15 Arc-Second Global Relief Model. NOAA National Centers for Environmental\n"
+    "Information. https://doi.org/10.25921/fd45-gt74. CC0 1.0 public domain dedication.\n"
+    "ETOPO depths are shifted by a fixed 4 m toward chart datum; no tide station data is used.")
 ETOPO_LINE = "ETOPO depths are shifted by a fixed 4 m toward chart datum; no tide station data is used."
 
 
@@ -370,15 +377,30 @@ def test_charts_notice_has_chs_and_bc_credit(test_region, enc_pack_path, tmp_pat
     assert CHS_NOTICE in notice and OGL_BC_NOTICE in notice
     assert f"nonna100-toba.tif (sha256 {'a' * 64})" in notice and f"land-toba.geojson.gz (sha256 {'b' * 64})" in notice
     with MBTiles.open(root / "enc.mbtiles") as m:
-        assert m.metadata()["cheekymarine:data_notice"] == CHS_NOTICE
+        assert m.metadata()["cheekymarine:data_notice"] == f"{CHS_NOTICE}\n\n{OGL_BC_NOTICE}"
     land_only = assemble_charts_pack(
         test_region, _with_depth_sources(enc_pack_path, tmp_path / "f", DEPTH_SOURCES[1:2]), tmp_path / "land")
     notice = (land_only / "NOTICE").read_text()
     assert OGL_BC_NOTICE in notice and "Canadian Hydrographic" not in notice
     with MBTiles.open(land_only / "enc.mbtiles") as m:
-        assert "cheekymarine:data_notice" not in m.metadata()
+        assert m.metadata()["cheekymarine:data_notice"] == OGL_BC_NOTICE  # the credit only, no CHS text
     wave1 = (assemble_charts_pack(test_region, enc_pack_path, tmp_path / "us") / "NOTICE").read_text()
     assert "Canadian Hydrographic" not in wave1 and "British Columbia" not in wave1
+
+
+def test_charts_data_notice_adds_etopo_after_chs_and_shoreline(test_region, enc_pack_path, tmp_path):
+    """A derived-offshore charts pack draws ETOPO depth: its citation follows the CHS and shoreline parts."""
+    from chartpack.pack.assemble import CHS_NOTICE, OGL_BC_NOTICE
+
+    etopo = {"source": "etopo", "asset": "etopo.tif", "sha256": "d" * 64}
+    root = assemble_charts_pack(test_region, _with_depth_sources(enc_pack_path, tmp_path, DEPTH_SOURCES + [etopo]),
+                                tmp_path / "all")
+    with MBTiles.open(root / "enc.mbtiles") as m:
+        assert m.metadata()["cheekymarine:data_notice"] == f"{CHS_NOTICE}\n\n{OGL_BC_NOTICE}\n\n{ETOPO_PARAGRAPH}"
+    only = assemble_charts_pack(test_region, _with_depth_sources(enc_pack_path, tmp_path / "e", [etopo]),
+                                tmp_path / "only")
+    with MBTiles.open(only / "enc.mbtiles") as m:
+        assert m.metadata()["cheekymarine:data_notice"] == ETOPO_PARAGRAPH
 
 
 def test_valdco_gains_no_value_from_derived(test_region, tmp_path):
