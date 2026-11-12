@@ -901,7 +901,13 @@ TestCase {
         compare(H.byName(splash, "splashNotice").text, line)
         splash = createTemporaryObject(splashComp, testCase, { width: 1024, height: 600, appInfo: appInfoStub, noticeShown: false })
         compare(H.byName(splash, "splashNotice").text, "")
+        appInfoStub.packsInUse = packs("charts", 2, "charts notice")
+        splash = createTemporaryObject(splashComp, testCase, { width: 1024, height: 600, appInfo: appInfoStub })
+        compare(H.byName(splash, "splashNotice").text, "charts notice\n" + line)
         appInfoStub.dataNotices = []
+        splash = createTemporaryObject(splashComp, testCase, { width: 1024, height: 600, appInfo: appInfoStub })
+        compare(H.byName(splash, "splashNotice").text, "charts notice")
+        appInfoStub.packsInUse = packs("charts", 2, "")
         splash = createTemporaryObject(splashComp, testCase, { width: 1024, height: 600, appInfo: appInfoStub })
         compare(H.byName(splash, "splashNotice").text, "")
     }

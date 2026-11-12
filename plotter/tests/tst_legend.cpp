@@ -38,11 +38,11 @@ QVariantMap rowLabelled(const QVariantList& rows, const QString& label) {
 
 QColor col(const std::optional<QColor>& c) { return c.value_or(QColor()); }
 
-// The fixture style plus fill-pattern layers, as the BC styles carry them.
-QJsonObject withLayers(QJsonObject style, const QStringList& ids, const QString& pattern) {
+// The fixture style plus fill layers with these ids (the legend reads the id and type, not the pattern).
+QJsonObject withLayers(QJsonObject style, const QStringList& ids) {
     QJsonArray layers = style["layers"].toArray();
     for (const QString& id : ids)
-        layers.append(QJsonObject{{"id", id}, {"type", "fill"}, {"paint", QJsonObject{{"fill-pattern", pattern + id}}}});
+        layers.append(QJsonObject{{"id", id}, {"type", "fill"}});
     style["layers"] = layers;
     return style;
 }
@@ -190,7 +190,7 @@ private slots:
     }
 
     void legendHasNoSurveyRowWhenLayerPresent() {
-        const QJsonObject bc = withLayers(fixture("nav-day"), {"nosurvey", "depare-coarse-survey"}, "pat-");
+        const QJsonObject bc = withLayers(fixture("nav-day"), {"nosurvey", "depare-coarse-survey"});
         const QVariantList rows = allRows(legendCategories("nav", bc, "day", kSeabed));
         const QVariantMap none = rowLabelled(rows, "No survey data");
         QCOMPARE(none["kind"].toString(), QStringLiteral("sprite"));
@@ -214,7 +214,7 @@ private slots:
     }
 
     void fishLegendHasGradeRows() {
-        const QJsonObject bc = withLayers(fixture("fish-day"), {"grade-coarse-survey", "grade-rough"}, "pat-");
+        const QJsonObject bc = withLayers(fixture("fish-day"), {"grade-coarse-survey", "grade-rough"});
         const QVariantList rows = allRows(legendCategories("fish", bc, "dusk", kSeabed));
         const QVariantMap coarse = rowLabelled(rows, "Coarse survey depth (100 m grid)");
         QCOMPARE(coarse["sprite"].toString(), QStringLiteral("pat-coarse-survey-dusk"));

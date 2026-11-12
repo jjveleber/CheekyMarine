@@ -25,9 +25,9 @@ class AppInfo : public QObject {
     // ChartController::packNotices: one line per difference between the installed packs and the files shown.
     Q_PROPERTY(QStringList packNotices READ packNotices CONSTANT)
     // ChartController::packModes: per kind "single", "merged", "merged-stale" or "single-fallback".
+    Q_PROPERTY(QVariantMap packModes READ packModes CONSTANT)
     // ChartController::dataNotices: the data licence notices (the CHS notice) of the files shown, shown in full in About.
     Q_PROPERTY(QStringList dataNotices READ dataNotices CONSTANT)
-    Q_PROPERTY(QVariantMap packModes READ packModes CONSTANT)
 
 public:
     // `scanned` is every pack found; `inUse` the ones the loaded styles read (ChartController::packsInUse).
