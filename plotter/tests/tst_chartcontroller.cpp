@@ -585,6 +585,13 @@ private slots:
         r.make();
         QCOMPARE(r.ctrl->dataNotices(), (QStringList{"CHS one.", "CHS two.", "OGL BC.", "ETOPO."}));
     }
+    void dataNoticesIgnoreEmptyParagraphsAndCrlf() {
+        Rig r;
+        QVERIFY(r.settings);
+        QVERIFY(setFileMeta(r.chartsDir() + "/enc.mbtiles", "cheekymarine:data_notice", "One.\r\n\r\nTwo.\n\n\n\n  \n\nThree."));
+        r.make();
+        QCOMPARE(r.ctrl->dataNotices(), (QStringList{"One.", "Two.", "Three."}));
+    }
     void dataNoticesListsDistinctTexts() {
         Rig r;
         QVERIFY(r.settings);

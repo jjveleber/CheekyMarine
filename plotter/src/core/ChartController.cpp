@@ -326,8 +326,11 @@ ChartController::ChartController(ChartMap& map, Settings& settings, VesselModel&
             if (const auto v = metadataValue(path, QStringLiteral("cheekymarine:notice_areas")))
                 areas = NoticeAreas::fromGeoJson(v->toUtf8());
             if (const auto v = metadataValue(path, QStringLiteral("cheekymarine:data_notice")))
-                for (const QString& para : v->split(QStringLiteral("\n\n"), Qt::SkipEmptyParts))
-                    if (!m_dataNotices.contains(para.trimmed())) m_dataNotices << para.trimmed();
+                for (const QString& raw : QString(*v).replace(QStringLiteral("\r\n"), QStringLiteral("\n"))
+                                              .split(QStringLiteral("\n\n"))) {
+                    const QString para = raw.trimmed();
+                    if (!para.isEmpty() && !m_dataNotices.contains(para)) m_dataNotices << para;
+                }
         };
         readNotices(cf.files.value(QStringLiteral("enc")), m_chartsAreas);
         if (m_bathy) readNotices(bf.files.value(QStringLiteral("bathy")), m_bathyAreas);
