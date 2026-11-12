@@ -879,7 +879,7 @@ TestCase {
         + "The copyright in the data are and remain the property of His Majesty the King in Right of Canada and shall not be sold, licensed, leased, assigned or given to a third party.\n\n"
         + "The incorporation of CHS data in this product does not constitute an endorsement or an approval of this product by the Canadian Hydrographic Service, the Department of Fisheries and Oceans or His Majesty the King in Right of Canada."
     function test_aboutShowsDataNotices() {
-        appInfoStub.dataNotices = [chsNotice]
+        appInfoStub.dataNotices = chsNotice.split("\n\n") // paragraphs, as the controller gives them
         const about = createTemporaryObject(aboutPageComp, testCase, { width: 1024, height: 600, appInfo: appInfoStub })
         const t = H.byName(about, "dataNotices")
         verify(t, "dataNotices item")

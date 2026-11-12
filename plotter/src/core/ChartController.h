@@ -35,7 +35,8 @@ class ChartController : public QObject {
     // files kept although packs differ, or a single pack shown because the merged files are missing
     // or damaged. Empty after a normal install. Unlike `notice`, a style load never changes it.
     Q_PROPERTY(QStringList packNotices READ packNotices CONSTANT)
-    // The distinct cheekymarine:data_notice texts of the files shown (the CHS license notice).
+    // The distinct paragraphs (blank-line separated) of the cheekymarine:data_notice texts of the files shown,
+    // in first-seen order: the CHS, shoreline and ETOPO credits.
     Q_PROPERTY(QStringList dataNotices READ dataNotices CONSTANT)
     // Per kind with a pack shown ("charts", "bathy"): "single", "merged", "merged-stale" (merged
     // files kept, packs differ) or "single-fallback" (merged files missing or damaged).

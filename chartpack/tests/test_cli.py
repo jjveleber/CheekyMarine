@@ -1427,7 +1427,7 @@ def test_build_enc_derived_region_end_to_end(tmp_path, fixtures_dir, regions_dir
         md = m.metadata()
     assert [d["source"] for d in json.loads(md["cheekymarine:depth_sources"])] == ["nonna10", "nonna100", "fwa",
                                                                                  "nosurvey"]
-    assert md["cheekymarine:data_notice"] == CHS_NOTICE
+    assert md["cheekymarine:data_notice"] == f"{CHS_NOTICE}\n\n{OGL_BC_NOTICE}"
     areas = json.loads(md["cheekymarine:notice_areas"])["features"]
     owned = tiles_area(owned_tiles(load_region(region), region.parent))
     assert len(areas) == 1 and shape(areas[0]["geometry"]).symmetric_difference(owned.intersection(canada)).area < 1e-12

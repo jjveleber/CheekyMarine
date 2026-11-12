@@ -553,6 +553,16 @@ private slots:
         QTest::qWait(500);
         QCOMPARE(r.ctrl->notice(), kUsNotice());
     }
+    void dataNoticesHoldsEachParagraphOnce() {
+        Rig r;
+        QVERIFY(r.settings);
+        const QString chs = "CHS one.\n\nCHS two.";
+        QVERIFY(setFileMeta(r.chartsDir() + "/enc.mbtiles", "cheekymarine:data_notice", chs + "\n\nOGL BC."));
+        QVERIFY(setFileMeta(r.packsDir() + "/bathy-puget-north-1.0.0/bathy.mbtiles", "cheekymarine:data_notice",
+                            chs + "\n\nETOPO."));
+        r.make();
+        QCOMPARE(r.ctrl->dataNotices(), (QStringList{"CHS one.", "CHS two.", "OGL BC.", "ETOPO."}));
+    }
     void dataNoticesListsDistinctTexts() {
         Rig r;
         QVERIFY(r.settings);

@@ -133,7 +133,8 @@ def assemble_charts_pack(region: Region, enc_mbtiles: Path, out_dir: Path,
                          content: set[tuple[int, int]] | None = None, canada: shapely.Geometry | None = None) -> Path:
     """The charts pack directory. enc.mbtiles gets cheekymarine:notice_areas (charts_notice_areas of content, the
     pack's owned tiles or the overview's content tiles, and canada) when it has a feature and, when its
-    depth_sources hold NONNA, cheekymarine:data_notice (the CHS notice); a pack away from the polygon keeps its
+    depth_sources hold NONNA and/or the shoreline (fwa), cheekymarine:data_notice (the CHS notice, then the
+    OGL BC credit, a blank line between); a pack away from the polygon keeps its
     old metadata keys."""
     root = Path(out_dir) / f"charts-{region.name}-{region.charts_version}"
     root.mkdir(parents=True, exist_ok=True)
@@ -142,8 +143,10 @@ def assemble_charts_pack(region: Region, enc_mbtiles: Path, out_dir: Path,
         metadata = m.metadata()
     areas = charts_notice_areas(content, canada)
     notice = {"cheekymarine:notice_areas": json.dumps(areas)} if areas["features"] else {}
-    if _NONNA & {d["source"] for d in json.loads(metadata.get("cheekymarine:depth_sources", "[]"))}:
-        notice["cheekymarine:data_notice"] = CHS_NOTICE
+    sources = {d["source"] for d in json.loads(metadata.get("cheekymarine:depth_sources", "[]"))}
+    parts = ([CHS_NOTICE] if _NONNA & sources else []) + ([OGL_BC_NOTICE] if "fwa" in sources else [])
+    if parts:
+        notice["cheekymarine:data_notice"] = "\n\n".join(parts)
     if notice:
         with MBTiles.open(root / "enc.mbtiles") as m:
             m.set_metadata(notice)
@@ -158,12 +161,17 @@ def assemble_charts_pack(region: Region, enc_mbtiles: Path, out_dir: Path,
     return root
 
 
-def _etopo_citation(licences: str) -> str:
-    """The ETOPO 2022 citation and its fixed shift line from the project NOTICE, indented as a Bathymetry entry."""
+def _etopo_text(licences: str) -> str:
+    """The ETOPO 2022 citation and its fixed shift line from the project NOTICE."""
     m = re.search(r"^ETOPO 2022 15 Arc-Second.*?no tide station data is used\.$", licences, re.M | re.S)
     if m is None:
         raise RuntimeError(f"{PROJECT / 'NOTICE'} has no ETOPO 2022 citation")
-    return "".join(f"  {line}\n" for line in m.group(0).replace(" (bathy/etopo.py)", "").splitlines())
+    return m.group(0).replace(" (bathy/etopo.py)", "")
+
+
+def _etopo_citation(licences: str) -> str:
+    """_etopo_text indented as a Bathymetry entry."""
+    return "".join(f"  {line}\n" for line in _etopo_text(licences).splitlines())
 
 
 def _bathy_notice(metadata: dict[str, str], name: str, version: str, chs: bool = False,
@@ -244,7 +252,7 @@ def assemble_bathy_pack(region: Region, files: dict[str, Path], out_dir: Path,
                         owned: set[tuple[int, int]] | None = None) -> Path:
     """The bathy pack directory from the four built files, keyed by their BATHY_FILES names, each given the
     notice metadata: cheekymarine:notice_areas (notice_areas over the owned tiles) and, when a coverage layer holds
-    NONNA, cheekymarine:data_notice (the CHS notice)."""
+    NONNA and/or ETOPO, cheekymarine:data_notice (the CHS notice, then the ETOPO citation, a blank line between)."""
     root = Path(out_dir) / f"bathy-{region.name}-{region.bathy_version}"
     root.mkdir(parents=True, exist_ok=True)
     for name in BATHY_FILES:
@@ -256,8 +264,10 @@ def assemble_bathy_pack(region: Region, files: dict[str, Path], out_dir: Path,
         coverage += json.loads(m.metadata().get("cheekymarine:coverage", "[]"))
     chs = bool(_NONNA & set(coverage))
     notice = {"cheekymarine:notice_areas": json.dumps(notice_areas(region, owned))}
-    if chs:
-        notice["cheekymarine:data_notice"] = CHS_NOTICE
+    parts = ([CHS_NOTICE] if chs else []) + (
+        [_etopo_text((PROJECT / "NOTICE").read_text())] if "etopo" in coverage else [])
+    if parts:
+        notice["cheekymarine:data_notice"] = "\n\n".join(parts)
     for name in BATHY_FILES:
         with MBTiles.open(root / name) as m:
             m.set_metadata(notice)
