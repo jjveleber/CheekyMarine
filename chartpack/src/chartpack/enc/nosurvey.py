@@ -99,7 +99,12 @@ def _polygons(cells: np.ndarray, grid, simplify: bool = False) -> shapely.Geomet
     gdal.Polygonize(band, band, layer, 0)
     parts = shapely.from_wkb([bytes(f.GetGeometryRef().ExportToWkb()) for f in layer])
     out = src = None
-    merged = shapely.coverage_union_all(parts)  # the pieces never overlap: no overlay needed
+    # Each piece is one 4-connected run of cells, so no two share an edge (they meet at corners at most) and their
+    # MultiPolygon is valid as it is. coverage_union_all returns the same pieces, in time that grows faster than
+    # their count: 18 minutes for the 1.45 million wet runs of wa-coast, hours on haida-gwaii (2026-11-12). It is
+    # kept where the result is simplified, since the simplification follows the rings as the union writes them
+    # (another start and direction), and the no-value runs are fewer (9,385 on haida-gwaii, 24 s).
+    merged = shapely.coverage_union_all(parts) if simplify else shapely.multipolygons(parts)
     if simplify:
         merged = merged.simplify(_SIMPLIFY_CELLS * min(px, abs(py)))
     return shapely.transform(merged, lambda xy: np.column_stack(_lonlat(xy[:, 0], xy[:, 1])))
