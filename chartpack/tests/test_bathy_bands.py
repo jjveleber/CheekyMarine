@@ -115,3 +115,23 @@ def test_a_reading_exactly_on_a_level_stays_on_its_shallower_side():
     mllw, thirty = Point(1.5, 4.5), Point(3.5, 2.5)  # the centers of cells (1, 1) and (3, 3)
     assert not any(g.intersects(mllw) for g in at.values())
     assert at[(0, 30)].intersects(thirty) and not at[(30, None)].intersects(thirty)
+
+
+# A reading a hair off a level on the shallow side: the band edge rounds onto the node at real lon/lat coordinates,
+# the same pinch as a reading exactly on the level (PR 130 review).
+@pytest.mark.parametrize("reading", [-1e-12, 30 / M_TO_FT - 1e-12])
+def test_bands_are_valid_polygons_where_a_reading_sits_a_hair_off_a_level(reading):
+    depth = np.ones((6, 6)) * (1.0 if reading < 1 else 12.0)
+    depth[2, 2] = reading
+    transform = (-133.0, 1 / 3600 / 3, 0.0, 54.0, 0.0, -1 / 3600 / 3)
+    feats = build_bands(depth, transform, levels_ft=[30], simplify_deg=0)
+    assert feats and all(shape(f["geometry"]).is_valid for f in feats)
+
+
+def test_a_reading_near_a_level_is_drawn_shallower_never_deeper():
+    """A reading just deeper than 30 ft (inside the snap) is drawn in the 0 to 30 ft band, never deeper."""
+    depth = np.full((5, 5), 5.0)
+    depth[3, 3] = 30 / M_TO_FT + 1e-4
+    feats = build_bands(depth, ON_LEVEL_TRANSFORM, levels_ft=[30], simplify_deg=0)
+    deep = unary_union([shape(f["geometry"]) for f in feats if f["properties"]["depth_min_ft"] == 30])
+    assert not deep.intersects(Point(3.5, 2.5))
