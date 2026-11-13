@@ -38,7 +38,8 @@ def build_bands(
     core_box = None if core is None else box(*core)
     on_level = np.isin(depth_m, [0.0] + [ft / M_TO_FT for ft in levels_ft])
     if on_level.any():
-        depth_m = np.where(on_level, depth_m - _ON_LEVEL_M, depth_m)
+        depth_m = depth_m.copy()  # one copy, and the caller's grid is left as it was
+        depth_m[on_level] -= _ON_LEVEL_M
     del on_level
     x, y = axes(depth_m.shape, transform)
     gen = contourpy.contour_generator(
