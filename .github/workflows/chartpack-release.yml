@@ -189,7 +189,8 @@ jobs:
           name: failed-pack
           path: chartpack/work/${{ env.PACK }}/${{ env.PACK }}-${{ env.REGION }}-${{ env.VERSION }}/*.mbtiles
           retention-days: 7
-          if-no-files-found: error
+          compression-level: 0
+          if-no-files-found: warn
 
       - name: Archive the pack
         working-directory: chartpack
