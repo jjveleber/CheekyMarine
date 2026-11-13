@@ -18,6 +18,7 @@ from chartpack.bathy.contours import (
 )
 
 _BIG_M = 1e9
+_ON_LEVEL_M = 1e-3  # a reading exactly on a level is drawn this much shallower (build_bands)
 
 
 def build_bands(
@@ -29,8 +30,16 @@ def build_bands(
     are included so the bands tile all water; cells at or above MLLW (including the fill_land
     plateau) are outside every band. Polygons are not smoothed. With `core` (W, S, E, N) each
     polygon is clipped to it before simplifying.
+
+    contourpy draws a band for lower < depth <= upper, and pinches the band's rings to a point or a zero-width
+    slit at a reading exactly on a level (a reading at 0 m, say), which makes the polygon invalid. Such a reading
+    is drawn _ON_LEVEL_M shallower: it stays on the same, shallower side of every level, and the rings go round it.
     """
     core_box = None if core is None else box(*core)
+    on_level = np.isin(depth_m, [0.0] + [ft / M_TO_FT for ft in levels_ft])
+    if on_level.any():
+        depth_m = np.where(on_level, depth_m - _ON_LEVEL_M, depth_m)
+    del on_level
     x, y = axes(depth_m.shape, transform)
     gen = contourpy.contour_generator(
         x, y, np.ma.masked_invalid(depth_m), fill_type=contourpy.FillType.OuterOffset

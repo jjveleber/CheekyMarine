@@ -5,7 +5,7 @@ from shapely.geometry import Point, shape
 from shapely.ops import unary_union
 
 from chartpack.bathy.bands import bands_by_zoom, build_bands
-from chartpack.bathy.contours import BANDS, DEPTHS_FT, MAJOR_FT, min_zoom
+from chartpack.bathy.contours import BANDS, DEPTHS_FT, M_TO_FT, MAJOR_FT, min_zoom
 from chartpack.bathy.merge import fill_land, to_mllw_depth
 
 TRANSFORM = (BBOX[0], PIXEL_DEG, 0.0, BBOX[3], 0.0, -PIXEL_DEG)
@@ -78,3 +78,40 @@ def test_deepest_band_is_past_1000():
     assert (1000, None) in spans and (900, 1000) in spans
     assert max(f["properties"]["depth_min_ft"] for f in feats) == 1000
     assert {f["properties"]["minzoom"] for f in feats if f["properties"]["depth_min_ft"] == 1000} == {10}
+
+
+# Two readings exactly at MLLW (0 m) above a land cell: contourpy pinches the band's ring to a point or a
+# zero-width slit at each node that sits exactly on a level, so the polygon is invalid and cutting it at a core
+# edge through those nodes raised "TopologyException: Ring edge missing" (haida-gwaii block (133, 331)).
+ON_LEVEL = np.ones((6, 6))
+ON_LEVEL[2, 2] = ON_LEVEL[3, 2] = 0.0
+ON_LEVEL[4, 2] = -0.3
+ON_LEVEL_TRANSFORM = (0.0, 1.0, 0.0, 6.0, 0.0, -1.0)  # cell centers 0.5 to 5.5; the core edge y 2.5 meets row 3
+
+
+def test_bands_cut_at_a_core_edge_through_readings_exactly_on_a_level():
+    feats = build_bands(ON_LEVEL, ON_LEVEL_TRANSFORM, levels_ft=[30], simplify_deg=0, core=(0.5, 0.5, 5.5, 2.5))
+    assert feats and all(shape(f["geometry"]).is_valid for f in feats)
+
+
+@pytest.mark.parametrize("cells", [[(2, 2)], [(2, 1), (2, 2), (2, 3)], [(2, 2), (3, 3)]])
+def test_bands_are_valid_polygons_where_readings_sit_exactly_on_a_level(cells):
+    depth = np.ones((6, 6))
+    for cell in cells:
+        depth[cell] = 0.0
+    feats = build_bands(depth, ON_LEVEL_TRANSFORM, levels_ft=[30], simplify_deg=0)
+    assert feats and all(shape(f["geometry"]).is_valid for f in feats)
+
+
+def test_a_reading_exactly_on_a_level_stays_on_its_shallower_side():
+    """contourpy draws a band for lower < depth <= upper: a reading at 0 m is in no band and one at exactly 30 ft
+    is in the 0 to 30 ft band, never deeper."""
+    depth = np.full((5, 5), 5.0)
+    depth[1, 1] = 0.0
+    depth[3, 3] = 30 / M_TO_FT
+    feats = build_bands(depth, ON_LEVEL_TRANSFORM, levels_ft=[30], simplify_deg=0)
+    at = {(lo, hi): unary_union([shape(f["geometry"]) for f in feats if f["properties"]["depth_min_ft"] == lo])
+          for lo, hi in ((0, 30), (30, None))}
+    mllw, thirty = Point(1.5, 4.5), Point(3.5, 2.5)  # the centers of cells (1, 1) and (3, 3)
+    assert not any(g.intersects(mllw) for g in at.values())
+    assert at[(0, 30)].intersects(thirty) and not at[(30, None)].intersects(thirty)
