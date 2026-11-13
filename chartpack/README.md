@@ -181,7 +181,9 @@ retry after 60 s on a 5xx or a transport failure, and a stop on HTTP 403 or 429 
 `land-<name>.geojson.gz` (land polygons built from the coastline inside the Canada polygon, `coast.land_polygons`),
 `nosurvey-<name>.geojson.gz` (water with no value in either NONNA grid, at the NONNA-10 grid, `enc/nosurvey.py`)
 and `derive-stats-<name>.json` (`missing_in_100_km2`, the polygon counts, and `water_faces`: the land faces the
-river correction turned to water). The workflow uploads the three files to `sources-bc-1`.
+river correction turned to water, and `inland_water_points`: deep NONNA cells of the water vote left on land
+farther than 500 m from any coastline line, that is surveyed rivers and lakes). The workflow uploads the three files
+to `sources-bc-1`.
 
 ## Tests
 

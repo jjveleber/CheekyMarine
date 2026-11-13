@@ -686,7 +686,7 @@ def _derive_sources(args: argparse.Namespace) -> int:
     missing = round(missing_km2(grids, extent), 3) if grids.fine else None
     water, wet, empty, grid = water_points(grids, WATER_VOTE_M), wet_area(grids), no_value(grids), grids.grid
     del grids
-    land, water_faces = land_polygons(_read_lines(assets[coast][0]), extent, canada, water, wet)
+    land, water_faces, inland = land_polygons(_read_lines(assets[coast][0]), extent, canada, water, wet)
     del water, wet
     nosurvey = mask_cells(empty, grid, land, extent)
     args.out.mkdir(parents=True, exist_ok=True)
@@ -699,6 +699,7 @@ def _derive_sources(args: argparse.Namespace) -> int:
         "land_polygons": len(land.geoms),
         "nosurvey_polygons": len(nosurvey.geoms),
         "water_faces": water_faces,
+        "inland_water_points": inland,  # vote points on land far from every coastline line: rivers and lakes
     }
     (args.out / f"derive-stats-{name}.json").write_text(json.dumps(stats, indent=2) + "\n")
     for file in (f"land-{name}.geojson.gz", f"nosurvey-{name}.geojson.gz", f"derive-stats-{name}.json"):

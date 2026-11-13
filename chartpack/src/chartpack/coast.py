@@ -119,7 +119,14 @@ WATER_VOTE_M = 2.0  # a NONNA cell deeper than this votes water
 RIVER_WATER_SHARE = 0.2  # a land face more than this share wet is water ...
 RIVER_MIN_AREA_M2 = 50_000  # ... when it is at least this large
 END_SNAP_M = 50.0  # a line end this close to the outline is moved onto it
-_LAND_SHARE_LIMIT = 0.01  # the share of water points land may hold before the corrections
+_LAND_SHARE_LIMIT = 0.01  # the share of the water points near a line that land may hold before the corrections
+# The guard counts only water points this close to an atlas line: a wrong land side or a misplaced coastline puts
+# the deep water beside the line on land, while surveyed rivers and lakes deep inside a land face (the Fraser, Pitt
+# Lake, Cowichan Lake) are not a coastline error. On bc-south-georgia (2026-11-12) land held 1.47% of all water
+# points, almost all inland; of the points near a line it held 0.98% within 100 m, 0.43% within 200 m and 0.20%
+# within 500 m (steep shores put a few deep cells a few meters inside the line).
+GUARD_NEAR_M = 500.0
+_NEAR_CHUNK = 200_000  # points tested against the coastline at a time
 _OVERSHOOT_M = 1.0  # a moved end is carried this far past the outline, so the two lines cross
 _CLIP_MARGIN_M = 1000.0  # lines are cut this far outside the box before noding
 _ON_OUTLINE_M = 1e-6  # an edge whose middle is this close to the outline (or a connector) is part of it
@@ -185,16 +192,18 @@ def _classes(faces, coast_keys: set) -> tuple[list[int], list[int]]:
 
 
 def land_polygons(lines: Iterable[LineString], box: tuple[float, float, float, float], canada: shapely.Geometry,
-                  water: shapely.MultiPoint, wet: shapely.Geometry) -> tuple[MultiPolygon, list[dict]]:
+                  water: shapely.MultiPoint, wet: shapely.Geometry) -> tuple[MultiPolygon, list[dict], int]:
     """Land inside box cut to canada, from the atlas coastline lines (river-mouth closing lines included), never
-    from line direction (spec 7.1). Returns the land and the faces the river correction turned to water, each
-    {"id", "area_km2", "wet_share"}.
+    from line direction (spec 7.1). Returns the land, the faces the river correction turned to water, each
+    {"id", "area_km2", "wet_share"}, and the count of water points on land farther than GUARD_NEAR_M from every
+    line (inland water: surveyed rivers and lakes the coastline leaves in land).
 
     The lines and the outline (the boundary of box cut to canada) split the area into faces; a line end within
     END_SNAP_M of the outline is moved onto it, any other end raises CoastError. Faces sharing a coastline segment
     are of opposite kinds; in each set of faces so linked, the kind holding more water points (lon/lat centers of
     NONNA cells deeper than WATER_VOTE_M) is water. CoastError when the faces cannot be split into two kinds, when a
-    linked set's water points do not decide, or when more than 1% of the water points fall in land. A separate
+    linked set's water points do not decide, when no water point lies within GUARD_NEAR_M of a line, or when
+    more than 1% of the water points within GUARD_NEAR_M of a line fall in land. A separate
     piece of the area with no coastline is water. Then, with wet
     the NONNA cells at or below chart datum: a land face of at least RIVER_MIN_AREA_M2 more than RIVER_WATER_SHARE
     wet is water; a smaller face bounded by atlas lines alone (an islet) stays land whole; all other land is cut
@@ -205,7 +214,7 @@ def land_polygons(lines: Iterable[LineString], box: tuple[float, float, float, f
     clip = to_m(make_box(*box)).buffer(_CLIP_MARGIN_M)
     coast = unary_union([to_m(line).intersection(clip) for line in lines])
     if coast.is_empty or area.is_empty:
-        return MultiPolygon(), []
+        return MultiPolygon(), [], 0
 
     connectors = []
     for end, edge, last in _ends(coast):
@@ -231,22 +240,33 @@ def land_polygons(lines: Iterable[LineString], box: tuple[float, float, float, f
     # The vote: per linked set, the class holding more water points is water. A set of one face has no coastline.
     xy = to_m_xy(shapely.get_coordinates(water))
     xy = xy[shapely.contains_xy(area, xy[:, 0], xy[:, 1])]
-    land_ids, on_land = [], 0
+    land_ids, on_land = [], np.zeros(len(xy), bool)
     for c in sorted(set(component)):
         members = [i for i in range(len(faces)) if component[i] == c]
         if len(members) == 1:
             continue
-        votes = [int(shapely.contains_xy(unary_union([faces[i] for i in members if parity[i] == p]),
-                                         xy[:, 0], xy[:, 1]).sum()) for p in (0, 1)]
+        inside = [shapely.contains_xy(unary_union([faces[i] for i in members if parity[i] == p]), xy[:, 0], xy[:, 1])
+                  for p in (0, 1)]
+        votes = [int(v.sum()) for v in inside]
         if votes[0] == votes[1]:
             x, y = from_m(faces[c].representative_point()).coords[0]
             raise CoastError(f"coastline: the water points do not tell land from water near {x:.5f}, {y:.5f}")
         land = 0 if votes[0] < votes[1] else 1
         land_ids += [i for i in members if parity[i] == land]
-        on_land += votes[land]
-    if on_land > _LAND_SHARE_LIMIT * len(xy):
-        raise CoastError(f"coastline: {on_land} of {len(xy)} water points ({100 * on_land / len(xy):.1f}%) fall in"
-                         " land, over 1%: a wrong land side or a misplaced coastline")
+        on_land |= inside[land]
+    # The guard, near the lines only (GUARD_NEAR_M). The lines are prepared, so each point's test uses their index.
+    shapely.prepare(coast)
+    near = np.concatenate([shapely.dwithin(coast, shapely.points(xy[k:k + _NEAR_CHUNK]), GUARD_NEAR_M)
+                           for k in range(0, len(xy), _NEAR_CHUNK)]) if len(xy) else np.zeros(0, bool)
+    n_near, near_land = int(near.sum()), int((near & on_land).sum())
+    if n_near == 0:
+        raise CoastError(f"coastline: no water point lies within {GUARD_NEAR_M:g} m of the coastline (of"
+                         f" {len(xy)} water points), so the land-share guard cannot judge the land side")
+    if near_land > _LAND_SHARE_LIMIT * n_near:
+        raise CoastError(f"coastline: {near_land} of {n_near} water points within {GUARD_NEAR_M:g} m of the"
+                         f" coastline ({100 * near_land / n_near:.2f}%) fall in land, over 1%: a wrong land side or"
+                         " a misplaced coastline")
+    inland = int((on_land & ~near).sum())
 
     wet_m = to_m(wet)
     flipped, kept, islets = [], [], []
@@ -264,4 +284,4 @@ def land_polygons(lines: Iterable[LineString], box: tuple[float, float, float, f
     # Back in lon/lat before the cuts, so land meets the Canada polygon and the wet cells exactly.
     land = from_m(unary_union(kept)).intersection(area_ll).difference(wet)
     land = land.union(from_m(unary_union(islets)).intersection(area_ll))
-    return MultiPolygon([p for p in shapely.get_parts(land) if p.geom_type == "Polygon"]), flipped
+    return MultiPolygon([p for p in shapely.get_parts(land) if p.geom_type == "Polygon"]), flipped, inland
