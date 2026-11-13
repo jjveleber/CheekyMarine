@@ -674,6 +674,10 @@ def _derive_sources(args: argparse.Namespace) -> int:
     nonna = _nonna_files(region, name)
     if f"nonna100-{name}.tif" not in nonna:
         raise SystemExit(f"region {region.name}: derive-sources needs nonna100 among its [bathy] sources")
+    if f"nonna10-{name}.tif" not in nonna and region.charts_kind != "derived-offshore":
+        raise SystemExit(f"region {region.name}: derive-sources needs nonna10 among its [bathy] sources: its land is"
+                         " drawn, and land from NONNA-100 votes alone (the guard skips cells near a line) is for"
+                         " offshore regions only, whose land no pack draws")
     coast = f"coast-{name}.geojson.gz"
     extent = fetch_extent(region, args.region.parent)
     assets = _check_assets(args.region, region, args.cache, [coast, *nonna], [extent])
@@ -685,8 +689,8 @@ def _derive_sources(args: argparse.Namespace) -> int:
     grids = read_grids(n10, n100, extent)
     missing = round(missing_km2(grids, extent), 3) if grids.fine else None
     water, wet, empty, grid = water_points(grids, WATER_VOTE_M), wet_area(grids), no_value(grids), grids.grid
-    # The guard skips GUARD_SKIP_CELLS NONNA-100 cells (an EPSG:3857 cell's width at mid-box) near a line; on
-    # NONNA-10 none (spec 7.1).
+    # The guard skips GUARD_SKIP_CELLS NONNA-100 cells (an EPSG:3857 cell's width at mid-box) near a line, which
+    # only an offshore region reaches (checked above); on NONNA-10 none (spec 7.1).
     skip_m = 0.0 if grids.fine else GUARD_SKIP_CELLS * grid[4] * np.cos(np.radians((extent[1] + extent[3]) / 2))
     del grids
     land, water_faces, inland, retraced, skipped = land_polygons(_read_lines(assets[coast][0]), extent, canada,

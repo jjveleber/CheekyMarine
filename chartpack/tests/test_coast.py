@@ -522,7 +522,8 @@ def test_derive_stats_lists_water_faces(tmp_path, regions_dir, monkeypatch, cap)
     """derive-sources over a river mouth: the face behind the construction line is a third river (wet, 1 m deep,
     NONNA-10 only), so it turns to water and derive-stats lists it; no land is left, and the land beside the
     river, which no grid covers, is the no-survey mask. A vote sampled down to 500 points gives the same. The guard
-    skips no point near a line on NONNA-10, and two cells (the EPSG:3857 cell width at mid-box) on NONNA-100 alone."""
+    skips no point near a line on NONNA-10. On NONNA-100 alone the region stops unless it is offshore (its land is
+    not drawn), and then the guard skips 1.5 cells."""
     if cap is not None:
         monkeypatch.setattr("chartpack.enc.nosurvey.MAX_VOTE_POINTS", cap)
     import hashlib
@@ -531,8 +532,6 @@ def test_derive_stats_lists_water_faces(tmp_path, regions_dir, monkeypatch, cap)
     import numpy as np
     from make_nonna import NODATA
     from test_bathy_blocks import _write_nonna_over
-
-    from osgeo import gdal
 
     from chartpack import cli
     from chartpack.cli import main
@@ -583,9 +582,12 @@ def test_derive_stats_lists_water_faces(tmp_path, regions_dir, monkeypatch, cap)
         assert json.load(f)["features"] == []
     with gzip.open(out / "nosurvey-rv.geojson.gz", "rt") as f:
         assert len(json.load(f)["features"]) == 2
+    assert stats["skipped_land_points"] == 0
     region.write_text(region.read_text().replace('["nonna10", "nonna100"]', '["nonna100"]'))
-    assert main(["derive-sources", "--region", str(region), "--cache", str(tmp_path / "cache"),
-                 "--out", str(tmp_path / "out100")]) == 0
-    px = gdal.Open(str(folder / "nonna100-rv.tif")).GetGeoTransform()[1]
-    mid = math.radians((extent[1] + extent[3]) / 2)
-    assert skips == [0.0, pytest.approx(coast.GUARD_SKIP_CELLS * px * math.cos(mid), rel=1e-6)]
+    args = ["derive-sources", "--region", str(region), "--cache", str(tmp_path / "cache"), "--out", str(tmp_path / "o")]
+    with pytest.raises(SystemExit, match="region rv: derive-sources needs nonna10"):  # its land is drawn
+        main(args)
+    region.write_text(region.read_text().replace('kind = "derived-inshore"', 'kind = "derived-offshore"'))
+    assert main(args) == 0
+    # 1.5 NONNA-100 cells (152.79 m in EPSG:3857) at the box's mid-latitude, near 49.55 N: about 148.7 m
+    assert len(skips) == 2 and skips[0] == 0.0 and skips[1] == pytest.approx(148.7, abs=0.5)
