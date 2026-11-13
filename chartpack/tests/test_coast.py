@@ -147,12 +147,14 @@ def _close(a, b, km2=0.001):
     return area_km2(a.symmetric_difference(b)) < km2
 
 
-def _land(lines, land, *, canada=CANADA, wet=None, water=None):
+def _land(lines, land, *, canada=CANADA, wet=None, water=None, full=False):
+    """(land, water faces), or with full also the count of inland water points."""
     from shapely.geometry import Polygon, box
 
     area = box(*LAND_BOX).intersection(canada)
-    return coast.land_polygons(lines, LAND_BOX, canada, _water_points(area, land) if water is None else water,
-                               Polygon() if wet is None else wet)
+    result = coast.land_polygons(lines, LAND_BOX, canada, _water_points(area, land) if water is None else water,
+                                 Polygon() if wet is None else wet)
+    return result if full else result[:2]
 
 
 L_COAST = [(-124.01, 49.53), (-123.95, 49.53), (-123.95, 49.61)]
@@ -257,6 +259,7 @@ def test_land_never_over_wet_nonna_cells():
 
 
 def test_water_vote_on_land_fails():
+    """A wrong land side: the vote takes the true land for water, so the deep points beside the line are on land."""
     from shapely.geometry import LineString, box
 
     area = box(*LAND_BOX)
@@ -264,6 +267,86 @@ def test_water_vote_on_land_fails():
     water = water.union(_water_points(area, area.difference(box(-123.95, 49.5, -123.9, 49.53))))
     with pytest.raises(coast.CoastError, match="1%"):
         _land([LineString(L_COAST)], L_LAND, water=water)
+
+
+def test_inland_lake_far_from_the_coastline_passes_and_is_counted():
+    """Deep points of a lake over 1 km inside the land (about 5% of all points, over the old whole-region 1%)
+    are not a coastline error: the guard counts only points near a line, and the inland ones are reported."""
+    import numpy as np
+    import shapely
+    from shapely.geometry import LineString, box
+
+    lake = box(-123.99, 49.55, -123.975, 49.58)  # 13% of the land face: under the river share, stays land
+    area = box(*LAND_BOX)
+    water = _water_points(area, L_LAND).union(_water_points(area, area.difference(lake)))
+    in_lake = int(shapely.contains_xy(lake, *np.transpose(shapely.get_coordinates(water))).sum())
+    assert in_lake > 0.01 * len(water.geoms)
+    land, flipped, inland = _land([LineString(L_COAST)], L_LAND, water=water, wet=lake, full=True)
+    assert inland == in_lake and flipped == []
+    assert _close(land, L_LAND.difference(lake))
+
+
+def test_coastline_shifted_seaward_fails():
+    """The atlas line 300 m seaward of the true shore puts a strip of deep water next to it on land."""
+    from shapely.geometry import LineString
+
+    dy, dx = 300 * DY, 300 * DY / math.cos(math.radians(49.53))
+    shifted = [(-124.01, 49.53 - dy), (-123.95 + dx, 49.53 - dy), (-123.95 + dx, 49.61)]
+    with pytest.raises(coast.CoastError, match="within 500 m of the coastline"):
+        _land([LineString(shifted)], L_LAND)  # water points from the true shore
+
+
+def _strips(near_land: int, inland: int):
+    """A straight coast along 49.55 N (land north) and vote points in rows parallel to it: 990 in the sea 100 m
+    south of the line, near_land on land 400 m north (inside GUARD_NEAR_M) and inland on land 600 m north
+    (outside it)."""
+    import numpy as np
+    import shapely
+    from shapely.geometry import LineString
+
+    def row(n, metres):
+        x = np.linspace(-123.995, -123.905, n) if n else np.zeros(0)
+        return np.column_stack([x, np.full(n, 49.55 + metres * DY)])
+
+    points = np.vstack([row(990, -100), row(near_land, 400), row(inland, 600)])
+    return [LineString([(-124.01, 49.55), (-123.89, 49.55)])], shapely.MultiPoint(points)
+
+
+def test_guard_limit_is_one_percent_of_the_points_within_500_m():
+    """11 of 1,001 near points on land (1.10%) stop the build; 9 of 999 (0.90%) pass. The rows 400 m from the line
+    pin the 500 m reach too: at a shorter reach they would not count."""
+    from shapely.geometry import box
+
+    north = box(-124.0, 49.55, -123.9, 49.6)
+    lines, water = _strips(11, 0)
+    with pytest.raises(coast.CoastError, match="11 of 1001 water points within 500 m"):
+        _land(lines, north, water=water)
+    lines, water = _strips(9, 0)
+    _, _, inland = _land(lines, north, water=water, full=True)
+    assert inland == 0
+
+
+def test_points_beyond_500_m_are_inland_not_in_the_guard():
+    """50 points 600 m inside the land (5% of all) count as inland only; the 9 at 400 m count in the guard only."""
+    from shapely.geometry import box
+
+    lines, water = _strips(9, 50)
+    _, _, inland = _land(lines, box(-124.0, 49.55, -123.9, 49.6), water=water, full=True)
+    assert inland == 50
+
+
+def test_guard_without_points_near_the_coastline_fails():
+    """No water point within 500 m of a line: the guard cannot judge, so it fails rather than pass."""
+    import shapely
+    from shapely.geometry import LineString, box
+
+    line = LineString(L_COAST)
+    area = box(*LAND_BOX)
+    water = _water_points(area, L_LAND)
+    far = shapely.MultiPoint([p for p in water.geoms if p.distance(line) * 111320 * 0.65 > 600])
+    assert 0 < len(far.geoms) < len(water.geoms)
+    with pytest.raises(coast.CoastError, match="no water point lies within 500 m"):
+        _land([line], L_LAND, water=far)
 
 
 def test_no_coastline_is_all_water():
@@ -320,7 +403,7 @@ def test_derive_stats_lists_water_faces(tmp_path, regions_dir, monkeypatch, cap)
     assert len(stats["water_faces"]) == 1
     assert stats["water_faces"][0]["wet_share"] == pytest.approx(1 / 3, abs=0.02)
     assert stats["land_polygons"] == 0 and stats["nosurvey_polygons"] == 2
-    assert stats["missing_in_100_km2"] > 0
+    assert stats["missing_in_100_km2"] > 0 and stats["inland_water_points"] == 0
     assert stats["inputs"] == {name: entry["sha256"] for name, entry in files.items()}  # what it was derived from
     with gzip.open(out / "land-rv.geojson.gz", "rt") as f:
         assert json.load(f)["features"] == []
