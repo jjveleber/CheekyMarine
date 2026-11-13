@@ -51,7 +51,7 @@ from chartpack.bathy.tiles import (
     tile_bathy,
 )
 from chartpack.cache import DownloadError, download
-from chartpack.coast import WATER_VOTE_M, fetch_coastline, land_polygons
+from chartpack.coast import GUARD_SKIP_CELLS, WATER_VOTE_M, fetch_coastline, land_polygons
 from chartpack.datum import geoid
 from chartpack.datum.offsets import load_datum
 from chartpack.enc.bc import check_canadian_areas, check_notices, load_canada
@@ -685,10 +685,12 @@ def _derive_sources(args: argparse.Namespace) -> int:
     grids = read_grids(n10, n100, extent)
     missing = round(missing_km2(grids, extent), 3) if grids.fine else None
     water, wet, empty, grid = water_points(grids, WATER_VOTE_M), wet_area(grids), no_value(grids), grids.grid
+    # The guard skips GUARD_SKIP_CELLS NONNA-100 cells (an EPSG:3857 cell's width at mid-box) near a line; on
+    # NONNA-10 none (spec 7.1).
+    skip_m = 0.0 if grids.fine else GUARD_SKIP_CELLS * grid[4] * np.cos(np.radians((extent[1] + extent[3]) / 2))
     del grids
-    cell_m = grid[4] * np.cos(np.radians((extent[1] + extent[3]) / 2))  # an EPSG:3857 cell's width at mid-box
     land, water_faces, inland, retraced = land_polygons(_read_lines(assets[coast][0]), extent, canada, water, wet,
-                                                        cell_m=cell_m)
+                                                        skip_m=skip_m)
     del water, wet
     nosurvey = mask_cells(empty, grid, land, extent)
     args.out.mkdir(parents=True, exist_ok=True)

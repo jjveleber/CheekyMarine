@@ -153,7 +153,7 @@ def _land(lines, land, *, canada=CANADA, wet=None, water=None, full=False):
 
     area = box(*LAND_BOX).intersection(canada)
     result = coast.land_polygons(lines, LAND_BOX, canada, _water_points(area, land) if water is None else water,
-                                 Polygon() if wet is None else wet, cell_m=10.0)
+                                 Polygon() if wet is None else wet, skip_m=0.0)
     return result[:3] if full else result[:2]
 
 
@@ -195,7 +195,7 @@ def test_clip_follows_the_box_parallels():
     near = np.column_stack([np.full(20, -129.548), np.linspace(52.47, 52.89, 20)])  # about 140 m east of the line
     water = shapely.MultiPoint(np.vstack([np.column_stack([x[x > -129.5], y[x > -129.5]]), near]))
     canada = box(-140.0, 45.0, -120.0, 60.0)
-    land, *_ = coast.land_polygons([line], wide, canada, water, shapely.Polygon(), cell_m=10.0)
+    land, *_ = coast.land_polygons([line], wide, canada, water, shapely.Polygon(), skip_m=0.0)
     assert _close(land, west, 0.01)
 
 
@@ -218,7 +218,7 @@ def test_retraced_segment_is_not_a_line_end():
     plain, _ = _land([LineString(coords)], L_LAND)
     area = box(*LAND_BOX)
     land, _, _, retraced = coast.land_polygons([LineString(spiked)], LAND_BOX, CANADA, _water_points(area, L_LAND),
-                                               Polygon(), cell_m=10.0)
+                                               Polygon(), skip_m=0.0)
     assert _close(land, plain, 1e-4)  # the 2 cm offset of the line after the spike leaves a 16 m2 sliver
     assert len(retraced) == 1 and set(retraced[0]) == {"lon", "lat", "length_m"}
     assert retraced[0]["length_m"] == pytest.approx(20, abs=0.5)
@@ -458,20 +458,27 @@ def test_points_beyond_500_m_are_inland_not_in_the_guard():
 
 def test_guard_leaves_out_points_within_two_cells_of_a_line():
     """On NONNA-100 (about 100 m cells) deep cells reach a cell or two past a right coastline: from NONNA-100 alone,
-    5.37% of the near points of bc-south-georgia fall on land, against 0.20% from NONNA-10 (2026-11-12). With
-    100 m cells the 100 points 150 m inside the land (9%) are left out; the 11 at 400 m still stop the build. With
-    10 m cells the same 100 points count."""
+    5.37% of the near points of bc-south-georgia fall on land, against 0.20% from NONNA-10 (2026-11-12). With a
+    200 m skip (two NONNA-100 cells) the 100 points 150 m inside the land (9%) are left out; the 11 at 400 m still
+    stop the build. With no skip, as on NONNA-10, the same 100 points count, and so do points 20 m inside (two
+    NONNA-10 cells)."""
+    import numpy as np
+    import shapely
     from shapely.geometry import Polygon, box
 
     north = box(-124.0, 49.55, -123.9, 49.6)
     lines, water = _strips(9, 0, straddle=100, sea_m=300)
-    land, _ = coast.land_polygons(lines, LAND_BOX, CANADA, water, Polygon(), cell_m=100.0)[:2]
+    land, _ = coast.land_polygons(lines, LAND_BOX, CANADA, water, Polygon(), skip_m=200.0)[:2]
     assert _close(land, north, 0.01)  # the 8.6 km line, projected by its two ends, sags about 1 m
-    with pytest.raises(coast.CoastError, match="109 of 1099 water points within 500 m"):
-        coast.land_polygons(lines, LAND_BOX, CANADA, water, Polygon(), cell_m=10.0)
+    with pytest.raises(coast.CoastError, match=r"109 of 1099 water points within 500 m of the coastline \("):
+        coast.land_polygons(lines, LAND_BOX, CANADA, water, Polygon(), skip_m=0.0)
     lines, water = _strips(11, 0, straddle=100, sea_m=300)
     with pytest.raises(coast.CoastError, match="11 of 1001 water points within 500 m"):
-        coast.land_polygons(lines, LAND_BOX, CANADA, water, Polygon(), cell_m=100.0)
+        coast.land_polygons(lines, LAND_BOX, CANADA, water, Polygon(), skip_m=200.0)
+    lines, water = _strips(0, 0, sea_m=300)
+    inside = shapely.MultiPoint([(x, 49.55 + 20 * DY) for x in np.linspace(-123.995, -123.905, 11)])
+    with pytest.raises(coast.CoastError, match=r"11 of 1001 water points within 500 m of the coastline \("):
+        coast.land_polygons(lines, LAND_BOX, CANADA, water.union(inside), Polygon(), skip_m=0.0)
 
 
 def test_guard_without_points_near_the_coastline_fails():
@@ -497,7 +504,8 @@ def test_no_coastline_is_all_water():
 def test_derive_stats_lists_water_faces(tmp_path, regions_dir, monkeypatch, cap):
     """derive-sources over a river mouth: the face behind the construction line is a third river (wet, 1 m deep,
     NONNA-10 only), so it turns to water and derive-stats lists it; no land is left, and the land beside the
-    river, which no grid covers, is the no-survey mask. A vote sampled down to 500 points gives the same."""
+    river, which no grid covers, is the no-survey mask. A vote sampled down to 500 points gives the same. The guard
+    skips no point near a line on NONNA-10, and two cells (the EPSG:3857 cell width at mid-box) on NONNA-100 alone."""
     if cap is not None:
         monkeypatch.setattr("chartpack.enc.nosurvey.MAX_VOTE_POINTS", cap)
     import hashlib
@@ -507,10 +515,20 @@ def test_derive_stats_lists_water_faces(tmp_path, regions_dir, monkeypatch, cap)
     from make_nonna import NODATA
     from test_bathy_blocks import _write_nonna_over
 
+    from osgeo import gdal
+
+    from chartpack import cli
     from chartpack.cli import main
     from chartpack.grid import fetch_extent
     from chartpack.region import load_region
 
+    skips = []
+
+    def recorded(*args, **kwargs):
+        skips.append(kwargs["skip_m"])
+        return coast.land_polygons(*args, **kwargs)
+
+    monkeypatch.setattr(cli, "land_polygons", recorded)
     shutil.copytree(regions_dir / "clip", tmp_path / "clip")
     region = tmp_path / "rv.toml"
     region.write_text('name = "rv"\ncharts_version = "0.1.0"\nbathy_version = "0.1.0"\n'
@@ -548,3 +566,9 @@ def test_derive_stats_lists_water_faces(tmp_path, regions_dir, monkeypatch, cap)
         assert json.load(f)["features"] == []
     with gzip.open(out / "nosurvey-rv.geojson.gz", "rt") as f:
         assert len(json.load(f)["features"]) == 2
+    region.write_text(region.read_text().replace('["nonna10", "nonna100"]', '["nonna100"]'))
+    assert main(["derive-sources", "--region", str(region), "--cache", str(tmp_path / "cache"),
+                 "--out", str(tmp_path / "out100")]) == 0
+    px = gdal.Open(str(folder / "nonna100-rv.tif")).GetGeoTransform()[1]
+    mid = math.radians((extent[1] + extent[3]) / 2)
+    assert skips == [0.0, pytest.approx(coast.GUARD_SKIP_CELLS * px * math.cos(mid), rel=1e-6)]
