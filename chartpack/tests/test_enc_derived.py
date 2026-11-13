@@ -254,3 +254,27 @@ def test_footprint_is_the_input_cells(case):
 def test_src_none_on_every_valid_cell_is_an_error():
     with pytest.raises(ValueError, match="src is 0"):
         _derive(_slope(), _src("none"))
+
+
+# _tiles inputs that GEOS's fast rectangle clip (clip_by_rect) mishandles, both valid polygons. A sliver of the
+# haida-gwaii land cut (overview tile (-133.2421875, 53.748710796898976, -132.890625, 53.9560855309879)) whose
+# clipped part collapses to a 3-point ring: "IllegalArgumentException: Invalid number of points in LinearRing
+# found 3". And cells with a hole, whose clip at the tile (1.5, 0, 3.5, 3) comes out as a self-touching ring.
+_SLIVER = ("POLYGON ((-133.04445376 53.751789670000015, -133.04428348 53.75183096999998, "
+           "-133.04444260251748 53.75179237615475, -133.04445376 53.751789670000015))")
+_CELLS_WITH_HOLE = ("POLYGON ((0 5, 1 5, 1 4, 2 4, 2 3, 2 2, 3 2, 3 1, 3 0, 2 0, 1 0, 0 0, 0 1, 0 2, 0 3, 0 4, 0 5),"
+                    " (1 2, 1 1, 2 1, 2 2, 1 2))")
+
+
+@pytest.mark.parametrize("wkt, core", [
+    (_SLIVER, (-133.2421875, 53.748710796898976, -132.890625, 53.9560855309879)),
+    (_CELLS_WITH_HOLE, (1.5, 0.0, 33.5, 48.0)),
+])
+def test_the_cut_tiles_are_valid_and_hold_the_cut_inside_the_core(wkt, core):
+    from chartpack.enc.derived import _tiles
+
+    cut = shapely.from_wkt(wkt)
+    pieces = _tiles(cut, core).geometries
+    assert len(pieces) and shapely.is_valid(pieces).all()
+    inside = cut.intersection(box(*core))
+    assert shapely.union_all(pieces).symmetric_difference(inside).area < 1e-12 * max(inside.area, 1e-12)

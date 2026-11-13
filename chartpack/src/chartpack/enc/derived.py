@@ -117,10 +117,12 @@ def _src_areas(src: np.ndarray, transform) -> list[tuple[str, shapely.Geometry]]
 
 def _tiles(cut, core) -> shapely.STRtree:
     """cut split on a CUT_TILES by CUT_TILES grid over core, in an STRtree: an overlay costs about the size of both
-    inputs, and a land or mask cut can be large, so each geometry is cut by the pieces it meets only."""
+    inputs, and a land or mask cut can be large, so each geometry is cut by the pieces it meets only. Each piece
+    is an overlay with its tile's box: GEOS's fast clip_by_rect fails on a valid sliver that collapses in the tile
+    ("Invalid number of points in LinearRing") and can return a self-touching, invalid ring."""
     w, s, e, n = core
     xs, ys = np.linspace(w, e, CUT_TILES + 1), np.linspace(s, n, CUT_TILES + 1)
-    pieces = shapely.get_parts([shapely.clip_by_rect(cut, x0, y0, x1, y1)
+    pieces = shapely.get_parts([shapely.intersection(cut, box(x0, y0, x1, y1))
                                 for x0, x1 in zip(xs, xs[1:]) for y0, y1 in zip(ys, ys[1:])])
     return shapely.STRtree(pieces[~shapely.is_empty(pieces) & (shapely.get_dimensions(pieces) == 2)])
 
