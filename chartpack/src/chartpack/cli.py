@@ -699,7 +699,9 @@ def _derive_sources(args: argparse.Namespace) -> int:
         "land_polygons": len(land.geoms),
         "nosurvey_polygons": len(nosurvey.geoms),
         "water_faces": water_faces,
-        "inland_water_points": inland,  # vote points on land far from every coastline line: rivers and lakes
+        # vote points (sampled deep NONNA cells) that fell in land faces before the corrections, farther than 500 m
+        # from any coastline line, that is surveyed rivers and lakes; the wet cut then removes the land from them
+        "inland_water_points": inland,
     }
     (args.out / f"derive-stats-{name}.json").write_text(json.dumps(stats, indent=2) + "\n")
     for file in (f"land-{name}.geojson.gz", f"nosurvey-{name}.geojson.gz", f"derive-stats-{name}.json"):

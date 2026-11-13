@@ -195,8 +195,9 @@ def land_polygons(lines: Iterable[LineString], box: tuple[float, float, float, f
                   water: shapely.MultiPoint, wet: shapely.Geometry) -> tuple[MultiPolygon, list[dict], int]:
     """Land inside box cut to canada, from the atlas coastline lines (river-mouth closing lines included), never
     from line direction (spec 7.1). Returns the land, the faces the river correction turned to water, each
-    {"id", "area_km2", "wet_share"}, and the count of water points on land farther than GUARD_NEAR_M from every
-    line (inland water: surveyed rivers and lakes the coastline leaves in land).
+    {"id", "area_km2", "wet_share"}, and the count of water points that fell in land faces before the corrections
+    farther than GUARD_NEAR_M from every line (inland water: surveyed rivers and lakes the coastline leaves in land
+    faces; the wet cut then removes the land from them).
 
     The lines and the outline (the boundary of box cut to canada) split the area into faces; a line end within
     END_SNAP_M of the outline is moved onto it, any other end raises CoastError. Faces sharing a coastline segment
