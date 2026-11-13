@@ -177,9 +177,19 @@ jobs:
             .venv/bin/chartpack build-bathy "regions/${REGION}.toml" work/bathy --cache cache --work work/bathy-tmp
 
       - name: Check the pack
+        id: check
         working-directory: chartpack
         run: |
           .venv/bin/chartpack check "work/${PACK}/${PACK}-${REGION}-${VERSION}" --enc-cache cache
+
+      # A dry run whose check fails keeps the built tiles for a look; a tag run never does.
+      - uses: actions/upload-artifact@v4
+        if: failure() && github.event_name == 'workflow_dispatch' && steps.check.outcome == 'failure'
+        with:
+          name: failed-pack
+          path: chartpack/work/${{ env.PACK }}/${{ env.PACK }}-${{ env.REGION }}-${{ env.VERSION }}/*.mbtiles
+          retention-days: 7
+          if-no-files-found: error
 
       - name: Archive the pack
         working-directory: chartpack
