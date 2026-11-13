@@ -199,6 +199,41 @@ def test_clip_follows_the_box_parallels():
     assert _close(land, west, 0.01)
 
 
+def _with_spike(coords, at, tip, retrace_offset):
+    """coords with an out-and-back spike at vertex at: out to tip, back exactly, out again and back retrace_offset
+    degrees off, as OBJECTID 32612852 of the atlas does (Seymour Inlet, 2026-11-12)."""
+    x, y = coords[at]
+    tx, ty = tip
+    o = retrace_offset
+    return coords[:at + 1] + [(tx, ty), (x, y), (tx + o, ty + o), (x + o, y + o)] + coords[at + 1:]
+
+
+def test_retraced_segment_is_not_a_line_end():
+    """A 20 m spike retraced three times (once exactly, once 2 cm off) is no line end: the land is as without it,
+    and it is reported."""
+    from shapely.geometry import LineString, Polygon, box
+
+    coords = [(-124.01, 49.53), (-123.97, 49.53), (-123.95, 49.53), (-123.95, 49.61)]
+    spiked = _with_spike(coords, 1, (-123.97, 49.53 - 20 * DY), 2e-7)
+    plain, _ = _land([LineString(coords)], L_LAND)
+    area = box(*LAND_BOX)
+    land, _, _, retraced = coast.land_polygons([LineString(spiked)], LAND_BOX, CANADA, _water_points(area, L_LAND),
+                                               Polygon())
+    assert _close(land, plain, 1e-4)  # the 2 cm offset of the line after the spike leaves a 16 m2 sliver
+    assert len(retraced) == 1 and set(retraced[0]) == {"lon", "lat", "length_m"}
+    assert retraced[0]["length_m"] == pytest.approx(20, abs=0.5)
+    assert retraced[0]["lat"] == pytest.approx(49.53 - 20 * DY, abs=1e-6)
+
+
+def test_stub_into_open_water_still_fails():
+    """A 20 m stub off the coast with nothing alongside it is a free line end, not a retraced segment."""
+    from shapely.geometry import LineString
+
+    stub = LineString([(-123.97, 49.53), (-123.97, 49.53 - 20 * DY)])
+    with pytest.raises(coast.CoastError, match="more than 50 m"):
+        _land([LineString(L_COAST), stub], L_LAND)
+
+
 def test_unclosable_ring_fails():
     from shapely.geometry import LineString, box
 
@@ -422,7 +457,7 @@ def test_derive_stats_lists_water_faces(tmp_path, regions_dir, monkeypatch, cap)
     assert len(stats["water_faces"]) == 1
     assert stats["water_faces"][0]["wet_share"] == pytest.approx(1 / 3, abs=0.02)
     assert stats["land_polygons"] == 0 and stats["nosurvey_polygons"] == 2
-    assert stats["missing_in_100_km2"] > 0 and stats["inland_water_points"] == 0
+    assert stats["missing_in_100_km2"] > 0 and stats["inland_water_points"] == 0 and stats["retraced_ends"] == []
     assert stats["inputs"] == {name: entry["sha256"] for name, entry in files.items()}  # what it was derived from
     with gzip.open(out / "land-rv.geojson.gz", "rt") as f:
         assert json.load(f)["features"] == []

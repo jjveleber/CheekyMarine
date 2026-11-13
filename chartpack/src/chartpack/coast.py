@@ -119,6 +119,10 @@ WATER_VOTE_M = 2.0  # a NONNA cell deeper than this votes water
 RIVER_WATER_SHARE = 0.2  # a land face more than this share wet is water ...
 RIVER_MIN_AREA_M2 = 50_000  # ... when it is at least this large
 END_SNAP_M = 50.0  # a line end this close to the outline is moved onto it
+# A dangling edge within this distance of the other lines along its whole length is a retraced segment (a line that
+# goes out and back over itself, as OBJECTID 32612852 near Seymour Inlet does over 20 m), not a line end. A dangle
+# bounds no face, so it gets no connector and no error.
+RETRACE_M = 1.0
 _LAND_SHARE_LIMIT = 0.01  # the share of the water points near a line that land may hold before the corrections
 # The guard counts only water points this close to an atlas line: a wrong land side or a misplaced coastline puts
 # the deep water beside the line on land, while surveyed rivers and lakes deep inside a land face (the Fraser, Pitt
@@ -146,6 +150,12 @@ def _ends(lines) -> list[tuple[Point, LineString, bool]]:
     edges = [e for e in getattr(lines, "geoms", [lines]) if not e.is_empty]
     count = Counter(c for e in edges for c in (e.coords[0], e.coords[-1]))
     return [(Point(e.coords[i]), e, i == -1) for e in edges for i in (0, -1) if count[e.coords[i]] == 1]
+
+
+def _retraced(edge: LineString, pieces: list, tree) -> bool:
+    """Whether the dangling edge lies within RETRACE_M of the other noded lines along its whole length."""
+    others = [pieces[i] for i in tree.query(edge, predicate="dwithin", distance=RETRACE_M) if not pieces[i].equals(edge)]
+    return bool(others) and edge.difference(unary_union(others).buffer(RETRACE_M)).length < 1e-3
 
 
 def _connector(end: Point, edge: LineString, last: bool, outline) -> LineString:
@@ -192,15 +202,17 @@ def _classes(faces, coast_keys: set) -> tuple[list[int], list[int]]:
 
 
 def land_polygons(lines: Iterable[LineString], box: tuple[float, float, float, float], canada: shapely.Geometry,
-                  water: shapely.MultiPoint, wet: shapely.Geometry) -> tuple[MultiPolygon, list[dict], int]:
+                  water: shapely.MultiPoint, wet: shapely.Geometry) -> tuple[MultiPolygon, list[dict], int, list[dict]]:
     """Land inside box cut to canada, from the atlas coastline lines (river-mouth closing lines included), never
     from line direction (spec 7.1). Returns the land, the faces the river correction turned to water, each
     {"id", "area_km2", "wet_share"}, and the count of water points that fell in land faces before the corrections
     farther than GUARD_NEAR_M from every line (inland water: surveyed rivers and lakes the coastline leaves in land
-    faces; the wet cut then removes the land from them).
+    faces; the wet cut then removes the land from them), and the retraced segments skipped by the end check, each
+    {"lon", "lat", "length_m"} (lon, lat of its free tip).
 
     The lines and the outline (the boundary of box cut to canada) split the area into faces; a line end within
-    END_SNAP_M of the outline is moved onto it, any other end raises CoastError. Faces sharing a coastline segment
+    END_SNAP_M of the outline is moved onto it, a retraced segment (RETRACE_M) is skipped, any other end raises
+    CoastError. Faces sharing a coastline segment
     are of opposite kinds; in each set of faces so linked, the kind holding more water points (lon/lat centers of
     NONNA cells deeper than WATER_VOTE_M) is water. CoastError when the faces cannot be split into two kinds, when a
     linked set's water points do not decide, when no water point lies within GUARD_NEAR_M of a line, or when
@@ -217,11 +229,17 @@ def land_polygons(lines: Iterable[LineString], box: tuple[float, float, float, f
     clip = to_m(shapely.segmentize(make_box(*box), _SEGMENT_DEG)).buffer(_CLIP_MARGIN_M)
     coast = unary_union([to_m(line).intersection(clip) for line in lines])
     if coast.is_empty or area.is_empty:
-        return MultiPolygon(), [], 0
+        return MultiPolygon(), [], 0, []
 
-    connectors = []
+    connectors, retraced, tree = [], [], None
+    pieces = list(getattr(coast, "geoms", [coast]))
     for end, edge, last in _ends(coast):
         if not area.intersects(end):
+            continue
+        tree = tree or shapely.STRtree(pieces)
+        if _retraced(edge, pieces, tree):
+            x, y = from_m(end).coords[0]
+            retraced.append({"lon": round(x, 6), "lat": round(y, 6), "length_m": round(edge.length, 2)})
             continue
         if outline.distance(end) > END_SNAP_M:
             x, y = from_m(end).coords[0]
@@ -287,4 +305,4 @@ def land_polygons(lines: Iterable[LineString], box: tuple[float, float, float, f
     # Back in lon/lat before the cuts, so land meets the Canada polygon and the wet cells exactly.
     land = from_m(unary_union(kept)).intersection(area_ll).difference(wet)
     land = land.union(from_m(unary_union(islets)).intersection(area_ll))
-    return MultiPolygon([p for p in shapely.get_parts(land) if p.geom_type == "Polygon"]), flipped, inland
+    return MultiPolygon([p for p in shapely.get_parts(land) if p.geom_type == "Polygon"]), flipped, inland, retraced
