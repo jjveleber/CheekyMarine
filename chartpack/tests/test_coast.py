@@ -225,6 +225,59 @@ def test_retraced_segment_is_not_a_line_end():
     assert retraced[0]["lat"] == pytest.approx(49.53 - 20 * DY, abs=1e-6)
 
 
+def test_twice_digitized_gap_still_fails():
+    """An island ring with a 290 m gap, digitized twice 0.5 m apart (PR 128 review): each copy covers the other's
+    end, but both copies stop at the gap, so it is a real gap and the build stops."""
+    from shapely.geometry import LineString, box
+
+    island = box(-123.96, 49.54, -123.94, 49.56)
+    ring = list(island.exterior.coords)
+    a, b = ring[-2], ring[-1]
+    open_ring = ring[:-1] + [(a[0] + (b[0] - a[0]) * 0.8, a[1] + (b[1] - a[1]) * 0.8)]
+    dx = 0.5 * DY / math.cos(math.radians(49.55))
+    copy = [(x + dx, y + 0.5 * DY) for x, y in open_ring]
+    with pytest.raises(coast.CoastError, match="more than 50 m"):
+        _land([LineString(open_ring), LineString(copy)], island)
+
+
+def test_short_doubled_ends_at_a_gap_still_fail():
+    """Both ends of a 290 m gap doubled over their last 40 m by a short feature that crosses the line and lies 0.5 m
+    alongside it to the gap: each 40 m dangle is covered and under RETRACE_MAX_M, but the covering line ends at the
+    same place, so neither is skipped."""
+    from shapely.geometry import LineString, box
+
+    island = box(-123.96, 49.54, -123.94, 49.56)
+    ring = list(island.exterior.coords)
+    a, b = ring[-2], ring[-1]
+    open_ring = ring[:-1] + [(a[0] + (b[0] - a[0]) * 0.8, a[1] + (b[1] - a[1]) * 0.8)]
+    dx = DY / math.cos(math.radians(49.55))
+
+    def doubled(tip, toward):
+        """A 40 m feature crossing the line 40 m before tip and running 0.5 m alongside it to tip."""
+        ux, uy = (toward[0] - tip[0]) / dx, (toward[1] - tip[1]) / DY
+        n = math.hypot(ux, uy)
+        ux, uy = ux / n, uy / n  # unit vector from the tip back along the line, in meters
+        mid = (tip[0] + 40 * ux * dx, tip[1] + 40 * uy * DY)
+        side = (-uy, ux)  # 0.5 m to one side
+        return LineString([(mid[0] - 0.5 * side[0] * dx, mid[1] - 0.5 * side[1] * DY),
+                           (mid[0] + 0.5 * side[0] * dx, mid[1] + 0.5 * side[1] * DY),
+                           (tip[0] + 0.5 * side[0] * dx, tip[1] + 0.5 * side[1] * DY)])
+
+    lines = [LineString(open_ring), doubled(open_ring[0], open_ring[1]), doubled(open_ring[-1], open_ring[-2])]
+    with pytest.raises(coast.CoastError, match="more than 50 m"):
+        _land(lines, island)
+
+
+def test_long_retraced_stub_still_fails():
+    """A spike retraced as the atlas does it but 150 m long, over RETRACE_MAX_M: never skipped."""
+    from shapely.geometry import LineString
+
+    coords = [(-124.01, 49.53), (-123.97, 49.53), (-123.95, 49.53), (-123.95, 49.61)]
+    spiked = _with_spike(coords, 1, (-123.97, 49.53 - 150 * DY), 2e-7)
+    with pytest.raises(coast.CoastError, match="more than 50 m"):
+        _land([LineString(spiked)], L_LAND)
+
+
 def test_stub_into_open_water_still_fails():
     """A 20 m stub off the coast with nothing alongside it is a free line end, not a retraced segment."""
     from shapely.geometry import LineString

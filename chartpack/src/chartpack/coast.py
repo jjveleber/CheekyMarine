@@ -119,10 +119,14 @@ WATER_VOTE_M = 2.0  # a NONNA cell deeper than this votes water
 RIVER_WATER_SHARE = 0.2  # a land face more than this share wet is water ...
 RIVER_MIN_AREA_M2 = 50_000  # ... when it is at least this large
 END_SNAP_M = 50.0  # a line end this close to the outline is moved onto it
-# A dangling edge within this distance of the other lines along its whole length is a retraced segment (a line that
-# goes out and back over itself, as OBJECTID 32612852 near Seymour Inlet does over 20 m), not a line end. A dangle
-# bounds no face, so it gets no connector and no error.
+# A retraced segment is a dangling edge (one free end, its tip) that the end check skips: no connector, no error.
+# It must be at most RETRACE_MAX_M long, lie within RETRACE_M of other lines along its whole length, and have no
+# other free line end within RETRACE_M of its tip, so the line that covers it runs on past the tip. That is a line
+# going out and back over itself, as OBJECTID 32612852 near Seymour Inlet does over 20.03 m. A shore digitized twice
+# that stops at a real gap has both copies ending there, so it still fails (PR 128 review). A dangle bounds no face,
+# so skipping one changes no face.
 RETRACE_M = 1.0
+RETRACE_MAX_M = 100.0
 _LAND_SHARE_LIMIT = 0.01  # the share of the water points near a line that land may hold before the corrections
 # The guard counts only water points this close to an atlas line: a wrong land side or a misplaced coastline puts
 # the deep water beside the line on land, while surveyed rivers and lakes deep inside a land face (the Fraser, Pitt
@@ -211,7 +215,8 @@ def land_polygons(lines: Iterable[LineString], box: tuple[float, float, float, f
     {"lon", "lat", "length_m"} (lon, lat of its free tip).
 
     The lines and the outline (the boundary of box cut to canada) split the area into faces; a line end within
-    END_SNAP_M of the outline is moved onto it, a retraced segment (RETRACE_M) is skipped, any other end raises
+    END_SNAP_M of the outline is moved onto it, a retraced segment (RETRACE_M, RETRACE_MAX_M: at most 100 m, covered
+    within 1 m along its whole length by a line that runs on past its tip) is skipped, any other end raises
     CoastError. Faces sharing a coastline segment
     are of opposite kinds; in each set of faces so linked, the kind holding more water points (lon/lat centers of
     NONNA cells deeper than WATER_VOTE_M) is water. CoastError when the faces cannot be split into two kinds, when a
@@ -233,11 +238,14 @@ def land_polygons(lines: Iterable[LineString], box: tuple[float, float, float, f
 
     connectors, retraced, tree = [], [], None
     pieces = list(getattr(coast, "geoms", [coast]))
-    for end, edge, last in _ends(coast):
+    ends = _ends(coast)
+    tips = shapely.STRtree([e for e, _, _ in ends]) if ends else None
+    for end, edge, last in ends:
         if not area.intersects(end):
             continue
         tree = tree or shapely.STRtree(pieces)
-        if _retraced(edge, pieces, tree):
+        alone = all(ends[i][0].equals(end) for i in tips.query(end, predicate="dwithin", distance=RETRACE_M))
+        if alone and edge.length <= RETRACE_MAX_M and _retraced(edge, pieces, tree):
             x, y = from_m(end).coords[0]
             retraced.append({"lon": round(x, 6), "lat": round(y, 6), "length_m": round(edge.length, 2)})
             continue

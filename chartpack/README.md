@@ -184,8 +184,10 @@ and `derive-stats-<name>.json` (`missing_in_100_km2`, the polygon counts, and `w
 river correction turned to water, and `inland_water_points`: the vote points (a regular sample of the NONNA cells
 deeper than 2 m, not every such cell) that fell in land faces before the corrections, farther than 500 m from any
 coastline line, that is surveyed rivers and lakes; the wet cut then removes the land from them, so they are not
-drawn as land; and `retraced_ends`: coastline segments that go out and back over themselves, which the line-end
-check skips, each with lon, lat and length in meters). The workflow uploads the three files to `sources-bc-1`.
+drawn as land; and `retraced_ends`: the dangling coastline edges the line-end check skips, each with lon, lat and
+length in meters. An edge is skipped only when it is at most 100 m long, lies within 1 m of other lines along its
+whole length, and no other free line end lies within 1 m of its tip, so the covering line runs on: a line going out
+and back over itself. A shore digitized twice that stops at a gap still fails). The workflow uploads the three files to `sources-bc-1`.
 
 ## Tests
 
