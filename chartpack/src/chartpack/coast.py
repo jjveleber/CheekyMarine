@@ -134,12 +134,14 @@ _LAND_SHARE_LIMIT = 0.01  # the share of the water points near a line that land 
 # points, almost all inland; of the points near a line it held 0.98% within 100 m, 0.43% within 200 m and 0.20%
 # within 500 m (steep shores put a few deep cells a few meters inside the line).
 GUARD_NEAR_M = 500.0
-# ... and, when the vote points are NONNA-100 cells, leaves out those within this many cells of a line: a cell that
-# close can hold the line, and NONNA-100's cells (about 100 m) carry depth up to about two cells past a right
-# coastline. From NONNA-100 alone, land held 5.37% of the near points of bc-south-georgia (2026-11-12), 0.98% past
-# 100 m and 0.13% past 200 m, against 0.20% from NONNA-10 with no skip; bc-offshore-south 7.14%, 1.25% and 0.12%.
-# NONNA-10 regions skip nothing: they pass without it, and a skip there would hide a seaward shift of 10 to 25 m.
-GUARD_SKIP_CELLS = 2.0
+# ... and, when the vote points are NONNA-100 cells (offshore regions only, whose land no pack draws), leaves out
+# those within this many cells of a line: a cell that close can hold the line, and NONNA-100's cells (about 100 m)
+# carry depth past a right coastline. From NONNA-100 alone (2026-11-13), land held 5.37% of the near points of
+# bc-south-georgia, 0.39% past 1.5 cells, against 0.20% from NONNA-10 with no skip; bc-offshore-south 7.14% and
+# 0.40%, bc-offshore-north 3.77% and 0.14%. With every line 100 m seaward, bc-offshore-south holds 1.63% past 1.5
+# cells and stops (0.61% past 2 cells would pass). NONNA-10 regions skip nothing: they pass without it, and a skip
+# there would hide a seaward shift of 10 to 25 m.
+GUARD_SKIP_CELLS = 1.5
 _NEAR_CHUNK = 200_000  # points tested against the coastline at a time
 _OVERSHOOT_M = 1.0  # a moved end is carried this far past the outline, so the two lines cross
 _CLIP_MARGIN_M = 1000.0  # lines are cut this far outside the box before noding
@@ -213,13 +215,14 @@ def _classes(faces, coast_keys: set) -> tuple[list[int], list[int]]:
 
 def land_polygons(lines: Iterable[LineString], box: tuple[float, float, float, float], canada: shapely.Geometry,
                   water: shapely.MultiPoint, wet: shapely.Geometry, *,
-                  skip_m: float) -> tuple[MultiPolygon, list[dict], int, list[dict]]:
+                  skip_m: float) -> tuple[MultiPolygon, list[dict], int, list[dict], int]:
     """Land inside box cut to canada, from the atlas coastline lines (river-mouth closing lines included), never
     from line direction (spec 7.1). Returns the land, the faces the river correction turned to water, each
     {"id", "area_km2", "wet_share"}, and the count of water points that fell in land faces before the corrections
     farther than GUARD_NEAR_M from every line (inland water: surveyed rivers and lakes the coastline leaves in land
-    faces; the wet cut then removes the land from them), and the retraced segments skipped by the end check, each
-    {"lon", "lat", "length_m"} (lon, lat of its free tip).
+    faces; the wet cut then removes the land from them), the retraced segments skipped by the end check, each
+    {"lon", "lat", "length_m"} (lon, lat of its free tip), and the count of water points in land faces within skip_m
+    of a line, which the guard leaves out.
 
     The lines and the outline (the boundary of box cut to canada) split the area into faces; a line end within
     END_SNAP_M of the outline is moved onto it, a retraced segment (RETRACE_M, RETRACE_MAX_M: at most 100 m, covered
@@ -228,7 +231,7 @@ def land_polygons(lines: Iterable[LineString], box: tuple[float, float, float, f
     are of opposite kinds; in each set of faces so linked, the kind holding more water points (lon/lat centers of
     NONNA cells deeper than WATER_VOTE_M) is water. CoastError when the faces cannot be split into two kinds, when a
     linked set's water points do not decide, when no water point lies within GUARD_NEAR_M of a line and farther
-    than skip_m from every line (the caller's: GUARD_SKIP_CELLS cell widths on NONNA-100, 0 on NONNA-10), or when
+    than skip_m from every line (the caller's: GUARD_SKIP_CELLS NONNA-100 cell widths offshore, else 0), or when
     more than 1% of those water points fall in land. A separate
     piece of the area with no coastline is water. Then, with wet
     the NONNA cells at or below chart datum: a land face of at least RIVER_MIN_AREA_M2 more than RIVER_WATER_SHARE
@@ -242,7 +245,7 @@ def land_polygons(lines: Iterable[LineString], box: tuple[float, float, float, f
     clip = to_m(shapely.segmentize(make_box(*box), _SEGMENT_DEG)).buffer(_CLIP_MARGIN_M)
     coast = unary_union([to_m(line).intersection(clip) for line in lines])
     if coast.is_empty or area.is_empty:
-        return MultiPolygon(), [], 0, []
+        return MultiPolygon(), [], 0, [], 0
 
     connectors, retraced, tree = [], [], None
     pieces = list(getattr(coast, "geoms", [coast]))
@@ -295,8 +298,8 @@ def land_polygons(lines: Iterable[LineString], box: tuple[float, float, float, f
     # index.
     shapely.prepare(coast)
     near, skip = (np.concatenate([shapely.dwithin(coast, shapely.points(xy[k:k + _NEAR_CHUNK]), d)
-                                  for k in range(0, len(xy), _NEAR_CHUNK)]) if len(xy) else np.zeros(0, bool)
-                  for d in (GUARD_NEAR_M, skip_m))
+                                  for k in range(0, len(xy), _NEAR_CHUNK)]) if len(xy) and d > 0
+                  else np.zeros(len(xy), bool) for d in (GUARD_NEAR_M, skip_m))
     judged = near & ~skip
     n_near, near_land = int(judged.sum()), int((judged & on_land).sum())
     band = f"within {GUARD_NEAR_M:g} m of the coastline" + (f" and farther than {skip_m:.0f} m" if skip_m else "")
@@ -326,4 +329,6 @@ def land_polygons(lines: Iterable[LineString], box: tuple[float, float, float, f
     # Back in lon/lat before the cuts, so land meets the Canada polygon and the wet cells exactly.
     land = from_m(unary_union(kept)).intersection(area_ll).difference(wet)
     land = land.union(from_m(unary_union(islets)).intersection(area_ll))
-    return MultiPolygon([p for p in shapely.get_parts(land) if p.geom_type == "Polygon"]), flipped, inland, retraced
+    skipped = int((near & skip & on_land).sum())
+    return (MultiPolygon([p for p in shapely.get_parts(land) if p.geom_type == "Polygon"]), flipped, inland, retraced,
+            skipped)

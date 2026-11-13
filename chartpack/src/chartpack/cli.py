@@ -689,8 +689,8 @@ def _derive_sources(args: argparse.Namespace) -> int:
     # NONNA-10 none (spec 7.1).
     skip_m = 0.0 if grids.fine else GUARD_SKIP_CELLS * grid[4] * np.cos(np.radians((extent[1] + extent[3]) / 2))
     del grids
-    land, water_faces, inland, retraced = land_polygons(_read_lines(assets[coast][0]), extent, canada, water, wet,
-                                                        skip_m=skip_m)
+    land, water_faces, inland, retraced, skipped = land_polygons(_read_lines(assets[coast][0]), extent, canada,
+                                                                 water, wet, skip_m=skip_m)
     del water, wet
     nosurvey = mask_cells(empty, grid, land, extent)
     args.out.mkdir(parents=True, exist_ok=True)
@@ -707,6 +707,9 @@ def _derive_sources(args: argparse.Namespace) -> int:
         # from any coastline line, that is surveyed rivers and lakes; the wet cut then removes the land from them
         "inland_water_points": inland,
         "retraced_ends": retraced,  # retraced coastline segments the end check skipped (lon, lat, length_m)
+        # vote points in land faces that the land-share guard left out because they lie within its skip of a line
+        # (offshore regions only: NONNA-100 cells that can hold the line)
+        "skipped_land_points": skipped,
     }
     (args.out / f"derive-stats-{name}.json").write_text(json.dumps(stats, indent=2) + "\n")
     for file in (f"land-{name}.geojson.gz", f"nosurvey-{name}.geojson.gz", f"derive-stats-{name}.json"):

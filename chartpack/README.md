@@ -187,7 +187,9 @@ coastline line, that is surveyed rivers and lakes; the wet cut then removes the 
 drawn as land; and `retraced_ends`: the dangling coastline edges the line-end check skips, each with lon, lat and
 length in meters. An edge is skipped only when it is at most 100 m long, lies within 1 m of other lines along its
 whole length, and no other free line end lies within 1 m of its tip, so the covering line runs on: a line going out
-and back over itself. A shore digitized twice that stops at a gap still fails). The workflow uploads the three files to `sources-bc-1`.
+and back over itself. A shore digitized twice that stops at a gap still fails; and `skipped_land_points`: the vote
+points in land faces that the land-share guard left out because they lie within its skip of a line, 1.5 NONNA-100
+cells, which only an offshore region uses; 0 elsewhere). The workflow uploads the three files to `sources-bc-1`.
 
 ## Tests
 

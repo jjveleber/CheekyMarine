@@ -217,8 +217,8 @@ def test_retraced_segment_is_not_a_line_end():
     spiked = _with_spike(coords, 1, (-123.97, 49.53 - 20 * DY), 2e-7)
     plain, _ = _land([LineString(coords)], L_LAND)
     area = box(*LAND_BOX)
-    land, _, _, retraced = coast.land_polygons([LineString(spiked)], LAND_BOX, CANADA, _water_points(area, L_LAND),
-                                               Polygon(), skip_m=0.0)
+    land, _, _, retraced, _ = coast.land_polygons([LineString(spiked)], LAND_BOX, CANADA, _water_points(area, L_LAND),
+                                                  Polygon(), skip_m=0.0)
     assert _close(land, plain, 1e-4)  # the 2 cm offset of the line after the spike leaves a 16 m2 sliver
     assert len(retraced) == 1 and set(retraced[0]) == {"lon", "lat", "length_m"}
     assert retraced[0]["length_m"] == pytest.approx(20, abs=0.5)
@@ -456,29 +456,46 @@ def test_points_beyond_500_m_are_inland_not_in_the_guard():
     assert inland == 50
 
 
-def test_guard_leaves_out_points_within_two_cells_of_a_line():
-    """On NONNA-100 (about 100 m cells) deep cells reach a cell or two past a right coastline: from NONNA-100 alone,
-    5.37% of the near points of bc-south-georgia fall on land, against 0.20% from NONNA-10 (2026-11-12). With a
-    200 m skip (two NONNA-100 cells) the 100 points 150 m inside the land (9%) are left out; the 11 at 400 m still
-    stop the build. With no skip, as on NONNA-10, the same 100 points count, and so do points 20 m inside (two
-    NONNA-10 cells)."""
+def test_guard_leaves_out_points_within_the_skip():
+    """On NONNA-100 (about 100 m cells) deep cells reach past a right coastline: from NONNA-100 alone, 5.37% of the
+    near points of bc-south-georgia fall on land, against 0.20% from NONNA-10 (2026-11-12). With a 200 m skip the
+    100 points 150 m inside the land (9%) are left out of the share and returned as skipped land points; the 11 at
+    400 m still stop the build. With no skip, as on NONNA-10, the same 100 points count, and so do points 20 m
+    inside (two NONNA-10 cells) and points on a line."""
     import numpy as np
     import shapely
-    from shapely.geometry import Polygon, box
+    from shapely.geometry import LineString, Polygon, box
 
     north = box(-124.0, 49.55, -123.9, 49.6)
     lines, water = _strips(9, 0, straddle=100, sea_m=300)
-    land, _ = coast.land_polygons(lines, LAND_BOX, CANADA, water, Polygon(), skip_m=200.0)[:2]
+    land, _, _, _, skipped = coast.land_polygons(lines, LAND_BOX, CANADA, water, Polygon(), skip_m=200.0)
     assert _close(land, north, 0.01)  # the 8.6 km line, projected by its two ends, sags about 1 m
+    assert skipped == 100
     with pytest.raises(coast.CoastError, match=r"109 of 1099 water points within 500 m of the coastline \("):
         coast.land_polygons(lines, LAND_BOX, CANADA, water, Polygon(), skip_m=0.0)
     lines, water = _strips(11, 0, straddle=100, sea_m=300)
     with pytest.raises(coast.CoastError, match="11 of 1001 water points within 500 m"):
         coast.land_polygons(lines, LAND_BOX, CANADA, water, Polygon(), skip_m=200.0)
     lines, water = _strips(0, 0, sea_m=300)
-    inside = shapely.MultiPoint([(x, 49.55 + 20 * DY) for x in np.linspace(-123.995, -123.905, 11)])
+    xs = np.linspace(-123.995, -123.905, 11)
+    inside = shapely.MultiPoint([(x, 49.55 + 20 * DY) for x in xs])
     with pytest.raises(coast.CoastError, match=r"11 of 1001 water points within 500 m of the coastline \("):
         coast.land_polygons(lines, LAND_BOX, CANADA, water.union(inside), Polygon(), skip_m=0.0)
+    on_line = [LineString([(-124.01, 49.55), *[(x, 49.55) for x in xs], (-123.89, 49.55)])]
+    _, water = _strips(11, 0, sea_m=300)
+    with pytest.raises(coast.CoastError, match=r"11 of 1012 water points within 500 m of the coastline \("):
+        coast.land_polygons(on_line, LAND_BOX, CANADA, water.union(shapely.MultiPoint([(x, 49.55) for x in xs])),
+                            Polygon(), skip_m=0.0)
+
+
+def test_guard_without_points_outside_the_skip_fails():
+    """Every near point inside the skip: the guard cannot judge, so it fails and names the skip."""
+    from shapely.geometry import Polygon
+
+    lines, water = _strips(0, 0, straddle=50, sea_m=150)
+    with pytest.raises(coast.CoastError, match="no water point lies within 500 m of the coastline and farther than"
+                                               " 200 m"):
+        coast.land_polygons(lines, LAND_BOX, CANADA, water, Polygon(), skip_m=200.0)
 
 
 def test_guard_without_points_near_the_coastline_fails():
