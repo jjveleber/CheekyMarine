@@ -1645,7 +1645,7 @@ def test_derived_coalne_drop_on_real_land_asset_geometry():
     coast = LineString([(-123.95, 49.49), (-123.95, 49.61)])  # land to the west, cut by the diagonal edge
     area = box(*LAND_BOX).intersection(canada)
     expected_land = area.intersection(box(-124.0, 49.4, -123.95, 49.7))
-    land, _, _ = land_polygons([coast], LAND_BOX, canada, _water_points(area, expected_land), Polygon())
+    land, *_ = land_polygons([coast], LAND_BOX, canada, _water_points(area, expected_land), Polygon())
     assert land.symmetric_difference(expected_land).area < 1e-9
     outline = canada.boundary.union(box(*LAND_BOX).boundary)
     cut_edges = [p for p in shapely.points(shapely.get_coordinates(land.boundary)) if coast.distance(p) > 1e-6]

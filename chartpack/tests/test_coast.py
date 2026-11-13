@@ -154,7 +154,7 @@ def _land(lines, land, *, canada=CANADA, wet=None, water=None, full=False):
     area = box(*LAND_BOX).intersection(canada)
     result = coast.land_polygons(lines, LAND_BOX, canada, _water_points(area, land) if water is None else water,
                                  Polygon() if wet is None else wet)
-    return result if full else result[:2]
+    return result[:3] if full else result[:2]
 
 
 L_COAST = [(-124.01, 49.53), (-123.95, 49.53), (-123.95, 49.61)]
@@ -178,6 +178,113 @@ def test_coast_ending_at_canada_border_closes_along_it():
     land, _ = _land([line], expected, canada=canada)
     assert _close(land, expected)
     assert land.difference(canada).area == 0
+
+
+def test_clip_follows_the_box_parallels():
+    """A box 3.9 degrees wide at 52.5 N: in BC Albers the straight chord between its south corners lies up to 1.8 km
+    north of the south parallel, past the 1 km clip margin. A coast crossing the south edge mid-box must not be cut
+    inside the box (bc-north, 2026-11-12)."""
+    import numpy as np
+    import shapely
+    from shapely.geometry import LineString, box
+
+    wide = (-131.5, 52.46, -127.6, 52.9)
+    line = LineString([(-129.55, 52.40), (-129.55, 52.95)])  # land to the west
+    west = box(-131.5, 52.46, -129.55, 52.9)
+    x, y = np.meshgrid(np.linspace(-131.47, -127.63, 60), np.linspace(52.47, 52.89, 20))
+    near = np.column_stack([np.full(20, -129.548), np.linspace(52.47, 52.89, 20)])  # about 140 m east of the line
+    water = shapely.MultiPoint(np.vstack([np.column_stack([x[x > -129.5], y[x > -129.5]]), near]))
+    canada = box(-140.0, 45.0, -120.0, 60.0)
+    land, *_ = coast.land_polygons([line], wide, canada, water, shapely.Polygon())
+    assert _close(land, west, 0.01)
+
+
+def _with_spike(coords, at, tip, retrace_offset):
+    """coords with an out-and-back spike at vertex at: out to tip, back exactly, out again and back retrace_offset
+    degrees off, as OBJECTID 32612852 of the atlas does (Seymour Inlet, 2026-11-12)."""
+    x, y = coords[at]
+    tx, ty = tip
+    o = retrace_offset
+    return coords[:at + 1] + [(tx, ty), (x, y), (tx + o, ty + o), (x + o, y + o)] + coords[at + 1:]
+
+
+def test_retraced_segment_is_not_a_line_end():
+    """A 20 m spike retraced three times (once exactly, once 2 cm off) is no line end: the land is as without it,
+    and it is reported."""
+    from shapely.geometry import LineString, Polygon, box
+
+    coords = [(-124.01, 49.53), (-123.97, 49.53), (-123.95, 49.53), (-123.95, 49.61)]
+    spiked = _with_spike(coords, 1, (-123.97, 49.53 - 20 * DY), 2e-7)
+    plain, _ = _land([LineString(coords)], L_LAND)
+    area = box(*LAND_BOX)
+    land, _, _, retraced = coast.land_polygons([LineString(spiked)], LAND_BOX, CANADA, _water_points(area, L_LAND),
+                                               Polygon())
+    assert _close(land, plain, 1e-4)  # the 2 cm offset of the line after the spike leaves a 16 m2 sliver
+    assert len(retraced) == 1 and set(retraced[0]) == {"lon", "lat", "length_m"}
+    assert retraced[0]["length_m"] == pytest.approx(20, abs=0.5)
+    assert retraced[0]["lat"] == pytest.approx(49.53 - 20 * DY, abs=1e-6)
+
+
+def test_twice_digitized_gap_still_fails():
+    """An island ring with a 290 m gap, digitized twice 0.5 m apart (PR 128 review): each copy covers the other's
+    end, but both copies stop at the gap, so it is a real gap and the build stops."""
+    from shapely.geometry import LineString, box
+
+    island = box(-123.96, 49.54, -123.94, 49.56)
+    ring = list(island.exterior.coords)
+    a, b = ring[-2], ring[-1]
+    open_ring = ring[:-1] + [(a[0] + (b[0] - a[0]) * 0.8, a[1] + (b[1] - a[1]) * 0.8)]
+    dx = 0.5 * DY / math.cos(math.radians(49.55))
+    copy = [(x + dx, y + 0.5 * DY) for x, y in open_ring]
+    with pytest.raises(coast.CoastError, match="more than 50 m"):
+        _land([LineString(open_ring), LineString(copy)], island)
+
+
+def test_short_doubled_ends_at_a_gap_still_fail():
+    """Both ends of a 290 m gap doubled over their last 40 m by a short feature that crosses the line and lies 0.5 m
+    alongside it to the gap: each 40 m dangle is covered and under RETRACE_MAX_M, but the covering line ends at the
+    same place, so neither is skipped."""
+    from shapely.geometry import LineString, box
+
+    island = box(-123.96, 49.54, -123.94, 49.56)
+    ring = list(island.exterior.coords)
+    a, b = ring[-2], ring[-1]
+    open_ring = ring[:-1] + [(a[0] + (b[0] - a[0]) * 0.8, a[1] + (b[1] - a[1]) * 0.8)]
+    dx = DY / math.cos(math.radians(49.55))
+
+    def doubled(tip, toward):
+        """A 40 m feature crossing the line 40 m before tip and running 0.5 m alongside it to tip."""
+        ux, uy = (toward[0] - tip[0]) / dx, (toward[1] - tip[1]) / DY
+        n = math.hypot(ux, uy)
+        ux, uy = ux / n, uy / n  # unit vector from the tip back along the line, in meters
+        mid = (tip[0] + 40 * ux * dx, tip[1] + 40 * uy * DY)
+        side = (-uy, ux)  # 0.5 m to one side
+        return LineString([(mid[0] - 0.5 * side[0] * dx, mid[1] - 0.5 * side[1] * DY),
+                           (mid[0] + 0.5 * side[0] * dx, mid[1] + 0.5 * side[1] * DY),
+                           (tip[0] + 0.5 * side[0] * dx, tip[1] + 0.5 * side[1] * DY)])
+
+    lines = [LineString(open_ring), doubled(open_ring[0], open_ring[1]), doubled(open_ring[-1], open_ring[-2])]
+    with pytest.raises(coast.CoastError, match="more than 50 m"):
+        _land(lines, island)
+
+
+def test_long_retraced_stub_still_fails():
+    """A spike retraced as the atlas does it but 150 m long, over RETRACE_MAX_M: never skipped."""
+    from shapely.geometry import LineString
+
+    coords = [(-124.01, 49.53), (-123.97, 49.53), (-123.95, 49.53), (-123.95, 49.61)]
+    spiked = _with_spike(coords, 1, (-123.97, 49.53 - 150 * DY), 2e-7)
+    with pytest.raises(coast.CoastError, match="more than 50 m"):
+        _land([LineString(spiked)], L_LAND)
+
+
+def test_stub_into_open_water_still_fails():
+    """A 20 m stub off the coast with nothing alongside it is a free line end, not a retraced segment."""
+    from shapely.geometry import LineString
+
+    stub = LineString([(-123.97, 49.53), (-123.97, 49.53 - 20 * DY)])
+    with pytest.raises(coast.CoastError, match="more than 50 m"):
+        _land([LineString(L_COAST), stub], L_LAND)
 
 
 def test_unclosable_ring_fails():
@@ -403,7 +510,7 @@ def test_derive_stats_lists_water_faces(tmp_path, regions_dir, monkeypatch, cap)
     assert len(stats["water_faces"]) == 1
     assert stats["water_faces"][0]["wet_share"] == pytest.approx(1 / 3, abs=0.02)
     assert stats["land_polygons"] == 0 and stats["nosurvey_polygons"] == 2
-    assert stats["missing_in_100_km2"] > 0 and stats["inland_water_points"] == 0
+    assert stats["missing_in_100_km2"] > 0 and stats["inland_water_points"] == 0 and stats["retraced_ends"] == []
     assert stats["inputs"] == {name: entry["sha256"] for name, entry in files.items()}  # what it was derived from
     with gzip.open(out / "land-rv.geojson.gz", "rt") as f:
         assert json.load(f)["features"] == []
