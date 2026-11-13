@@ -91,6 +91,8 @@ From the approved map. Boxes are W, S, E, N. Exact edges move to the zoom-10 own
 | `bc-offshore-south` | polygon on the map, about -132.86 to -126.6 W, 48.45 to 51.0 N | off Vancouver Island to about 100 mi | small (coarse only) |
 | `bc-offshore-north` | polygon on the map, about -135.59 to -129.2 W, 51.0 to 55.0 N | off Haida Gwaii and Queen Charlotte Sound to about 100 mi | small (coarse only) |
 
+`haida-gwaii` is split in two at 53.3309 N (the zoom-10 row edge), `haida-gwaii-north` and `haida-gwaii-south`, for the fit guard (plan 8 Task 16 Step 2, owner's choice 2026-11-13).
+
 The offshore polygons are in the appendix (copied from the map's data).
 
 Ownership rules, added to plan 7 spec 5.2:
