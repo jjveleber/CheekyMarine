@@ -1,0 +1,23 @@
+# Haida Gwaii and Hecate Strait south of the zoom-10 row edge at 53.33087298301705 N (plan 8 spec 4).
+# haida-gwaii is split in two there for the fit guard (plan 8 Task 16 Step 2). Charts are derived from NONNA
+# and the BC Freshwater Atlas inside the Canada polygon.
+name = "haida-gwaii-south"
+charts_version = "1.0.0"
+bathy_version = "1.0.0"
+# east edge grown from -131.2 by one tile column (plan 8 Task 15 Step 4)
+bbox = [-133.3, 51.8, -130.78125, 53.33087298301705]
+
+[charts]
+kind = "derived-inshore"
+
+# Every Active cell of bands 1 to 3 whose catalog polygon meets the owned tiles (zoom-10 tiles, grid.toml), from
+# `chartpack cells` and the catalog of 2026-11-12. Their features are cut at the Canada polygon.
+[enc]
+band1 = ["US1GLBDD"]
+
+[bathy]
+sources = ["nonna10", "nonna100", "etopo"]
+dem_maxzoom = 14
+
+[datum]
+file = "datum/wa-stations.toml"  # CRM south of 49 N; NONNA is on chart datum and ETOPO takes a fixed shift

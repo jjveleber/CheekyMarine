@@ -20,7 +20,7 @@ from chartpack.region import RegionError, load_region
 
 WAVE1 = ["sound-south", "sound-central", "north-sound", "strait", "wa-coast", "overview"]
 BC_INSHORE = ["bc-south-georgia", "bc-vi-west-south", "bc-north-georgia", "bc-johnstone", "bc-vi-west-north",
-              "bc-central", "bc-north", "haida-gwaii"]
+              "bc-central", "bc-north", "haida-gwaii-north", "haida-gwaii-south"]
 BC_OFFSHORE = ["bc-offshore-south", "bc-offshore-north"]
 GRID = WAVE1[:-1] + BC_INSHORE + BC_OFFSHORE  # plan 8 Task 15: the wave 1 order unchanged, then inshore, offshore
 REBUILT = ["north-sound", "strait", "wa-coast", "overview"]  # 1.1.0: with Canadian-side data (plan 8 spec 4)
@@ -47,7 +47,8 @@ VIEWS = {
     "bc-vi-west-north": {"nootka-sound"},
     "bc-central": {"bella-bella"},
     "bc-north": {"prince-rupert", "dixon-entrance"},
-    "haida-gwaii": {"masset"},
+    "haida-gwaii-north": {"masset"},
+    "haida-gwaii-south": set(),
     "bc-offshore-south": {"offshore-south"},
     "bc-offshore-north": {"offshore-north"},
 }
@@ -117,8 +118,8 @@ def _owned_all(regions_dir):
 # changed order changes a count.
 TILE_COUNTS = {"sound-south": 12, "sound-central": 12, "north-sound": 16, "strait": 13, "wa-coast": 92,
                "bc-south-georgia": 18, "bc-vi-west-south": 41, "bc-north-georgia": 28, "bc-johnstone": 39,
-               "bc-vi-west-north": 33, "bc-central": 79, "bc-north": 122, "haida-gwaii": 86, "bc-offshore-south": 98,
-               "bc-offshore-north": 150}
+               "bc-vi-west-north": 33, "bc-central": 79, "bc-north": 122, "haida-gwaii-north": 30,
+               "haida-gwaii-south": 56, "bc-offshore-south": 98, "bc-offshore-north": 150}
 UNOWNED_TILES = "bc-unowned-tiles.json"  # the reviewed gaps next to the owned tiles (tests/fixtures/README.md)
 UNOWNED_COAST_ALLOWED: set[tuple[int, int]] = set()  # unowned tiles known to hold coastline, owner-approved
 
@@ -148,6 +149,21 @@ def test_every_bc_tile_has_one_owner(regions_dir, fixtures_dir):
     gaps = {tuple(t) for t in json.loads((fixtures_dir / UNOWNED_TILES).read_text())}
     assert _unowned_next_to_owned(regions_dir, owned) == gaps
     assert {(154, 347), (154, 348)} <= gaps
+
+
+# The zoom-10 tiles haida-gwaii owned at ccc7006 (columns 132 to 137 for rows 327 to 335, 132 to 139 for rows 336 to
+# 339), before its split for the fit guard (plan 8 Task 16 Step 2).
+HAIDA_GWAII_TILES = ({(x, y) for x in range(132, 138) for y in range(327, 336)}
+                     | {(x, y) for x in range(132, 140) for y in range(336, 340)})
+
+
+def test_haida_gwaii_halves_own_the_parent_tiles(regions_dir):
+    """haida-gwaii is split at the zoom-10 row edge 53.3309 N: the two halves own exactly the parent's tiles, the
+    north half rows 327 to 331, the south half rows 332 to 339."""
+    _, owned = _owned_all(regions_dir)
+    north, south = owned["haida-gwaii-north"], owned["haida-gwaii-south"]
+    assert len(HAIDA_GWAII_TILES) == 86 and not north & south and north | south == HAIDA_GWAII_TILES
+    assert {y for _, y in north} == set(range(327, 332)) and {y for _, y in south} == set(range(332, 340))
 
 
 # Unowned tiles next to owned ones that hold coastline (Task 15 Step 4): Portland Canal and Observatory Inlet north of
