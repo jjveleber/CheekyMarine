@@ -296,6 +296,45 @@ def test_coastline_shifted_seaward_fails():
         _land([LineString(shifted)], L_LAND)  # water points from the true shore
 
 
+def _strips(near_land: int, inland: int):
+    """A straight coast along 49.55 N (land north) and vote points in rows parallel to it: 990 in the sea 100 m
+    south of the line, near_land on land 400 m north (inside GUARD_NEAR_M) and inland on land 600 m north
+    (outside it)."""
+    import numpy as np
+    import shapely
+    from shapely.geometry import LineString
+
+    def row(n, metres):
+        x = np.linspace(-123.995, -123.905, n) if n else np.zeros(0)
+        return np.column_stack([x, np.full(n, 49.55 + metres * DY)])
+
+    points = np.vstack([row(990, -100), row(near_land, 400), row(inland, 600)])
+    return [LineString([(-124.01, 49.55), (-123.89, 49.55)])], shapely.MultiPoint(points)
+
+
+def test_guard_limit_is_one_percent_of_the_points_within_500_m():
+    """11 of 1,001 near points on land (1.10%) stop the build; 9 of 999 (0.90%) pass. The rows 400 m from the line
+    pin the 500 m reach too: at a shorter reach they would not count."""
+    from shapely.geometry import box
+
+    north = box(-124.0, 49.55, -123.9, 49.6)
+    lines, water = _strips(11, 0)
+    with pytest.raises(coast.CoastError, match="11 of 1001 water points within 500 m"):
+        _land(lines, north, water=water)
+    lines, water = _strips(9, 0)
+    _, _, inland = _land(lines, north, water=water, full=True)
+    assert inland == 0
+
+
+def test_points_beyond_500_m_are_inland_not_in_the_guard():
+    """50 points 600 m inside the land (5% of all) count as inland only; the 9 at 400 m count in the guard only."""
+    from shapely.geometry import box
+
+    lines, water = _strips(9, 50)
+    _, _, inland = _land(lines, box(-124.0, 49.55, -123.9, 49.6), water=water, full=True)
+    assert inland == 50
+
+
 def test_guard_without_points_near_the_coastline_fails():
     """No water point within 500 m of a line: the guard cannot judge, so it fails rather than pass."""
     import shapely
