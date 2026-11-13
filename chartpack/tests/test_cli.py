@@ -1645,7 +1645,7 @@ def test_derived_coalne_drop_on_real_land_asset_geometry():
     coast = LineString([(-123.95, 49.49), (-123.95, 49.61)])  # land to the west, cut by the diagonal edge
     area = box(*LAND_BOX).intersection(canada)
     expected_land = area.intersection(box(-124.0, 49.4, -123.95, 49.7))
-    land, *_ = land_polygons([coast], LAND_BOX, canada, _water_points(area, expected_land), Polygon())
+    land, *_ = land_polygons([coast], LAND_BOX, canada, _water_points(area, expected_land), Polygon(), skip_m=0.0)
     assert land.symmetric_difference(expected_land).area < 1e-9
     outline = canada.boundary.union(box(*LAND_BOX).boundary)
     cut_edges = [p for p in shapely.points(shapely.get_coordinates(land.boundary)) if coast.distance(p) > 1e-6]
@@ -1712,3 +1712,77 @@ def test_build_enc_checks_the_derive_inputs(tmp_path, fixtures_dir, regions_dir,
     else:
         with pytest.raises(SystemExit, match=r"region test-cell: derive-stats-toba\.json .*stage derive .*again"):
             main(args)
+
+
+class _Decided(Exception):
+    pass
+
+
+def _record_derived_assets(monkeypatch):
+    """Every region whose stored land and no-survey assets a build asks _derived_assets for (spec 7.1: land from
+    NONNA-100 votes alone, an offshore region's, is never drawn)."""
+    from shapely.geometry import Polygon
+
+    from chartpack import cli
+
+    asked = []
+
+    def record(args, region, name, boxes):
+        asked.append(region)
+        return Polygon(), Polygon(), (-180.0, -90.0, 180.0, 90.0), []
+
+    monkeypatch.setattr(cli, "_derived_assets", record)
+    return asked
+
+
+@pytest.mark.parametrize("name, reads", [("bc-offshore-south", False), ("bc-offshore-north", False),
+                                         ("bc-south-georgia", True)])
+def test_charts_build_never_reads_an_offshore_regions_land(tmp_path, regions_dir, monkeypatch, name, reads):
+    """The charts build of an offshore region takes no stored land or no-survey asset; an inshore one does. The run
+    stops once that is decided (at the datum, before any block)."""
+    import argparse
+
+    from chartpack import cli
+    from chartpack.enc.bc import load_canada
+    from chartpack.grid import owned_tiles
+    from chartpack.region import load_region
+
+    asked = _record_derived_assets(monkeypatch)
+    path = regions_dir / f"{name}.toml"
+    region = load_region(path)
+    monkeypatch.setattr(cli, "_check_assets", lambda *a: {f"nonna100-{name}.tif": (tmp_path / "n.tif", "0")})
+    monkeypatch.setattr(cli, "etopo_paths", lambda *a: [])
+    monkeypatch.setattr(cli, "crm_path", lambda *a: None)
+    monkeypatch.setattr(cli.geoid, "missing_grids", lambda *a: [])
+    monkeypatch.setattr(cli, "area_datum", lambda *a: (_ for _ in ()).throw(_Decided()))
+    owned = set(sorted(owned_tiles(region, regions_dir))[:2])
+    args = argparse.Namespace(region=path, cache=tmp_path)
+    with pytest.raises(_Decided):
+        cli._derived_charts(args, region, owned, load_canada(regions_dir))
+    assert [r.name for r in asked] == ([name] if reads else [])
+
+
+def test_overview_build_never_reads_an_offshore_owners_land(tmp_path, regions_dir, monkeypatch):
+    """The overview takes the stored land and no-survey assets of its inshore owners only, though tiles of both
+    offshore regions meet the Canada polygon. The run stops once that is decided (at the CRM path)."""
+    import argparse
+
+    from chartpack import cli
+    from chartpack.enc.bc import load_canada
+    from chartpack.grid import canada_side, grid_owners
+    from chartpack.region import load_region
+
+    asked = _record_derived_assets(monkeypatch)
+    monkeypatch.setattr(cli, "_overview_nonna100", lambda *a: (tmp_path / "n.vrt", []))
+    monkeypatch.setattr(cli, "crm_path", lambda *a: (_ for _ in ()).throw(_Decided()))
+    canada = load_canada(regions_dir)
+    tile_owners = grid_owners(regions_dir)
+    content = {t for t, o in tile_owners.items() if o.name in ("bc-offshore-south", "bc-offshore-north")}
+    content |= set(sorted(t for t, o in tile_owners.items() if o.name == "bc-south-georgia")[:2])
+    assert {tile_owners[t].name for t in content if canada_side(canada, t, tile_owners[t]).area > 0} == {
+        "bc-offshore-south", "bc-offshore-north", "bc-south-georgia"}
+    overview = regions_dir / "overview.toml"
+    args = argparse.Namespace(region=overview, cache=tmp_path, work=tmp_path / "work")
+    with pytest.raises(_Decided):
+        cli._overview_derived(args, load_region(overview), content, canada)
+    assert [r.name for r in asked] == ["bc-south-georgia"]

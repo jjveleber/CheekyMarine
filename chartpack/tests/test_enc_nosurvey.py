@@ -83,3 +83,23 @@ def test_grids_are_float32_with_nan(tmp_path):
         assert grids.values.dtype == np.float32 and grids.fine == (fine is not None)
         assert np.isnan(grids.values).any() and np.nanmax(grids.values) == -10.0
         assert grids.has100.dtype == bool and grids.has100.shape == grids.values.shape
+
+
+def test_wet_area_of_speckled_cells_is_one_polygon_per_run_without_a_union(monkeypatch):
+    """Sparse NONNA-10 cells polygonize into many runs (1.45 million on wa-coast, 2026-11-12). The runs of one value
+    never share an edge, so they are kept as they are; joining them with coverage_union_all took 18 minutes there and
+    grows faster than the run count (7 s here). One polygon per 4-connected run of wet cells, valid, and no union."""
+    from scipy import ndimage
+
+    from chartpack.enc.nosurvey import Grids, wet_area
+
+    cells = np.random.default_rng(1).random((800, 800)) < 0.6
+    values = np.where(cells, np.float32(-1.0), np.float32(np.nan))
+    grid = (-13800000.0, 6200000.0 - 19.0 * 800, -13800000.0 + 19.0 * 800, 6200000.0, 19.0, -19.0)
+
+    def no_union(*args, **kwargs):
+        raise AssertionError("wet_area called coverage_union_all")
+
+    monkeypatch.setattr(shapely, "coverage_union_all", no_union)
+    wet = wet_area(Grids(grid, values, cells, True))
+    assert wet.is_valid and shapely.get_num_geometries(wet) == ndimage.label(cells)[1]
