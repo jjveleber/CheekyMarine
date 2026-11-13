@@ -365,6 +365,20 @@ def test_land_never_over_wet_nonna_cells():
     assert _close(land, L_LAND.difference(river))
 
 
+def test_wet_cells_along_a_long_parallel_stay_valid_in_meters():
+    """Wet cells come as lon/lat polygons whose edges run along parallels for tens of km (strait, 2026-11-12: a
+    29 km edge on 48.50 N). Projected by their vertices alone, such an edge becomes a chord that sags across a
+    one-cell hole 13 m north of it, and the wet cells are invalid in meters (side location conflict)."""
+    from shapely.geometry import LineString, box
+
+    dx = DY / math.cos(math.radians(49.55))
+    hole = box(-123.975, 49.55 + 10 * DY, -123.975 + 10 * dx, 49.55 + 40 * DY)
+    wet = box(-124.2, 49.55, -123.75, 49.56).difference(hole)  # a 32 km south edge; 14% of the land face
+    land, flipped = _land([LineString(L_COAST)], L_LAND, wet=wet)
+    assert flipped == [] and land.intersection(wet).area == 0 and land.contains(hole.representative_point())
+    assert _close(land, L_LAND.difference(wet))
+
+
 def test_water_vote_on_land_fails():
     """A wrong land side: the vote takes the true land for water, so the deep points beside the line are on land."""
     from shapely.geometry import LineString, box

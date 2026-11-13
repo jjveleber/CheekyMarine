@@ -297,7 +297,9 @@ def land_polygons(lines: Iterable[LineString], box: tuple[float, float, float, f
                          " a misplaced coastline")
     inland = int((on_land & ~near).sum())
 
-    wet_m = to_m(wet)
+    # Densified like the outline: the wet cells' edges run along parallels for tens of km, and projected by their
+    # vertices alone such an edge becomes a chord that sags across the cells beside it (strait, 2026-11-12).
+    wet_m = to_m(shapely.segmentize(wet, _SEGMENT_DEG))
     flipped, kept, islets = [], [], []
     for i in land_ids:
         face = faces[i]
