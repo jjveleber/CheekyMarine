@@ -153,7 +153,7 @@ def _land(lines, land, *, canada=CANADA, wet=None, water=None, full=False):
 
     area = box(*LAND_BOX).intersection(canada)
     result = coast.land_polygons(lines, LAND_BOX, canada, _water_points(area, land) if water is None else water,
-                                 Polygon() if wet is None else wet)
+                                 Polygon() if wet is None else wet, cell_m=10.0)
     return result[:3] if full else result[:2]
 
 
@@ -195,7 +195,7 @@ def test_clip_follows_the_box_parallels():
     near = np.column_stack([np.full(20, -129.548), np.linspace(52.47, 52.89, 20)])  # about 140 m east of the line
     water = shapely.MultiPoint(np.vstack([np.column_stack([x[x > -129.5], y[x > -129.5]]), near]))
     canada = box(-140.0, 45.0, -120.0, 60.0)
-    land, *_ = coast.land_polygons([line], wide, canada, water, shapely.Polygon())
+    land, *_ = coast.land_polygons([line], wide, canada, water, shapely.Polygon(), cell_m=10.0)
     assert _close(land, west, 0.01)
 
 
@@ -218,7 +218,7 @@ def test_retraced_segment_is_not_a_line_end():
     plain, _ = _land([LineString(coords)], L_LAND)
     area = box(*LAND_BOX)
     land, _, _, retraced = coast.land_polygons([LineString(spiked)], LAND_BOX, CANADA, _water_points(area, L_LAND),
-                                               Polygon())
+                                               Polygon(), cell_m=10.0)
     assert _close(land, plain, 1e-4)  # the 2 cm offset of the line after the spike leaves a 16 m2 sliver
     assert len(retraced) == 1 and set(retraced[0]) == {"lon", "lat", "length_m"}
     assert retraced[0]["length_m"] == pytest.approx(20, abs=0.5)
@@ -417,10 +417,10 @@ def test_coastline_shifted_seaward_fails():
         _land([LineString(shifted)], L_LAND)  # water points from the true shore
 
 
-def _strips(near_land: int, inland: int):
-    """A straight coast along 49.55 N (land north) and vote points in rows parallel to it: 990 in the sea 100 m
-    south of the line, near_land on land 400 m north (inside GUARD_NEAR_M) and inland on land 600 m north
-    (outside it)."""
+def _strips(near_land: int, inland: int, straddle: int = 0, sea_m: float = 100):
+    """A straight coast along 49.55 N (land north) and vote points in rows parallel to it: 990 in the sea sea_m
+    south of the line, near_land on land 400 m north (inside GUARD_NEAR_M), inland on land 600 m north
+    (outside it) and straddle on land 150 m north."""
     import numpy as np
     import shapely
     from shapely.geometry import LineString
@@ -429,7 +429,7 @@ def _strips(near_land: int, inland: int):
         x = np.linspace(-123.995, -123.905, n) if n else np.zeros(0)
         return np.column_stack([x, np.full(n, 49.55 + metres * DY)])
 
-    points = np.vstack([row(990, -100), row(near_land, 400), row(inland, 600)])
+    points = np.vstack([row(990, -sea_m), row(near_land, 400), row(inland, 600), row(straddle, 150)])
     return [LineString([(-124.01, 49.55), (-123.89, 49.55)])], shapely.MultiPoint(points)
 
 
@@ -454,6 +454,24 @@ def test_points_beyond_500_m_are_inland_not_in_the_guard():
     lines, water = _strips(9, 50)
     _, _, inland = _land(lines, box(-124.0, 49.55, -123.9, 49.6), water=water, full=True)
     assert inland == 50
+
+
+def test_guard_leaves_out_points_within_two_cells_of_a_line():
+    """On NONNA-100 (about 100 m cells) deep cells reach a cell or two past a right coastline: from NONNA-100 alone,
+    5.37% of the near points of bc-south-georgia fall on land, against 0.20% from NONNA-10 (2026-11-12). With
+    100 m cells the 100 points 150 m inside the land (9%) are left out; the 11 at 400 m still stop the build. With
+    10 m cells the same 100 points count."""
+    from shapely.geometry import Polygon, box
+
+    north = box(-124.0, 49.55, -123.9, 49.6)
+    lines, water = _strips(9, 0, straddle=100, sea_m=300)
+    land, _ = coast.land_polygons(lines, LAND_BOX, CANADA, water, Polygon(), cell_m=100.0)[:2]
+    assert _close(land, north, 0.01)  # the 8.6 km line, projected by its two ends, sags about 1 m
+    with pytest.raises(coast.CoastError, match="109 of 1099 water points within 500 m"):
+        coast.land_polygons(lines, LAND_BOX, CANADA, water, Polygon(), cell_m=10.0)
+    lines, water = _strips(11, 0, straddle=100, sea_m=300)
+    with pytest.raises(coast.CoastError, match="11 of 1001 water points within 500 m"):
+        coast.land_polygons(lines, LAND_BOX, CANADA, water, Polygon(), cell_m=100.0)
 
 
 def test_guard_without_points_near_the_coastline_fails():

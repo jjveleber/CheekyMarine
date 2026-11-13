@@ -686,7 +686,9 @@ def _derive_sources(args: argparse.Namespace) -> int:
     missing = round(missing_km2(grids, extent), 3) if grids.fine else None
     water, wet, empty, grid = water_points(grids, WATER_VOTE_M), wet_area(grids), no_value(grids), grids.grid
     del grids
-    land, water_faces, inland, retraced = land_polygons(_read_lines(assets[coast][0]), extent, canada, water, wet)
+    cell_m = grid[4] * np.cos(np.radians((extent[1] + extent[3]) / 2))  # an EPSG:3857 cell's width at mid-box
+    land, water_faces, inland, retraced = land_polygons(_read_lines(assets[coast][0]), extent, canada, water, wet,
+                                                        cell_m=cell_m)
     del water, wet
     nosurvey = mask_cells(empty, grid, land, extent)
     args.out.mkdir(parents=True, exist_ok=True)
