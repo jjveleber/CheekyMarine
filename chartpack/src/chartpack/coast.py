@@ -212,7 +212,9 @@ def land_polygons(lines: Iterable[LineString], box: tuple[float, float, float, f
     area_ll = make_box(*box).intersection(canada)
     area = to_m(shapely.segmentize(area_ll, _SEGMENT_DEG))
     outline = area.boundary
-    clip = to_m(make_box(*box)).buffer(_CLIP_MARGIN_M)
+    # Densified like the outline: four projected corners alone would put the south edge on a chord up to several
+    # km north of the parallel on a wide box, past the margin, and cut the lines inside the box.
+    clip = to_m(shapely.segmentize(make_box(*box), _SEGMENT_DEG)).buffer(_CLIP_MARGIN_M)
     coast = unary_union([to_m(line).intersection(clip) for line in lines])
     if coast.is_empty or area.is_empty:
         return MultiPolygon(), [], 0

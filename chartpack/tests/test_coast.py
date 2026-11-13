@@ -154,7 +154,7 @@ def _land(lines, land, *, canada=CANADA, wet=None, water=None, full=False):
     area = box(*LAND_BOX).intersection(canada)
     result = coast.land_polygons(lines, LAND_BOX, canada, _water_points(area, land) if water is None else water,
                                  Polygon() if wet is None else wet)
-    return result if full else result[:2]
+    return result[:3] if full else result[:2]
 
 
 L_COAST = [(-124.01, 49.53), (-123.95, 49.53), (-123.95, 49.61)]
@@ -178,6 +178,25 @@ def test_coast_ending_at_canada_border_closes_along_it():
     land, _ = _land([line], expected, canada=canada)
     assert _close(land, expected)
     assert land.difference(canada).area == 0
+
+
+def test_clip_follows_the_box_parallels():
+    """A box 3.9 degrees wide at 52.5 N: in BC Albers the straight chord between its south corners lies up to 1.8 km
+    north of the south parallel, past the 1 km clip margin. A coast crossing the south edge mid-box must not be cut
+    inside the box (bc-north, 2026-11-12)."""
+    import numpy as np
+    import shapely
+    from shapely.geometry import LineString, box
+
+    wide = (-131.5, 52.46, -127.6, 52.9)
+    line = LineString([(-129.55, 52.40), (-129.55, 52.95)])  # land to the west
+    west = box(-131.5, 52.46, -129.55, 52.9)
+    x, y = np.meshgrid(np.linspace(-131.47, -127.63, 60), np.linspace(52.47, 52.89, 20))
+    near = np.column_stack([np.full(20, -129.548), np.linspace(52.47, 52.89, 20)])  # about 140 m east of the line
+    water = shapely.MultiPoint(np.vstack([np.column_stack([x[x > -129.5], y[x > -129.5]]), near]))
+    canada = box(-140.0, 45.0, -120.0, 60.0)
+    land, *_ = coast.land_polygons([line], wide, canada, water, shapely.Polygon())
+    assert _close(land, west, 0.01)
 
 
 def test_unclosable_ring_fails():
