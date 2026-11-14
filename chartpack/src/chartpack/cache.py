@@ -16,6 +16,10 @@ class DownloadError(Exception):
     pass
 
 
+class SizeMismatch(DownloadError):
+    """The download was whole (Content-Length agreed) but its size differs from the expected one."""
+
+
 # What reading a damaged zip can raise: testzip reports a CRC mismatch, but a corrupt deflate stream
 # raises zlib.error and a cut one EOFError.
 ZIP_ERRORS = (zipfile.BadZipFile, zlib.error, EOFError, OSError)
@@ -24,6 +28,16 @@ ZIP_ERRORS = (zipfile.BadZipFile, zlib.error, EOFError, OSError)
 def download(
     url: str, dest: Path, *, expected_size: int | None = None, timeout: float = 120
 ) -> Path:
+    _download(url, dest, expected_size, timeout)
+    return Path(dest)
+
+
+def download_with_modified(url: str, dest: Path, *, timeout: float = 120) -> str | None:
+    """Download without a size check; return the response's Last-Modified header (None if absent)."""
+    return _download(url, dest, None, timeout)
+
+
+def _download(url: str, dest: Path, expected_size: int | None, timeout: float) -> str | None:
     dest = Path(dest)
     dest.parent.mkdir(parents=True, exist_ok=True)
     part = dest.with_name(dest.name + ".part")
@@ -32,6 +46,7 @@ def download(
         try:
             with urllib.request.urlopen(request, timeout=timeout) as response:
                 length = response.headers.get("Content-Length")
+                modified = response.headers.get("Last-Modified")
                 received = 0
                 with part.open("wb") as f:
                     while chunk := response.read(1 << 16):
@@ -42,11 +57,11 @@ def download(
         if length is not None and received != int(length):
             raise DownloadError(f"{url}: got {received} bytes, Content-Length said {length}")
         if expected_size is not None and received != expected_size:
-            raise DownloadError(f"{url}: got {received} bytes, expected {expected_size}")
+            raise SizeMismatch(f"{url}: got {received} bytes, expected {expected_size}")
         part.rename(dest)
     finally:
         part.unlink(missing_ok=True)  # no-op after a successful rename
-    return dest
+    return modified
 
 
 def _check_zip(path: Path, size: int, member: str) -> None:
