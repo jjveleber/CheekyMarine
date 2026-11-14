@@ -33,7 +33,7 @@ from chartpack.bathy.blocks import (
     iter_blocks,
     overview_bounds,
 )
-from chartpack.bathy.contours import OVERVIEW_BANDS
+from chartpack.bathy.contours import BANDS, OVERVIEW_BANDS
 from chartpack.bathy.crm import crm_path, crm_tile_requests, crm_wcs_url, fetch_crm
 from chartpack.bathy.crm import crm_request as crm_request_bounds  # crm_request names the metadata string below
 from chartpack.bathy.cudem import URLLIST, Grid, parse_urllist, tiles_for_bbox
@@ -326,6 +326,15 @@ def _tile_derived(r, kind: str, core, side, *, levels_m, land, nosurvey, outline
     return features
 
 
+def _log_block(tile, start: float) -> None:
+    """One stderr line per derived block: its derive time and the process's peak memory so far (for the dry runs'
+    fit check; the snap logs its own per core, enc/gridsnap.py)."""
+    import resource
+
+    rss = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024
+    print(f"derive {tile[0]}/{tile[1]}: {time.perf_counter() - start:.2f} s, peak {rss:.0f} MiB", file=sys.stderr)
+
+
 def _derived_block(tile, core, read, sources: BlockSources, datum, region, tile_owners: dict, canada, *, levels_m,
                    land, nosurvey, outline) -> list:
     """The derived features of one owned tile: build_block over the charts side of the read box (_canada with the
@@ -381,8 +390,10 @@ def _derived_charts(args: argparse.Namespace, region, owned, canada) -> tuple[li
     features = []
     for tile, core, read in blocks:
         sources = BlockSources([], crm.get(read), paths.get("nonna10"), paths.get("nonna100"), etopo or None)
+        start = time.perf_counter()
         features += _derived_block(tile, core, read, sources, datum, region, tile_owners, canada, levels_m=levels,
                                    land=land, nosurvey=nosurvey, outline=outline)
+        _log_block(tile, start)
     if offshore:
         depth_sources += [{"source": "crm", "asset": p.name, "sha256": _sha256(p)} for p in crm.values() if p]
         depth_sources += [{"source": "etopo", "asset": p.name, "sha256": _sha256(p)} for p in etopo]
@@ -467,9 +478,11 @@ def _overview_derived(args: argparse.Namespace, region, content, canada) -> tupl
         part = BlockResult([], [], [], [], [], [], fine_grid=None, coarse_grid=nav, coarse_source=src,
                            nav_depth=inshore, nav_src=inshore_src)
         land, nosurvey, outline = stored.get(owner.name, (empty, empty, canada.boundary))
+        start = time.perf_counter()
         features += _tile_derived(part, owner.charts_kind, core, canada_side(canada, tile, owner), levels_m=levels,
                                   land=_near(land, read), nosurvey=_near(nosurvey, read),
                                   outline=_near(outline, read), bands=OVERVIEW_BANDS)
+        _log_block(tile, start)
     for path in etopo:
         depth_sources.append({"source": "etopo", "asset": path.name, "sha256": _sha256(path)})
     if crm:
@@ -504,7 +517,7 @@ def _build_enc(args: argparse.Namespace) -> int:
     enc = build_enc_mbtiles(cells, args.work / "enc.mbtiles", region=region, work=args.work / "tippecanoe",
                             seabed=_usgs_seabed(region, args.cache, None if owned is None else area), zooms=zooms,
                             area=area, canada=canada if meets else None, derived=derived,
-                            depth_sources=depth_sources)
+                            depth_sources=depth_sources, bands=OVERVIEW_BANDS if region.overview else BANDS)
     keep_tiles(enc, owned, minzoom=zooms[0], maxzoom=zooms[1], content=content)
     print(_finish(assemble_charts_pack(region, enc, args.out, content=content, canada=canada), region))
     return 0
