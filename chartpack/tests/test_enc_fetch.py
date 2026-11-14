@@ -1,3 +1,4 @@
+from dataclasses import replace
 import shutil
 import zipfile
 
@@ -107,3 +108,88 @@ def test_live_catalog_lists_test_cell(tmp_path):
 
     cat = parse_catalog(download(CATALOG_URL, tmp_path / "cat.xml").read_bytes())
     assert cat["US4WA1HK"].status == "Active"
+
+
+# A catalog that lags the server: the catalog entry's size differs from the served zip (US5SEAKL fixture,
+# which is edition 1 update 1), so fetch_cells must judge the served file itself.
+def _lagging(fixtures_dir, *, edtn=1, updn=0):
+    info = _catalog(fixtures_dir)["US5SEAKL"]
+    return {"US5SEAKL": replace(info, edtn=edtn, updn=updn, zip_size=info.zip_size + 10)}
+
+
+def _patch_lagging(monkeypatch, fixtures_dir, *, modified="Thu, 12 Nov 2026 05:50:17 GMT", zip_bytes=None):
+    from chartpack.cache import SizeMismatch
+
+    calls = {"sized": 0, "unsized": 0}
+
+    def fake_download(url, dest, *, expected_size=None, timeout=120):
+        calls["sized"] += 1
+        raise SizeMismatch(f"{url}: got 1 bytes, expected {expected_size}")
+
+    def fake_unsized(url, dest, *, timeout=120):
+        calls["unsized"] += 1
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(zip_bytes if zip_bytes is not None else (fixtures_dir / "US5SEAKL.zip").read_bytes())
+        return modified
+
+    monkeypatch.setattr(fetch, "download", fake_download)
+    monkeypatch.setattr(fetch, "download_with_modified", fake_unsized)
+    return calls
+
+
+def test_fetch_accepts_newer_update_under_its_own_name(tmp_path, fixtures_dir, monkeypatch, capsys):
+    calls = _patch_lagging(monkeypatch, fixtures_dir)
+    cat = _lagging(fixtures_dir)
+    (path,) = fetch_cells(["US5SEAKL"], cat, tmp_path)
+    assert path == tmp_path / "enc" / "US5SEAKL-1.1.zip" and path.exists()
+    out = capsys.readouterr().out
+    assert "US5SEAKL" in out and "1.0" in out and "1.1" in out
+    # the pack-facing lookup (the manifest names edtn.updn from the cell itself) finds it
+    from chartpack.cli import _newest_cached_zip
+
+    assert _newest_cached_zip(tmp_path, "US5SEAKL") == path
+    # next run: the cached newer zip still verifies, no refetch
+    assert fetch_cells(["US5SEAKL"], cat, tmp_path) == [path]
+    assert calls == {"sized": 1, "unsized": 1}
+
+
+def test_fetch_rejects_older_update(tmp_path, fixtures_dir, monkeypatch):
+    _patch_lagging(monkeypatch, fixtures_dir)
+    with pytest.raises(CellError, match="1.1.*1.3|older|newer"):
+        fetch_cells(["US5SEAKL"], _lagging(fixtures_dir, updn=3), tmp_path)
+    assert not list((tmp_path / "enc").glob("*.zip"))
+
+
+def test_fetch_rejects_different_edition(tmp_path, fixtures_dir, monkeypatch):
+    _patch_lagging(monkeypatch, fixtures_dir)
+    with pytest.raises(CellError, match="edition"):
+        fetch_cells(["US5SEAKL"], _lagging(fixtures_dir, edtn=2, updn=0), tmp_path)
+    assert not list((tmp_path / "enc").glob("*.zip"))
+
+
+@pytest.mark.parametrize(
+    "modified", ["Wed, 28 Oct 2026 04:31:25 GMT", "Tue, 27 Oct 2026 00:00:00 GMT", None, "yesterday-ish"]
+)
+def test_fetch_rejects_modified_not_newer_or_unusable(tmp_path, fixtures_dir, monkeypatch, modified):
+    _patch_lagging(monkeypatch, fixtures_dir, modified=modified)
+    with pytest.raises(CellError, match="Last-Modified"):
+        fetch_cells(["US5SEAKL"], _lagging(fixtures_dir), tmp_path)
+    assert not list((tmp_path / "enc").glob("*.zip"))
+
+
+def test_fetch_rejects_damaged_zip_of_other_size(tmp_path, fixtures_dir, monkeypatch):
+    _patch_lagging(monkeypatch, fixtures_dir, zip_bytes=(fixtures_dir / "US5SEAKL.zip").read_bytes()[:1000])
+    with pytest.raises(CellError, match="damaged"):
+        fetch_cells(["US5SEAKL"], _lagging(fixtures_dir), tmp_path)
+    assert not list((tmp_path / "enc").glob("*.zip"))
+
+
+def test_fetch_other_download_errors_still_raise(tmp_path, fixtures_dir, monkeypatch):
+    from chartpack.cache import DownloadError
+
+    def fake_download(url, dest, *, expected_size=None, timeout=120):
+        raise DownloadError("boom")
+
+    monkeypatch.setattr(fetch, "download", fake_download)
+    with pytest.raises(DownloadError, match="boom"):
+        fetch_cells(["US5SEAKL"], _lagging(fixtures_dir), tmp_path)
