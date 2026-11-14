@@ -699,20 +699,42 @@ def _big_mask_case():
     return mask, np.array(parts + [shapely.Point(0, 0).buffer(0.3, 12500)], object)
 
 
+def _old_shared(parts, reach):
+    """The shared length as 1c25266 measured it, a whole part ring against each buffered mask segment: the O(n x m)
+    way the timing test compares with."""
+    from chartpack.enc.derived import _EDGE_DEG, _segments
+
+    out = np.zeros(len(parts))
+    segs = shapely.buffer(_segments(reach)[0], _EDGE_DEG, quad_segs=1)
+    rings = shapely.boundary(parts)
+    which, seg = shapely.STRtree(segs).query(rings, predicate="intersects")
+    np.add.at(out, which, shapely.length(shapely.intersection(rings[which], segs[seg])))
+    return out
+
+
 def test_meeting_and_share_tests_stay_fast_on_a_long_mask_edge():
-    """Both steps run well under a second on the case: the mask is prepared and tested first (_meeting), and each
-    part's shared boundary is measured segment against segment (_shared)."""
+    """On the case, each step takes under a third of the time of the way it replaced, timed in the same run (a
+    ratio, so a slow runner does not fail it): the mask prepared and tested first (_meeting) against the
+    unprepared test, and the shared length segment against segment (_shared) against whole rings (_old_shared).
+    On the review's machine the old ways took 3.75 s and 5.56 s, the new ones 0.008 s and 0.40 s."""
     import time
 
-    from chartpack.enc.derived import _meeting, _to_nosurvey
+    from chartpack.enc.derived import _meeting, _shared
 
     mask, parts = _big_mask_case()
-    t = time.perf_counter()
-    meets = _meeting(parts, mask)
-    assert time.perf_counter() - t < 1.0 and meets.tolist() == [False] * 3000 + [True]
-    t = time.perf_counter()
-    sent = _to_nosurvey(parts, np.ones(len(parts), bool), mask)
-    assert time.perf_counter() - t < 1.0 and not sent[:3000].any()  # the boxes are off the edge
+    reach = shapely.get_parts(mask)
+
+    def timed(f):
+        t = time.perf_counter()
+        out = f()
+        return out, time.perf_counter() - t
+
+    meets, new = timed(lambda: _meeting(parts, mask))
+    old_meets, old = timed(lambda: shapely.intersects(parts, mask))
+    assert meets.tolist() == old_meets.tolist() == [False] * 3000 + [True] and new < old / 3, (new, old)
+    shared, new = timed(lambda: _shared(parts, reach))
+    old_shared, old = timed(lambda: _old_shared(parts, reach))
+    assert np.allclose(shared, old_shared, atol=1e-6) and new < old / 3, (new, old)
 
 
 def test_share_rule_sends_at_a_quarter_of_the_perimeter():
@@ -747,3 +769,30 @@ def test_ragged_part_reached_through_a_sent_part_keeps_its_core():
     assert drop[0] and not drop[1]  # the strip goes, the ragged part is not sent whole
     gone = shapely.union_all(cand[drop])
     assert gone.intersection(band.buffer(-1.1 * u)).area == 0  # its core stays depth
+
+
+def test_a_core_found_in_round_one_survives_a_later_round():
+    """Review N1: in one band, a ragged part meeting the mask is opened in round 1 of _select (its core is found
+    there), and a second ragged part reached only through a sent strip makes a round 2. The first part's core must
+    still count in round 2: it is not sent whole, and its core stays depth."""
+    from chartpack.enc.derived import _select
+
+    u = 360 / (2**10 * 4096)
+
+    def ubox(x0, y0, x1, y1):
+        return box(x0 * u, y0 * u, x1 * u, y1 * u)
+
+    def comb(x0, y0):  # a 3-unit band 40 long with 10 teeth 0.4 by 3 on its east side: 2 A / P 1.81
+        return shapely.union_all([ubox(x0, y0, x0 + 3, y0 + 40)]
+                                 + [ubox(x0 + 3, y, x0 + 6, y + 0.4) for y in range(y0 + 2, y0 + 40, 4)])
+
+    area = shapely.union_all([ubox(0, 0, 10, 40), ubox(0, 50, 10, 90)])
+    first = comb(10, 50)  # along the mask itself: opened in round 1
+    strip, second = ubox(10, 0, 10.5, 40), comb(10.5, 0)  # reached through the strip: opened in round 2
+    every = np.array([first, strip, second], object)
+    cand, drop, _, _, gone, _ = _select(every, area, 10, 8 * u)
+    assert not drop[0] and drop[1] and not drop[2]
+    for part in (first, second):
+        core = shapely.intersection(part, ubox(part.bounds[0] / u + 1.1, part.bounds[1] / u, part.bounds[0] / u + 1.9,
+                                               part.bounds[3] / u))
+        assert gone.intersection(core).area == 0
