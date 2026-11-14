@@ -39,6 +39,12 @@ def _layer(features, layer, minzoom=None):
             and (minzoom is None or f.props["tippecanoe"]["minzoom"] == minzoom)]
 
 
+def _shown(features, layer, z):
+    """The features of layer drawn at zoom z (their tippecanoe zoom range holds z)."""
+    return [f for f in features if f.layer == layer
+            and f.props["tippecanoe"]["minzoom"] <= z <= f.props["tippecanoe"]["maxzoom"]]
+
+
 def _center(row, col):
     return X0 + (col + 0.5) * D, Y0 - (row + 0.5) * D
 
@@ -130,7 +136,7 @@ def test_no_depth_inside_nosurvey():
     assert {f.props["tippecanoe"]["minzoom"] for f in _layer(feats, "depare")} == {lo for lo, _, _ in BANDS}
     _assert_clear_of(feats, mask)
     for lo, _, _ in BANDS:  # every band's nosurvey holds the mask (and the water not drawn as depth)
-        masked = _layer(feats, "nosurvey", lo)
+        masked = _shown(feats, "nosurvey", lo)
         assert masked and shapely.union_all([shape(f.geometry) for f in masked]).covers(mask.buffer(-1e-9)), lo
     assert all(box(*CORE).covers(shape(f.geometry)) for f in _layer(feats, "nosurvey"))
 
@@ -212,7 +218,7 @@ def test_band_areas_tile_the_water():
     for lo, _, _ in BANDS:
         areas = [shape(f.geometry) for f in _layer(feats, "depare", lo)]
         union = shapely.union_all(areas)
-        masked = shapely.union_all([shape(f.geometry) for f in _layer(feats, "nosurvey", lo)])
+        masked = shapely.union_all([shape(f.geometry) for f in _shown(feats, "nosurvey", lo)])
         assert sum(a.area for a in areas) - union.area < tiny, lo
         assert water.difference(union.union(masked)).area < tiny, lo
         assert union.difference(water).area < tiny, lo
@@ -252,7 +258,7 @@ def test_footprint_is_the_input_cells(case):
     _assert_clear_of(feats, nan)
     for lo, _, _ in BANDS:
         union = shapely.union_all([shape(f.geometry) for f in _layer(feats, "depare", lo)])
-        masked = shapely.union_all([shape(f.geometry) for f in _layer(feats, "nosurvey", lo)])
+        masked = shapely.union_all([shape(f.geometry) for f in _shown(feats, "nosurvey", lo)])
         assert union.intersection(nan).area < tiny, lo
         assert water.difference(union.union(masked)).area < tiny, lo
 
@@ -322,7 +328,7 @@ def test_thin_depth_part_goes_to_nosurvey_at_the_zooms_it_is_too_thin_for():
     for lo, _, _ in BANDS:
         areas = _layer(feats, "depare", lo)
         in_strip = shapely.union_all([shape(f.geometry) for f in areas]).intersection(strip).area
-        masked = shapely.union_all([shape(f.geometry) for f in _layer(feats, "nosurvey", lo)])
+        masked = shapely.union_all([shape(f.geometry) for f in _shown(feats, "nosurvey", lo)])
         # every depth part beside nosurvey is wide enough to draw (a thin one elsewhere stays, see below)
         assert all(_units_width(shape(f.geometry), lo) >= 2 for f in areas if masked.intersects(shape(f.geometry))), lo
         if lo < 14:
@@ -358,12 +364,12 @@ def test_depth_nosurvey_and_land_tile_the_core_per_band():
     tiny = 1e-6 * D * D
     lnd = [shape(f.geometry) for f in _layer(feats, "lndare")]
     for lo, hi, _ in BANDS:
-        assert all(f.props["tippecanoe"] == {"minzoom": lo, "maxzoom": hi} for f in _layer(feats, "nosurvey", lo))
-        parts = [shape(f.geometry) for f in _layer(feats, "depare", lo) + _layer(feats, "nosurvey", lo)] + lnd
+        assert all(f.props["tippecanoe"] in ({"minzoom": lo, "maxzoom": hi}, {"minzoom": 10, "maxzoom": 16})
+                   for f in _shown(feats, "nosurvey", lo))
+        parts = [shape(f.geometry) for f in _layer(feats, "depare", lo) + _shown(feats, "nosurvey", lo)] + lnd
         union = shapely.union_all(parts)
         assert sum(p.area for p in parts) - union.area < tiny, lo
         assert core.symmetric_difference(union).area < tiny, lo
-    assert {f.props["tippecanoe"]["minzoom"] for f in _layer(feats, "nosurvey")} == {lo for lo, _, _ in BANDS}
 
 
 def test_thin_depth_part_away_from_nosurvey_stays_depth():
@@ -376,7 +382,7 @@ def test_thin_depth_part_away_from_nosurvey_stays_depth():
     for lo, _, _ in BANDS:
         areas = shapely.union_all([shape(f.geometry) for f in _layer(feats, "depare", lo)])
         assert areas.intersection(strip).area > (1 - 1e-6) * strip.area, lo
-        assert not any(shape(f.geometry).intersects(strip.buffer(-1e-9)) for f in _layer(feats, "nosurvey", lo)), lo
+        assert not any(shape(f.geometry).intersects(strip.buffer(-1e-9)) for f in _shown(feats, "nosurvey", lo)), lo
 
 
 def test_thin_parts_beside_a_dropped_one_go_too():
@@ -390,3 +396,23 @@ def test_thin_parts_beside_a_dropped_one_go_too():
     thin = np.array([True, True, True, True, False])
     assert _to_nosurvey(parts, thin, area).tolist() == [True, True, True, False, False]
     assert _to_nosurvey(parts, thin, shapely.Polygon()).tolist() == [False] * 5
+
+
+def test_nosurvey_not_repeated_per_band_where_no_depth_is_dropped():
+    """The nosurvey no band changes is emitted once over every zoom, not once per band (3 times the coordinates in
+    tippecanoe's input); only the parts a band's thin depth joins are emitted per band. Here, in flat water, the
+    thin strip joins the two mask boxes at zooms 10 to 13; a round mask (many vertices) 34 m of depth from anything
+    is never touched, so its coordinates are emitted once: under 1.5 times one band's count (3 times before)."""
+    from chartpack.bathy.blocks import FINE_RES_DEG
+
+    _, transform, core, nosurvey, strip = _sliver_case()
+    depth = np.full((N, N), 20.0)
+    far = shapely.Point(core[0] + 20 * FINE_RES_DEG, (core[1] + core[3]) / 2).buffer(10 * FINE_RES_DEG, 64)
+    feats = _derive(depth, transform=transform, core=core, nosurvey=shapely.union_all([nosurvey, far]))
+    masked = _layer(feats, "nosurvey")
+    once = [f for f in masked if f.props["tippecanoe"] == {"minzoom": 10, "maxzoom": 16}]
+    assert once and any(shape(f.geometry).intersects(far) for f in once)
+    coords = sum(len(shapely.get_coordinates(shape(f.geometry))) for f in masked)
+    per_band = max(sum(len(shapely.get_coordinates(shape(f.geometry))) for f in _shown(feats, "nosurvey", lo))
+                   for lo, _, _ in BANDS)
+    assert coords < 1.5 * per_band

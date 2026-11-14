@@ -320,8 +320,8 @@ def derived_features(depth_m: np.ndarray, src: np.ndarray, transform, *, core, l
     - soundg per zoom (_soundings), from nonna10 and nonna100 cells only, src the source of the cell, in the
       sounding cells whose center lies in core;
     - lndare and coalne from land, src "fwa", cut to core, over every zoom of bands;
-    - nosurvey per zoom range of bands: the core less land less that band's depare, so depth and nosurvey meet on
-      one line and every water place not drawn as depth is nosurvey (the stored mask, the water with no value, and
+    - nosurvey, at each zoom range of bands the core less land less that band's depare (a part no band changes
+      emitted once over every zoom), so depth and nosurvey meet on one line and every water place not drawn as depth is nosurvey (the stored mask, the water with no value, and
       the depare parts too thin to draw at the band's minzoom, _thin, that meet it, _to_nosurvey, which are dropped
       with the depcnt and soundg on them).
 
@@ -372,7 +372,21 @@ def derived_features(depth_m: np.ndarray, src: np.ndarray, transform, *, core, l
         out.append(Feature("lndare", mapping(part), {"src": "fwa", "tippecanoe": tip}))
     for part in _parts(land.boundary.intersection(core_box), 1):
         out.append(Feature("coalne", mapping(part), {"src": "fwa", "tippecanoe": tip}))
+    # nosurvey: the parts of outside that no band's thin depth joins once over every zoom; the others per band, each
+    # with the thin depth of that band that meets it (never a thin part alone: _to_nosurvey grows from outside)
+    pieces = np.array(_parts(outside, 2), object)
+    joined = {lo: np.zeros(len(pieces), bool) for lo, _, _ in bands}
+    if len(pieces):
+        tree = shapely.STRtree(pieces)
+        for lo, _, _ in bands:
+            if not gone[lo].is_empty:
+                joined[lo][tree.query(shapely.get_parts(gone[lo]), predicate="intersects")[1]] = True
+    shared = np.any(list(joined.values()), axis=0) if len(pieces) else np.zeros(0, bool)
+    for part in pieces[~shared]:
+        out.append(Feature("nosurvey", mapping(part), {"tippecanoe": tip}))
     for lo, hi, _ in bands:
-        for part in _parts(outside.union(gone[lo]) if not gone[lo].is_empty else outside, 2):
-            out.append(Feature("nosurvey", mapping(part), {"tippecanoe": {"minzoom": lo, "maxzoom": hi}}))
+        band = list(pieces[shared & ~joined[lo]])
+        if joined[lo].any():
+            band += _parts(shapely.union_all(list(pieces[joined[lo]]) + [gone[lo]]), 2)
+        out += [Feature("nosurvey", mapping(part), {"tippecanoe": {"minzoom": lo, "maxzoom": hi}}) for part in band]
     return out
