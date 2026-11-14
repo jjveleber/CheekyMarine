@@ -34,6 +34,7 @@ CUT_TILES = 16  # the cut is split CUT_TILES by CUT_TILES over the core (_tiles)
 # dropped and drawn as nosurvey: tippecanoe turns a part under about one unit into a square of the same area at its
 # center, half over its neighbor (plan8-checkfix, check-hypotheses R.0).
 THIN_UNITS = 2.0
+PATCH_UNITS = 8.0  # each band's nosurvey patch takes the nosurvey this far round its thin parts (minzoom units)
 _NONNA = [SOURCE_NAMES.index("nonna10"), SOURCE_NAMES.index("nonna100")]
 # Coarseness rank per source index (0, "none", lowest): the native cell size of the source
 _RANK = np.array([0] + [LABELS[name]["resolution_m"] for name in SOURCE_NAMES[1:]])
@@ -323,8 +324,9 @@ def derived_features(depth_m: np.ndarray, src: np.ndarray, transform, *, core, l
     - soundg per zoom (_soundings), from nonna10 and nonna100 cells only, src the source of the cell, in the
       sounding cells whose center lies in core;
     - lndare and coalne from land, src "fwa", cut to core, over every zoom of bands;
-    - nosurvey, at each zoom range of bands the core less land less that band's depare (a part no band changes
-      emitted once over every zoom), so depth and nosurvey meet on one line and every water place not drawn as depth is nosurvey (the stored mask, the water with no value, and
+    - nosurvey, at each zoom range of bands the core less land less that band's depare (the water with no depth
+      at any band once over every zoom, plus a patch per band round that band's thin parts), so depth and nosurvey
+      meet on one line and every water place not drawn as depth is nosurvey (the stored mask, the water with no value, and
       the depare parts too thin to draw at the band's minzoom, _thin, that meet it, _to_nosurvey, which are dropped
       with the depcnt and soundg on them).
 
@@ -375,21 +377,16 @@ def derived_features(depth_m: np.ndarray, src: np.ndarray, transform, *, core, l
         out.append(Feature("lndare", mapping(part), {"src": "fwa", "tippecanoe": tip}))
     for part in _parts(land.boundary.intersection(core_box), 1):
         out.append(Feature("coalne", mapping(part), {"src": "fwa", "tippecanoe": tip}))
-    # nosurvey: the parts of outside that no band's thin depth joins once over every zoom; the others per band, each
-    # with the thin depth of that band that meets it (never a thin part alone: _to_nosurvey grows from outside)
-    pieces = np.array(_parts(outside, 2), object)
-    joined = {lo: np.zeros(len(pieces), bool) for lo, _, _ in bands}
-    if len(pieces):
-        tree = shapely.STRtree(pieces)
-        for lo, _, _ in bands:
-            if not gone[lo].is_empty:
-                joined[lo][tree.query(shapely.get_parts(gone[lo]), predicate="intersects")[1]] = True
-    shared = np.any(list(joined.values()), axis=0) if len(pieces) else np.zeros(0, bool)
-    for part in pieces[~shared]:
+    # nosurvey: outside once over every zoom; per band a local patch, its thin depth with the outside within
+    # PATCH_UNITS of it (never a thin part alone: _to_nosurvey grows from outside along shared edges). The patch
+    # overlaps the whole nosurvey, so the nosurvey at each zoom is the core less land less that band's depth.
+    for part in _parts(outside, 2):
         out.append(Feature("nosurvey", mapping(part), {"tippecanoe": tip}))
+    mid = math.cos(math.radians((core[1] + core[3]) / 2))
     for lo, hi, _ in bands:
-        band = list(pieces[shared & ~joined[lo]])
-        if joined[lo].any():
-            band += _parts(shapely.union_all(list(pieces[joined[lo]]) + [gone[lo]]), 2)
-        out += [Feature("nosurvey", mapping(part), {"tippecanoe": {"minzoom": lo, "maxzoom": hi}}) for part in band]
+        if not gone[lo].is_empty:
+            reach = PATCH_UNITS * 360.0 / (2**lo * 4096) * mid  # degrees, the smaller (latitude) way
+            patch = shapely.union_all([gone[lo], outside.intersection(gone[lo].buffer(reach))])
+            out += [Feature("nosurvey", mapping(part), {"tippecanoe": {"minzoom": lo, "maxzoom": hi}})
+                    for part in _parts(patch, 2)]
     return out

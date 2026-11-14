@@ -447,3 +447,22 @@ def test_nosurvey_at_every_zoom_is_the_core_less_land_less_that_zoom_depth():
             want = box(*core).difference(land).difference(depare)
             assert masked.symmetric_difference(want).area < tiny, z
             assert masked.covers(nosurvey.buffer(-1e-9)), z
+
+
+def test_nosurvey_joined_by_thin_depth_is_not_repeated_per_band():
+    """Every mask piece joined by thin depth (PR 133 review: a round, many-vertex mask grown from the west box the
+    strip touches went out once per band, 684 coordinates for a 244-coordinate mask): the whole nosurvey goes out
+    once over every zoom and each band adds only a local patch round its thin parts, so the total stays near one
+    band's count."""
+    from chartpack.bathy.blocks import FINE_RES_DEG
+
+    _, transform, core, nosurvey, strip = _sliver_case()
+    depth = np.full((N, N), 20.0)
+    west = nosurvey.geoms[0] if hasattr(nosurvey, "geoms") else nosurvey
+    round_ = shapely.Point(west.bounds[0] + 5 * FINE_RES_DEG, (core[1] + core[3]) / 2).buffer(15 * FINE_RES_DEG, 64)
+    feats = _derive(depth, transform=transform, core=core, nosurvey=shapely.union_all([nosurvey, round_]))
+    coords = sum(len(shapely.get_coordinates(shape(f.geometry))) for f in _layer(feats, "nosurvey"))
+    per_band = max(sum(len(shapely.get_coordinates(shape(f.geometry))) for f in _shown(feats, "nosurvey", lo))
+                   for lo, _, _ in BANDS)
+    assert any(f.props["tippecanoe"]["maxzoom"] < 14 for f in _layer(feats, "nosurvey"))  # the strip is joined
+    assert coords < 1.3 * per_band, (coords, per_band)
