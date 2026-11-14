@@ -76,8 +76,10 @@ def _labels(faces: np.ndarray, polys: np.ndarray) -> np.ndarray:
     tree = shapely.STRtree(polys)
     points = shapely.point_on_surface(faces)
     deep = shapely.distance(points, shapely.boundary(faces)) >= _DEEP_UNITS
-    at, poly = tree.query(points[deep], predicate="within")
     index = np.flatnonzero(deep)
+    # the points in a tree and each polygon queried against it: shapely prepares the query geometry, so a large
+    # polygon is prepared once (the other way round, a 200,000-vertex mask took 4.5 s for 34,000 points)
+    poly, at = shapely.STRtree(points[deep]).query(polys, predicate="contains")
     label[index[at[::-1]]] = poly[::-1]  # the first match wins (originals do not overlap)
     for i in np.flatnonzero(~deep | (label < 0)):
         near = tree.query(faces[i], predicate="intersects")
