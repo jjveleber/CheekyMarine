@@ -170,3 +170,17 @@ def test_block_across_the_tile_seam_has_no_empty_column(tmp_path):
     lon = read[0] + (np.arange(grid.data.shape[1]) + 0.5) * res
     near = np.abs(lon + 135.0) < 0.05
     assert near.any() and np.isfinite(grid.data[:, near]).all()
+
+
+def test_mosaic_is_removed_after_the_block(tmp_path, small_grids, test_region):
+    """A block over two ETOPO tiles leaves no in-memory mosaic (_mosaic) behind once its merge is done (review M3)."""
+    from osgeo import gdal
+
+    def mosaics():
+        return {n for n in (gdal.ReadDir("/vsimem/") or []) if n.startswith("etopo-")}
+
+    before = mosaics()
+    read = (-135.1, 47.05, -134.9, 47.15)
+    result = build_block(read, read, _sources(etopo=_two_tiles(tmp_path)), area_datum(test_region, tmp_path), None)
+    assert np.isfinite(result.coarse_grid.data).any()
+    assert mosaics() <= before

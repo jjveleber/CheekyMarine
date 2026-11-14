@@ -255,6 +255,13 @@ def _mosaic(paths: list[Path]) -> Path:
     return vrt
 
 
+def _unlink_mosaics() -> None:
+    """Remove every in-memory mosaic _mosaic made (called once a block's or strip's merge is done)."""
+    for name in gdal.ReadDir("/vsimem/") or []:
+        if name.startswith("etopo-") and name.endswith(".vrt"):
+            gdal.Unlink(f"/vsimem/{name}")
+
+
 def _coarse_layers(sources: BlockSources, read, res: float, side: np.ndarray | None, window) -> list:
     """The coarse sources as merge_ordered layers at res, in the order of plan 8 spec 6: NONNA-100 (Canadian
     column only), CRM, ETOPO. window(path) gives a source's native window over read."""
@@ -452,6 +459,7 @@ def build_block(
     coarse_layers = _coarse_layers(sources, read, COARSE_RES_DEG, coarse_side, window)
     coarse, coarse_source = merged(coarse_layers, COARSE_RES_DEG) if coarse_layers else (None, None)
     del native
+    _unlink_mosaics()
 
     fine_out = ([], [], [])
     coarse_cells = None
@@ -582,6 +590,7 @@ def build_overview(bbox, sources: BlockSources, datum: AreaDatum, canada: shapel
                                 COARSE_RES_DEG, side, window)
         grid, source = merge_ordered(layers, strip, COARSE_RES_DEG)
         del native
+        _unlink_mosaics()
         _shift(grid, source, datum)
         _clip(grid, lake_mask)
         source[np.isnan(grid.data)] = 0
