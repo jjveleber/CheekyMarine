@@ -39,6 +39,10 @@ PATCH_UNITS = 8.0  # each band's nosurvey patch takes the nosurvey this far roun
 # already sent): a contour band strip between two depth bands that meets the mask at its tip stays depth, since
 # its patch would be as thin as itself (dry run 3, Ruling 48).
 SHARE_MIN = 0.25
+# A thin part sharing an edge at least this long (degrees, about 1 cm: an edge, not a corner) with the nosurvey
+# but under SHARE_MIN of its perimeter goes too, inside the nosurvey piece it meets rather than as a patch of its
+# own (Ruling 55 C).
+_JOIN_DEG = 1e-7
 # A thin part kept as depth goes after all when tippecanoe's square of it (same area, at its centroid) would reach
 # more than this into the nosurvey: the pack check's NOSURVEY_TOLERANCE_UNITS (PR 134 review, a curved strip
 # ringing a small mask pocket).
@@ -220,21 +224,24 @@ def _meeting(parts: np.ndarray, area: shapely.Geometry) -> np.ndarray:
     return shapely.intersects(area, parts)
 
 
-def _to_nosurvey(parts: np.ndarray, thin: np.ndarray, area: shapely.Geometry, z: int | None = None) -> np.ndarray:
+def _to_nosurvey(parts: np.ndarray, thin: np.ndarray, area: shapely.Geometry, z: int | None = None, *,
+                 share: float = SHARE_MIN, least: float = 0.0, sent: np.ndarray | None = None) -> np.ndarray:
     """Which parts go to nosurvey: the thin ones with at least SHARE_MIN of their perimeter along area (the
     nosurvey of the band) or along thin parts already sent, until none is added. A thin part meeting them at a
     corner only, or along a short stretch (a contour band strip that meets the mask at its tip), stays depth: sent,
     it would be a nosurvey patch as thin as itself, which tippecanoe draws as a square over the depth beside it.
     With z (the band's minzoom), a thin part kept so goes after all when its square (_square_in) would reach into
-    area, and the share rule runs on from it."""
-    out = np.zeros(len(parts), bool)
-    index = np.flatnonzero(thin)
+    area, and the share rule runs on from it. share: the share of the perimeter needed (SHARE_MIN by default);
+    least: a shared length (degrees) needed as well; sent: parts already gone (kept so, and measured against
+    from the start)."""
+    out = np.zeros(len(parts), bool) if sent is None else sent.copy()
+    index = np.flatnonzero(thin & ~out)
     if not len(index) or area.is_empty:
         return out
-    need = SHARE_MIN * shapely.length(parts[index])
+    need = np.maximum(share * shapely.length(parts[index]), least)
     shares = _Shares(parts[index])  # segmented once; each round measures only the open parts near the new reach
     shared = np.zeros(len(index))
-    reach = shapely.get_parts(area)
+    reach = np.concatenate([shapely.get_parts(area), parts[out]])
     cache = {}  # the mask's pieces for the square test (_subdivide), built at its first use
     while True:
         while len(reach):
@@ -390,6 +397,10 @@ def _select(every: np.ndarray, nosurvey: shapely.Geometry, z: int, reach: float)
             break
         opened |= todo
     pieces, parent = pieces[keep], parent[keep]
+    flags = np.concatenate([thin0 & ~cored, np.ones(len(pieces), bool)])
+    # the thin candidates kept by the share rule that still meet the nosurvey, or what goes, along an edge: they
+    # go too, inside the nosurvey piece they meet (joined), never as thin depth beside it (Ruling 55 C)
+    joined = _to_nosurvey(cand, flags, nosurvey, share=0.0, least=_JOIN_DEG, sent=drop) & ~drop
     while True:
         gone = shapely.union_all(cand[drop]) if drop.any() else shapely.Polygon()
         patches = _patches(gone, nosurvey, reach)
@@ -399,8 +410,26 @@ def _select(every: np.ndarray, nosurvey: shapely.Geometry, z: int, reach: float)
         back = drop & (shapely.area(shapely.intersection(cand, shapely.union_all(bad))) > 0)
         if not back.any():
             break
-        drop &= ~back  # a patch too thin to draw: its parts stay depth
+        drop &= ~back  # a patch too thin to draw alone: its parts go inside the nosurvey they border instead
+        joined |= back
+    if joined.any():
+        patches = _joined(cand[joined], nosurvey, patches)
+    drop |= joined
+    gone = shapely.union_all(cand[drop]) if drop.any() else shapely.Polygon()
     return cand, drop, pieces, parent, gone, patches
+
+
+def _joined(parts: np.ndarray, outside: shapely.Geometry, patches: np.ndarray) -> np.ndarray:
+    """patches with the joined parts added: each joined part goes in one nosurvey part with the pieces of outside
+    and the patches it meets, so it is never a thin nosurvey part alone. Returns the band's patches."""
+    pool = np.concatenate([np.array(_parts(outside, 2), object), patches])
+    tree = shapely.STRtree(pool)
+    group = shapely.union_all(parts)
+    near = pool[np.unique(tree.query(shapely.get_parts(group), predicate="intersects")[1])] if len(pool) else pool
+    merged = np.array(_parts(shapely.union_all(np.concatenate([[group], near])), 2), object)
+    held = shapely.area(shapely.intersection(merged, group)) > 0
+    patches = patches[~shapely.intersects(patches, group)] if len(patches) else patches  # now inside merged
+    return np.concatenate([patches, merged[held]])
 
 
 def _patches(gone: shapely.Geometry, outside: shapely.Geometry, reach: float) -> np.ndarray:

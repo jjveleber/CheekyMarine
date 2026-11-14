@@ -536,14 +536,18 @@ def _band_area(feats, lo, drval1):
     return sum(shape(f.geometry).area for f in _layer(feats, "depare", lo) if f.props["DRVAL1"] == drval1)
 
 
-def test_long_thin_band_touching_the_mask_at_its_tip_stays_depth():
-    """A thin band that meets nosurvey only along its short tip (under a quarter of its perimeter) stays depth:
-    sent, its band patch would be as thin as itself and draw as a square over the depth beside it (dry run 3)."""
+def test_long_thin_band_touching_the_mask_at_its_tip_goes_with_the_mask():
+    """Ruling 55 (C): a thin band that meets nosurvey only along its short tip (under a quarter of its perimeter)
+    goes to nosurvey, emitted at its band's zooms inside the nosurvey piece it meets (the whole mask box here), so
+    it is never a thin patch alone (dry run 3) and never thin depth beside nosurvey (dry run 4 north)."""
     with_mask, core, mask = _step_case()
     without, _, _ = _step_case(mask=False)
-    for lo, _, _ in BANDS:
-        assert _band_area(without, lo, "1.8") > 0, lo
-        assert _band_area(with_mask, lo, "1.8") > 0.9 * _band_area(without, lo, "1.8"), lo
+    for lo, hi, _ in BANDS:
+        band = shapely.union_all([shape(f.geometry) for f in _layer(without, "depare", lo) if f.props["DRVAL1"] == "1.8"])
+        assert band.area > 0 and _band_area(with_mask, lo, "1.8") < 0.01 * band.area, lo
+        held = [shape(f.geometry) for f in _layer(with_mask, "nosurvey")
+                if f.props["tippecanoe"] == {"minzoom": lo, "maxzoom": hi} and shape(f.geometry).intersects(band)]
+        assert held and all(g.intersection(mask).area > 0.9 * mask.area for g in held), lo
 
 
 @pytest.mark.parametrize("case", ["step", "sliver", "patch", "hole", "finger"])
@@ -602,10 +606,10 @@ def test_depcnt_on_a_dropped_part_edge_does_not_survive_float_noise():
     assert len(kept) == 1 and kept[0].equals(lines[1])
 
 
-def test_thin_part_whose_patch_is_still_thin_stays_depth():
-    """The guard: a 3 m strip of depth between a 3 m strip of mask and land shares half its perimeter with the
-    mask, so it is sent at zooms 10 and 12; but its zoom-10 patch (the strip and the mask beside it, 6 m) is still
-    under 2 units (19 m), so it stays depth there. At zoom 12 (4.8 m) the patch is wide enough and it goes."""
+def test_thin_part_whose_patch_is_still_thin_goes_with_the_nosurvey_it_borders():
+    """Ruling 55 (C), closing review M2: a 3 m strip of depth between a 3 m strip of mask and land is sent, and its
+    zoom-10 patch (the strip and the mask beside it, 6 m) is still under 2 units (19 m). It is not given back to
+    depth: it goes, emitted at zooms 10 to 11 inside the whole mask piece it borders, not alone."""
     from chartpack.bathy.blocks import FINE_RES_DEG
 
     d, m = FINE_RES_DEG, 1 / 111319.49  # degrees of longitude per Web Mercator meter
@@ -615,9 +619,12 @@ def test_thin_part_whose_patch_is_still_thin_stays_depth():
     strip = box(west, core[1], west + 3 * m, core[3])
     land = box(west + 3 * m, core[1], core[2], core[3])
     feats = _derive(np.full((N, N), 20.0), transform=transform, core=core, nosurvey=mask, land=land)
-    for lo, sent in ((10, False), (12, True)):
+    for lo, hi in ((10, 11), (12, 13)):
         depth = shapely.union_all([shape(f.geometry) for f in _layer(feats, "depare", lo)])
-        assert (depth.intersection(strip).area < 1e-6 * strip.area) == sent, lo
+        assert depth.intersection(strip).area < 1e-6 * strip.area, lo
+    held = [shape(f.geometry) for f in _layer(feats, "nosurvey")
+            if f.props["tippecanoe"] == {"minzoom": 10, "maxzoom": 11} and shape(f.geometry).intersects(strip)]
+    assert held and all(g.intersection(mask).area > 0.99 * mask.area for g in held)
 
 
 def _finger_case():
@@ -795,7 +802,7 @@ def test_a_core_found_in_round_one_survives_a_later_round():
     for part in (first, second):
         core = shapely.intersection(part, ubox(part.bounds[0] / u + 1.1, part.bounds[1] / u, part.bounds[0] / u + 1.9,
                                                part.bounds[3] / u))
-        assert gone.intersection(core).area == 0
+        assert gone.intersection(core).area < 1e-9 * core.area  # float noise along a joined piece's edge only
 
 
 def test_wide_part_reached_through_a_sent_sliver_loses_its_finger():
