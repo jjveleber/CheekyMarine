@@ -105,10 +105,13 @@ def _thin_to_nosurvey(faces: np.ndarray, label: np.ndarray, depth: np.ndarray, n
     if not len(cand):
         return label
     ns = np.flatnonzero(is_ns)
-    a, b = shapely.STRtree(faces[ns]).query(faces[cand], predicate="intersects")
-    shared = shapely.length(shapely.intersection(shapely.boundary(faces[cand[a]]), shapely.boundary(faces[ns[b]])))
+    # each boundary built once and indexed: per-pair copies held a large mask's boundary once per pair (PR 137
+    # review: 1,016 pairs on a 168,683-vertex face took RSS from 574 to 3,899 MiB)
+    edges, mine = shapely.boundary(faces[ns]), shapely.boundary(faces[cand])
+    i, j = shapely.STRtree(edges).query(mine, predicate="intersects")  # i into cand, j into ns
+    shared = shapely.length(shapely.intersection(mine[i], edges[j]))
     out = label.copy()
-    out[cand[a[shared > 0]]] = label[ns[0]]
+    out[cand[i[shared > 0]]] = label[ns[0]]
     return out
 
 

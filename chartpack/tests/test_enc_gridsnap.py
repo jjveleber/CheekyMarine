@@ -324,3 +324,76 @@ def test_snap_derived_consumes_its_input():
     given = _case()
     out = snap_derived(given, BANDS)
     assert given == [] and out
+
+
+def _big_core(n_mask=30_000, grid=120, seed=1):
+    """A realistic synthetic core at zoom 14 (PR 137 review): one nosurvey mask of n_mask vertices with sub-unit
+    edge noise (20 units), and contourpy depare of a smooth random field cut by it (many thin faces along the mask). Returns
+    (features, the mask's vertex count)."""
+    import contourpy
+    from shapely import GeometryType
+
+    z, side = 14, 4096 * 16
+    rng = np.random.default_rng(seed)
+    xs = np.linspace(0, side, grid)
+    gx, gy = np.meshgrid(xs, xs)
+    field = 20 + sum(rng.normal() * 15 * np.sin(gx / side * k1 * 6.3 + rng.uniform(0, 6.3))
+                     * np.cos(gy / side * k2 * 6.3 + rng.uniform(0, 6.3))
+                     for k1, k2 in rng.integers(1, 40, (24, 2)))
+    t = np.linspace(0, 2 * np.pi, n_mask, endpoint=False)
+    r = side * 0.3 + side * 0.002 * np.sin(t * 3000) + rng.normal(size=n_mask) * side * 0.0003  # 20-unit noise
+    mask = shapely.make_valid(Polygon(np.column_stack([side / 2 + r * np.cos(t), side / 2 + r * np.sin(t)])))
+    shapely.prepare(mask)
+    gen = contourpy.contour_generator(xs, xs, field, fill_type="ChunkCombinedOffsetOffset")
+    edges = ["-50", "0", "0.9", "1.8", "2", "3.6", "5", "5.4", "7.3", "9.1", "10", "18.2", "20", "27.4", "30",
+             "36.5", "50", "12000"]
+    feats = [_f("nosurvey", _ll(mask, z))]
+    for a, b in zip(edges, edges[1:]):
+        points, offsets, outer = gen.filled(float(a), float(b))
+        if points[0] is None:
+            continue
+        polys = shapely.from_ragged_array(GeometryType.POLYGON, points[0], (offsets[0], outer[0]))
+        meets = shapely.intersects(mask, polys)  # mask prepared: only the parts it meets need the overlay
+        polys = np.concatenate([polys[~meets], shapely.get_parts(shapely.difference(polys[meets], mask))])
+        for p in polys:
+            if shapely.get_dimensions(p) == 2 and not p.is_empty:
+                feats.append(_depare(_ll(p, z), a, b, (14, 16)))
+    return feats, shapely.get_num_coordinates(mask)
+
+
+def test_snapping_a_large_noisy_core_is_bounded_in_work_and_memory(monkeypatch):
+    """PR 137 review (no wall clock: flaky on CI). On a 60,000-vertex noisy mask with many thin faces along it:
+    - the thin rule builds each face boundary once: the boundaries it builds hold fewer vertices than the core's
+      input (per-pair copies of the mask boundary held it once per pair);
+    - the traced Python peak stays under 300 MB (GEOS memory is not traced: the two counts above guard it)."""
+    import sys
+    import tracemalloc
+
+    feats, mask_vertices = _big_core()
+    given = sum(shapely.get_num_coordinates(shape(f.geometry)) for f in feats)
+    built, fallback = [0], [0]
+    boundary, intersection = shapely.boundary, shapely.intersection
+
+    def counted_boundary(g, *args, **kwargs):
+        out = boundary(g, *args, **kwargs)
+        if sys._getframe(1).f_code.co_name == "_thin_to_nosurvey":
+            built[0] += int(np.sum(shapely.get_num_coordinates(out)))
+        return out
+
+    def watched_intersection(a, b, *args, **kwargs):
+        if sys._getframe(1).f_code.co_name == "_labels":  # the overlap fallback's overlay
+            fallback[0] = max(fallback[0], int(np.max(shapely.get_num_coordinates(a), initial=0)))
+        return intersection(a, b, *args, **kwargs)
+
+    monkeypatch.setattr(shapely, "boundary", counted_boundary)
+    monkeypatch.setattr(shapely, "intersection", watched_intersection)
+    tracemalloc.start()
+    out = snap_derived(feats, [b for b in BANDS if b[0] == 14])
+    peak = tracemalloc.get_traced_memory()[1]
+    tracemalloc.stop()
+    assert any(f.layer == "depare" for f in out)
+    print(f"work: boundaries {built[0]} of {given} input vertices, fallback max {fallback[0]} of {mask_vertices},"
+          f" traced peak {peak / 1e6:.1f} MB")
+    assert built[0] < given, (built[0], given)
+    assert peak < 300e6, peak
+
