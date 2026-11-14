@@ -646,3 +646,48 @@ def test_straddling_area_hazard_us_part_still_required(tmp_path, monkeypatch, dr
     with MBTiles.open(path) as m:
         errs = _check_against_sources(m, m.metadata(), ["cell"], CANADA)
     assert len(errs) == errors, errs
+
+
+# ---- plan8-checkfix C1: each rule judges a feature in the tile that owns it, not in tippecanoe's tile buffer
+
+# Tile 16/8643/21233 of the failed haida-gwaii-north dry run (run 43512597026), as decoded: a derived depare square
+# wholly in the buffer north of the tile (y < 0), its south edge touching the nosurvey polygon shrunk by 4 units
+# (the nosurvey is clipped at tippecanoe's 80-unit buffer edge, y = -80). In the tile that owns that place (row
+# 21232) depare and nosurvey meet on one line; MapLibre draws nothing of the buffer.
+_N1_DEPARE = [(1148, -84), (1155, -84), (1155, -76), (1148, -76), (1148, -84)]
+_N1_NOSURVEY = [(2093, -80), (2065, -45), (2040, 0), (2004, 65), (1935, 165), (1761, 348), (1700, 458), (1675, 547),
+                (1627, 636), (1567, 770), (1472, 855), (1392, 932), (1373, 945), (801, 945), (801, -80), (2093, -80)]
+
+
+def test_depth_in_the_tile_buffer_is_not_judged_by_the_nosurvey_rule(tmp_path, test_region):
+    z, x, y = 16, 8643, 21233
+    tiles = {(z, x, y): {**WATER,
+                         "depare": [({"type": "Polygon", "coordinates": [_N1_DEPARE]},
+                                     {"DRVAL1": "9.1", "DRVAL2": "10", "src": "nonna100"})],
+                         "nosurvey": [({"type": "Polygon", "coordinates": [_N1_NOSURVEY]}, {})]}}
+    root = _hand_pack(tmp_path, test_region, "derived-inshore", tiles, minzoom=z, maxzoom=z)
+    assert check_pack(root) == []
+
+
+def test_depth_inside_nosurvey_in_the_tile_still_fails_beside_the_buffer(tmp_path, test_region):
+    """The same nosurvey with a depare square inside the tile, 10 units clear of the edge: still an error."""
+    z, x, y = 16, 8643, 21233
+    tiles = {(z, x, y): {**WATER,
+                         "depare": [(_square(1148, 100, 1156, 108), {"src": "nonna100"})],
+                         "nosurvey": [({"type": "Polygon", "coordinates": [_N1_NOSURVEY]}, {})]}}
+    root = _hand_pack(tmp_path, test_region, "derived-inshore", tiles, minzoom=z, maxzoom=z)
+    assert check_pack(root) == [f"enc.mbtiles: depare depth inside a nosurvey area in tile {z}/{x}/{y}"]
+
+
+def test_noaa_feature_in_the_tile_buffer_is_not_judged_by_the_canada_rule(tmp_path, test_region):
+    """A polygon reaching north past the tile, an area square in the buffer inside it (y < 0): not an error; the
+    same square inside the tile is."""
+    canada = _tile_box(1000, -300, 3000, 3000)
+    buffer_only = _hand_pack(tmp_path, test_region, "derived-inshore",
+                             {(Z, X, Y): {**WATER, "area": [(_square(1500, -60, 1510, -50), {})]}})
+    assert check_pack(buffer_only, canada=canada) == []
+    (tmp_path / "in").mkdir()
+    in_tile = _hand_pack(tmp_path / "in", test_region, "derived-inshore",
+                         {(Z, X, Y): {**WATER, "area": [(_square(1500, 50, 1510, 60), {})]}})
+    assert check_pack(in_tile, canada=canada) == [
+        f"enc.mbtiles: area feature inside the Canada polygon in tile {Z}/{X}/{Y}"]
