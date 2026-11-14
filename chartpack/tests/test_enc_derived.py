@@ -466,3 +466,22 @@ def test_nosurvey_joined_by_thin_depth_is_not_repeated_per_band():
                    for lo, _, _ in BANDS)
     assert any(f.props["tippecanoe"]["maxzoom"] < 14 for f in _layer(feats, "nosurvey"))  # the strip is joined
     assert coords < 1.3 * per_band, (coords, per_band)
+
+
+def test_to_nosurvey_tests_against_prepared_mask_pieces(monkeypatch):
+    """The large mask piece is prepared before the edge tests (PR 133 review: unprepared, each test rebuilt its
+    topology, 3.9 s against 0.18 s for a 100,003-vertex piece and 500 thin parts)."""
+    from chartpack.enc import derived
+
+    seen = []
+    relate = shapely.relate_pattern
+
+    def spy(a, b, pattern):
+        seen.append(bool(np.all(shapely.is_prepared(a))))
+        return relate(a, b, pattern)
+
+    monkeypatch.setattr(derived.shapely, "relate_pattern", spy)
+    area = shapely.union_all([box(-10, -10, 10, 10), box(20, -10, 30, 10)])  # two pieces
+    parts = np.array([box(10, -1, 10.5, 1), box(19.5, -1, 20, 1)], object)
+    assert derived._to_nosurvey(parts, np.ones(2, bool), area).all()
+    assert seen and all(seen)
