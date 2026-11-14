@@ -114,7 +114,7 @@ def test_tippecanoe_quantization_leaves_every_vertex_in_place_at_every_zoom_of_t
 
 def test_each_class_stays_within_a_unit_and_a_half_of_its_place():
     given = _case()
-    feats = snap_derived(given, BANDS)
+    feats = snap_derived(list(given), BANDS)
     for lo, _, _ in BANDS:
         for layer in ("depare", "lndare"):
             before = _union(given, layer, lo, lo).buffer(1.5)
@@ -146,7 +146,8 @@ def _thin_case(lo=10, angle=0.0):
 
 
 def _snap_one(feats, lo):
-    return snap_derived(feats, [b for b in BANDS if b[0] == lo])
+    """feats (a copy: snap_derived empties its input) snapped at the band of minzoom lo only."""
+    return snap_derived(list(feats), [b for b in BANDS if b[0] == lo])
 
 
 def test_thin_depth_along_nosurvey_goes_but_not_by_chain_nor_between_depth():
@@ -315,3 +316,11 @@ def test_a_cored_feature_no_band_takes_is_an_error(feature):
     band list that does not match the one derived_features used): it raises, naming the layer and zooms."""
     with pytest.raises(ValueError, match=feature.layer):
         snap_derived([feature], BANDS)
+
+
+def test_snap_derived_consumes_its_input():
+    """Review Minor 5: the unsnapped features are released as the snap goes (the list given is emptied and each
+    core's inputs are let go once snapped), so they and the per-band copies are not all held at the peak."""
+    given = _case()
+    out = snap_derived(given, BANDS)
+    assert given == [] and out

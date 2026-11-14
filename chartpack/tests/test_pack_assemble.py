@@ -450,8 +450,10 @@ def test_valdco_gains_no_value_from_derived(test_region, tmp_path):
     # tile-join must merge it with the derived run's depare (plan8-gridsnap)
     noaa = Feature("depare", mapping(box(x0, y0 - 20 * d, x0 + 20 * d, y0)),
                    {"DRVAL1": "0", "DRVAL2": "5", "tippecanoe": {"minzoom": 10, "maxzoom": 16}})
+    derived = feats + [noaa]
     out = build_enc_mbtiles([], tmp_path / "enc.mbtiles", region=region, work=tmp_path / "work", zooms=(10, 16),
-                            canada=box(-125, 48, -123, 50), derived=feats + [noaa], depth_sources=inputs)
+                            canada=box(-125, 48, -123, 50), derived=derived, depth_sources=inputs)
+    assert derived == []  # consumed, so the caller's list does not hold the unsnapped features while tiling
     with MBTiles.open(out) as m:
         metadata = m.metadata()
         merged = [z for z in range(10, 17) for _, _, data in m.tiles_at(z)

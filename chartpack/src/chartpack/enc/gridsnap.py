@@ -226,7 +226,8 @@ def snap_derived(features: list[Feature], bands) -> list[Feature]:
     the nosurvey and lndare whose zoom range holds it, are snapped together; depcnt is made from the snapped depth
     edges; soundg is kept on the snapped depth of its zoom's band; coalne passes as it is. The others pass
     unchanged. A derived feature no band takes (an area whose zooms hold no band, a sounding at a zoom of no band,
-    or another layer, such as a depcnt) raises ValueError instead of being dropped."""
+    or another layer, such as a depcnt) raises ValueError instead of being dropped. features is consumed: the list
+    is emptied, so the unsnapped features are let go core by core."""
     by_core: dict[tuple, list[Feature]] = {}
     out = []
     for f in features:
@@ -235,6 +236,8 @@ def snap_derived(features: list[Feature], bands) -> list[Feature]:
             out.append(f)
         else:
             by_core.setdefault(tuple(core), []).append(f)
-    for core, feats in by_core.items():
+    features.clear()  # consumed: each core's unsnapped features go once that core is snapped (memory peak)
+    while by_core:
+        core, feats = by_core.popitem()
         out += _snap_core(core, feats, bands)
     return out

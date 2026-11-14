@@ -113,7 +113,8 @@ def build_enc_mbtiles(
     built features (or "nosurvey", when the nosurvey layer holds any) go to cheekymarine:depth_sources.
     `bands`: the derived features' zoom bands (BANDS, or OVERVIEW_BANDS for the overview): after apply_rules they
     are snapped per block core and band (snap_derived), and their depare, depcnt, lndare and nosurvey are tiled in
-    a run of their own without simplification.
+    a run of their own without simplification. A derived list is consumed (emptied) so its unsnapped features are
+    not held beside the snapped ones at the memory peak.
     A charts kind other than enc (DERIVED_LAYERS) needs its derived layers only, not every schema layer."""
     out, work = Path(out), Path(work)
     work.mkdir(parents=True, exist_ok=True)
@@ -124,7 +125,10 @@ def build_enc_mbtiles(
         shapely.prepare(area)
         features = _crop(features, area)
     if canada is not None:
-        features, seabed = snap_derived(apply_rules(features + list(seabed), list(derived), canada), bands), ()
+        ruled = apply_rules(features + list(seabed), list(derived), canada)
+        if isinstance(derived, list):
+            derived.clear()  # consumed: the caller's list does not hold the unsnapped features while they snap
+        features, seabed = snap_derived(ruled, bands), ()  # snap_derived empties ruled as it goes
     snapped: dict[str, list[Feature]] = {name: [] for name in _DERIVED_GROUP}
     for feature in features:
         if feature.layer in _DERIVED_GROUP and _is_derived(feature):
