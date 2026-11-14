@@ -47,9 +47,10 @@ _EXTENT = 4096
 _COVERAGE_MIN = 0.9999
 # The Canada polygon is shrunk by this many tile units before the "nothing NOAA inside" rules (plan 8 spec 7.2):
 # tippecanoe, as the packs are built, keeps a line or polygon within 1 unit of its place and rounds to half a unit,
-# so a correctly cut feature stays at least 2.5 units clear (about 400 m at zoom 6, 6 m at zoom 16).
+# so a correctly cut feature stays at least 2.5 units clear (about 400 m at zoom 6, 0.4 m at zoom 16).
 CANADA_TOLERANCE_UNITS = 4
 _NEAR_UNITS = 512  # the polygon is cut this far around a tile before it goes to tile units: past the tile buffer
+_TILE_BOX = box(0, 0, _EXTENT, _EXTENT)  # a tile's own area in its units: the rules judge each place in its tile
 
 
 def _lonlat(z: int, x: int, y: int, coords: np.ndarray) -> np.ndarray:
@@ -178,21 +179,33 @@ def _check_no_depth_in_nosurvey(m: MBTiles) -> list[str]:
     CANADA_TOLERANCE_UNITS (plan 8 spec 7.1). The depth is cut exactly at the mask edge before tiling, but
     tippecanoe simplifies and rounds both sides, so on a diagonal or curved edge a depth edge lands up to about
     2.5 units inside the tiled mask (measured 2.16 at zoom 16, PR 123 review): the same allowance as the Canada
-    rule. One error per feature, naming the tile."""
+    rule. The features, and the mask once shrunk, are cut to the tile's own area (_TILE_BOX), as the cover rule
+    does: the tile buffer is drawn by the neighbor that owns it. One error per feature, naming the tile."""
     errors = []
     for z in _zooms(m.metadata()):
         for x, y, data in m.tiles_at(z):
             layers = decode_pbf(data)
             if not layers.get("nosurvey"):
                 continue
-            mask = shapely.union_all([make_valid(shape(f["geometry"])) for f in layers["nosurvey"]]).buffer(
-                -CANADA_TOLERANCE_UNITS)
+            mask = _shrunk_in_tile(shapely.union_all([make_valid(shape(f["geometry"])) for f in layers["nosurvey"]]))
             shapely.prepare(mask)
             for layer in ("depare", "depcnt", "soundg"):
                 errors += [f"enc.mbtiles: {layer} depth inside a nosurvey area in tile {z}/{x}/{y}"
                            for f in layers.get(layer, []) if "src" in f["properties"]
-                           and mask.intersects(make_valid(shape(f["geometry"])))]
+                           and mask.intersects(_in_tile(f))]
     return errors
+
+
+def _shrunk_in_tile(area: shapely.Geometry) -> shapely.Geometry:
+    """area (tile units) shrunk by CANADA_TOLERANCE_UNITS, then cut to _TILE_BOX (in that order, so the strip along
+    the tile edge is judged too), polygons only: a shrunk edge on the tile edge leaves a line in the cut, and a
+    prepared GeometryCollection is slow to test against."""
+    return shapely.MultiPolygon(_polygons(area.buffer(-CANADA_TOLERANCE_UNITS).intersection(_TILE_BOX)))
+
+
+def _in_tile(feature: dict) -> shapely.Geometry:
+    """A decoded feature's geometry, made valid, cut to the tile's own area (_TILE_BOX)."""
+    return make_valid(shape(feature["geometry"])).intersection(_TILE_BOX)
 
 
 def _tile_units(z: int, x: int, y: int, geom: shapely.Geometry) -> shapely.Geometry:
@@ -218,7 +231,7 @@ def _canada_in_tiles(m: MBTiles, canada: shapely.Geometry):
             near = box(w, s, e, n)
             if not canada.intersects(near):
                 continue
-            shrunk = _tile_units(z, x, y, canada.intersection(near)).buffer(-CANADA_TOLERANCE_UNITS)
+            shrunk = _shrunk_in_tile(_tile_units(z, x, y, canada.intersection(near)))
             if not shrunk.is_empty:
                 shapely.prepare(shrunk)
                 yield z, x, y, decode_pbf(data), shrunk
@@ -227,7 +240,8 @@ def _canada_in_tiles(m: MBTiles, canada: shapely.Geometry):
 def _check_no_noaa_in_canada(m: MBTiles, canada: shapely.Geometry) -> list[str]:
     """No feature of any layer (seabed included) meets canada shrunk by CANADA_TOLERANCE_UNITS, in every tile at
     every zoom, unless it is a nosurvey area or its src is in DERIVED_SRC (plan 8 spec 7.2). True intersection, so
-    a line across the polygon with no vertex inside is caught. One error per feature, naming the tile and layer."""
+    a line across the polygon with no vertex inside is caught. Each feature is judged in its tile's own area
+    (_in_tile). One error per feature, naming the tile and layer."""
     errors = []
     for z, x, y, layers, shrunk in _canada_in_tiles(m, canada):
         for layer, feats in layers.items():
@@ -235,7 +249,7 @@ def _check_no_noaa_in_canada(m: MBTiles, canada: shapely.Geometry) -> list[str]:
                 continue
             errors += [f"enc.mbtiles: {layer} feature inside the Canada polygon in tile {z}/{x}/{y}" for f in feats
                        if f["properties"].get("src") not in DERIVED_SRC
-                       and shrunk.intersects(make_valid(shape(f["geometry"])))]
+                       and shrunk.intersects(_in_tile(f))]
     return errors
 
 

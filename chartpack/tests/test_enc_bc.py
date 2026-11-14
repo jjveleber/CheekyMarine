@@ -234,3 +234,52 @@ def test_derived_land_only_inside_polygon():
 
 def test_derived_src_names():
     assert DERIVED_SRC == ("nonna10", "nonna100", "crm", "etopo", "fwa")
+
+
+# ---- plan8-checkfix F2: NOAA slivers left along the polygon by the cut (Ruling 41)
+
+def _sliver_fixture(fixtures_dir):
+    """The real NOAA features behind the overview's Canada-rule errors (canada-slivers.json, see the README)."""
+    rows = json.loads((fixtures_dir / "canada-slivers.json").read_text())
+    return [Feature(r["layer"], mapping(shapely.from_wkt(r["wkt"])), r["props"]) for r in rows]
+
+
+def test_real_slivers_along_the_polygon_are_dropped(fixtures_dir, regions_dir):
+    """M_QUAL CATZOC 6 and MIPARE WA of US3WA1EF and CTNARE of US1GLBDD: the cut leaves a part 1 to 6 m wide
+    along the polygon (the cells' own edges lie a meter or so outside it), which tippecanoe draws as a square
+    straddling the edge. Dropped: every part of them lies within BORDER_TOLERANCE_M of the polygon. Of the other
+    features of the fixture, M_QUAL CATZOC 3 (outside the polygon) comes out unchanged and the unnamed MIPARE
+    (inside it) is cut away as before."""
+    from chartpack.enc.bc import BORDER_TOLERANCE_M, to_m
+
+    canada = load_canada(regions_dir)
+    feats = _sliver_fixture(fixtures_dir)
+    out = apply_rules(feats, [], canada)
+    kept = {(f.props["class"], f.props.get("CATZOC"), f.props.get("OBJNAM")) for f in out}
+    assert kept == {("M_QUAL", 3, None)}
+    assert out == [f for f in feats if f.props.get("CATZOC") == 3]
+    slivers = [f for f in feats if f.props.get("CATZOC") == 6 or f.props.get("OBJNAM") == "WA"
+               or f.props["class"] == "CTNARE"]
+    assert len(slivers) == 3
+    for f in slivers:  # each is cut to one thin part, under BORDER_TOLERANCE_M wide, before it is dropped
+        part = to_m(shape(f.geometry).difference(canada))
+        assert 0 < 2 * part.area / part.length < BORDER_TOLERANCE_M / 2
+
+
+@pytest.mark.parametrize("layer", ["depare", "lndare", "coalne", "hazard"])
+def test_safety_slivers_are_not_dropped(fixtures_dir, regions_dir, layer):
+    """The same CATZOC 6 sliver as a safety layer's area (or its outline as a line): cut, never dropped."""
+    canada = load_canada(regions_dir)
+    sliver = next(f for f in _sliver_fixture(fixtures_dir) if f.props.get("CATZOC") == 6)
+    geom = shape(sliver.geometry)
+    feat = Feature(layer, mapping(geom.exterior if layer == "coalne" else geom), {"cell": "US3WA1EF", "band": 3})
+    assert apply_rules([feat], [], canada)
+
+
+def test_wide_part_along_the_polygon_is_kept():
+    """A NOAA area cut at the polygon's east edge (-122.0) whose kept part is 50 m wide: more than
+    BORDER_TOLERANCE_M from the polygon in places, so kept; a 10 m wide one is dropped."""
+    for width_m, kept in ((50.0, True), (10.0, False)):
+        area = box(-122.5, 49.4, -122.0 + width_m * _M_LON, 49.6)
+        out = apply_rules([_f("area", area, 3, OBJNAM="a")], [], CANADA)
+        assert bool(out) == kept, width_m

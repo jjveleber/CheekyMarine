@@ -37,6 +37,11 @@ SEGMENT_DEG = 0.01
 # the Canada polygon.
 DERIVED_SRC = ("nonna10", "nonna100", "crm", "etopo", "fwa")
 _NOAA_COVER = ("depare", "lndare")  # the kept NOAA areas that win over derived depth outside the polygon (rule 3)
+# The layers whose cut parts lying wholly within BORDER_TOLERANCE_M of the polygon are dropped (Ruling 41): the
+# cells' own edges may lie that far outside it, and tippecanoe draws such a sliver as a square straddling the edge.
+# They carry no depth, land or hazard; the safety layers are cut, never thinned.
+_SLIVER_LAYERS = ("area", "line", "meta", "seabed")
+_NEAR_DEG = 0.001  # the polygon is taken this far around a cut part (more than BORDER_TOLERANCE_M) for that test
 
 # BC Albers (equal area), for areas and distances in meters.
 _TO_M = pyproj.Transformer.from_crs("EPSG:4326", "EPSG:3005", always_xy=True)
@@ -154,9 +159,17 @@ def _keep(feature: Feature, geom: shapely.Geometry) -> list[Feature]:
             for part in shapely.get_parts(geom) if not part.is_empty and shapely.get_dimensions(part) == dim]
 
 
+def _sliver(part: shapely.Geometry, canada: shapely.Geometry) -> bool:
+    """Whether part (lon/lat) lies wholly within BORDER_TOLERANCE_M of canada."""
+    w, s, e, n = part.bounds
+    near = canada.intersection(box(w - _NEAR_DEG, s - _NEAR_DEG, e + _NEAR_DEG, n + _NEAR_DEG))
+    return _outside_m(part, to_m(near).buffer(BORDER_TOLERANCE_M)).is_empty
+
+
 def apply_rules(cut: list[Feature], derived: list[Feature], canada: shapely.Geometry) -> list[Feature]:
     """The rules of spec 7.2, by geometry. cut (the quilt output, every band and layer, and the bottom samples of
-    every source): areas and lines cut to the outside of canada, points inside it dropped. derived (made for the
+    every source): areas and lines cut to the outside of canada, points inside it dropped, and a cut part of an
+    _SLIVER_LAYERS feature lying wholly within BORDER_TOLERANCE_M of canada dropped. derived (made for the
     charts side only): kept inside canada; outside it, depare, depcnt, soundg and nosurvey are cut away wherever a
     kept NOAA depare or lndare covers the place, and lndare and coalne are dropped. Both sides are cut from the same
     geometry, so they meet on one line. A feature that needs no cut is returned as it is."""
@@ -171,7 +184,10 @@ def apply_rules(cut: list[Feature], derived: list[Feature], canada: shapely.Geom
             out.append(feature)
         elif not shapely.covers(canada, geom):
             w, s, e, n = geom.bounds  # canada near the feature only: a straight line's bounds have no area
-            out += _keep(feature, geom.difference(canada.intersection(box(w - 1e-6, s - 1e-6, e + 1e-6, n + 1e-6))))
+            parts = _keep(feature, geom.difference(canada.intersection(box(w - 1e-6, s - 1e-6, e + 1e-6, n + 1e-6))))
+            if feature.layer in _SLIVER_LAYERS:
+                parts = [p for p in parts if not _sliver(shape(p.geometry), canada)]
+            out += parts
     tree = shapely.STRtree([shape(f.geometry) for f in out if f.layer in _NOAA_COVER])
     for feature in derived:
         geom = shape(feature.geometry)

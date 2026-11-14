@@ -91,3 +91,14 @@ The list is complete only inside the fetch extents of those assets (each region'
 Every offshore tile lies inside its own asset's extent, so the offshore test sees all of its shore. Most unowned
 tiles lie outside every extent, so the unowned test sees only shore next to owned tiles; the pinned list in
 `bc-unowned-tiles.json` is the guard for the rest.
+
+## Canada slivers
+
+`canada-slivers.json` holds five real NOAA features near the points where the overview dry run of plan 8 (run
+43513034314) failed the Canada rule (plan8-checkfix, F2): each feature of the named class within 0.01 degree of
+the point, cut to a 0.02 degree box around it, as `{cell, edition, layer, props, near, wkt}`. From `US3WA1EF`
+edition 1.5 (M_QUAL near -122.772217, 49.002584; MIPARE near -123.427019, 48.248312) and `US1GLBDD` edition 2.0
+(CTNARE near -133.053277, 54.564943), read with `chartpack.enc.reader.read_cell` from the same cell zips the dry
+run used (2026-11-13). Against `regions/clip/canada-chs.geojson`, M_QUAL CATZOC 6, MIPARE "WA" and the CTNARE
+each leave a part 1 to 6 m wide outside the polygon; M_QUAL CATZOC 3 lies outside it and the unnamed MIPARE inside.
+`test_real_slivers_along_the_polygon_are_dropped` reads it.
