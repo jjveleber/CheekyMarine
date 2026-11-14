@@ -65,7 +65,8 @@ def _faces(polys: np.ndarray, frame: shapely.Geometry) -> np.ndarray:
 def _labels(faces: np.ndarray, polys: np.ndarray) -> np.ndarray:
     """The index into polys of the polygon under each face, -1 where none is (the NOAA or US side): the one holding
     a point _DEEP_UNITS inside the face, else (a thin face) the one with the largest overlap, unless more of the
-    face lies under none."""
+    face lies under none. The overlaps are summed over pieces (_pieces) of the fallback faces and of the
+    originals, found by one query, so no step costs a large mask or land polygon once per face (PR 137 review)."""
     label = np.full(len(faces), -1)
     if not len(faces):
         return label
@@ -73,7 +74,6 @@ def _labels(faces: np.ndarray, polys: np.ndarray) -> np.ndarray:
     if bad.any():
         polys = polys.copy()
         polys[bad] = shapely.make_valid(polys[bad])
-    tree = shapely.STRtree(polys)
     points = shapely.point_on_surface(faces)
     deep = shapely.distance(points, shapely.boundary(faces)) >= _DEEP_UNITS
     index = np.flatnonzero(deep)
@@ -81,36 +81,60 @@ def _labels(faces: np.ndarray, polys: np.ndarray) -> np.ndarray:
     # polygon is prepared once (the other way round, a 200,000-vertex mask took 4.5 s for 34,000 points)
     poly, at = shapely.STRtree(points[deep]).query(polys, predicate="contains")
     label[index[at[::-1]]] = poly[::-1]  # the first match wins (originals do not overlap)
-    for i in np.flatnonzero(~deep | (label < 0)):
-        near = tree.query(faces[i], predicate="intersects")
-        if not len(near):
-            continue
-        areas = shapely.area(shapely.intersection(_near_face(polys[near], faces[i]), faces[i]))
-        best = int(np.argmax(areas))
-        if areas[best] > 0 and areas[best] >= shapely.area(faces[i]) - areas.sum():
-            label[i] = near[best]
+    fall = np.flatnonzero(~deep | (label < 0))
+    if not len(fall):
+        return label
+    face_pieces, face_of = _pieces(faces[fall])
+    poly_pieces, poly_of = _pieces(polys)
+    p, f = shapely.STRtree(face_pieces).query(poly_pieces, predicate="intersects")  # p into poly_pieces
+    if not len(p):
+        return label
+    areas = shapely.area(shapely.intersection(poly_pieces[p], face_pieces[f]))
+    pair = face_of[f].astype(np.int64) * len(polys) + poly_of[p]
+    pair, inverse = np.unique(pair, return_inverse=True)
+    summed = np.zeros(len(pair))
+    np.add.at(summed, inverse, areas)
+    face, owner = pair // len(polys), pair % len(polys)
+    total = np.zeros(len(fall))
+    np.add.at(total, face, summed)
+    best, most = np.full(len(fall), -1), np.zeros(len(fall))
+    for k in np.lexsort((owner, -summed)):  # largest overlap first; a tie goes to the lowest original index
+        if best[face[k]] < 0:
+            best[face[k]], most[face[k]] = owner[k], summed[k]
+    take = (best >= 0) & (most > 0) & (most >= shapely.area(faces[fall]) - total)
+    label[fall[take]] = best[take]
     return label
 
 
-_CLIP_MARGIN = 1.0  # units: the originals are clipped this far round a fallback face before its overlay
+_PIECE_VERTICES = 256  # _pieces splits a polygon until each piece has at most this many vertices
+_CUT_DEPTH = 40  # and cuts no piece more than this many times (2**20 pieces of a side: far past any mask)
 
 
-def _near_face(polys: np.ndarray, face: shapely.Geometry) -> np.ndarray:
-    """polys clipped to face's bounds grown by _CLIP_MARGIN, so the overlay of a small face costs the face, not a
-    large mask or land polygon beside it (PR 137 review: 3.86 ms against 0.30 ms per face on a 200,000-vertex
-    polygon). GEOS's fast rectangle clip can fail on a sliver that collapses in the box ("Invalid number of points
-    in LinearRing", PR 130) or return an invalid ring: such a clip is made valid, or replaced by an overlay with
-    the box."""
-    w, s, e, n = face.bounds
-    m = _CLIP_MARGIN
-    out = []
-    for p in polys:
-        try:
-            c = shapely.clip_by_rect(p, w - m, s - m, e + m, n + m)
-            out.append(c if shapely.is_valid(c) else shapely.make_valid(c))
-        except shapely.errors.GEOSException:
-            out.append(shapely.intersection(p, box(w - m, s - m, e + m, n + m)))
-    return np.array(out, object)
+def _pieces(geoms: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """The polygonal parts of geoms split into pieces of at most _PIECE_VERTICES vertices (halving a piece's bounds
+    along its longer side), and the index in geoms of each piece's geometry: each large polygon is split once, in
+    O(n log n), so a small face meets only the few pieces near it. Each cut is an overlay with the half's box:
+    GEOS's fast clip_by_rect fails on a valid sliver that collapses in the box ("Invalid number of points in
+    LinearRing found 3", PRs 130 and 135). A cut that leaves no piece with fewer vertices keeps its input, and no
+    piece is cut more than _CUT_DEPTH times, so the split always ends."""
+    out, owner = [], []
+    for k, geom in enumerate(geoms):
+        stack = [(p, 0) for p in shapely.get_parts(geom) if shapely.get_dimensions(p) == 2 and not p.is_empty]
+        while stack:
+            g, depth = stack.pop()
+            size = shapely.get_num_coordinates(g)
+            if size > _PIECE_VERTICES and depth < _CUT_DEPTH:
+                w, s, e, n = g.bounds
+                halves = ((w, s, (w + e) / 2, n), ((w + e) / 2, s, e, n)) if e - w >= n - s else \
+                    ((w, s, e, (s + n) / 2), (w, (s + n) / 2, e, n))
+                cut = [p for h in halves for p in shapely.get_parts(shapely.intersection(g, box(*h)))
+                       if shapely.get_dimensions(p) == 2 and not p.is_empty]
+                if any(shapely.get_num_coordinates(p) < size for p in cut):
+                    stack += [(p, depth + 1) for p in cut]
+                    continue
+            out.append(g)
+            owner.append(k)
+    return np.array(out, object), np.array(owner, int)
 
 
 def _thin_to_nosurvey(faces: np.ndarray, label: np.ndarray, depth: np.ndarray, nosurvey: np.ndarray) -> np.ndarray:

@@ -366,14 +366,28 @@ def test_snapping_a_large_noisy_core_is_bounded_in_work_and_memory(monkeypatch):
     - the thin rule builds each face boundary once: the boundaries it builds hold fewer vertices than the core's
       input (per-pair copies of the mask boundary held it once per pair);
     - the label fallback overlays a face with its originals clipped near it, never with the whole mask;
-    - the traced Python peak stays under 300 MB (GEOS memory is not traced: the two counts above guard it)."""
+    - the label step's pair queries test against no tree geometry as large as a tenth of the mask (each large
+      original is a query geometry, prepared once, or split in pieces), and no clip_by_rect gets the mask
+      (fix round 3: one query per face against the unprepared mask, and a clip per face, cost O(mask) each);
+    - the traced Python peak stays under 300 MB (GEOS memory is not traced: the counts above guard it)."""
     import sys
     import tracemalloc
 
     feats, mask_vertices = _big_core()
     given = sum(shapely.get_num_coordinates(shape(f.geometry)) for f in feats)
-    built, fallback = [0], [0]
-    boundary, intersection = shapely.boundary, shapely.intersection
+    built, fallback, tree_max, clip_max = [0], [0], [0], [0]
+    boundary, intersection, clip_by_rect, tree_class = shapely.boundary, shapely.intersection, shapely.clip_by_rect, \
+        shapely.STRtree
+
+    class WatchedTree(tree_class):
+        def __init__(self, geoms, *args, **kwargs):
+            super().__init__(geoms, *args, **kwargs)
+            if sys._getframe(1).f_code.co_name == "_labels":
+                tree_max[0] = max(tree_max[0], int(np.max(shapely.get_num_coordinates(self.geometries), initial=0)))
+
+    def watched_clip(g, *args, **kwargs):
+        clip_max[0] = max(clip_max[0], int(np.max(shapely.get_num_coordinates(g), initial=0)))
+        return clip_by_rect(g, *args, **kwargs)
 
     def counted_boundary(g, *args, **kwargs):
         out = boundary(g, *args, **kwargs)
@@ -388,31 +402,69 @@ def test_snapping_a_large_noisy_core_is_bounded_in_work_and_memory(monkeypatch):
 
     monkeypatch.setattr(shapely, "boundary", counted_boundary)
     monkeypatch.setattr(shapely, "intersection", watched_intersection)
+    monkeypatch.setattr(shapely, "clip_by_rect", watched_clip)
+    monkeypatch.setattr(shapely, "STRtree", WatchedTree)
     tracemalloc.start()
     out = snap_derived(feats, [b for b in BANDS if b[0] == 14])
     peak = tracemalloc.get_traced_memory()[1]
     tracemalloc.stop()
     assert any(f.layer == "depare" for f in out)
     print(f"work: boundaries {built[0]} of {given} input vertices, fallback max {fallback[0]} of {mask_vertices},"
-          f" traced peak {peak / 1e6:.1f} MB")
+          f" label tree max {tree_max[0]}, clip max {clip_max[0]}, traced peak {peak / 1e6:.1f} MB")
     assert built[0] < given, (built[0], given)
     assert 0 < fallback[0] < mask_vertices / 10, (fallback[0], mask_vertices)
+    assert tree_max[0] < mask_vertices / 10, (tree_max[0], mask_vertices)
+    assert clip_max[0] < mask_vertices / 10, (clip_max[0], mask_vertices)
     assert peak < 300e6, peak
 
 
-def test_the_clipped_fallback_gives_the_labels_of_the_whole_overlay(monkeypatch):
-    """PR 137 review: the overlap fallback overlays each face with its originals clipped near it; on a noisy mask
-    with many faces that take the fallback, every label equals the one the whole overlay gives."""
+def _whole_overlay_labels(faces, polys, deep_units):
+    """The fallback labels as 500ea9e made them, for comparison: each face overlaid with its whole originals."""
+    polys = np.where(shapely.is_valid(polys), polys, shapely.make_valid(polys))
+    tree = shapely.STRtree(polys)
+    points = shapely.point_on_surface(faces)
+    deep = shapely.distance(points, shapely.boundary(faces)) >= deep_units
+    label = np.full(len(faces), -1)
+    for i in range(len(faces)):
+        if deep[i]:
+            inside = [j for j in tree.query(points[i], predicate="within")]
+            if inside:
+                label[i] = min(inside)
+                continue
+        near = tree.query(faces[i], predicate="intersects")
+        if not len(near):
+            continue
+        areas = shapely.area(shapely.intersection(polys[near], faces[i]))
+        best = int(np.argmax(areas))
+        if areas[best] > 0 and areas[best] >= shapely.area(faces[i]) - areas.sum():
+            label[i] = near[best]
+    return label, int(np.sum(~deep))
+
+
+def test_the_pieced_fallback_gives_the_labels_of_the_whole_overlay():
+    """PR 137 review: the overlap fallback sums each face's overlaps over pieces of the faces and of the originals
+    (one query, large polygons split once); on a noisy mask with many faces that take the fallback, every label
+    equals the one the whole overlay gives."""
     from chartpack.enc import gridsnap
 
     feats, _ = _big_core(n_mask=6000, grid=60, seed=2)
-    to_units = _units(14)[0]
-    polys = shapely.transform(np.array([shape(f.geometry) for f in feats], object), to_units)
+    polys = shapely.transform(np.array([shape(f.geometry) for f in feats], object), _units(14)[0])
     x0, y0 = _origin(14)
     faces = gridsnap._faces(polys, box(x0, y0, x0 + 65536, y0 + 65536))
-    points = shapely.point_on_surface(faces)
-    took = int(np.sum(shapely.distance(points, shapely.boundary(faces)) < gridsnap._DEEP_UNITS))
-    clipped = gridsnap._labels(faces, polys)
-    monkeypatch.setattr(gridsnap, "_near_face", lambda near, face: near)
-    whole = gridsnap._labels(faces, polys)
-    assert took > 100 and (clipped == whole).all(), (took, int(np.sum(clipped != whole)))
+    whole, took = _whole_overlay_labels(faces, polys, gridsnap._DEEP_UNITS)
+    pieced = gridsnap._labels(faces, polys)
+    assert took > 100 and (pieced == whole).all(), (took, int(np.sum(pieced != whole)))
+
+
+def test_pieces_cover_each_polygon_exactly_and_stay_small():
+    """_pieces: a 30,000-vertex noisy mask splits into pieces of at most _PIECE_VERTICES vertices whose areas add
+    up to the mask's, each owned by it; the PR 130 sliver (collapses in a cut box) splits without error."""
+    from chartpack.enc.gridsnap import _PIECE_VERTICES, _pieces
+
+    feats, _ = _big_core(n_mask=30_000, grid=20, seed=3)
+    mask = shapely.transform(shape(feats[0].geometry), _units(14)[0])
+    sliver = shapely.transform(shapely.from_wkt(_SLIVER), _units(14)[0])
+    pieces, owner = _pieces(np.array([mask, sliver], object))
+    assert (shapely.get_num_coordinates(pieces[owner == 0]) <= _PIECE_VERTICES).all()
+    assert math.isclose(shapely.area(pieces[owner == 0]).sum(), mask.area, rel_tol=1e-9)
+    assert math.isclose(shapely.area(pieces[owner == 1]).sum(), sliver.area, rel_tol=1e-6)
