@@ -691,3 +691,12 @@ def test_noaa_feature_in_the_tile_buffer_is_not_judged_by_the_canada_rule(tmp_pa
                          {(Z, X, Y): {**WATER, "area": [(_square(1500, 50, 1510, 60), {})]}})
     assert check_pack(in_tile, canada=canada) == [
         f"enc.mbtiles: area feature inside the Canada polygon in tile {Z}/{X}/{Y}"]
+
+
+def test_depth_just_inside_the_tile_edge_deep_in_nosurvey_fails(tmp_path, test_region):
+    """A nosurvey that runs on past the tile edge, a depare 1 to 3 units inside the edge: judged in its own tile
+    (the mask is shrunk before it is cut to the tile, so the shrink does not pull it back from the edge)."""
+    tiles = {(Z, X, Y): {**WATER, "depare": [(_square(1, 1000, 3, 1010), {"src": "nonna10"})],
+                         "nosurvey": [(_square(-200, -200, 4300, 4300), {})]}}
+    root = _hand_pack(tmp_path, test_region, "derived-inshore", tiles)
+    assert check_pack(root) == [f"enc.mbtiles: depare depth inside a nosurvey area in tile {Z}/{X}/{Y}"]

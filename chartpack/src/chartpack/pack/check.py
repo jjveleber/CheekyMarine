@@ -179,16 +179,16 @@ def _check_no_depth_in_nosurvey(m: MBTiles) -> list[str]:
     CANADA_TOLERANCE_UNITS (plan 8 spec 7.1). The depth is cut exactly at the mask edge before tiling, but
     tippecanoe simplifies and rounds both sides, so on a diagonal or curved edge a depth edge lands up to about
     2.5 units inside the tiled mask (measured 2.16 at zoom 16, PR 123 review): the same allowance as the Canada
-    rule. The features and the mask are cut to the tile's own area first (_TILE_BOX), as the cover rule does: the
-    tile buffer is drawn by the neighbor that owns it. One error per feature, naming the tile."""
+    rule. The features, and the mask once shrunk, are cut to the tile's own area (_TILE_BOX), as the cover rule
+    does: the tile buffer is drawn by the neighbor that owns it. One error per feature, naming the tile."""
     errors = []
     for z in _zooms(m.metadata()):
         for x, y, data in m.tiles_at(z):
             layers = decode_pbf(data)
             if not layers.get("nosurvey"):
                 continue
-            mask = shapely.union_all([make_valid(shape(f["geometry"])) for f in layers["nosurvey"]]).intersection(
-                _TILE_BOX).buffer(-CANADA_TOLERANCE_UNITS)
+            mask = shapely.union_all([make_valid(shape(f["geometry"])) for f in layers["nosurvey"]]).buffer(
+                -CANADA_TOLERANCE_UNITS).intersection(_TILE_BOX)  # shrunk, then cut: the edge strip is judged too
             shapely.prepare(mask)
             for layer in ("depare", "depcnt", "soundg"):
                 errors += [f"enc.mbtiles: {layer} depth inside a nosurvey area in tile {z}/{x}/{y}"
