@@ -936,3 +936,25 @@ def test_square_test_cost_follows_the_squares_not_the_mask():
     assert new.tolist() == old.tolist() and new[1::2].all()
     assert t_new < t_old / 3, (t_new, t_old)
 
+
+def test_share_rule_runs_on_from_a_part_the_square_rule_sent():
+    """PR 134 review: the square rule sends the strip ringing the pocket; a second thin strip along its outer
+    edge (half its own perimeter), touching no mask and with its own square away from the pocket, then goes by the
+    share rule run on from the first."""
+    from chartpack.enc.derived import _select
+
+    u = 360 / (2**10 * 4096)
+    pocket = shapely.Point(0, 0).buffer(10 * u, 64)
+
+    t = np.linspace(0.3, 6.0, 571)  # every 0.01 rad, so the two strips share the vertices of their common arc
+
+    def arc_strip(r0, r1, sel):
+        outer = np.column_stack([0.5 * u + r1 * u * np.cos(t[sel]), r1 * u * np.sin(t[sel])])
+        inner = np.column_stack([0.5 * u + r0 * u * np.cos(t[sel]), r0 * u * np.sin(t[sel])])[::-1]
+        return shapely.Polygon(np.vstack([outer, inner]))
+
+    ring = arc_strip(10.5, 11.3, slice(None))
+    beside = arc_strip(11.3, 11.8, slice(230, 331))  # 2.6 to 3.6 rad
+    assert beside.distance(pocket) > 0.5 * u
+    cand, drop, _, _, _, _ = _select(np.array([ring, beside], object), pocket, 10, 8 * u)
+    assert drop.tolist() == [True, True]
