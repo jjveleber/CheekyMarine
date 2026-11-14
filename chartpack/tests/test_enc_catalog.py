@@ -24,3 +24,10 @@ def test_cells_in_bbox_band_and_sorted(fixtures_dir):
     names = cells_in_bbox(_cat(fixtures_dir), (-122.4, 47.7, -122.1, 48.0), 4)
     assert names == sorted(names) and "US4WA1HK" in names
     assert not any(n[2] != "4" for n in names)
+
+
+def test_parse_zip_datetime_is_aware_utc_from_the_iso_field(fixtures_dir):
+    from datetime import datetime, timezone
+
+    # the plain zipfile_datetime field is US Eastern (20261028_003125); the ISO field is UTC
+    assert _cat(fixtures_dir)["US5SEAKL"].zip_datetime == datetime(2026, 10, 28, 4, 31, 25, tzinfo=timezone.utc)

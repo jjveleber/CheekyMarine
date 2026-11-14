@@ -9,7 +9,7 @@ from pathlib import Path
 
 from osgeo import gdal
 
-from chartpack.cache import ZIP_ERRORS, SizeMismatch, download, download_with_modified
+from chartpack.cache import ZIP_ERRORS, download_with_modified
 from chartpack.enc.catalog import CellInfo
 
 gdal.UseExceptions()
@@ -95,9 +95,11 @@ def _cached_newer(cache_dir: Path, info: CellInfo) -> Path | None:
     return None
 
 
-def _modified_after(header: str | None, catalog_time: datetime | None) -> bool:
+def _modified_after(header: str | None, catalog_time: datetime | None, name: str) -> bool:
     if header is None or catalog_time is None:
         return False
+    if catalog_time.tzinfo is None:
+        raise CellError(f"{name}: the catalog's zip time {catalog_time} has no time zone")
     try:
         served = parsedate_to_datetime(header)
     except (TypeError, ValueError):
@@ -107,32 +109,27 @@ def _modified_after(header: str | None, catalog_time: datetime | None) -> bool:
     return served > catalog_time
 
 
-def _fetch_lagging(info: CellInfo, path: Path) -> Path:
-    """The catalog's size is stale: take the served zip if it is a newer update of the catalog's edition,
+def _accept_lagging(info: CellInfo, tmp: Path, modified: str | None, path: Path) -> Path:
+    """The catalog's size is stale: take the downloaded zip if it is a newer update of the catalog's edition,
     the server dates it after the catalog entry, and it tests clean. Return where it is stored."""
-    tmp = path.with_name(path.name + ".new")
-    try:
-        modified = download_with_modified(info.zip_url, tmp)
-        size = tmp.stat().st_size
-        edtn, updn = _read_zip(tmp, info.name)
-        if edtn != info.edtn:
-            raise CellError(f"{info.name}: served zip is edition {edtn}, catalog says edition {info.edtn}")
-        if updn <= info.updn:
-            raise CellError(f"{info.name}: served zip is {edtn}.{updn}, not newer than catalog {info.edtn}.{info.updn}")
-        if not _modified_after(modified, info.zip_datetime):
-            raise CellError(
-                f"{info.name}: served zip is {edtn}.{updn} but its Last-Modified ({modified!r}) "
-                f"is not later than the catalog's {info.zip_datetime}"
-            )
-        final = path.with_name(f"{info.name}-{edtn}.{updn}.zip")
-        tmp.replace(final)
-        print(
-            f"warning: {info.name}: catalog is {info.edtn}.{info.updn} ({info.zip_size} bytes), "
-            f"NOAA serves {edtn}.{updn} ({size} bytes); using the served file"
+    size = tmp.stat().st_size
+    edtn, updn = _read_zip(tmp, info.name)
+    if edtn != info.edtn:
+        raise CellError(f"{info.name}: served zip is edition {edtn}, catalog says edition {info.edtn}")
+    if updn <= info.updn:
+        raise CellError(f"{info.name}: served zip is {edtn}.{updn}, not newer than catalog {info.edtn}.{info.updn}")
+    if not _modified_after(modified, info.zip_datetime, info.name):
+        raise CellError(
+            f"{info.name}: served zip is {edtn}.{updn} but its Last-Modified ({modified!r}) "
+            f"is not later than the catalog's {info.zip_datetime}"
         )
-        return final
-    finally:
-        tmp.unlink(missing_ok=True)
+    final = path.with_name(f"{info.name}-{edtn}.{updn}.zip")
+    tmp.replace(final)
+    print(
+        f"warning: {info.name}: catalog is {info.edtn}.{info.updn} ({info.zip_size} bytes), "
+        f"NOAA serves {edtn}.{updn} ({size} bytes); using the served file"
+    )
+    return final
 
 
 def fetch_cells(names: list[str], catalog: dict[str, CellInfo], cache_dir: Path) -> list[Path]:
@@ -151,11 +148,15 @@ def fetch_cells(names: list[str], catalog: dict[str, CellInfo], cache_dir: Path)
             paths.append(cached)
             continue
         if not path.exists():
+            tmp = path.with_name(path.name + ".new")
             try:
-                download(info.zip_url, path, expected_size=info.zip_size)
-            except SizeMismatch:
-                paths.append(_fetch_lagging(info, path))
-                continue
+                modified = download_with_modified(info.zip_url, tmp)
+                if tmp.stat().st_size != info.zip_size:
+                    paths.append(_accept_lagging(info, tmp, modified, path))
+                    continue
+                tmp.replace(path)
+            finally:
+                tmp.unlink(missing_ok=True)
             try:
                 _verify(path, info)
             except Exception:

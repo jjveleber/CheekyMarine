@@ -1,3 +1,4 @@
+import io
 import http.server
 import threading
 
@@ -65,3 +66,34 @@ def test_truncation_is_rejected_without_expected_size(tmp_path, http_server_that
     with pytest.raises(DownloadError):
         download(http_server_that_truncates, dest)
     assert not dest.exists() and not (tmp_path / "f.bin.part").exists()
+
+
+def _fake_urlopen(monkeypatch, body, headers):
+    class Response(io.BytesIO):
+        def __init__(self):
+            super().__init__(body)
+            self.headers = headers
+
+        def __enter__(self):
+            return self
+
+    monkeypatch.setattr("chartpack.cache.urllib.request.urlopen", lambda request, timeout=None: Response())
+
+
+def test_download_size_difference_is_a_size_mismatch(tmp_path, monkeypatch):
+    from chartpack.cache import SizeMismatch
+
+    _fake_urlopen(monkeypatch, b"x" * 10, {"Content-Length": "10"})
+    with pytest.raises(SizeMismatch):
+        download("http://h/f.zip", tmp_path / "f.zip", expected_size=12)
+    assert not list(tmp_path.iterdir())
+
+
+def test_download_with_modified_returns_the_header(tmp_path, monkeypatch):
+    from chartpack.cache import download_with_modified
+
+    _fake_urlopen(monkeypatch, b"x" * 10, {"Content-Length": "10", "Last-Modified": "Sat, 14 Nov 2026 05:50:17 GMT"})
+    assert download_with_modified("http://h/f.zip", tmp_path / "a.zip") == "Sat, 14 Nov 2026 05:50:17 GMT"
+    assert (tmp_path / "a.zip").read_bytes() == b"x" * 10
+    _fake_urlopen(monkeypatch, b"x", {})
+    assert download_with_modified("http://h/f.zip", tmp_path / "b.zip") is None

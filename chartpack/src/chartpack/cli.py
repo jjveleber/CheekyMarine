@@ -207,9 +207,10 @@ def _fetch_enc(args: argparse.Namespace) -> int:
     region = load_region(args.region)
     catalog = _load_catalog(args.cache)
     names = [n for band in sorted(region.cells) for n in region.cells[band]]
-    for name, _ in zip(names, fetch_cells(names, catalog, args.cache)):
-        c = catalog[name]
-        print(f"{name} {c.edtn}.{c.updn} {c.isdt.isoformat()}")
+    for name, path in zip(names, fetch_cells(names, catalog, args.cache)):
+        # the edition.update of the stored file, which differs from the catalog's when the catalog lags
+        edtn, updn = re.fullmatch(rf"{re.escape(name)}-(\d+)\.(\d+)\.zip", path.name).groups()
+        print(f"{name} {edtn}.{updn} {catalog[name].isdt.isoformat()}")
     return 0
 
 
