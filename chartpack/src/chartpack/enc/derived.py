@@ -269,22 +269,31 @@ def _units(z: int):
 
 
 _PIECE_VERTICES = 256  # _subdivide splits a polygon until each piece has at most this many vertices
+_CUT_DEPTH = 40  # and cuts no piece more than this many times (2**20 pieces of a side: far past any mask)
 
 
 def _subdivide(area: shapely.Geometry) -> shapely.STRtree:
-    """area split into pieces of at most _PIECE_VERTICES vertices (halving a piece's bounds along its longer side,
-    each cut made valid: GEOS's fast rectangle clip can leave a self-touching ring), in an STRtree. Built once per
-    mask, it lets a box meet only the few pieces near it instead of the whole mask."""
-    out, stack = [], list(_parts(area, 2))
+    """area split into pieces of at most _PIECE_VERTICES vertices (halving a piece's bounds along its longer side),
+    in an STRtree. Built once per mask, it lets a box meet only the few pieces near it instead of the whole mask.
+    Each cut is an overlay with the half's box, as in _tiles: GEOS's fast clip_by_rect fails on a valid sliver
+    that collapses in the box ("Invalid number of points in LinearRing found 3", haida-gwaii-south at 18a474f). A
+    cut that leaves no piece with fewer vertices keeps its input, and no piece is cut more than _CUT_DEPTH times,
+    so the split always ends."""
+    out, stack = [], [(g, 0) for g in _parts(area, 2)]
     while stack:
-        g = stack.pop()
-        if shapely.get_num_coordinates(g) <= _PIECE_VERTICES:
+        g, depth = stack.pop()
+        size = shapely.get_num_coordinates(g)
+        if size <= _PIECE_VERTICES or depth >= _CUT_DEPTH:
             out.append(g)
             continue
         w, s, e, n = g.bounds
         halves = ((w, s, (w + e) / 2, n), ((w + e) / 2, s, e, n)) if e - w >= n - s else \
             ((w, s, e, (s + n) / 2), (w, (s + n) / 2, e, n))
-        stack += [p for h in halves for p in _parts(shapely.make_valid(shapely.clip_by_rect(g, *h)), 2)]
+        cut = [p for h in halves for p in _parts(shapely.intersection(g, box(*h)), 2)]
+        if all(shapely.get_num_coordinates(p) >= size for p in cut):
+            out.append(g)
+            continue
+        stack += [(p, depth + 1) for p in cut]
     return shapely.STRtree(out)
 
 

@@ -958,3 +958,17 @@ def test_share_rule_runs_on_from_a_part_the_square_rule_sent():
     assert beside.distance(pocket) > 0.5 * u
     cand, drop, _, _, _, _ = _select(np.array([ring, beside], object), pocket, 10, 8 * u)
     assert drop.tolist() == [True, True]
+
+
+@pytest.mark.parametrize("wkt", [_SLIVER, _CELLS_WITH_HOLE])
+def test_subdivide_survives_a_sliver_and_keeps_the_area(wkt, monkeypatch):
+    """_subdivide cuts with an overlay, not GEOS's fast rectangle clip: halving the haida-gwaii sliver of PR 130
+    made clip_by_rect raise "Invalid number of points in LinearRing found 3" (dry run of haida-gwaii-south at
+    18a474f). Pieces of at most 3 vertices force the cuts; the pieces are valid and cover the input exactly."""
+    from chartpack.enc import derived
+
+    monkeypatch.setattr(derived, "_PIECE_VERTICES", 3)
+    geom = shapely.from_wkt(wkt)
+    pieces = derived._subdivide(geom).geometries
+    assert len(pieces) and shapely.is_valid(pieces).all()
+    assert shapely.union_all(pieces).symmetric_difference(geom).area < 1e-12 * geom.area
