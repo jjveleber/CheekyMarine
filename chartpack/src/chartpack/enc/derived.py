@@ -169,23 +169,36 @@ def _thin(parts: np.ndarray, z: int) -> np.ndarray:
     return 2 * shapely.area(units) < THIN_UNITS * shapely.length(units)
 
 
-def _segments(geoms: np.ndarray) -> np.ndarray:
-    """Every boundary segment of the polygons geoms, each a LineString."""
-    coords, which = shapely.get_coordinates(shapely.get_parts(shapely.boundary(geoms)), return_index=True)
+def _segments(geoms: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Every boundary segment of the polygons geoms, each a LineString, and the index of its polygon."""
+    rings, owner = shapely.get_parts(shapely.boundary(geoms), return_index=True)
+    coords, which = shapely.get_coordinates(rings, return_index=True)
     same = which[1:] == which[:-1]
-    return shapely.linestrings(np.stack([coords[:-1][same], coords[1:][same]], axis=1))
+    return shapely.linestrings(np.stack([coords[:-1][same], coords[1:][same]], axis=1)), owner[which[:-1][same]]
 
 
 def _shared(parts: np.ndarray, reach: np.ndarray) -> np.ndarray:
-    """The length of each part's boundary lying along the boundary of the polygons reach (within _EDGE_DEG)."""
+    """The length of each part's boundary lying along the boundary of the polygons reach (within _EDGE_DEG),
+    segment against segment: each of the part's segments against the reach segments near it (an STRtree of them),
+    so a long part along a long mask edge costs its length, not the product of the two."""
     out = np.zeros(len(parts))
     if not len(parts) or not len(reach):
         return out
-    segs = shapely.buffer(_segments(reach), _EDGE_DEG, quad_segs=1)
-    rings = shapely.boundary(parts)
-    which, seg = shapely.STRtree(segs).query(rings, predicate="intersects")
-    np.add.at(out, which, shapely.length(shapely.intersection(rings[which], segs[seg])))
+    mine, owner = _segments(parts)
+    theirs, _ = _segments(reach)
+    a, b = shapely.STRtree(theirs).query(mine, predicate="dwithin", distance=_EDGE_DEG)
+    if len(a):
+        along = shapely.intersection(mine[a], shapely.buffer(theirs[b], _EDGE_DEG, quad_segs=1))
+        np.add.at(out, owner[a], shapely.length(along))
     return out
+
+
+def _meeting(parts: np.ndarray, area: shapely.Geometry) -> np.ndarray:
+    """Whether each part meets area, testing against area prepared (the large mask first, so its index is used)."""
+    if area.is_empty or not len(parts):
+        return np.zeros(len(parts), bool)
+    shapely.prepare(area)
+    return shapely.intersects(area, parts)
 
 
 def _to_nosurvey(parts: np.ndarray, thin: np.ndarray, area: shapely.Geometry) -> np.ndarray:
@@ -300,7 +313,7 @@ def _depth_features(grid, src, transform, *, levels_m, drying_m, tiles, zooms, n
     thin = _thin(every, zooms[0])
     # candidates: the thin parts, and the pieces an opening takes off the parts that meet the nosurvey (_fingers):
     # the fingers of a wide part, and the ragged edge of a part thin by 2 A / P only, whose core stays depth
-    pieces, parent, cored = _fingers(every, shapely.intersects(every, nosurvey), zooms[0])
+    pieces, parent, cored = _fingers(every, _meeting(every, nosurvey), zooms[0])
     keep = ~thin[parent] | cored[parent]  # a thin part with no core goes (or stays) whole, not in pieces
     pieces, parent = pieces[keep], parent[keep]
     thin &= ~cored

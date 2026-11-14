@@ -683,3 +683,33 @@ def test_wide_ragged_part_beside_nosurvey_keeps_its_core():
         assert depth.intersection(band).area > 0.8 * band.area, lo
     depth10 = shapely.union_all([shape(f.geometry) for f in _layer(feats, "depare", 10)])
     assert depth10.intersection(teeth).area < 0.2 * teeth.area
+
+
+# ---- plan8-patchfix review (fix round 8)
+
+def _big_mask_case():
+    """The patchfix review's timing case (I1): a wiggly mask of 100,000 vertices with a hole of 16,384, 3,000 small
+    boxes just off its edge, and one part of 50,000 vertices filling the hole along its whole edge."""
+    t = np.linspace(0, 2 * np.pi, 100000, endpoint=False)
+    r = 1 + 0.01 * np.sin(400 * t)
+    mask = shapely.Polygon(np.column_stack([r * np.cos(t), r * np.sin(t)])).difference(
+        shapely.Point(0, 0).buffer(0.3, 4096))
+    ang = np.linspace(0, 2 * np.pi, 3000, endpoint=False)
+    parts = [box(1.02 * np.cos(a), 1.02 * np.sin(a), 1.02 * np.cos(a) + 0.001, 1.02 * np.sin(a) + 0.001) for a in ang]
+    return mask, np.array(parts + [shapely.Point(0, 0).buffer(0.3, 12500)], object)
+
+
+def test_meeting_and_share_tests_stay_fast_on_a_long_mask_edge():
+    """Both steps run well under a second on the case: the mask is prepared and tested first (_meeting), and each
+    part's shared boundary is measured segment against segment (_shared)."""
+    import time
+
+    from chartpack.enc.derived import _meeting, _to_nosurvey
+
+    mask, parts = _big_mask_case()
+    t = time.perf_counter()
+    meets = _meeting(parts, mask)
+    assert time.perf_counter() - t < 1.0 and meets.tolist() == [False] * 3000 + [True]
+    t = time.perf_counter()
+    sent = _to_nosurvey(parts, np.ones(len(parts), bool), mask)
+    assert time.perf_counter() - t < 1.0 and not sent[:3000].any()  # the boxes are off the edge
