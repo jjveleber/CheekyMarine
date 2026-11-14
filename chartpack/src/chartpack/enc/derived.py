@@ -15,7 +15,7 @@ import contourpy
 import numpy as np
 import shapely
 from shapely import GeometryType
-from shapely.geometry import Point, box, mapping
+from shapely.geometry import Point, box, mapping, shape
 
 from chartpack.bathy.blocks import LABELS, SOURCE_NAMES
 from chartpack.bathy.contours import BANDS, axes, block_factor
@@ -39,10 +39,15 @@ PATCH_UNITS = 8.0  # each band's nosurvey patch takes the nosurvey this far roun
 # already sent): a contour band strip between two depth bands that meets the mask at its tip stays depth, since
 # its patch would be as thin as itself (dry run 3, Ruling 48).
 SHARE_MIN = 0.25
+# A thin part sharing an edge at least this long (degrees, about 1 cm: an edge, not a corner) with the nosurvey
+# but under SHARE_MIN of its perimeter goes too, inside the nosurvey piece it meets rather than as a patch of its
+# own (Ruling 55 C).
+_JOIN_DEG = 1e-7
 # A thin part kept as depth goes after all when tippecanoe's square of it (same area, at its centroid) would reach
 # more than this into the nosurvey: the pack check's NOSURVEY_TOLERANCE_UNITS (PR 134 review, a curved strip
 # ringing a small mask pocket).
 _SQUARE_REACH_UNITS = 4.5
+_VERTEX_ROUNDS = 4  # derived_features shares vertices between depth and nosurvey in at most this many rounds
 _EDGE_DEG = 1e-9  # about 0.1 mm: an edge this close counts as shared (two overlays of one edge differ in float noise)
 _NONNA = [SOURCE_NAMES.index("nonna10"), SOURCE_NAMES.index("nonna100")]
 # Coarseness rank per source index (0, "none", lowest): the native cell size of the source
@@ -220,21 +225,24 @@ def _meeting(parts: np.ndarray, area: shapely.Geometry) -> np.ndarray:
     return shapely.intersects(area, parts)
 
 
-def _to_nosurvey(parts: np.ndarray, thin: np.ndarray, area: shapely.Geometry, z: int | None = None) -> np.ndarray:
+def _to_nosurvey(parts: np.ndarray, thin: np.ndarray, area: shapely.Geometry, z: int | None = None, *,
+                 share: float = SHARE_MIN, least: float = 0.0, sent: np.ndarray | None = None) -> np.ndarray:
     """Which parts go to nosurvey: the thin ones with at least SHARE_MIN of their perimeter along area (the
     nosurvey of the band) or along thin parts already sent, until none is added. A thin part meeting them at a
     corner only, or along a short stretch (a contour band strip that meets the mask at its tip), stays depth: sent,
     it would be a nosurvey patch as thin as itself, which tippecanoe draws as a square over the depth beside it.
     With z (the band's minzoom), a thin part kept so goes after all when its square (_square_in) would reach into
-    area, and the share rule runs on from it."""
-    out = np.zeros(len(parts), bool)
-    index = np.flatnonzero(thin)
+    area, and the share rule runs on from it. share: the share of the perimeter needed (SHARE_MIN by default);
+    least: a shared length (degrees) needed as well; sent: parts already gone (kept so, and measured against
+    from the start)."""
+    out = np.zeros(len(parts), bool) if sent is None else sent.copy()
+    index = np.flatnonzero(thin & ~out)
     if not len(index) or area.is_empty:
         return out
-    need = SHARE_MIN * shapely.length(parts[index])
+    need = np.maximum(share * shapely.length(parts[index]), least)
     shares = _Shares(parts[index])  # segmented once; each round measures only the open parts near the new reach
     shared = np.zeros(len(index))
-    reach = shapely.get_parts(area)
+    reach = np.concatenate([shapely.get_parts(area), parts[out]])
     cache = {}  # the mask's pieces for the square test (_subdivide), built at its first use
     while True:
         while len(reach):
@@ -335,8 +343,8 @@ def _square_in(parts: np.ndarray, area: shapely.Geometry, z: int, cache: dict | 
 
 def _fingers(parts: np.ndarray, which: np.ndarray, z: int) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """The fingers of parts[which]: the pieces an opening by THIN_UNITS (in the tile units of zoom z) takes off,
-    each under THIN_UNITS wide by construction, and of at least 1 unit2 (not the crumbs the opening cuts off a
-    corner). Returns (pieces, the index of each piece's part, whether the opening leaves a core of each part:
+    each under THIN_UNITS wide by construction, and of at least 1 unit2 or more than THIN_UNITS across (not the
+    crumbs the opening cuts off a corner; a hairline finger is long but of little area, dry run 4 north). Returns (pieces, the index of each piece's part, whether the opening leaves a core of each part:
     False for the parts not in which). The opening is taken in tile units and cut back
     out of the lon/lat part, so the pieces and what is left share their edges exactly."""
     index = np.flatnonzero(which)
@@ -357,7 +365,10 @@ def _fingers(parts: np.ndarray, which: np.ndarray, z: int) -> tuple[np.ndarray, 
                             quad_segs=2)
     pieces, at = shapely.get_parts(shapely.difference(parts[index], shapely.transform(opened, to_lonlat)),
                                    return_index=True)
-    keep = (shapely.get_type_id(pieces) == 3) & (shapely.area(shapely.transform(pieces, to_units)) >= 1.0)
+    units = shapely.transform(pieces, to_units)
+    w, s, e, n = shapely.bounds(units).T if len(pieces) else (np.zeros(0),) * 4
+    # a crumb the opening cuts off a corner is under 1 unit2 and about a unit across; a finger is longer
+    keep = (shapely.get_type_id(pieces) == 3) & ((shapely.area(units) >= 1.0) | (np.hypot(e - w, n - s) > THIN_UNITS))
     cored = np.zeros(len(parts), bool)
     cored[index] = ~shapely.is_empty(opened)
     return pieces[keep], index[at[keep]], cored
@@ -387,6 +398,10 @@ def _select(every: np.ndarray, nosurvey: shapely.Geometry, z: int, reach: float)
             break
         opened |= todo
     pieces, parent = pieces[keep], parent[keep]
+    flags = np.concatenate([thin0 & ~cored, np.ones(len(pieces), bool)])
+    # the thin candidates kept by the share rule that still meet the nosurvey, or what goes, along an edge: they
+    # go too, inside the nosurvey piece they meet (joined), never as thin depth beside it (Ruling 55 C)
+    joined = _to_nosurvey(cand, flags, nosurvey, share=0.0, least=_JOIN_DEG, sent=drop) & ~drop
     while True:
         gone = shapely.union_all(cand[drop]) if drop.any() else shapely.Polygon()
         patches = _patches(gone, nosurvey, reach)
@@ -396,8 +411,26 @@ def _select(every: np.ndarray, nosurvey: shapely.Geometry, z: int, reach: float)
         back = drop & (shapely.area(shapely.intersection(cand, shapely.union_all(bad))) > 0)
         if not back.any():
             break
-        drop &= ~back  # a patch too thin to draw: its parts stay depth
+        drop &= ~back  # a patch too thin to draw alone: its parts go inside the nosurvey they border instead
+        joined |= back
+    if joined.any():
+        patches = _joined(cand[joined], nosurvey, patches)
+    drop |= joined
+    gone = shapely.union_all(cand[drop]) if drop.any() else shapely.Polygon()
     return cand, drop, pieces, parent, gone, patches
+
+
+def _joined(parts: np.ndarray, outside: shapely.Geometry, patches: np.ndarray) -> np.ndarray:
+    """patches with the joined parts added: each joined part goes in one nosurvey part with the pieces of outside
+    and the patches it meets, so it is never a thin nosurvey part alone. Returns the band's patches."""
+    pool = np.concatenate([np.array(_parts(outside, 2), object), patches])
+    tree = shapely.STRtree(pool)
+    group = shapely.union_all(parts)
+    near = pool[np.unique(tree.query(shapely.get_parts(group), predicate="intersects")[1])] if len(pool) else pool
+    merged = np.array(_parts(shapely.union_all(np.concatenate([[group], near])), 2), object)
+    held = shapely.area(shapely.intersection(merged, group)) > 0
+    patches = patches[~shapely.intersects(patches, group)] if len(patches) else patches  # now inside merged
+    return np.concatenate([patches, merged[held]])
 
 
 def _patches(gone: shapely.Geometry, outside: shapely.Geometry, reach: float) -> np.ndarray:
@@ -476,6 +509,63 @@ def _depth_features(grid, src, transform, *, levels_m, drying_m, tiles, zooms, n
                 lines = _cut(shapely.from_ragged_array(GeometryType.LINESTRING, points[0], (offsets[0],)), tiles, 1)
                 out += named(_lines_off(lines, gone), "depcnt", {"VALDCO": _fmt(level)})
     return out, gone, patches
+
+
+def _with_vertices(polys: list, others: list) -> list:
+    """polys with every vertex of others that lies on one of their edges (within _EDGE_DEG, and not within it of
+    a vertex already there) put into that edge, at its place on the edge (within _EDGE_DEG of the other's vertex,
+    so on tippecanoe's integer grid they are one point): the two sides of a common edge then carry the same
+    vertices, which tippecanoe's --detect-shared-borders needs to simplify them as one line (dry run 4 north,
+    16/8556/20962). The shapes do not change. A polygon the insertion makes invalid is made valid (_valid_like).
+    """
+    if not polys or not others:
+        return polys
+    if any(g.geom_type != "Polygon" for g in polys):  # a multipolygon (a part made valid): its polygons, one by one
+        flat, owner = shapely.get_parts(np.array(polys, object), return_index=True)
+        done = _with_vertices(list(flat), others)
+        return [done[np.flatnonzero(owner == i)[0]] if (owner == i).sum() == 1
+                else shapely.MultiPolygon([q for j in np.flatnonzero(owner == i) for q in _parts(done[j], 2)])
+                for i in range(len(polys))]
+    rings, ring_of = shapely.get_rings(np.array(polys, object), return_index=True)
+    coords, at = shapely.get_coordinates(rings, return_index=True)
+    first = np.r_[True, at[1:] != at[:-1]]
+    pos = np.arange(len(at)) - np.flatnonzero(first)[np.cumsum(first) - 1]  # index of each coordinate in its ring
+    seg = np.flatnonzero(~first[1:]) if len(at) > 1 else np.array([], int)  # a segment starts at seg, ends at seg+1
+    seg = seg[at[seg] == at[seg + 1]]
+    lines = shapely.linestrings(np.stack([coords[seg], coords[seg + 1]], axis=1))
+    pts = np.unique(shapely.get_coordinates(np.array(others, object)), axis=0)
+    p, k = shapely.STRtree(lines).query(shapely.points(pts), predicate="dwithin", distance=_EDGE_DEG)
+    a, b, q = coords[seg[k]], coords[seg[k] + 1], pts[p]
+    off_ends = (np.hypot(*(q - a).T) > _EDGE_DEG) & (np.hypot(*(q - b).T) > _EDGE_DEG)
+    k, q, p = k[off_ends], q[off_ends], p[off_ends]
+    if not len(k):
+        return polys
+    ab = coords[seg[k] + 1] - coords[seg[k]]
+    t = np.einsum("ij,ij->i", q - coords[seg[k]], ab) / np.einsum("ij,ij->i", ab, ab)
+    # every coordinate, old and new, keyed by (ring, place along it); a new one goes between its segment's ends
+    ring_all = np.concatenate([at, at[seg[k]]])
+    key = np.concatenate([pos.astype(float), pos[seg[k]] + t])
+    t = np.clip(t, 1e-9, 1 - 1e-9)
+    xy = np.concatenate([coords, coords[seg[k]] + t[:, None] * ab])  # on the segment itself: the shape is unchanged
+    order = np.lexsort((key, ring_all))
+    ring_all, key, xy = ring_all[order], key[order], xy[order]
+    keep = np.r_[True, (ring_all[1:] != ring_all[:-1]) | (key[1:] != key[:-1])]  # one copy of a point per place
+    ring_all, xy = ring_all[keep], xy[keep]
+    starts = np.flatnonzero(np.r_[True, ring_all[1:] != ring_all[:-1]])
+    by_poly = {}  # every ring keeps at least its own coordinates, so ring k is the k-th group, in ring order
+    for ring, c in zip(ring_of, np.split(xy, starts[1:])):
+        by_poly.setdefault(int(ring), []).append(c)
+    out = [shapely.Polygon(rs[0], rs[1:]) for rs in (by_poly[i] for i in range(len(polys)))]
+    return [_valid_like(new, old) for new, old in zip(out, polys)]
+
+
+def _valid_like(new: shapely.Geometry, old: shapely.Geometry) -> shapely.Geometry:
+    """new, or when invalid its valid form (a spike of a ring running back along itself, which a vertex put on
+    both of its sides makes cross, collapses to nothing), or old when even that changes the area."""
+    if shapely.is_valid(new) or not shapely.is_valid(old):
+        return new
+    fixed = shapely.union_all(_parts(shapely.make_valid(new, method="structure", keep_collapsed=False), 2))
+    return fixed if abs(fixed.area - old.area) <= 1e-9 * old.area and not fixed.is_empty else old
 
 
 def _shoal_m(depth: float) -> float:
@@ -623,7 +713,25 @@ def derived_features(depth_m: np.ndarray, src: np.ndarray, transform, *, core, l
     # nosurvey: outside once over every zoom; per band its patches (_patches: its thin depth with the outside within
     # PATCH_UNITS of it, each at least THIN_UNITS wide). A patch overlaps the whole nosurvey, so the nosurvey at
     # each zoom is the core less land less that band's depth.
-    for part in _parts(outside, 2):
+    # both sides of every depth / nosurvey edge get the same vertices (_with_vertices): first the nosurvey drawn
+    # over every zoom those of every band's depth, then each band's depth those of that nosurvey and of the band's
+    # patches, then the patches those of the band's depth
+    depth = {lo: [i for i, f in enumerate(out) if f.layer == "depare" and f.props["tippecanoe"]["minzoom"] == lo]
+             for lo, _, _ in bands}
+    shapes = {i: shape(out[i].geometry) for ids in depth.values() for i in ids}
+    whole = _parts(outside, 2)
+    for _ in range(_VERTEX_ROUNDS):  # again while a round adds vertices (another band's, or a made-valid node)
+        before = sum(shapely.get_num_coordinates(g) for g in whole + list(shapes.values()))
+        whole = _with_vertices(whole, list(shapes.values()))
+        for lo, _, _ in bands:
+            mine = _with_vertices([shapes[i] for i in depth[lo]], whole + list(patches[lo]))
+            shapes.update(zip(depth[lo], mine))
+            patches[lo] = _with_vertices(list(patches[lo]), mine)
+        if sum(shapely.get_num_coordinates(g) for g in whole + list(shapes.values())) == before:
+            break
+    for i, g in shapes.items():
+        out[i] = Feature("depare", mapping(g), out[i].props)
+    for part in whole:
         out.append(Feature("nosurvey", mapping(part), {"tippecanoe": tip}))
     for lo, hi, _ in bands:
         out += [Feature("nosurvey", mapping(part), {"tippecanoe": {"minzoom": lo, "maxzoom": hi}})

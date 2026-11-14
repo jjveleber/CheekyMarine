@@ -536,14 +536,18 @@ def _band_area(feats, lo, drval1):
     return sum(shape(f.geometry).area for f in _layer(feats, "depare", lo) if f.props["DRVAL1"] == drval1)
 
 
-def test_long_thin_band_touching_the_mask_at_its_tip_stays_depth():
-    """A thin band that meets nosurvey only along its short tip (under a quarter of its perimeter) stays depth:
-    sent, its band patch would be as thin as itself and draw as a square over the depth beside it (dry run 3)."""
+def test_long_thin_band_touching_the_mask_at_its_tip_goes_with_the_mask():
+    """Ruling 55 (C): a thin band that meets nosurvey only along its short tip (under a quarter of its perimeter)
+    goes to nosurvey, emitted at its band's zooms inside the nosurvey piece it meets (the whole mask box here), so
+    it is never a thin patch alone (dry run 3) and never thin depth beside nosurvey (dry run 4 north)."""
     with_mask, core, mask = _step_case()
     without, _, _ = _step_case(mask=False)
-    for lo, _, _ in BANDS:
-        assert _band_area(without, lo, "1.8") > 0, lo
-        assert _band_area(with_mask, lo, "1.8") > 0.9 * _band_area(without, lo, "1.8"), lo
+    for lo, hi, _ in BANDS:
+        band = shapely.union_all([shape(f.geometry) for f in _layer(without, "depare", lo) if f.props["DRVAL1"] == "1.8"])
+        assert band.area > 0 and _band_area(with_mask, lo, "1.8") < 0.01 * band.area, lo
+        held = [shape(f.geometry) for f in _layer(with_mask, "nosurvey")
+                if f.props["tippecanoe"] == {"minzoom": lo, "maxzoom": hi} and shape(f.geometry).intersects(band)]
+        assert held and all(g.intersection(mask).area > 0.9 * mask.area for g in held), lo
 
 
 @pytest.mark.parametrize("case", ["step", "sliver", "patch", "hole", "finger"])
@@ -602,10 +606,10 @@ def test_depcnt_on_a_dropped_part_edge_does_not_survive_float_noise():
     assert len(kept) == 1 and kept[0].equals(lines[1])
 
 
-def test_thin_part_whose_patch_is_still_thin_stays_depth():
-    """The guard: a 3 m strip of depth between a 3 m strip of mask and land shares half its perimeter with the
-    mask, so it is sent at zooms 10 and 12; but its zoom-10 patch (the strip and the mask beside it, 6 m) is still
-    under 2 units (19 m), so it stays depth there. At zoom 12 (4.8 m) the patch is wide enough and it goes."""
+def test_thin_part_whose_patch_is_still_thin_goes_with_the_nosurvey_it_borders():
+    """Ruling 55 (C), closing review M2: a 3 m strip of depth between a 3 m strip of mask and land is sent, and its
+    zoom-10 patch (the strip and the mask beside it, 6 m) is still under 2 units (19 m). It is not given back to
+    depth: it goes, emitted at zooms 10 to 11 inside the whole mask piece it borders, not alone."""
     from chartpack.bathy.blocks import FINE_RES_DEG
 
     d, m = FINE_RES_DEG, 1 / 111319.49  # degrees of longitude per Web Mercator meter
@@ -615,9 +619,12 @@ def test_thin_part_whose_patch_is_still_thin_stays_depth():
     strip = box(west, core[1], west + 3 * m, core[3])
     land = box(west + 3 * m, core[1], core[2], core[3])
     feats = _derive(np.full((N, N), 20.0), transform=transform, core=core, nosurvey=mask, land=land)
-    for lo, sent in ((10, False), (12, True)):
+    for lo, hi in ((10, 11), (12, 13)):
         depth = shapely.union_all([shape(f.geometry) for f in _layer(feats, "depare", lo)])
-        assert (depth.intersection(strip).area < 1e-6 * strip.area) == sent, lo
+        assert depth.intersection(strip).area < 1e-6 * strip.area, lo
+    held = [shape(f.geometry) for f in _layer(feats, "nosurvey")
+            if f.props["tippecanoe"] == {"minzoom": 10, "maxzoom": 11} and shape(f.geometry).intersects(strip)]
+    assert held and all(g.intersection(mask).area > 0.99 * mask.area for g in held)
 
 
 def _finger_case():
@@ -795,7 +802,7 @@ def test_a_core_found_in_round_one_survives_a_later_round():
     for part in (first, second):
         core = shapely.intersection(part, ubox(part.bounds[0] / u + 1.1, part.bounds[1] / u, part.bounds[0] / u + 1.9,
                                                part.bounds[3] / u))
-        assert gone.intersection(core).area == 0
+        assert gone.intersection(core).area < 1e-9 * core.area  # float noise along a joined piece's edge only
 
 
 def test_wide_part_reached_through_a_sent_sliver_loses_its_finger():
@@ -995,3 +1002,58 @@ def test_subdivide_survives_a_sliver_and_keeps_the_area(wkt, depth, most, monkey
     assert 0 < len(pieces) <= most
     assert shapely.is_valid(pieces).all()
     assert shapely.union_all(pieces).symmetric_difference(geom).area < 1e-12 * geom.area
+
+
+# ---- plan8-edgefix (Ruling 55)
+
+def _ubox(z):
+    u = 360 / (2**z * 4096)
+    return u, lambda x0, y0, x1, y1: box(x0 * u, y0 * u, x1 * u, y1 * u)
+
+
+def test_a_hairline_finger_is_a_candidate_not_a_crumb():
+    """Dry run 4 north, 10/134/328: a finger 0.1 units wide and 8 long (0.8 unit2) off a wide part, into the mask,
+    is longer than 2 units, so it is a finger, not a corner crumb (crumbs are under 1 unit2 and about a unit
+    across); it goes with the mask while the wide part stays depth. Units of zoom 10 at the equator."""
+    from chartpack.enc.derived import _fingers, _select
+
+    u, ubox = _ubox(10)
+    finger = ubox(20, 9.95, 28, 10.05)
+    part = shapely.union_all([ubox(0, 0, 20, 20), finger])
+    pieces, parent, cored = _fingers(np.array([part], object), np.array([True]), 10)
+    assert cored[0] and any(p.intersection(finger).area > 0.9 * finger.area for p in pieces)
+    mask = ubox(20, 0, 40, 20).difference(finger)
+    cand, drop, _, _, gone, _ = _select(np.array([part], object), mask, 10, 8 * u)
+    assert not drop[0] and gone.intersection(finger).area > 0.9 * finger.area
+
+
+def _unshared_vertices(a, b, eps=1e-9):
+    """The vertices of geometries a that lie on the boundary of geometries b (within eps) but are not vertices of
+    b there (no vertex of b within eps): the places tippecanoe could not pair the two edges."""
+    pa = shapely.points(np.unique(shapely.get_coordinates(np.array(a, object)), axis=0))
+    pb = shapely.points(np.unique(shapely.get_coordinates(np.array(b, object)), axis=0))
+    edges = shapely.STRtree(shapely.boundary(np.array(b, object)))
+    on = np.unique(edges.query(pa, predicate="dwithin", distance=eps)[0])
+    vert = np.unique(shapely.STRtree(pb).query(pa[on], predicate="dwithin", distance=eps)[0])
+    return len(on) - len(vert)
+
+
+@pytest.mark.parametrize("case", ["slope", "sliver", "finger", "step"])
+def test_depth_and_nosurvey_share_every_vertex_of_their_common_edges(case):
+    """Ruling 55 (B), dry run 4 north 16/8556/20962: at every band, a vertex of the depth on the edge of the
+    nosurvey drawn there is a vertex of the nosurvey too, and the other way round, so tippecanoe's
+    --detect-shared-borders simplifies the two sides as one line. The per-band tiling still holds."""
+    if case == "slope":
+        feats = _derive(_slope(), nosurvey=shapely.Point(_center(100, 40)).buffer(20 * D),
+                        land=Polygon([_center(10, 10), _center(10, 90), _center(70, 60), _center(60, 5)]))
+    elif case == "sliver":
+        feats = _sliver_features()
+    elif case == "finger":
+        feats = _finger_case()[0]
+    else:
+        feats = _step_case()[0]
+    for lo, _, _ in BANDS:
+        depth = [shape(f.geometry) for f in _layer(feats, "depare", lo)]
+        masked = [shape(f.geometry) for f in _shown(feats, "nosurvey", lo)]
+        assert _unshared_vertices(depth, masked) == 0, (lo, "depth")
+        assert _unshared_vertices(masked, depth) == 0, (lo, "nosurvey")
