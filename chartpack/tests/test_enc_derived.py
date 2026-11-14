@@ -713,3 +713,14 @@ def test_meeting_and_share_tests_stay_fast_on_a_long_mask_edge():
     t = time.perf_counter()
     sent = _to_nosurvey(parts, np.ones(len(parts), bool), mask)
     assert time.perf_counter() - t < 1.0 and not sent[:3000].any()  # the boxes are off the edge
+
+
+def test_share_rule_sends_at_a_quarter_of_the_perimeter():
+    """_to_nosurvey alone (no patch guard): a 1 by 10 part whose long side lies along the mask for 4.4 (a share of
+    0.2 of its perimeter of 22) stays depth; one along it for 6.6 (0.3) goes. Pins SHARE_MIN = 0.25 (review M1)."""
+    from chartpack.enc.derived import SHARE_MIN, _to_nosurvey
+
+    assert SHARE_MIN == 0.25
+    area = shapely.union_all([box(0, 0, 10, 4.4), box(0, 20, 10, 26.6)])
+    parts = np.array([box(10, 0, 11, 10), box(10, 20, 11, 30)], object)
+    assert _to_nosurvey(parts, np.ones(2, bool), area).tolist() == [False, True]
