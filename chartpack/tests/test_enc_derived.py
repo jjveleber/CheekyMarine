@@ -817,3 +817,55 @@ def test_wide_part_reached_through_a_sent_sliver_loses_its_finger():
     cand, drop, pieces, parent, gone, _ = _select(np.array([sliver, wide], object), mask, 12, 8 * u)
     assert drop[0] and not drop[1]
     assert gone.intersection(finger).area > 0.9 * finger.area
+
+
+def _round_resegmenting_to_nosurvey(parts, thin, area):
+    """_to_nosurvey as 9cd03e9 ran it: every round re-segments every open thin part and measures it against the new
+    reach (the PR 134 review's build-time finding), kept here to time the new one against."""
+    from chartpack.enc.derived import _EDGE_DEG, SHARE_MIN, _segments
+
+    def shared(ps, reach):
+        out = np.zeros(len(ps))
+        mine, owner = _segments(ps)
+        theirs, _ = _segments(reach)
+        a, b = shapely.STRtree(theirs).query(mine, predicate="dwithin", distance=_EDGE_DEG)
+        if len(a):
+            np.add.at(out, owner[a], shapely.length(shapely.intersection(
+                mine[a], shapely.buffer(theirs[b], _EDGE_DEG, quad_segs=1))))
+        return out
+
+    out = np.zeros(len(parts), bool)
+    index = np.flatnonzero(thin)
+    need = SHARE_MIN * shapely.length(parts[index])
+    got = np.zeros(len(index))
+    reach = shapely.get_parts(area)
+    while len(reach):
+        open_ = ~out[index]
+        got[open_] += shared(parts[index[open_]], reach)
+        new = index[open_ & (got >= need)]
+        out[new] = True
+        reach = parts[new]
+    return out
+
+
+def test_share_rounds_cost_the_new_reach_not_every_open_part():
+    """PR 134 review: a chain of 400 strips (0.5 by 4, each along the next) from the mask, beside 2,000 unrelated
+    thin parts. Each round measures only the open parts near the parts newly sent, against them: under a third of
+    the time of re-segmenting every open part each round (timed in the same run), same result."""
+    import time
+
+    from chartpack.enc.derived import _to_nosurvey
+
+    area = box(-1, 0, 0, 4)
+    chain = [box(0.5 * i, 0, 0.5 * (i + 1), 4) for i in range(400)]
+    other = [box(1000 + 3 * i, 0, 1000.5 + 3 * i, 4) for i in range(2000)]
+    parts = np.array(chain + other, object)
+    thin = np.ones(len(parts), bool)
+    t = time.perf_counter()
+    new = _to_nosurvey(parts, thin, area)
+    t_new = time.perf_counter() - t
+    t = time.perf_counter()
+    old = _round_resegmenting_to_nosurvey(parts, thin, area)
+    t_old = time.perf_counter() - t
+    assert new.tolist() == old.tolist() == [True] * 400 + [False] * 2000
+    assert t_new < t_old / 3, (t_new, t_old)

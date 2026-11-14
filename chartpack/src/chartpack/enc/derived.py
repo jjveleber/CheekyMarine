@@ -179,18 +179,33 @@ def _segments(geoms: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
 
 def _shared(parts: np.ndarray, reach: np.ndarray) -> np.ndarray:
     """The length of each part's boundary lying along the boundary of the polygons reach (within _EDGE_DEG),
-    segment against segment: each of the part's segments against the reach segments near it (an STRtree of them),
-    so a long part along a long mask edge costs its length, not the product of the two."""
-    out = np.zeros(len(parts))
-    if not len(parts) or not len(reach):
+    segment against segment (_Shares)."""
+    return _Shares(parts).along(reach, np.ones(len(parts), bool))
+
+
+class _Shares:
+    """The boundary segments of parts, segmented once in an STRtree, to measure against reach after reach: each
+    call costs the reach's own segments and the part segments near them (an STRtree query), not every part."""
+
+    def __init__(self, parts: np.ndarray):
+        self.n = len(parts)
+        self.mine, self.owner = _segments(parts) if len(parts) else (np.array([], object), np.array([], int))
+        self.tree = shapely.STRtree(self.mine)
+
+    def along(self, reach: np.ndarray, open_: np.ndarray) -> np.ndarray:
+        """The length of each part's boundary along the boundary of the polygons reach, for the parts open_ (0 for
+        the others)."""
+        out = np.zeros(self.n)
+        if not self.n or not len(reach):
+            return out
+        theirs, _ = _segments(reach)
+        b, a = self.tree.query(theirs, predicate="dwithin", distance=_EDGE_DEG)
+        keep = open_[self.owner[a]]
+        a, b = a[keep], b[keep]
+        if len(a):
+            along = shapely.intersection(self.mine[a], shapely.buffer(theirs[b], _EDGE_DEG, quad_segs=1))
+            np.add.at(out, self.owner[a], shapely.length(along))
         return out
-    mine, owner = _segments(parts)
-    theirs, _ = _segments(reach)
-    a, b = shapely.STRtree(theirs).query(mine, predicate="dwithin", distance=_EDGE_DEG)
-    if len(a):
-        along = shapely.intersection(mine[a], shapely.buffer(theirs[b], _EDGE_DEG, quad_segs=1))
-        np.add.at(out, owner[a], shapely.length(along))
-    return out
 
 
 def _meeting(parts: np.ndarray, area: shapely.Geometry) -> np.ndarray:
@@ -211,11 +226,12 @@ def _to_nosurvey(parts: np.ndarray, thin: np.ndarray, area: shapely.Geometry) ->
     if not len(index) or area.is_empty:
         return out
     need = SHARE_MIN * shapely.length(parts[index])
+    shares = _Shares(parts[index])  # segmented once; each round measures only the open parts near the new reach
     shared = np.zeros(len(index))
     reach = shapely.get_parts(area)
     while len(reach):
         open_ = ~out[index]
-        shared[open_] += _shared(parts[index[open_]], reach)
+        shared += shares.along(reach, open_)
         new = index[open_ & (shared >= need)]
         out[new] = True
         reach = parts[new]
