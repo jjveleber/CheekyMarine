@@ -35,6 +35,11 @@ CUT_TILES = 16  # the cut is split CUT_TILES by CUT_TILES over the core (_tiles)
 # center, half over its neighbor (plan8-checkfix, check-hypotheses R.0).
 THIN_UNITS = 2.0
 PATCH_UNITS = 8.0  # each band's nosurvey patch takes the nosurvey this far round its thin parts (minzoom units)
+# A thin part goes to nosurvey only when at least this share of its perimeter lies along nosurvey (or along parts
+# already sent): a contour band strip between two depth bands that meets the mask at its tip stays depth, since
+# its patch would be as thin as itself (dry run 3, Ruling 48).
+SHARE_MIN = 0.25
+_EDGE_DEG = 1e-9  # about 0.1 mm: an edge this close counts as shared (two overlays of one edge differ in float noise)
 _NONNA = [SOURCE_NAMES.index("nonna10"), SOURCE_NAMES.index("nonna100")]
 # Coarseness rank per source index (0, "none", lowest): the native cell size of the source
 _RANK = np.array([0] + [LABELS[name]["resolution_m"] for name in SOURCE_NAMES[1:]])
@@ -164,39 +169,78 @@ def _thin(parts: np.ndarray, z: int) -> np.ndarray:
     return 2 * shapely.area(units) < THIN_UNITS * shapely.length(units)
 
 
+def _segments(geoms: np.ndarray) -> np.ndarray:
+    """Every boundary segment of the polygons geoms, each a LineString."""
+    coords, which = shapely.get_coordinates(shapely.get_parts(shapely.boundary(geoms)), return_index=True)
+    same = which[1:] == which[:-1]
+    return shapely.linestrings(np.stack([coords[:-1][same], coords[1:][same]], axis=1))
+
+
+def _shared(parts: np.ndarray, reach: np.ndarray) -> np.ndarray:
+    """The length of each part's boundary lying along the boundary of the polygons reach (within _EDGE_DEG)."""
+    out = np.zeros(len(parts))
+    if not len(parts) or not len(reach):
+        return out
+    segs = shapely.buffer(_segments(reach), _EDGE_DEG, quad_segs=1)
+    rings = shapely.boundary(parts)
+    which, seg = shapely.STRtree(segs).query(rings, predicate="intersects")
+    np.add.at(out, which, shapely.length(shapely.intersection(rings[which], segs[seg])))
+    return out
+
+
 def _to_nosurvey(parts: np.ndarray, thin: np.ndarray, area: shapely.Geometry) -> np.ndarray:
-    """Which parts go to nosurvey: the thin ones that share an edge with area (the nosurvey of the band), then the
-    thin ones sharing an edge with those, until none is added (a part meeting them at a corner only stays). A thin
-    part meeting neither stays depth: dropped, it would be a thin nosurvey part alone between depth or land, which tippecanoe draws as a square over them (a block's core edge, where a
-    band crossing at a slant leaves a sliver whose rest is in the next block)."""
+    """Which parts go to nosurvey: the thin ones with at least SHARE_MIN of their perimeter along area (the
+    nosurvey of the band) or along thin parts already sent, until none is added. A thin part meeting them at a
+    corner only, or along a short stretch (a contour band strip that meets the mask at its tip), stays depth: sent,
+    it would be a nosurvey patch as thin as itself, which tippecanoe draws as a square over the depth beside it."""
     out = np.zeros(len(parts), bool)
     index = np.flatnonzero(thin)
     if not len(index) or area.is_empty:
         return out
-    tree = shapely.STRtree(parts[index])
+    need = SHARE_MIN * shapely.length(parts[index])
+    shared = np.zeros(len(index))
     reach = shapely.get_parts(area)
     while len(reach):
-        shapely.prepare(reach)  # the mask pieces are large: each edge test would rebuild their topology
-        near, hits = tree.query(reach, predicate="intersects")
-        # an edge shared (boundaries meet along a line) or interiors that meet: a corner alone could not join
-        edge = shapely.relate_pattern(reach[near], parts[index[hits]], "****1****") | shapely.relate_pattern(
-            reach[near], parts[index[hits]], "T********")
-        new = np.unique(index[hits[edge]])
-        new = new[~out[new]]
+        open_ = ~out[index]
+        shared[open_] += _shared(parts[index[open_]], reach)
+        new = index[open_ & (shared >= need)]
         out[new] = True
         reach = parts[new]
     return out
 
 
-def _depth_features(grid, src, transform, *, levels_m, drying_m, tiles, zooms,
-                    nosurvey: shapely.Geometry) -> tuple[list[Feature], shapely.Geometry]:
-    """depare and depcnt of one band's grid (already neighborhood-min), cut to `cut`, and the depare parts that go
-    to nosurvey (_thin at zooms[0], _to_nosurvey with nosurvey, the band's nosurvey area so far), as one
-    geometry. The depcnt leave those parts too. src holds the source index of the cells before the neighborhood
-    minimum (0 elsewhere). tiles: the cut (_tiles)."""
+def _patches(gone: shapely.Geometry, outside: shapely.Geometry, reach: float) -> np.ndarray:
+    """A band's nosurvey patch: its thin parts gone with the outside within reach (degrees) of them, as the parts
+    holding some of gone (a slice of a mask piece across depth within reach is left out)."""
+    if gone.is_empty:
+        return np.array([], object)
+    patch = np.array(_parts(shapely.union_all([gone, outside.intersection(gone.buffer(reach))]), 2), object)
+    return patch[shapely.area(shapely.intersection(patch, gone)) > 0] if len(patch) else patch
+
+
+def _lines_off(lines: np.ndarray, gone: shapely.Geometry) -> np.ndarray:
+    """lines less gone, and less their parts along gone's edge (within _EDGE_DEG: a contour on a dropped part's
+    edge differs from it in float noise)."""
+    if gone.is_empty or not len(lines):
+        return lines
+    near = gone.buffer(_EDGE_DEG)
+    shapely.prepare(near)
+    hit = shapely.intersects(lines, near)
+    if not hit.any():
+        return lines
+    return np.concatenate([lines[~hit], np.array(_parts(shapely.difference(lines[hit], near), 1), object)])
+
+
+def _depth_features(grid, src, transform, *, levels_m, drying_m, tiles, zooms, nosurvey: shapely.Geometry,
+                    reach: float) -> tuple[list[Feature], shapely.Geometry, np.ndarray]:
+    """depare and depcnt of one band's grid (already neighborhood-min), cut to `cut`; the depare parts that go to
+    nosurvey (_thin at zooms[0], _to_nosurvey with nosurvey, the band's nosurvey area so far), as one geometry;
+    and the band's nosurvey patches (_patches with reach, degrees). A patch still thinner than THIN_UNITS at
+    zooms[0] gives its parts back to depth. The depcnt leave the parts that go (_lines_off). src holds the source
+    index of the cells before the neighborhood minimum (0 elsewhere). tiles: the cut (_tiles)."""
     valid = np.isfinite(grid)
     if min(grid.shape) < 2 or not valid.any():
-        return [], shapely.Polygon()
+        return [], shapely.Polygon(), np.array([], object)
     present = [i for i in np.unique(src) if i]
     finest = SOURCE_NAMES[min(present, key=lambda i: _RANK[i])]
     areas = _src_areas(src, transform)
@@ -224,7 +268,16 @@ def _depth_features(grid, src, transform, *, levels_m, drying_m, tiles, zooms,
             filled.append((_cut(polygons, tiles, 2), (lo, hi)))
     every = np.concatenate([parts for parts, _ in filled]) if filled else np.array([], object)
     drop = _to_nosurvey(every, _thin(every, zooms[0]), nosurvey)
-    gone = shapely.union_all(every[drop]) if drop.any() else shapely.Polygon()
+    while True:
+        gone = shapely.union_all(every[drop]) if drop.any() else shapely.Polygon()
+        patches = _patches(gone, nosurvey, reach)
+        bad = patches[_thin(patches, zooms[0])] if len(patches) else patches
+        if not len(bad):
+            break
+        back = drop & (shapely.area(shapely.intersection(every, shapely.union_all(bad))) > 0)
+        if not back.any():
+            break
+        drop &= ~back  # a patch too thin to draw: its parts stay depth
     shapely.prepare(gone)
     out, start = [], 0
     for parts, (lo, hi) in filled:
@@ -236,11 +289,8 @@ def _depth_features(grid, src, transform, *, levels_m, drying_m, tiles, zooms,
             points, offsets = gen.lines(level)
             if points[0] is not None:
                 lines = _cut(shapely.from_ragged_array(GeometryType.LINESTRING, points[0], (offsets[0],)), tiles, 1)
-                if not gone.is_empty and (hit := shapely.intersects(lines, gone)).any():
-                    lines = np.concatenate([lines[~hit], np.array(_parts(shapely.difference(lines[hit], gone), 1),
-                                                                  object)])
-                out += named(lines, "depcnt", {"VALDCO": _fmt(level)})
-    return out, gone
+                out += named(_lines_off(lines, gone), "depcnt", {"VALDCO": _fmt(level)})
+    return out, gone, patches
 
 
 def _shoal_m(depth: float) -> float:
@@ -344,6 +394,8 @@ def derived_features(depth_m: np.ndarray, src: np.ndarray, transform, *, core, l
     zooms = (bands[0][0], bands[-1][1])
     out = []
     gone = {lo: shapely.Polygon() for lo, _, _ in bands}  # per band minzoom: its depare parts sent to nosurvey
+    patches = {lo: [] for lo, _, _ in bands}  # per band minzoom: its nosurvey patches (_patches)
+    mid = math.cos(math.radians((core[1] + core[3]) / 2))
     outside = core_box.difference(land)  # the core less land less the cut: no depth is drawn there at any band
     valid = np.isfinite(depth_m)
     if valid.any():
@@ -364,8 +416,10 @@ def derived_features(depth_m: np.ndarray, src: np.ndarray, transform, *, core, l
                 grid, tr = block_min(base, base_tr, k) if k > 1 else (base, base_tr)
                 band_src = _coarsest(base_src, base_valid, base_tr, k) if k > 1 else base_src
                 grid, tr = _neighborhood_min(grid, tr)
-                feats, gone[lo] = _depth_features(grid, np.pad(band_src, 1), tr, levels_m=levels, drying_m=drying_m,
-                                                  tiles=tiles, zooms=(lo, hi), nosurvey=outside)
+                reach = PATCH_UNITS * 360.0 / (2**lo * 4096) * mid  # degrees, the smaller (latitude) way
+                feats, gone[lo], patches[lo] = _depth_features(grid, np.pad(band_src, 1), tr, levels_m=levels,
+                                                               drying_m=drying_m, tiles=tiles, zooms=(lo, hi),
+                                                               nosurvey=outside, reach=reach)
                 out += feats
             if soundings:
                 allowed = clip_mask(transform, depth_m.shape, mapping(cut))
@@ -378,20 +432,12 @@ def derived_features(depth_m: np.ndarray, src: np.ndarray, transform, *, core, l
         out.append(Feature("lndare", mapping(part), {"src": "fwa", "tippecanoe": tip}))
     for part in _parts(land.boundary.intersection(core_box), 1):
         out.append(Feature("coalne", mapping(part), {"src": "fwa", "tippecanoe": tip}))
-    # nosurvey: outside once over every zoom; per band a local patch, its thin depth with the outside within
-    # PATCH_UNITS of it, only the parts holding thin depth (never a thin part alone: _to_nosurvey grows from outside
-    # along shared edges; never a slice of a mask piece across depth). The patch
-    # overlaps the whole nosurvey, so the nosurvey at each zoom is the core less land less that band's depth.
+    # nosurvey: outside once over every zoom; per band its patches (_patches: its thin depth with the outside within
+    # PATCH_UNITS of it, each at least THIN_UNITS wide). A patch overlaps the whole nosurvey, so the nosurvey at
+    # each zoom is the core less land less that band's depth.
     for part in _parts(outside, 2):
         out.append(Feature("nosurvey", mapping(part), {"tippecanoe": tip}))
-    mid = math.cos(math.radians((core[1] + core[3]) / 2))
     for lo, hi, _ in bands:
-        if not gone[lo].is_empty:
-            reach = PATCH_UNITS * 360.0 / (2**lo * 4096) * mid  # degrees, the smaller (latitude) way
-            patch = np.array(_parts(shapely.union_all([gone[lo], outside.intersection(gone[lo].buffer(reach))]), 2),
-                             object)
-            # only the parts holding thin depth: a slice of a mask piece across depth within reach is left out
-            held = shapely.area(shapely.intersection(patch, gone[lo])) > 0 if len(patch) else np.zeros(0, bool)
-            out += [Feature("nosurvey", mapping(part), {"tippecanoe": {"minzoom": lo, "maxzoom": hi}})
-                    for part in patch[held]]
+        out += [Feature("nosurvey", mapping(part), {"tippecanoe": {"minzoom": lo, "maxzoom": hi}})
+                for part in patches[lo]]
     return out

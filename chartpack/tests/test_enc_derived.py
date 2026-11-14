@@ -468,24 +468,16 @@ def test_nosurvey_joined_by_thin_depth_is_not_repeated_per_band():
     assert coords < 1.3 * per_band, (coords, per_band)
 
 
-def test_to_nosurvey_tests_against_prepared_mask_pieces(monkeypatch):
-    """The large mask piece is prepared before the edge tests (PR 133 review: unprepared, each test rebuilt its
-    topology, 3.9 s against 0.18 s for a 100,003-vertex piece and 500 thin parts)."""
-    from chartpack.enc import derived
+def test_shared_length_along_a_many_vertex_mask_piece():
+    """_shared measures each thin part's boundary along the mask by the mask's own segments (an STRtree of them),
+    not by an overlay with the whole piece (PR 133 review: unprepared tests against a 100,003-vertex piece took
+    seconds); parts off the piece by float noise still count, a part at a corner counts nothing."""
+    from chartpack.enc.derived import _shared
 
-    seen = []
-    relate = shapely.relate_pattern
-
-    def spy(a, b, pattern):
-        seen.append(bool(np.all(shapely.is_prepared(a))))
-        return relate(a, b, pattern)
-
-    monkeypatch.setattr(derived.shapely, "relate_pattern", spy)
-    area = shapely.union_all([box(-10, -10, 10, 10), box(20, -10, 30, 10)])  # two pieces
-    parts = np.array([box(10, -1, 10.5, 1), box(19.5, -1, 20, 1)], object)
-    assert derived._to_nosurvey(parts, np.ones(2, bool), area).all()
-    assert seen and all(seen)
-
+    area = shapely.union_all([box(-10, -10, 10, 10), shapely.Point(-10, 0).buffer(5, 4096)])
+    parts = np.array([box(10 + 1e-12, -1, 10.5, 1), box(10, 10, 10.5, 11), box(30, 0, 31, 1)], object)
+    lengths = _shared(parts, shapely.get_parts(area))
+    assert lengths[0] == pytest.approx(2.0, rel=1e-6) and lengths[1] == pytest.approx(0, abs=1e-8) and lengths[2] == 0
 
 def _patch_case():
     """Flat 20 m water, _sliver_case's strip of thin depth between two mask boxes, the east box cut short (13 m), and
@@ -520,3 +512,106 @@ def test_band_patch_holds_the_nosurvey_its_thin_depth_joins():
     feats, core, strip, third = _patch_case()
     patches = [f for f in _layer(feats, "nosurvey") if f.props["tippecanoe"]["maxzoom"] < 16]
     assert patches and all(shape(f.geometry).difference(strip).area > 0.1 * strip.area for f in patches)
+
+
+# ---- plan8-patchfix (Ruling 48): a thin part goes to nosurvey only along it; no per-band nosurvey part too thin
+
+def _step_case(mask=True):
+    """At FINE_RES_DEG, 1 m water west of column 80 and 5 m east of it: the 1.8-2 band is a strip about one unit
+    wide at every band's minzoom, between the 0.9-1.8 and 2-3.6 bands, as the 1.8-2 band of dry run 3
+    (43547724046, 15/4328/10573). mask: a no-survey box over the north 10 rows, which the strip meets at its tip
+    only. Returns (features, core, the mask)."""
+    from chartpack.bathy.blocks import FINE_RES_DEG
+
+    d = FINE_RES_DEG
+    transform, core = (X0, d, 0.0, Y0, 0.0, -d), (X0, Y0 - N * d, X0 + N * d, Y0)
+    depth = np.where(np.arange(N)[None, :] < 80, 1.0, 5.0) * np.ones((N, 1))
+    nosurvey = box(core[0], Y0 - 10 * d, core[2], Y0) if mask else EMPTY
+    return _derive(depth, transform=transform, core=core, nosurvey=nosurvey), core, nosurvey
+
+
+def _band_area(feats, lo, drval1):
+    return sum(shape(f.geometry).area for f in _layer(feats, "depare", lo) if f.props["DRVAL1"] == drval1)
+
+
+def test_long_thin_band_touching_the_mask_at_its_tip_stays_depth():
+    """A thin band that meets nosurvey only along its short tip (under a quarter of its perimeter) stays depth:
+    sent, its band patch would be as thin as itself and draw as a square over the depth beside it (dry run 3)."""
+    with_mask, core, mask = _step_case()
+    without, _, _ = _step_case(mask=False)
+    for lo, _, _ in BANDS:
+        assert _band_area(without, lo, "1.8") > 0, lo
+        assert _band_area(with_mask, lo, "1.8") > 0.9 * _band_area(without, lo, "1.8"), lo
+
+
+@pytest.mark.parametrize("case", ["step", "sliver", "patch", "hole"])
+def test_every_band_nosurvey_part_is_wide_enough_to_draw(case):
+    """Every nosurvey part emitted for one band's zooms is at least THIN_UNITS wide at that band's minzoom, so
+    tippecanoe never draws it as a square over depth."""
+    feats = {"step": lambda: _step_case()[0], "sliver": lambda: _sliver_features(),
+             "patch": lambda: _patch_case()[0], "hole": lambda: _hole_case()[0]}[case]()
+    for lo, hi, _ in BANDS:
+        parts = [shape(f.geometry) for f in _layer(feats, "nosurvey")
+                 if f.props["tippecanoe"] == {"minzoom": lo, "maxzoom": hi}]
+        assert all(_units_width(p, lo) >= 2 for p in parts), (lo, sorted(round(_units_width(p, lo), 2) for p in parts))
+
+
+def _sliver_features():
+    depth, transform, core, nosurvey, _ = _sliver_case()
+    return _derive(depth, transform=transform, core=core, nosurvey=nosurvey)
+
+
+def _hole_case():
+    """At FINE_RES_DEG, 20 m water under a no-survey box with a hole of one native NONNA-10 cell (19 m by 19 m in
+    Web Mercator, about 6 by 6 fine cells): the depth in the hole is thin at zooms 10 and 12 (R.3, a surveyed
+    pocket in the mask). Returns (features, core, the hole)."""
+    from chartpack.bathy.blocks import FINE_RES_DEG
+
+    d = FINE_RES_DEG
+    transform, core = (X0, d, 0.0, Y0, 0.0, -d), (X0, Y0 - N * d, X0 + N * d, Y0)
+    hole = box(X0 + 77 * d, Y0 - 83 * d, X0 + 83 * d, Y0 - 77 * d)
+    mask = box(X0 + 40 * d, Y0 - 120 * d, X0 + 120 * d, Y0 - 40 * d).difference(hole)
+    return _derive(np.full((N, N), 20.0), transform=transform, core=core, nosurvey=mask), core, hole
+
+
+def test_depth_in_a_mask_hole_still_goes_to_nosurvey():
+    """R.3: a surveyed pocket in the mask, too thin at a band's minzoom, is nosurvey at that band (it shares its
+    whole perimeter with the mask); depth at the bands it is wide enough for."""
+    feats, core, hole = _hole_case()
+    inner = hole.buffer(-1e-9)
+    for lo, _, _ in BANDS:
+        depth = shapely.union_all([shape(f.geometry) for f in _layer(feats, "depare", lo)])
+        masked = shapely.union_all([shape(f.geometry) for f in _shown(feats, "nosurvey", lo)])
+        thin = _units_width(hole, lo) < 2
+        assert (depth.intersection(hole).area < 1e-6 * hole.area) == thin, lo
+        assert masked.covers(inner) == thin, lo
+
+
+def test_depcnt_on_a_dropped_part_edge_does_not_survive_float_noise():
+    """A depth contour along the edge of a dropped part, off it by float noise only (dry run 3, 16/8641/21143: 19 %
+    of a 1.8 line lay on the edge and survived the difference), is removed with the part."""
+    from chartpack.enc.derived import _lines_off
+
+    gone = box(-124.0, 49.0, -123.9999, 49.001)
+    lines = np.array([shapely.LineString([(-123.9999 + 1e-13, 49.0002), (-123.9999 + 1e-13, 49.0008)]),
+                      shapely.LineString([(-123.9998, 49.0002), (-123.9998, 49.0008)])], object)
+    kept = _lines_off(lines, gone)
+    assert len(kept) == 1 and kept[0].equals(lines[1])
+
+
+def test_thin_part_whose_patch_is_still_thin_stays_depth():
+    """The guard: a 3 m strip of depth between a 3 m strip of mask and land shares half its perimeter with the
+    mask, so it is sent at zooms 10 and 12; but its zoom-10 patch (the strip and the mask beside it, 6 m) is still
+    under 2 units (19 m), so it stays depth there. At zoom 12 (4.8 m) the patch is wide enough and it goes."""
+    from chartpack.bathy.blocks import FINE_RES_DEG
+
+    d, m = FINE_RES_DEG, 1 / 111319.49  # degrees of longitude per Web Mercator meter
+    transform, core = (X0, d, 0.0, Y0, 0.0, -d), (X0, Y0 - N * d, X0 + N * d, Y0)
+    west = X0 + 80.3 * d
+    mask = box(west - 3 * m, core[1], west, core[3])
+    strip = box(west, core[1], west + 3 * m, core[3])
+    land = box(west + 3 * m, core[1], core[2], core[3])
+    feats = _derive(np.full((N, N), 20.0), transform=transform, core=core, nosurvey=mask, land=land)
+    for lo, sent in ((10, False), (12, True)):
+        depth = shapely.union_all([shape(f.geometry) for f in _layer(feats, "depare", lo)])
+        assert (depth.intersection(strip).area < 1e-6 * strip.area) == sent, lo
