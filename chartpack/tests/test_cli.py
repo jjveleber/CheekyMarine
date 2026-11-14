@@ -1,3 +1,4 @@
+import re
 import shutil
 from pathlib import Path
 
@@ -1470,7 +1471,9 @@ def test_build_enc_derived_region_end_to_end(tmp_path, fixtures_dir, regions_dir
     monkeypatch.setattr(tiles, "run", lambda cmd: (commands.append(cmd), real_run(cmd))[1])
     assert main(["build-enc", str(region), str(tmp_path / "out"), "--cache", str(cache), "--work",
                  str(tmp_path / "work")]) == 0
-    capsys.readouterr()
+    err = capsys.readouterr().err  # the per-block time and peak memory lines the dry runs measure
+    assert re.search(r"^derive \d+/\d+: [\d.]+ s, peak \d+ MiB$", err, re.M)
+    assert re.search(r"^gridsnap .*: [\d.]+ s \(snap .*\), peak \d+ MiB$", err, re.M)
     derived_runs = [c for c in commands if any(a.endswith("derived-depare.geojsonseq") for a in c)]
     assert len(derived_runs) == 1 and "-ps" in derived_runs[0]  # the snapped areas are tiled unsimplified
     assert all("-ps" not in c for c in commands if c not in derived_runs)
