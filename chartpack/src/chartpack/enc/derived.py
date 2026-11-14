@@ -212,11 +212,12 @@ def _to_nosurvey(parts: np.ndarray, thin: np.ndarray, area: shapely.Geometry) ->
 def _fingers(parts: np.ndarray, which: np.ndarray, z: int) -> tuple[np.ndarray, np.ndarray]:
     """The fingers of parts[which]: the pieces an opening by THIN_UNITS (in the tile units of zoom z) takes off,
     each under THIN_UNITS wide by construction, and of at least 1 unit2 (not the crumbs the opening cuts off a
-    corner). Returns (pieces, the index of each piece's part). The opening is taken in tile units and cut back
+    corner). Returns (pieces, the index of each piece's part, whether the opening leaves a core of each part:
+    False for the parts not in which). The opening is taken in tile units and cut back
     out of the lon/lat part, so the pieces and what is left share their edges exactly."""
     index = np.flatnonzero(which)
     if not len(index):
-        return np.array([], object), np.array([], int)
+        return np.array([], object), np.array([], int), np.zeros(len(parts), bool)
     n = 2**z * 4096
 
     def to_units(c):
@@ -233,7 +234,9 @@ def _fingers(parts: np.ndarray, which: np.ndarray, z: int) -> tuple[np.ndarray, 
     pieces, at = shapely.get_parts(shapely.difference(parts[index], shapely.transform(opened, to_lonlat)),
                                    return_index=True)
     keep = (shapely.get_type_id(pieces) == 3) & (shapely.area(shapely.transform(pieces, to_units)) >= 1.0)
-    return pieces[keep], index[at[keep]]
+    cored = np.zeros(len(parts), bool)
+    cored[index] = ~shapely.is_empty(opened)
+    return pieces[keep], index[at[keep]], cored
 
 
 def _patches(gone: shapely.Geometry, outside: shapely.Geometry, reach: float) -> np.ndarray:
@@ -295,8 +298,12 @@ def _depth_features(grid, src, transform, *, levels_m, drying_m, tiles, zooms, n
             filled.append((_cut(polygons, tiles, 2), (lo, hi)))
     every = np.concatenate([parts for parts, _ in filled]) if filled else np.array([], object)
     thin = _thin(every, zooms[0])
-    # candidates: the thin parts, then the fingers of the wide parts that meet the nosurvey (_fingers)
-    pieces, parent = _fingers(every, ~thin & shapely.intersects(every, nosurvey), zooms[0])
+    # candidates: the thin parts, and the pieces an opening takes off the parts that meet the nosurvey (_fingers):
+    # the fingers of a wide part, and the ragged edge of a part thin by 2 A / P only, whose core stays depth
+    pieces, parent, cored = _fingers(every, shapely.intersects(every, nosurvey), zooms[0])
+    keep = ~thin[parent] | cored[parent]  # a thin part with no core goes (or stays) whole, not in pieces
+    pieces, parent = pieces[keep], parent[keep]
+    thin &= ~cored
     cand = np.concatenate([every, pieces])
     drop = _to_nosurvey(cand, np.concatenate([thin, np.ones(len(pieces), bool)]), nosurvey)
     while True:

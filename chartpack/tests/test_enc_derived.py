@@ -565,14 +565,14 @@ def _sliver_features():
 
 
 def _hole_case():
-    """At FINE_RES_DEG, 20 m water under a no-survey box with a hole of one native NONNA-10 cell (19 m by 19 m in
-    Web Mercator, about 6 by 6 fine cells): the depth in the hole is thin at zooms 10 and 12 (R.3, a surveyed
-    pocket in the mask). Returns (features, core, the hole)."""
+    """At FINE_RES_DEG, 20 m water under a no-survey box with a hole of 4 by 4 fine cells (14 m in Web Mercator):
+    the depth in the hole is thin at zoom 10, where no 2-unit (19 m) disk fits in it (R.3, a surveyed pocket in
+    the mask). Returns (features, core, the hole)."""
     from chartpack.bathy.blocks import FINE_RES_DEG
 
     d = FINE_RES_DEG
     transform, core = (X0, d, 0.0, Y0, 0.0, -d), (X0, Y0 - N * d, X0 + N * d, Y0)
-    hole = box(X0 + 77 * d, Y0 - 83 * d, X0 + 83 * d, Y0 - 77 * d)
+    hole = box(X0 + 78 * d, Y0 - 82 * d, X0 + 82 * d, Y0 - 78 * d)
     mask = box(X0 + 40 * d, Y0 - 120 * d, X0 + 120 * d, Y0 - 40 * d).difference(hole)
     return _derive(np.full((N, N), 20.0), transform=transform, core=core, nosurvey=mask), core, hole
 
@@ -585,7 +585,7 @@ def test_depth_in_a_mask_hole_still_goes_to_nosurvey():
     for lo, _, _ in BANDS:
         depth = shapely.union_all([shape(f.geometry) for f in _layer(feats, "depare", lo)])
         masked = shapely.union_all([shape(f.geometry) for f in _shown(feats, "nosurvey", lo)])
-        thin = _units_width(hole, lo) < 2
+        thin = _units_width(hole, lo) < 1  # a square of side s: 2 A / P is s / 2, and a 2-unit disk fits when s >= 2
         assert (depth.intersection(hole).area < 1e-6 * hole.area) == thin, lo
         assert masked.covers(inner) == thin, lo
 
@@ -651,3 +651,35 @@ def test_thin_finger_of_a_wide_depth_area_goes_to_nosurvey():
         if thin:
             assert masked.intersection(finger).area > 0.95 * finger.area, lo
         assert depth.area > 0.4 * box(*finger_core).area, lo  # the area west of the mask stays depth
+
+
+def _comb_case():
+    """At FINE_RES_DEG, 20 m water in a band 60 m (Web Mercator) wide between land (west) and a mask (east), with
+    teeth 3 m wide and 30 m long every 6 m poking into the mask: as a whole the part is under 2 units wide at zoom
+    10 (19 m) by 2 A / P, but its band holds a core a 2-unit disk fits in (the ragged NONNA-100 parts of the
+    overview, dry run 43547809585). Returns (features, the band, the teeth)."""
+    from chartpack.bathy.blocks import FINE_RES_DEG
+
+    d, m = FINE_RES_DEG, 1 / 111319.49
+    transform, core = (X0, d, 0.0, Y0, 0.0, -d), (X0, Y0 - N * d, X0 + N * d, Y0)
+    west = X0 + 20 * d
+    band = box(west, core[1], west + 60 * m, core[3])
+    ys = np.arange(core[1] + 3 * m, core[3] - 3 * m, 6 * m)
+    teeth = shapely.union_all([box(west + 60 * m, y, west + 90 * m, y + 3 * m) for y in ys])
+    land = box(core[0], core[1], west, core[3])
+    mask = box(west + 60 * m, core[1], core[2], core[3]).difference(teeth)
+    feats = _derive(np.full((N, N), 20.0), transform=transform, core=core, nosurvey=mask, land=land)
+    return feats, band, teeth
+
+
+def test_wide_ragged_part_beside_nosurvey_keeps_its_core():
+    """A part thin by 2 A / P only because of its ragged edge keeps its core as depth beside the nosurvey; only the
+    pieces an opening by 2 units takes off (the teeth) go."""
+    feats, band, teeth = _comb_case()
+    whole = shapely.union_all([band, teeth])
+    assert _units_width(whole, 10) < 2  # the case is what it says: thin as a whole at zoom 10
+    for lo in (10, 12):
+        depth = shapely.union_all([shape(f.geometry) for f in _layer(feats, "depare", lo)])
+        assert depth.intersection(band).area > 0.8 * band.area, lo
+    depth10 = shapely.union_all([shape(f.geometry) for f in _layer(feats, "depare", 10)])
+    assert depth10.intersection(teeth).area < 0.2 * teeth.area
