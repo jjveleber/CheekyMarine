@@ -1025,3 +1025,35 @@ def test_a_hairline_finger_is_a_candidate_not_a_crumb():
     mask = ubox(20, 0, 40, 20).difference(finger)
     cand, drop, _, _, gone, _ = _select(np.array([part], object), mask, 10, 8 * u)
     assert not drop[0] and gone.intersection(finger).area > 0.9 * finger.area
+
+
+def _unshared_vertices(a, b, eps=1e-9):
+    """The vertices of geometries a that lie on the boundary of geometries b (within eps) but are not vertices of
+    b there (no vertex of b within eps): the places tippecanoe could not pair the two edges."""
+    pa = shapely.points(np.unique(shapely.get_coordinates(np.array(a, object)), axis=0))
+    pb = shapely.points(np.unique(shapely.get_coordinates(np.array(b, object)), axis=0))
+    edges = shapely.STRtree(shapely.boundary(np.array(b, object)))
+    on = np.unique(edges.query(pa, predicate="dwithin", distance=eps)[0])
+    vert = np.unique(shapely.STRtree(pb).query(pa[on], predicate="dwithin", distance=eps)[0])
+    return len(on) - len(vert)
+
+
+@pytest.mark.parametrize("case", ["slope", "sliver", "finger", "step"])
+def test_depth_and_nosurvey_share_every_vertex_of_their_common_edges(case):
+    """Ruling 55 (B), dry run 4 north 16/8556/20962: at every band, a vertex of the depth on the edge of the
+    nosurvey drawn there is a vertex of the nosurvey too, and the other way round, so tippecanoe's
+    --detect-shared-borders simplifies the two sides as one line. The per-band tiling still holds."""
+    if case == "slope":
+        feats = _derive(_slope(), nosurvey=shapely.Point(_center(100, 40)).buffer(20 * D),
+                        land=Polygon([_center(10, 10), _center(10, 90), _center(70, 60), _center(60, 5)]))
+    elif case == "sliver":
+        feats = _sliver_features()
+    elif case == "finger":
+        feats = _finger_case()[0]
+    else:
+        feats = _step_case()[0]
+    for lo, _, _ in BANDS:
+        depth = [shape(f.geometry) for f in _layer(feats, "depare", lo)]
+        masked = [shape(f.geometry) for f in _shown(feats, "nosurvey", lo)]
+        assert _unshared_vertices(depth, masked) == 0, (lo, "depth")
+        assert _unshared_vertices(masked, depth) == 0, (lo, "nosurvey")

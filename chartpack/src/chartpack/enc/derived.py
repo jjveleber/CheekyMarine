@@ -15,7 +15,7 @@ import contourpy
 import numpy as np
 import shapely
 from shapely import GeometryType
-from shapely.geometry import Point, box, mapping
+from shapely.geometry import Point, box, mapping, shape
 
 from chartpack.bathy.blocks import LABELS, SOURCE_NAMES
 from chartpack.bathy.contours import BANDS, axes, block_factor
@@ -47,6 +47,7 @@ _JOIN_DEG = 1e-7
 # more than this into the nosurvey: the pack check's NOSURVEY_TOLERANCE_UNITS (PR 134 review, a curved strip
 # ringing a small mask pocket).
 _SQUARE_REACH_UNITS = 4.5
+_VERTEX_ROUNDS = 4  # derived_features shares vertices between depth and nosurvey in at most this many rounds
 _EDGE_DEG = 1e-9  # about 0.1 mm: an edge this close counts as shared (two overlays of one edge differ in float noise)
 _NONNA = [SOURCE_NAMES.index("nonna10"), SOURCE_NAMES.index("nonna100")]
 # Coarseness rank per source index (0, "none", lowest): the native cell size of the source
@@ -510,6 +511,63 @@ def _depth_features(grid, src, transform, *, levels_m, drying_m, tiles, zooms, n
     return out, gone, patches
 
 
+def _with_vertices(polys: list, others: list) -> list:
+    """polys with every vertex of others that lies on one of their edges (within _EDGE_DEG, and not within it of
+    a vertex already there) put into that edge, at its place on the edge (within _EDGE_DEG of the other's vertex,
+    so on tippecanoe's integer grid they are one point): the two sides of a common edge then carry the same
+    vertices, which tippecanoe's --detect-shared-borders needs to simplify them as one line (dry run 4 north,
+    16/8556/20962). The shapes do not change. A polygon the insertion makes invalid is made valid (_valid_like).
+    """
+    if not polys or not others:
+        return polys
+    if any(g.geom_type != "Polygon" for g in polys):  # a multipolygon (a part made valid): its polygons, one by one
+        flat, owner = shapely.get_parts(np.array(polys, object), return_index=True)
+        done = _with_vertices(list(flat), others)
+        return [done[np.flatnonzero(owner == i)[0]] if (owner == i).sum() == 1
+                else shapely.MultiPolygon([q for j in np.flatnonzero(owner == i) for q in _parts(done[j], 2)])
+                for i in range(len(polys))]
+    rings, ring_of = shapely.get_rings(np.array(polys, object), return_index=True)
+    coords, at = shapely.get_coordinates(rings, return_index=True)
+    first = np.r_[True, at[1:] != at[:-1]]
+    pos = np.arange(len(at)) - np.flatnonzero(first)[np.cumsum(first) - 1]  # index of each coordinate in its ring
+    seg = np.flatnonzero(~first[1:]) if len(at) > 1 else np.array([], int)  # a segment starts at seg, ends at seg+1
+    seg = seg[at[seg] == at[seg + 1]]
+    lines = shapely.linestrings(np.stack([coords[seg], coords[seg + 1]], axis=1))
+    pts = np.unique(shapely.get_coordinates(np.array(others, object)), axis=0)
+    p, k = shapely.STRtree(lines).query(shapely.points(pts), predicate="dwithin", distance=_EDGE_DEG)
+    a, b, q = coords[seg[k]], coords[seg[k] + 1], pts[p]
+    off_ends = (np.hypot(*(q - a).T) > _EDGE_DEG) & (np.hypot(*(q - b).T) > _EDGE_DEG)
+    k, q, p = k[off_ends], q[off_ends], p[off_ends]
+    if not len(k):
+        return polys
+    ab = coords[seg[k] + 1] - coords[seg[k]]
+    t = np.einsum("ij,ij->i", q - coords[seg[k]], ab) / np.einsum("ij,ij->i", ab, ab)
+    # every coordinate, old and new, keyed by (ring, place along it); a new one goes between its segment's ends
+    ring_all = np.concatenate([at, at[seg[k]]])
+    key = np.concatenate([pos.astype(float), pos[seg[k]] + t])
+    t = np.clip(t, 1e-9, 1 - 1e-9)
+    xy = np.concatenate([coords, coords[seg[k]] + t[:, None] * ab])  # on the segment itself: the shape is unchanged
+    order = np.lexsort((key, ring_all))
+    ring_all, key, xy = ring_all[order], key[order], xy[order]
+    keep = np.r_[True, (ring_all[1:] != ring_all[:-1]) | (key[1:] != key[:-1])]  # one copy of a point per place
+    ring_all, xy = ring_all[keep], xy[keep]
+    starts = np.flatnonzero(np.r_[True, ring_all[1:] != ring_all[:-1]])
+    by_poly = {}  # every ring keeps at least its own coordinates, so ring k is the k-th group, in ring order
+    for ring, c in zip(ring_of, np.split(xy, starts[1:])):
+        by_poly.setdefault(int(ring), []).append(c)
+    out = [shapely.Polygon(rs[0], rs[1:]) for rs in (by_poly[i] for i in range(len(polys)))]
+    return [_valid_like(new, old) for new, old in zip(out, polys)]
+
+
+def _valid_like(new: shapely.Geometry, old: shapely.Geometry) -> shapely.Geometry:
+    """new, or when invalid its valid form (a spike of a ring running back along itself, which a vertex put on
+    both of its sides makes cross, collapses to nothing), or old when even that changes the area."""
+    if shapely.is_valid(new) or not shapely.is_valid(old):
+        return new
+    fixed = shapely.union_all(_parts(shapely.make_valid(new, method="structure", keep_collapsed=False), 2))
+    return fixed if abs(fixed.area - old.area) <= 1e-9 * old.area and not fixed.is_empty else old
+
+
 def _shoal_m(depth: float) -> float:
     """depth rounded toward shallow to 0.1 m (float32 noise on an exact tenth kept)."""
     return math.floor(round(depth * 10, 4)) / 10
@@ -655,7 +713,25 @@ def derived_features(depth_m: np.ndarray, src: np.ndarray, transform, *, core, l
     # nosurvey: outside once over every zoom; per band its patches (_patches: its thin depth with the outside within
     # PATCH_UNITS of it, each at least THIN_UNITS wide). A patch overlaps the whole nosurvey, so the nosurvey at
     # each zoom is the core less land less that band's depth.
-    for part in _parts(outside, 2):
+    # both sides of every depth / nosurvey edge get the same vertices (_with_vertices): first the nosurvey drawn
+    # over every zoom those of every band's depth, then each band's depth those of that nosurvey and of the band's
+    # patches, then the patches those of the band's depth
+    depth = {lo: [i for i, f in enumerate(out) if f.layer == "depare" and f.props["tippecanoe"]["minzoom"] == lo]
+             for lo, _, _ in bands}
+    shapes = {i: shape(out[i].geometry) for ids in depth.values() for i in ids}
+    whole = _parts(outside, 2)
+    for _ in range(_VERTEX_ROUNDS):  # again while a round adds vertices (another band's, or a made-valid node)
+        before = sum(shapely.get_num_coordinates(g) for g in whole + list(shapes.values()))
+        whole = _with_vertices(whole, list(shapes.values()))
+        for lo, _, _ in bands:
+            mine = _with_vertices([shapes[i] for i in depth[lo]], whole + list(patches[lo]))
+            shapes.update(zip(depth[lo], mine))
+            patches[lo] = _with_vertices(list(patches[lo]), mine)
+        if sum(shapely.get_num_coordinates(g) for g in whole + list(shapes.values())) == before:
+            break
+    for i, g in shapes.items():
+        out[i] = Feature("depare", mapping(g), out[i].props)
+    for part in whole:
         out.append(Feature("nosurvey", mapping(part), {"tippecanoe": tip}))
     for lo, hi, _ in bands:
         out += [Feature("nosurvey", mapping(part), {"tippecanoe": {"minzoom": lo, "maxzoom": hi}})
