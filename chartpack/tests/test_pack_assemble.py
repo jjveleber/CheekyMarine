@@ -425,8 +425,12 @@ def test_valdco_gains_no_value_from_derived(test_region, tmp_path):
     from shapely.geometry import box
 
     from chartpack.bathy.blocks import SOURCE_NAMES
+    from shapely.geometry import mapping
+
     from chartpack.enc.derived import derived_features
+    from chartpack.enc.reader import Feature
     from chartpack.enc.tiles import build_enc_mbtiles
+    from chartpack.mbtiles import decode_pbf
 
     levels = tomllib.loads((PROJECT / "regions" / "bc-valdco.toml").read_text())["levels_m"]
     d, x0, y0, size = 0.0002, -124.0, 49.0, 120
@@ -442,10 +446,17 @@ def test_valdco_gains_no_value_from_derived(test_region, tmp_path):
               {"source": "nonna100", "asset": "nonna100-x.tif", "sha256": "b" * 64},
               {"source": "fwa", "asset": "land-x.geojson.gz", "sha256": "c" * 64},
               {"source": "nosurvey", "asset": "nosurvey-x.geojson.gz", "sha256": "d" * 64}]
+    # a depare with no src or core stands in for a NOAA one over the same place: it is tiled in the safety run and
+    # tile-join must merge it with the derived run's depare (plan8-gridsnap)
+    noaa = Feature("depare", mapping(box(x0, y0 - 20 * d, x0 + 20 * d, y0)),
+                   {"DRVAL1": "0", "DRVAL2": "5", "tippecanoe": {"minzoom": 10, "maxzoom": 16}})
     out = build_enc_mbtiles([], tmp_path / "enc.mbtiles", region=region, work=tmp_path / "work", zooms=(10, 16),
-                            canada=box(-125, 48, -123, 50), derived=feats, depth_sources=inputs)
+                            canada=box(-125, 48, -123, 50), derived=feats + [noaa], depth_sources=inputs)
     with MBTiles.open(out) as m:
         metadata = m.metadata()
+        merged = [z for z in range(10, 17) for _, _, data in m.tiles_at(z)
+                  if {"src" in f["properties"] for f in decode_pbf(data).get("depare", [])} == {True, False}]
+    assert set(merged) == set(range(10, 17))  # both runs' depare in one layer of one tile, at every zoom
     valdco = [float(v) for v in json.loads(metadata["cheekymarine:valdco"])]
     assert valdco and set(valdco) <= {float(v) for v in levels}
     assert json.loads(metadata["cheekymarine:depth_sources"]) == [inputs[0], inputs[2]]

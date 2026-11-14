@@ -1463,9 +1463,17 @@ def test_build_enc_derived_region_end_to_end(tmp_path, fixtures_dir, regions_dir
                                                               "features": features}).encode()))
     _write_derive_stats(folder, extent)
     _no_network(monkeypatch)
+    from chartpack.enc import tiles
+
+    commands = []
+    real_run = tiles.run
+    monkeypatch.setattr(tiles, "run", lambda cmd: (commands.append(cmd), real_run(cmd))[1])
     assert main(["build-enc", str(region), str(tmp_path / "out"), "--cache", str(cache), "--work",
                  str(tmp_path / "work")]) == 0
     capsys.readouterr()
+    derived_runs = [c for c in commands if any(a.endswith("derived-depare.geojsonseq") for a in c)]
+    assert len(derived_runs) == 1 and "-ps" in derived_runs[0]  # the snapped areas are tiled unsimplified
+    assert all("-ps" not in c for c in commands if c not in derived_runs)
     root = tmp_path / "out" / "charts-test-cell-0.1.0"
     with MBTiles.open(root / "enc.mbtiles") as m:
         md = m.metadata()
@@ -1479,6 +1487,41 @@ def test_build_enc_derived_region_end_to_end(tmp_path, fixtures_dir, regions_dir
     assert CHS_NOTICE in notice and OGL_BC_NOTICE in notice
     assert json.loads((root / "manifest.json").read_text())["charts"] == {"kind": "derived-inshore"}
     assert check_pack(root, canada=canada) == []
+    _assert_derived_drawn_exactly(root / "enc.mbtiles", tmp_path / "work" / "tippecanoe", canada)
+
+
+def _assert_derived_drawn_exactly(enc, work, canada):
+    """plan8-gridsnap, through the real tippecanoe: the snapped derived areas went through their own run (-ps); at
+    every zoom of every tile, derived depth and nosurvey overlap with zero area; at the top zoom the derived areas cover the charts side of the owned tiles
+    (canada shrunk by 2 units, where the NOAA cut and the snap meet) with no gap."""
+    import shapely
+    from shapely.geometry import shape
+    from shapely.validation import make_valid
+
+    from chartpack.enc.bc import DERIVED_SRC
+    from chartpack.mbtiles import MBTiles, decode_pbf
+    from chartpack.pack.check import _TILE_BOX, _owned_area, _tile_units
+
+    assert (work / "derived-depare.geojsonseq").is_file() and (work / "derived-nosurvey.geojsonseq").is_file()
+    with MBTiles.open(enc) as m:
+        md = m.metadata()
+        owned = _owned_area(md)
+        top = int(md["maxzoom"])
+        for z in range(int(md["minzoom"]), top + 1):
+            for x, y, data in m.tiles_at(z):
+                layers = decode_pbf(data)
+
+                def union(names, derived=True):
+                    return shapely.union_all([make_valid(shape(f["geometry"])).intersection(_TILE_BOX)
+                                              for name in names for f in layers.get(name, [])
+                                              if not derived or name == "nosurvey"
+                                              or f["properties"].get("src") in DERIVED_SRC])
+
+                assert union(["depare"]).intersection(union(["nosurvey"])).area == 0, (z, x, y)
+                if z == top:
+                    side = _tile_units(z, x, y, canada.intersection(owned)).buffer(-2.0).intersection(_TILE_BOX)
+                    gap = side.difference(union(["depare", "lndare", "nosurvey"]))
+                    assert gap.area < 1e-6, (z, x, y, gap.area)
 
 
 def test_build_enc_canadian_tiles_without_nonna_fail(tmp_path, fixtures_dir, regions_dir, monkeypatch):
