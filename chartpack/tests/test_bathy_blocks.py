@@ -1193,3 +1193,37 @@ def test_nonna_coverage_cut_at_the_border(small_grids, zero_geoid, test_region, 
     covered = unary_union([shape(f["geometry"]) for f in feats])
     assert covered.bounds[1] >= mid - 1e-9, (product, covered.bounds[1], mid)
     assert covered.bounds[3] > mid + 0.02  # it still covers the Canadian side
+
+
+# ---- plan8-checkfix F4: the overview strip seams and the ETOPO tile seam get values
+
+ETOPO_RES = 1 / 240  # ETOPO 2022 15 arc-second, pixel-is-area, tile edges on whole degrees
+ETOPO_SEAM = -122.55  # a stand-in for the tile edge at -135.0: an overview cell edge on the ETOPO grid
+
+
+def _etopo_tiles(tmp_path) -> list[Path]:
+    """Two ETOPO stand-ins over AREA, west and east of ETOPO_SEAM, at ETOPO_RES, sloping from 200 m to 300 m
+    west to east (elevation negative), as the real tiles N60W150 and N60W135 meet at -135.0."""
+    paths = []
+    for name, (w, e) in (("west", (AREA[0], ETOPO_SEAM)), ("east", (ETOPO_SEAM, AREA[2]))):
+        cols, rows = round((e - w) / ETOPO_RES), round((AREA[3] - AREA[1]) / ETOPO_RES)
+        lon = w + (np.arange(cols) + 0.5) * ETOPO_RES
+        elev = np.broadcast_to(-(200.0 + 100.0 * (lon - AREA[0]) / (AREA[2] - AREA[0])), (rows, cols))
+        _write_tif(tmp_path / f"etopo-{name}.tif", elev, (w, AREA[1], e, AREA[3]))
+        paths.append(tmp_path / f"etopo-{name}.tif")
+    return paths
+
+
+def test_overview_strip_and_etopo_tile_seams_get_values(tmp_path, test_region, zero_geoid, monkeypatch):
+    """ETOPO alone over the overview: every overview cell has a value, in the Fish grid and the Nav grid of the
+    Canadian column, at every strip seam (strips whose edges are not on the ETOPO grid, as 55.18 less k times 0.5
+    degree are not) and along the ETOPO tile seam. Run 43513034314 left a row of nan (270 m) at each: there
+    (60 - 53.18) * 240 = 1636.8 ETOPO rows from the tile's top to the seam at 53.18; here (48.25 - 48.1925) * 240
+    = 13.8, at a read top 1.8 ETOPO rows (0.0075 degree) below the tile's."""
+    monkeypatch.setattr(blocks, "OVERVIEW_STRIP_DEG", 0.0575)  # 23 overview cells, 13.8 ETOPO cells
+    bbox = (-122.6, 47.95, -122.4, AREA[3] - 0.0075)
+    r = blocks.build_overview(bbox, _sources(etopo=_etopo_tiles(tmp_path)),
+                              area_datum(test_region, Path("unused")), OVERVIEW_WEST, Polygon())
+    assert np.isfinite(r.coarse_grid.data).all()
+    west = round((-122.5 - r.nav_depth.transform[0]) / r.nav_depth.transform[1])
+    assert np.isfinite(r.nav_depth.data[:, :west]).all()

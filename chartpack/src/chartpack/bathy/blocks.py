@@ -15,6 +15,7 @@ from pathlib import Path
 
 import numpy as np
 import shapely
+from osgeo import gdal
 from scipy.ndimage import binary_dilation
 from shapely.geometry import box, mapping, shape
 
@@ -44,6 +45,10 @@ COARSE_RES_DEG = 1 / 3600  # CRM, 1 arc-second
 OVERVIEW_RES_DEG = 0.0025  # the overview block-means native CRM to this (9 by 9 arc-second cells)
 BLOCK_MARGIN_DEG = 0.02  # each block is read this far past its tile
 OVERVIEW_STRIP_DEG = 0.5  # build_overview reads this much latitude at a time: a whole number of overview cells
+# build_overview reads each source this far past its strip (within the file): GDAL snaps a window to the source's
+# own cells, so a window cut exactly at a strip edge not on the ETOPO grid (1/240 degree) stops short of it and the
+# warp leaves the strip's edge row with no value. More than two ETOPO cells; the merge keeps the strip's rows only.
+OVERVIEW_READ_MARGIN_DEG = 0.01
 CRM_LABEL = {"source": "crm", "resolution_m": 30, "date": "2025"}
 DEM_OWNER_ZOOM = COARSE_ZOOMS[1]  # DEM tile ownership is decided per tile of the coarse max zoom
 SOURCE_NAMES = ("none", "cudem", "crm", "nonna10", "nonna100", "etopo")  # the source index of the merged grids
@@ -238,6 +243,16 @@ def _nav_values(path: Path, read, res: float, near: np.ndarray | None = None) ->
     values = read_nonna(path, read, res, "min").data
     values[np.isnan(read_nonna(path, read, res).data if near is None else near)] = np.nan
     return values
+
+
+def _mosaic(paths: list[Path]) -> Path:
+    """The tile files at paths as one GDAL VRT in memory (they share the ETOPO grid), named by the paths."""
+    vrt = Path(f"/vsimem/etopo-{abs(hash(tuple(str(p) for p in paths)))}.vrt")
+    ds = gdal.BuildVRT(str(vrt), [str(p) for p in paths])
+    if ds is None or not {str(p) for p in paths} <= set(ds.GetFileList()):  # a file it cannot place: a warning only
+        raise ValueError(f"the ETOPO mosaic does not hold every tile of {[p.name for p in paths]}")
+    ds = None  # written on close
+    return vrt
 
 
 def _coarse_layers(sources: BlockSources, read, res: float, side: np.ndarray | None, window) -> list:
@@ -527,7 +542,9 @@ def build_overview(bbox, sources: BlockSources, datum: AreaDatum, canada: shapel
     to it, so every cell is whole), from the coarse sources at their native 1 arc-second: per native cell the first
     source with data wins, as in build_block (NONNA-100 on the Canadian column `canada` only, then CRM, then ETOPO),
     each on its datum, less lake_mask. The read goes in strips of OVERVIEW_STRIP_DEG, so the memory stays at one
-    strip over the whole plan 8 area. CUDEM and NONNA-10 add no detail at this cell size, so there is no fine output.
+    strip over the whole plan 8 area, each source read OVERVIEW_READ_MARGIN_DEG past the strip and the ETOPO tiles
+    through one mosaic (_mosaic), so no strip seam or tile seam is left without a value. CUDEM and NONNA-10 add no
+    detail at this cell size, so there is no fine output.
 
     coarse_grid is each overview cell's mean (the Fish grid: its features use OVERVIEW_BANDS, major levels only);
     coarse_source is the coarsest source among the cell's native cells. The Nav grids (plan 8 spec 7.1) are on the
@@ -541,6 +558,8 @@ def build_overview(bbox, sources: BlockSources, datum: AreaDatum, canada: shapel
     rank = np.array([0] + [LABELS[name]["resolution_m"] for name in SOURCE_NAMES[1:]], np.int16)
     by_rank = np.zeros(rank.max() + 1, np.int8)
     by_rank[rank] = np.arange(len(rank))
+    etopo = [sources.etopo] if isinstance(sources.etopo, Path) else list(sources.etopo or [])
+    etopo = _mosaic(etopo) if len(etopo) > 1 else etopo or None  # the warp sees both sides of a tile seam (-135.0)
     means, srcs, navs, nav_srcs, surveys = [], [], [], [], []
     transform = crs = None
     top = n
@@ -549,14 +568,16 @@ def build_overview(bbox, sources: BlockSources, datum: AreaDatum, canada: shapel
         top = strip[1]
         native = {}
 
-        def window(path: Path, box=None, strip=strip) -> Grid:  # as in build_block, over the strip
+        def window(path: Path, box=None, strip=strip) -> Grid:  # as in build_block, over the strip plus a margin
             if path not in native:
-                native[path] = read_window(str(path), strip if box is None else box)
+                w0, s0, e0, n0 = strip if box is None else box
+                m = OVERVIEW_READ_MARGIN_DEG
+                native[path] = read_window(str(path), clip_to_tile(path, (w0 - m, s0 - m, e0 + m, n0 + m)))
             return native[path]
 
         crm = sources.crm_path if sources.crm_path is not None and clip_to_tile(sources.crm_path, strip) else None
         side = _side(canada, strip, COARSE_RES_DEG)
-        layers = _coarse_layers(BlockSources([], crm, None, sources.nonna100, sources.etopo), strip,
+        layers = _coarse_layers(BlockSources([], crm, None, sources.nonna100, etopo), strip,
                                 COARSE_RES_DEG, side, window)
         grid, source = merge_ordered(layers, strip, COARSE_RES_DEG)
         del native
