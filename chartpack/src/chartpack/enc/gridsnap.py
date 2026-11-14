@@ -112,8 +112,9 @@ def _thin_to_nosurvey(faces: np.ndarray, label: np.ndarray, depth: np.ndarray, n
     return out
 
 
-def _snap_band(core, feats: list[Feature], lo: int, hi: int, times: dict) -> list[Feature]:
-    """The band (lo, hi) of one core: feats are the derived depare, nosurvey and lndare valid at that band."""
+def _snap_band(core, feats: list[Feature], lo: int, hi: int, times: dict) -> tuple[list[Feature], shapely.Geometry]:
+    """The band (lo, hi) of one core: feats are the derived depare, nosurvey and lndare valid at that band.
+    Returns the snapped features and their depth (the depare union) in the units of zoom lo."""
     to_units, to_lonlat = _units(lo)
     polys = shapely.transform(np.array([shape(f.geometry) for f in feats], object), to_units)
     w, n = to_units(np.array([[core[0], core[3]]]))[0]
@@ -140,6 +141,7 @@ def _snap_band(core, feats: list[Feature], lo: int, hi: int, times: dict) -> lis
             props = {key: v for key, v in feats[k].props.items() if key != "tippecanoe"}
             groups.setdefault((feats[k].layer, json.dumps(props, sort_keys=True)), []).append(i)
     out, depth = [], []  # depth: (props, geometry in units) per depare group
+    drawn = shapely.coverage_union_all(faces[np.isin(label, np.flatnonzero(layers == "depare"))])
     for (layer, props), at in groups.items():
         geom = shapely.coverage_union_all(faces[at])
         props = json.loads(props)
@@ -150,7 +152,7 @@ def _snap_band(core, feats: list[Feature], lo: int, hi: int, times: dict) -> lis
     levels = sorted({f.props[k] for f in feats if f.layer == "depare" for k in ("DRVAL1", "DRVAL2")}, key=float)
     out += _contours(depth, levels, tip, to_lonlat)
     times["emit"] += time.perf_counter() - t
-    return out
+    return out, drawn
 
 
 def _contours(depth: list[tuple[dict, shapely.Geometry]], levels: list[str], tip: dict, to_lonlat) -> list[Feature]:
@@ -186,27 +188,32 @@ def _snap_core(core, feats: list[Feature], bands) -> list[Feature]:
     times = dict.fromkeys(("snap", "label", "simplify", "thin", "emit"), 0.0)
     start = time.perf_counter()
     out = []
+    used = np.array([f.layer == "coalne" for f in feats])
     for f in feats:
         if f.layer == "coalne":
             tip = f.props["tippecanoe"]
             out.append(Feature(f.layer, f.geometry, {**f.props, "tippecanoe": {"minzoom": tip["minzoom"],
                                                                              "maxzoom": tip["maxzoom"]}}))
     for lo, hi, _ in bands:
-        areas = [f for f in feats if f.layer in _AREAS and _covers(f.props["tippecanoe"], lo, hi)]
-        if not areas:
+        take = np.array([f.layer in _AREAS and _covers(f.props["tippecanoe"], lo, hi) for f in feats])
+        sounds = np.array([f.layer == "soundg" and lo <= f.props["tippecanoe"]["minzoom"] <= hi for f in feats])
+        used |= take | sounds
+        if not take.any():
             continue
-        band = _snap_band(core, areas, lo, hi, times)
+        band, depth = _snap_band(core, [f for f, t in zip(feats, take) if t], lo, hi, times)
         out += band
-        depth = shapely.union_all([shapely.transform(shape(f.geometry), _units(lo)[0]) for f in band
-                                   if f.layer == "depare"])
         shapely.prepare(depth)
-        for f in feats:
-            if f.layer == "soundg" and lo <= f.props["tippecanoe"]["minzoom"] <= hi:
+        for f, t in zip(feats, sounds):
+            if t:
                 point = shapely.transform(shape(f.geometry), _units(lo)[0])
                 if depth.covers(point):
                     tip = f.props["tippecanoe"]
                     out.append(Feature(f.layer, f.geometry, {**f.props, "tippecanoe": {
                         "minzoom": tip["minzoom"], "maxzoom": tip["maxzoom"]}}))
+    if not used.all():
+        f = feats[int(np.flatnonzero(~used)[0])]
+        raise ValueError(f"snap_derived: a derived {f.layer} with zooms {f.props['tippecanoe']['minzoom']}-"
+                         f"{f.props['tippecanoe']['maxzoom']} in core {core} is taken by no band of {bands}")
     rss = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024
     print(f"gridsnap {','.join(format(c, '.6f') for c in core)}: {time.perf_counter() - start:.2f} s ("
           + ", ".join(f"{k} {v:.2f}" for k, v in times.items()) + f"), peak {rss:.0f} MiB", file=sys.stderr)
@@ -217,8 +224,9 @@ def snap_derived(features: list[Feature], bands) -> list[Feature]:
     """features with the derived ones (those whose tippecanoe zooms carry their block "core") replaced by their
     snapped coverage per core and band (bands: (minzoom, maxzoom, cell size) per band). The depare of a band, and
     the nosurvey and lndare whose zoom range holds it, are snapped together; depcnt is made from the snapped depth
-    edges (any derived depcnt given is replaced); soundg is kept on the snapped depth of its zoom's band; coalne
-    passes as it is. The others pass unchanged."""
+    edges; soundg is kept on the snapped depth of its zoom's band; coalne passes as it is. The others pass
+    unchanged. A derived feature no band takes (an area whose zooms hold no band, a sounding at a zoom of no band,
+    or another layer, such as a depcnt) raises ValueError instead of being dropped."""
     by_core: dict[tuple, list[Feature]] = {}
     out = []
     for f in features:

@@ -303,3 +303,15 @@ def test_a_band_collapsed_in_the_snap_keeps_its_contour_levels(collapsed, levels
     assert sorted(f.props["VALDCO"] for f in lines) == sorted(levels)
     for f in lines:
         assert _u(shape(f.geometry)).length > 4000 and f.props["src"] == "nonna10"
+
+
+@pytest.mark.parametrize("feature", [
+    _f("nosurvey", _ll(box(0, 0, 10, 10)), (6, 9)),  # an area whose zooms hold no band
+    _f("soundg", _ll(shapely.Point(5, 5)), (8, 8), depth="3", src="nonna10"),  # a sounding at a zoom of no band
+    _f("depcnt", _ll(shapely.LineString([(0, 0), (9, 9)])), VALDCO="2", src="nonna10"),  # a layer the snap makes
+])
+def test_a_cored_feature_no_band_takes_is_an_error(feature):
+    """Review Minor 3: a derived feature the bands do not consume would be dropped with no signal (for example a
+    band list that does not match the one derived_features used): it raises, naming the layer and zooms."""
+    with pytest.raises(ValueError, match=feature.layer):
+        snap_derived([feature], BANDS)
