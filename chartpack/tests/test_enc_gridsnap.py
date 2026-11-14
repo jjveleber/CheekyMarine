@@ -365,6 +365,7 @@ def test_snapping_a_large_noisy_core_is_bounded_in_work_and_memory(monkeypatch):
     """PR 137 review (no wall clock: flaky on CI). On a 60,000-vertex noisy mask with many thin faces along it:
     - the thin rule builds each face boundary once: the boundaries it builds hold fewer vertices than the core's
       input (per-pair copies of the mask boundary held it once per pair);
+    - the label fallback overlays a face with its originals clipped near it, never with the whole mask;
     - the traced Python peak stays under 300 MB (GEOS memory is not traced: the two counts above guard it)."""
     import sys
     import tracemalloc
@@ -395,5 +396,23 @@ def test_snapping_a_large_noisy_core_is_bounded_in_work_and_memory(monkeypatch):
     print(f"work: boundaries {built[0]} of {given} input vertices, fallback max {fallback[0]} of {mask_vertices},"
           f" traced peak {peak / 1e6:.1f} MB")
     assert built[0] < given, (built[0], given)
+    assert 0 < fallback[0] < mask_vertices / 10, (fallback[0], mask_vertices)
     assert peak < 300e6, peak
 
+
+def test_the_clipped_fallback_gives_the_labels_of_the_whole_overlay(monkeypatch):
+    """PR 137 review: the overlap fallback overlays each face with its originals clipped near it; on a noisy mask
+    with many faces that take the fallback, every label equals the one the whole overlay gives."""
+    from chartpack.enc import gridsnap
+
+    feats, _ = _big_core(n_mask=6000, grid=60, seed=2)
+    to_units = _units(14)[0]
+    polys = shapely.transform(np.array([shape(f.geometry) for f in feats], object), to_units)
+    x0, y0 = _origin(14)
+    faces = gridsnap._faces(polys, box(x0, y0, x0 + 65536, y0 + 65536))
+    points = shapely.point_on_surface(faces)
+    took = int(np.sum(shapely.distance(points, shapely.boundary(faces)) < gridsnap._DEEP_UNITS))
+    clipped = gridsnap._labels(faces, polys)
+    monkeypatch.setattr(gridsnap, "_near_face", lambda near, face: near)
+    whole = gridsnap._labels(faces, polys)
+    assert took > 100 and (clipped == whole).all(), (took, int(np.sum(clipped != whole)))

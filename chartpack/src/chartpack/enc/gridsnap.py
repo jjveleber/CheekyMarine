@@ -85,11 +85,32 @@ def _labels(faces: np.ndarray, polys: np.ndarray) -> np.ndarray:
         near = tree.query(faces[i], predicate="intersects")
         if not len(near):
             continue
-        areas = shapely.area(shapely.intersection(polys[near], faces[i]))
+        areas = shapely.area(shapely.intersection(_near_face(polys[near], faces[i]), faces[i]))
         best = int(np.argmax(areas))
         if areas[best] > 0 and areas[best] >= shapely.area(faces[i]) - areas.sum():
             label[i] = near[best]
     return label
+
+
+_CLIP_MARGIN = 1.0  # units: the originals are clipped this far round a fallback face before its overlay
+
+
+def _near_face(polys: np.ndarray, face: shapely.Geometry) -> np.ndarray:
+    """polys clipped to face's bounds grown by _CLIP_MARGIN, so the overlay of a small face costs the face, not a
+    large mask or land polygon beside it (PR 137 review: 3.86 ms against 0.30 ms per face on a 200,000-vertex
+    polygon). GEOS's fast rectangle clip can fail on a sliver that collapses in the box ("Invalid number of points
+    in LinearRing", PR 130) or return an invalid ring: such a clip is made valid, or replaced by an overlay with
+    the box."""
+    w, s, e, n = face.bounds
+    m = _CLIP_MARGIN
+    out = []
+    for p in polys:
+        try:
+            c = shapely.clip_by_rect(p, w - m, s - m, e + m, n + m)
+            out.append(c if shapely.is_valid(c) else shapely.make_valid(c))
+        except shapely.errors.GEOSException:
+            out.append(shapely.intersection(p, box(w - m, s - m, e + m, n + m)))
+    return np.array(out, object)
 
 
 def _thin_to_nosurvey(faces: np.ndarray, label: np.ndarray, depth: np.ndarray, nosurvey: np.ndarray) -> np.ndarray:
