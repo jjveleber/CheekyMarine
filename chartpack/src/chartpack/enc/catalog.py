@@ -3,7 +3,7 @@
 import io
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 
 from shapely.geometry import Polygon, box
 
@@ -22,6 +22,7 @@ class CellInfo:
     zip_size: int
     polygon: list[tuple[float, float]]  # (lat, lon) vertices of the first coverage panel
     other_panels: tuple[tuple[tuple[float, float], ...], ...] = ()  # further panels
+    zip_datetime: datetime | None = None  # when NOAA wrote the zip (UTC)
 
 
 def _panels(cell: ET.Element) -> list[list[tuple[float, float]]]:
@@ -44,6 +45,7 @@ def parse_catalog(xml_bytes: bytes) -> dict[str, CellInfo]:
         panels = _panels(el)
         # The catalog lists www.charts.noaa.gov; the bare host serves the same files.
         url = el.findtext("zipfile_location").replace("://www.charts.", "://charts.")
+        stamp = el.findtext("zipfile_datetime_iso8601")
         catalog[name] = CellInfo(
             name=name,
             band=int(name[2]),
@@ -55,6 +57,7 @@ def parse_catalog(xml_bytes: bytes) -> dict[str, CellInfo]:
             zip_size=int(el.findtext("zipfile_size")),
             polygon=panels[0] if panels else [],
             other_panels=tuple(tuple(p) for p in panels[1:]),
+            zip_datetime=datetime.fromisoformat(stamp) if stamp else None,
         )
         el.clear()
     return catalog
