@@ -49,6 +49,10 @@ _COVERAGE_MIN = 0.9999
 # tippecanoe, as the packs are built, keeps a line or polygon within 1 unit of its place and rounds to half a unit,
 # so a correctly cut feature stays at least 2.5 units clear (about 400 m at zoom 6, 0.4 m at zoom 16).
 CANADA_TOLERANCE_UNITS = 4
+# The nosurvey rule allows half a unit more: tippecanoe writes every vertex on the integer grid of the tile, so a
+# depth edge and a nosurvey edge that meet on one line can each move by up to half a unit by rounding alone
+# (owner ruling 2026-11-14). The Canada rule keeps CANADA_TOLERANCE_UNITS.
+NOSURVEY_TOLERANCE_UNITS = CANADA_TOLERANCE_UNITS + 0.5
 _NEAR_UNITS = 512  # the polygon is cut this far around a tile before it goes to tile units: past the tile buffer
 _TILE_BOX = box(0, 0, _EXTENT, _EXTENT)  # a tile's own area in its units: the rules judge each place in its tile
 
@@ -176,18 +180,19 @@ def _zooms(metadata: dict) -> range:
 
 def _check_no_depth_in_nosurvey(m: MBTiles) -> list[str]:
     """No derived depth (depare, depcnt or soundg with a src) meets a nosurvey polygon of the same tile shrunk by
-    CANADA_TOLERANCE_UNITS (plan 8 spec 7.1). The depth is cut exactly at the mask edge before tiling, but
+    NOSURVEY_TOLERANCE_UNITS (plan 8 spec 7.1). The depth is cut exactly at the mask edge before tiling, but
     tippecanoe simplifies and rounds both sides, so on a diagonal or curved edge a depth edge lands up to about
-    2.5 units inside the tiled mask (measured 2.16 at zoom 16, PR 123 review): the same allowance as the Canada
-    rule. The features, and the mask once shrunk, are cut to the tile's own area (_TILE_BOX), as the cover rule
-    does: the tile buffer is drawn by the neighbor that owns it. One error per feature, naming the tile."""
+    2.5 units inside the tiled mask (measured 2.16 at zoom 16, PR 123 review): the Canada rule's allowance, plus
+    half a unit for the integer grid (owner ruling 2026-11-14). The features, and the mask once shrunk, are cut to
+    the tile's own area (_TILE_BOX), as the cover rule does: the tile buffer is drawn by the neighbor that owns it. One error per feature, naming the tile."""
     errors = []
     for z in _zooms(m.metadata()):
         for x, y, data in m.tiles_at(z):
             layers = decode_pbf(data)
             if not layers.get("nosurvey"):
                 continue
-            mask = _shrunk_in_tile(shapely.union_all([make_valid(shape(f["geometry"])) for f in layers["nosurvey"]]))
+            mask = _shrunk_in_tile(shapely.union_all([make_valid(shape(f["geometry"])) for f in layers["nosurvey"]]),
+                                   NOSURVEY_TOLERANCE_UNITS)
             shapely.prepare(mask)
             for layer in ("depare", "depcnt", "soundg"):
                 errors += [f"enc.mbtiles: {layer} depth inside a nosurvey area in tile {z}/{x}/{y}"
@@ -196,11 +201,11 @@ def _check_no_depth_in_nosurvey(m: MBTiles) -> list[str]:
     return errors
 
 
-def _shrunk_in_tile(area: shapely.Geometry) -> shapely.Geometry:
-    """area (tile units) shrunk by CANADA_TOLERANCE_UNITS, then cut to _TILE_BOX (in that order, so the strip along
-    the tile edge is judged too), polygons only: a shrunk edge on the tile edge leaves a line in the cut, and a
-    prepared GeometryCollection is slow to test against."""
-    return shapely.MultiPolygon(_polygons(area.buffer(-CANADA_TOLERANCE_UNITS).intersection(_TILE_BOX)))
+def _shrunk_in_tile(area: shapely.Geometry, units: float = CANADA_TOLERANCE_UNITS) -> shapely.Geometry:
+    """area (tile units) shrunk by units, then cut to _TILE_BOX (in that order, so the strip along the tile edge is
+    judged too), polygons only: a shrunk edge on the tile edge leaves a line in the cut, and a prepared
+    GeometryCollection is slow to test against."""
+    return shapely.MultiPolygon(_polygons(area.buffer(-units).intersection(_TILE_BOX)))
 
 
 def _in_tile(feature: dict) -> shapely.Geometry:

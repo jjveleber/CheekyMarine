@@ -713,3 +713,24 @@ def test_shrunk_mask_in_the_tile_is_polygons_only():
     shrunk = _shrunk_in_tile(mask)
     assert shrunk.geom_type in ("Polygon", "MultiPolygon")
     assert shrunk.equals(box(0, 2104, 4096, 4096))
+
+
+@pytest.mark.parametrize("inside, errors", [(4.3, 0), (4.7, 1)])
+def test_nosurvey_rule_allows_the_integer_rounding(tmp_path, test_region, inside, errors):
+    """The nosurvey rule flags depth only past NOSURVEY_TOLERANCE_UNITS (4.5 units: CANADA_TOLERANCE_UNITS plus half
+    a unit for tippecanoe's integer grid, owner ruling 2026-11-14): a depth edge 4.3 units in passes, 4.7 fails
+    (each lands on the integer grid, at 4 and 5)."""
+    from chartpack.pack.check import CANADA_TOLERANCE_UNITS, NOSURVEY_TOLERANCE_UNITS
+
+    assert (CANADA_TOLERANCE_UNITS, NOSURVEY_TOLERANCE_UNITS) == (4, 4.5)
+    tiles = {(Z, X, Y): {**WATER, "depare": [(_square(0, 0, 2048 + inside, 4096), {"src": "nonna10"})],
+                         "nosurvey": [(_square(2048, 0, 4096, 4096), {})]}}
+    assert len(check_pack(_hand_pack(tmp_path, test_region, "derived-inshore", tiles))) == errors
+
+
+def test_canada_rule_keeps_its_tolerance_of_four(tmp_path, test_region):
+    """The Canada rule is not widened: a NOAA area edge 4.3 units inside the polygon (4 on the integer grid) is an
+    error, as before."""
+    root = _hand_pack(tmp_path, test_region, "derived-inshore",
+                      {(Z, X, Y): {**WATER, "depare": WATER["depare"] + [(_square(0, 0, 1004.3, 4096), {})]}})
+    assert check_pack(root, canada=CANADA) == [f"enc.mbtiles: depare feature inside the Canada polygon in tile {Z}/{X}/{Y}"]
