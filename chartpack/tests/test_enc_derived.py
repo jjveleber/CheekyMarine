@@ -428,3 +428,22 @@ def test_thin_part_meeting_nosurvey_at_a_corner_only_stays_depth():
     parts = np.array([box(10, 10, 10.5, 20), box(10, 2, 10.5, 8), box(10.5, 8, 11, 9), box(10.5, 3, 11, 5)],
                      object)  # corner of area; edge of area; corner of part 1 only; edge of part 1
     assert _to_nosurvey(parts, np.ones(4, bool), area).tolist() == [False, True, False, True]
+
+
+def test_nosurvey_at_every_zoom_is_the_core_less_land_less_that_zoom_depth():
+    """At every zoom of every band, the nosurvey drawn there (every feature whose zoom range holds it) is exactly the
+    core less land less the depth drawn there: none missing at a band whose thin depth joins no mask piece, and
+    the thin parts of a band added at that band only (PR 133 review)."""
+    from chartpack.bathy.blocks import FINE_RES_DEG
+
+    depth, transform, core, nosurvey, strip = _sliver_case()
+    land = box(core[0], core[1], core[0] + 20 * FINE_RES_DEG, core[3])
+    feats = _derive(depth, transform=transform, core=core, nosurvey=nosurvey, land=land)
+    tiny = 1e-6 * strip.area
+    for lo, hi, _ in BANDS:
+        for z in range(lo, hi + 1):
+            depare = shapely.union_all([shape(f.geometry) for f in _shown(feats, "depare", z)])
+            masked = shapely.union_all([shape(f.geometry) for f in _shown(feats, "nosurvey", z)])
+            want = box(*core).difference(land).difference(depare)
+            assert masked.symmetric_difference(want).area < tiny, z
+            assert masked.covers(nosurvey.buffer(-1e-9)), z
