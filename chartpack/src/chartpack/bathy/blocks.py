@@ -264,7 +264,10 @@ def _coarse_layers(sources: BlockSources, read, res: float, side: np.ndarray | N
     if sources.crm_path is not None:
         layers.append((_INDEX["crm"], lambda: warp_depth(window(sources.crm_path), read, res, "bilinear"), None))
     etopo = [sources.etopo] if isinstance(sources.etopo, Path) else list(sources.etopo or [])
-    for path in etopo:  # one layer per tile, each read cut to the tile's extent (no padding); cells no tile covers stay nan
+    meeting = [path for path in etopo if clip_to_tile(path, read) is not None]
+    if len(meeting) > 1:  # one mosaic, so the bilinear warp sees both sides of a tile seam (-135.0)
+        etopo = [_mosaic(meeting)]
+    for path in etopo:  # each read cut to the file's extent (no padding); cells no file covers stay nan
         if (clip := clip_to_tile(path, read)) is not None:
             layers.append((_INDEX["etopo"], lambda path=path, clip=clip: warp_depth(window(path, clip), read, res,
                                                                                    "bilinear"), None))
@@ -543,7 +546,7 @@ def build_overview(bbox, sources: BlockSources, datum: AreaDatum, canada: shapel
     source with data wins, as in build_block (NONNA-100 on the Canadian column `canada` only, then CRM, then ETOPO),
     each on its datum, less lake_mask. The read goes in strips of OVERVIEW_STRIP_DEG, so the memory stays at one
     strip over the whole plan 8 area, each source read OVERVIEW_READ_MARGIN_DEG past the strip and the ETOPO tiles
-    through one mosaic (_mosaic), so no strip seam or tile seam is left without a value. CUDEM and NONNA-10 add no
+    through one mosaic (_coarse_layers, _mosaic), so no strip seam or tile seam is left without a value. CUDEM and NONNA-10 add no
     detail at this cell size, so there is no fine output.
 
     coarse_grid is each overview cell's mean (the Fish grid: its features use OVERVIEW_BANDS, major levels only);
@@ -558,8 +561,6 @@ def build_overview(bbox, sources: BlockSources, datum: AreaDatum, canada: shapel
     rank = np.array([0] + [LABELS[name]["resolution_m"] for name in SOURCE_NAMES[1:]], np.int16)
     by_rank = np.zeros(rank.max() + 1, np.int8)
     by_rank[rank] = np.arange(len(rank))
-    etopo = [sources.etopo] if isinstance(sources.etopo, Path) else list(sources.etopo or [])
-    etopo = _mosaic(etopo) if len(etopo) > 1 else etopo or None  # the warp sees both sides of a tile seam (-135.0)
     means, srcs, navs, nav_srcs, surveys = [], [], [], [], []
     transform = crs = None
     top = n
@@ -577,7 +578,7 @@ def build_overview(bbox, sources: BlockSources, datum: AreaDatum, canada: shapel
 
         crm = sources.crm_path if sources.crm_path is not None and clip_to_tile(sources.crm_path, strip) else None
         side = _side(canada, strip, COARSE_RES_DEG)
-        layers = _coarse_layers(BlockSources([], crm, None, sources.nonna100, etopo), strip,
+        layers = _coarse_layers(BlockSources([], crm, None, sources.nonna100, sources.etopo), strip,
                                 COARSE_RES_DEG, side, window)
         grid, source = merge_ordered(layers, strip, COARSE_RES_DEG)
         del native

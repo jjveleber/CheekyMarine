@@ -120,7 +120,8 @@ def _two_tiles(tmp_path):
 def test_block_straddling_the_tile_edge_has_both_and_no_gap(tmp_path):
     depth, source = _merged(_two_tiles(tmp_path), (-135.1, 47.05, -134.9, 47.15))
     assert np.isfinite(depth).all()  # no seam gap
-    assert set(np.unique(depth)) == {50.0, 80.0}  # both tiles, no zero elevation padding
+    values = set(np.unique(depth))  # both tiles, no zero elevation padding; the seam blends them (one mosaic)
+    assert {50.0, 80.0} <= values and min(values) == 50.0 and max(values) == 80.0
     assert (source == blocks.SOURCE_NAMES.index("etopo")).all()
 
 
@@ -147,3 +148,25 @@ def _merged_layers(tiles, read):
 
 def test_etopo_land_cell_stays_land_through_build_block(small_grids, test_region, tmp_path):
     assert _coarse(tmp_path, test_region, 5.0) == pytest.approx(-9.0)  # land: shifted like CRM land, never clamped to a water 0.0
+
+
+def test_block_across_the_tile_seam_has_no_empty_column(tmp_path):
+    """Two ETOPO stand-ins at the real 15 arc-second grid meeting at -135.0, read for a block at 1 arc-second: the
+    per-tile warp left up to 22 columns at the seam (-135.004 to -135.0) with no value for some block windows, as
+    bc-offshore-north's blocks cross it (plan8-checkfix F4, fix round 1). One mosaic leaves none."""
+    from test_bathy_blocks import _write_tif
+
+    res_etopo, tiles = 1 / 240, []
+    for name, (w, e) in (("west", (-135.5, -135.0)), ("east", (-135.0, -134.5))):
+        cols, rows = round((e - w) / res_etopo), round(0.5 / res_etopo)
+        lon = w + (np.arange(cols) + 0.5) * res_etopo
+        _write_tif(tmp_path / f"{name}.tif", np.broadcast_to(-(200 + 100 * (lon + 135.5)), (rows, cols)),
+                   (w, 47.0, e, 47.5))
+        tiles.append(tmp_path / f"{name}.tif")
+    res = blocks.COARSE_RES_DEG
+    read = (-135.2727777778, 47.1, -134.8825, 47.3)  # a block read box on the 1 arc-second grid
+    window = lambda path, box=None: read_window(str(path), read if box is None else box)  # noqa: E731
+    grid, _ = merge_ordered(blocks._coarse_layers(_sources(etopo=tiles), read, res, None, window), read, res)
+    lon = read[0] + (np.arange(grid.data.shape[1]) + 0.5) * res
+    near = np.abs(lon + 135.0) < 0.05
+    assert near.any() and np.isfinite(grid.data[:, near]).all()
