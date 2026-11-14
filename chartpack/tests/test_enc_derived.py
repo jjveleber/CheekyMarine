@@ -485,3 +485,38 @@ def test_to_nosurvey_tests_against_prepared_mask_pieces(monkeypatch):
     parts = np.array([box(10, -1, 10.5, 1), box(19.5, -1, 20, 1)], object)
     assert derived._to_nosurvey(parts, np.ones(2, bool), area).all()
     assert seen and all(seen)
+
+
+def _patch_case():
+    """Flat 20 m water, _sliver_case's strip of thin depth between two mask boxes, the east box cut short (13 m), and
+    a third mask piece across 24 m of depth (wider than 2 units at zoom 10, 19 m), within PATCH_UNITS of the strip
+    at zoom 10 but touching no thin part. Returns (features, core, strip, the third piece)."""
+    from chartpack.bathy.blocks import FINE_RES_DEG
+
+    d = FINE_RES_DEG
+    _, transform, core, nosurvey, strip = _sliver_case()
+    west = nosurvey.intersection(box(core[0], core[1], strip.bounds[0], core[3]))
+    east = box(strip.bounds[2], core[1], X0 + 85 * d, core[3])
+    third = box(X0 + 92 * d, core[1], X0 + 100 * d, core[3])
+    feats = _derive(np.full((N, N), 20.0), transform=transform, core=core,
+                    nosurvey=shapely.union_all([west, east, third]))
+    return feats, core, strip, third
+
+
+def test_band_patch_holds_no_slice_of_an_untouched_mask_piece():
+    """A band's nosurvey patch keeps only the parts joined to its thin depth: no slice of a mask piece across depth
+    within reach (PR 133 review: such a slice can be under one unit wide and tile into a square over depth)."""
+    feats, core, strip, third = _patch_case()
+    patches = [f for f in _layer(feats, "nosurvey") if f.props["tippecanoe"]["maxzoom"] < 16]
+    assert patches
+    for f in patches:
+        geom = shape(f.geometry)
+        assert geom.intersection(strip).area > 0.5 * strip.area, f.props
+        assert geom.intersection(third).area == 0, f.props
+
+
+def test_band_patch_holds_the_nosurvey_its_thin_depth_joins():
+    """Every patch part holds nosurvey beside the thin depth, never the thin part alone."""
+    feats, core, strip, third = _patch_case()
+    patches = [f for f in _layer(feats, "nosurvey") if f.props["tippecanoe"]["maxzoom"] < 16]
+    assert patches and all(shape(f.geometry).difference(strip).area > 0.1 * strip.area for f in patches)

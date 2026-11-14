@@ -379,7 +379,8 @@ def derived_features(depth_m: np.ndarray, src: np.ndarray, transform, *, core, l
     for part in _parts(land.boundary.intersection(core_box), 1):
         out.append(Feature("coalne", mapping(part), {"src": "fwa", "tippecanoe": tip}))
     # nosurvey: outside once over every zoom; per band a local patch, its thin depth with the outside within
-    # PATCH_UNITS of it (never a thin part alone: _to_nosurvey grows from outside along shared edges). The patch
+    # PATCH_UNITS of it, only the parts holding thin depth (never a thin part alone: _to_nosurvey grows from outside
+    # along shared edges; never a slice of a mask piece across depth). The patch
     # overlaps the whole nosurvey, so the nosurvey at each zoom is the core less land less that band's depth.
     for part in _parts(outside, 2):
         out.append(Feature("nosurvey", mapping(part), {"tippecanoe": tip}))
@@ -387,7 +388,10 @@ def derived_features(depth_m: np.ndarray, src: np.ndarray, transform, *, core, l
     for lo, hi, _ in bands:
         if not gone[lo].is_empty:
             reach = PATCH_UNITS * 360.0 / (2**lo * 4096) * mid  # degrees, the smaller (latitude) way
-            patch = shapely.union_all([gone[lo], outside.intersection(gone[lo].buffer(reach))])
+            patch = np.array(_parts(shapely.union_all([gone[lo], outside.intersection(gone[lo].buffer(reach))]), 2),
+                             object)
+            # only the parts holding thin depth: a slice of a mask piece across depth within reach is left out
+            held = shapely.area(shapely.intersection(patch, gone[lo])) > 0 if len(patch) else np.zeros(0, bool)
             out += [Feature("nosurvey", mapping(part), {"tippecanoe": {"minzoom": lo, "maxzoom": hi}})
-                    for part in _parts(patch, 2)]
+                    for part in patch[held]]
     return out
