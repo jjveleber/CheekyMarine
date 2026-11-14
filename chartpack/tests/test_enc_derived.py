@@ -416,3 +416,15 @@ def test_nosurvey_not_repeated_per_band_where_no_depth_is_dropped():
     per_band = max(sum(len(shapely.get_coordinates(shape(f.geometry))) for f in _shown(feats, "nosurvey", lo))
                    for lo, _, _ in BANDS)
     assert coords < 1.5 * per_band
+
+
+def test_thin_part_meeting_nosurvey_at_a_corner_only_stays_depth():
+    """_to_nosurvey: a thin part that meets the nosurvey area (or a part sent to it) only at a point stays depth;
+    sent, it could not join the nosurvey and would be a thin nosurvey part alone (review N1). One sharing an edge
+    goes, and so does a thin part sharing an edge with that one."""
+    from chartpack.enc.derived import _to_nosurvey
+
+    area = box(0, 0, 10, 10)
+    parts = np.array([box(10, 10, 10.5, 20), box(10, 2, 10.5, 8), box(10.5, 8, 11, 9), box(10.5, 3, 11, 5)],
+                     object)  # corner of area; edge of area; corner of part 1 only; edge of part 1
+    assert _to_nosurvey(parts, np.ones(4, bool), area).tolist() == [False, True, False, True]

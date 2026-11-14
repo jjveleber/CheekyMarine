@@ -164,8 +164,8 @@ def _thin(parts: np.ndarray, z: int) -> np.ndarray:
 
 
 def _to_nosurvey(parts: np.ndarray, thin: np.ndarray, area: shapely.Geometry) -> np.ndarray:
-    """Which parts go to nosurvey: the thin ones that meet area (the nosurvey of the band), then the thin ones that
-    meet those, until none is added. A thin part meeting neither stays depth: dropped, it would be a thin nosurvey
+    """Which parts go to nosurvey: the thin ones that share an edge with area (the nosurvey of the band), then the
+    thin ones sharing an edge with those, until none is added (a part meeting them at a corner only stays). A thin part meeting neither stays depth: dropped, it would be a thin nosurvey
     part alone between depth or land, which tippecanoe draws as a square over them (a block's core edge, where a
     band crossing at a slant leaves a sliver whose rest is in the next block)."""
     out = np.zeros(len(parts), bool)
@@ -175,8 +175,11 @@ def _to_nosurvey(parts: np.ndarray, thin: np.ndarray, area: shapely.Geometry) ->
     tree = shapely.STRtree(parts[index])
     reach = shapely.get_parts(area)
     while len(reach):
-        _, hits = tree.query(reach, predicate="intersects")
-        new = np.unique(index[hits])
+        near, hits = tree.query(reach, predicate="intersects")
+        # an edge shared (boundaries meet along a line) or interiors that meet: a corner alone could not join
+        edge = shapely.relate_pattern(reach[near], parts[index[hits]], "****1****") | shapely.relate_pattern(
+            reach[near], parts[index[hits]], "T********")
+        new = np.unique(index[hits[edge]])
         new = new[~out[new]]
         out[new] = True
         reach = parts[new]
