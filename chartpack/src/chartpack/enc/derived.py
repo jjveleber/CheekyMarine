@@ -235,6 +235,7 @@ def _to_nosurvey(parts: np.ndarray, thin: np.ndarray, area: shapely.Geometry, z:
     shares = _Shares(parts[index])  # segmented once; each round measures only the open parts near the new reach
     shared = np.zeros(len(index))
     reach = shapely.get_parts(area)
+    cache = {}  # the mask's pieces for the square test (_subdivide), built at its first use
     while True:
         while len(reach):
             open_ = ~out[index]
@@ -245,7 +246,7 @@ def _to_nosurvey(parts: np.ndarray, thin: np.ndarray, area: shapely.Geometry, z:
         if z is None:
             return out
         left = index[~out[index]]
-        new = left[_square_in(parts[left], area, z)]
+        new = left[_square_in(parts[left], area, z, cache)]
         if not len(new):
             return out
         out[new] = True
@@ -267,12 +268,34 @@ def _units(z: int):
     return to_units, to_lonlat
 
 
-def _square_in(parts: np.ndarray, area: shapely.Geometry, z: int) -> np.ndarray:
+_PIECE_VERTICES = 256  # _subdivide splits a polygon until each piece has at most this many vertices
+
+
+def _subdivide(area: shapely.Geometry) -> shapely.STRtree:
+    """area split into pieces of at most _PIECE_VERTICES vertices (halving a piece's bounds along its longer side,
+    each cut made valid: GEOS's fast rectangle clip can leave a self-touching ring), in an STRtree. Built once per
+    mask, it lets a box meet only the few pieces near it instead of the whole mask."""
+    out, stack = [], list(_parts(area, 2))
+    while stack:
+        g = stack.pop()
+        if shapely.get_num_coordinates(g) <= _PIECE_VERTICES:
+            out.append(g)
+            continue
+        w, s, e, n = g.bounds
+        halves = ((w, s, (w + e) / 2, n), ((w + e) / 2, s, e, n)) if e - w >= n - s else \
+            ((w, s, e, (s + n) / 2), (w, (s + n) / 2, e, n))
+        stack += [p for h in halves for p in _parts(shapely.make_valid(shapely.clip_by_rect(g, *h)), 2)]
+    return shapely.STRtree(out)
+
+
+def _square_in(parts: np.ndarray, area: shapely.Geometry, z: int, cache: dict | None = None) -> np.ndarray:
     """Whether the square tippecanoe draws for each part when it collapses (its area, at its centroid, in the tile
-    units of zoom z) reaches more than _SQUARE_REACH_UNITS into area. Area is cut near each square before it is
-    shrunk, so the test costs the squares, not the mask."""
+    units of zoom z) reaches more than _SQUARE_REACH_UNITS into area. The area near each square is put together
+    from the mask's pieces (_subdivide, built at the first square that meets the mask and kept in cache for the
+    caller's later rounds), so after that one split the test costs the squares and the pieces near them, not the
+    whole mask per square."""
     out = np.zeros(len(parts), bool)
-    if not len(parts):
+    if not len(parts) or area.is_empty:
         return out
     to_units, to_lonlat = _units(z)
     units = shapely.transform(parts, to_units)
@@ -280,11 +303,24 @@ def _square_in(parts: np.ndarray, area: shapely.Geometry, z: int) -> np.ndarray:
     half = np.sqrt(shapely.area(units)) / 2
     squares = shapely.box(x - half, y - half, x + half, y + half)
     hit = np.flatnonzero(_meeting(shapely.transform(squares, to_lonlat), area))
-    if len(hit):
-        m = half[hit] + _SQUARE_REACH_UNITS + 1  # the area within this of a square's center is all that counts
-        near = shapely.transform(shapely.box(x[hit] - m, y[hit] - m, x[hit] + m, y[hit] + m), to_lonlat)
-        local = shapely.transform(shapely.intersection(area, near), to_units)
-        out[hit] = shapely.intersects(shapely.buffer(local, -_SQUARE_REACH_UNITS), squares[hit])
+    if not len(hit):
+        return out
+    cache = {} if cache is None else cache
+    if "pieces" not in cache:
+        cache["pieces"] = _subdivide(area)
+    pieces = cache["pieces"]
+    m = half[hit] + _SQUARE_REACH_UNITS + 1  # the area within this of a square's center is all that counts
+    near = shapely.transform(shapely.box(x[hit] - m, y[hit] - m, x[hit] + m, y[hit] + m), to_lonlat)
+    box_i, piece_i = pieces.query(near, predicate="intersects")
+    order = np.argsort(box_i, kind="stable")
+    box_i, clipped = box_i[order], shapely.intersection(pieces.geometries[piece_i[order]], near[box_i[order]])
+    starts = np.flatnonzero(np.r_[True, box_i[1:] != box_i[:-1]]) if len(box_i) else np.array([], int)
+    local = np.array([shapely.union_all(clipped[a:b]) for a, b in zip(starts, np.r_[starts[1:], len(box_i)])],
+                     object)
+    if len(local):
+        at = hit[box_i[starts]]
+        out[at] = shapely.intersects(shapely.buffer(shapely.transform(local, to_units), -_SQUARE_REACH_UNITS),
+                                     squares[at])
     return out
 
 

@@ -889,3 +889,50 @@ def test_thin_strip_whose_square_falls_in_a_pocket_goes():
     assert strip.is_valid and _units_width(strip, 10) < 2 and strip.distance(pocket) < 1e-12
     cand, drop, _, _, gone, _ = _select(np.array([strip], object), pocket, 10, 8 * u)
     assert drop[0]
+
+
+def _whole_mask_square_in(parts, area, z):
+    """_square_in as 6e05f28 ran it: each hit's box overlaid with the whole mask (PR 134 review 5902634552), kept
+    here to time the new one against."""
+    from chartpack.enc.derived import _SQUARE_REACH_UNITS, _meeting, _units
+
+    out = np.zeros(len(parts), bool)
+    to_units, to_lonlat = _units(z)
+    units = shapely.transform(parts, to_units)
+    x, y = shapely.get_x(shapely.centroid(units)), shapely.get_y(shapely.centroid(units))
+    half = np.sqrt(shapely.area(units)) / 2
+    squares = shapely.box(x - half, y - half, x + half, y + half)
+    hit = np.flatnonzero(_meeting(shapely.transform(squares, to_lonlat), area))
+    if len(hit):
+        m = half[hit] + _SQUARE_REACH_UNITS + 1
+        near = shapely.transform(shapely.box(x[hit] - m, y[hit] - m, x[hit] + m, y[hit] + m), to_lonlat)
+        local = shapely.transform(shapely.intersection(area, near), to_units)
+        out[hit] = shapely.intersects(shapely.buffer(local, -_SQUARE_REACH_UNITS), squares[hit])
+    return out
+
+
+def test_square_test_cost_follows_the_squares_not_the_mask():
+    """PR 134 review: a ragged mask of 200,000 vertices, 3,000 units across, and 1,000 thin strips whose squares
+    meet it, some deep in it and some at its edge. _square_in puts the mask near each square together from its pieces (split once):
+    under a third of the time of overlaying the whole mask per square (timed in the same run), same result."""
+    import time
+
+    from chartpack.enc.derived import _square_in
+
+    u = 360 / (2**10 * 4096)
+    t = np.linspace(0, 2 * np.pi, 200000, endpoint=False)
+    r = (1500 + 3 * np.sin(997 * t)) * u
+    mask = shapely.Polygon(np.column_stack([r * np.cos(t), r * np.sin(t)]))
+    ang = np.linspace(0, 2 * np.pi, 1000, endpoint=False)
+    rad = np.where(np.arange(1000) % 2, 1490, 1499) * u  # deep inside, and at the edge
+    parts = np.array([shapely.affinity.rotate(box(q - 0.25 * u, -5 * u, q + 0.25 * u, 5 * u), a, origin=(0, 0),
+                                              use_radians=True) for q, a in zip(rad, ang)], object)
+    t0 = time.perf_counter()
+    new = _square_in(parts, mask, 10)
+    t_new = time.perf_counter() - t0
+    t0 = time.perf_counter()
+    old = _whole_mask_square_in(parts, mask, 10)
+    t_old = time.perf_counter() - t0
+    assert new.tolist() == old.tolist() and new[1::2].all()
+    assert t_new < t_old / 3, (t_new, t_old)
+
