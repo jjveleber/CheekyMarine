@@ -39,6 +39,10 @@ PATCH_UNITS = 8.0  # each band's nosurvey patch takes the nosurvey this far roun
 # already sent): a contour band strip between two depth bands that meets the mask at its tip stays depth, since
 # its patch would be as thin as itself (dry run 3, Ruling 48).
 SHARE_MIN = 0.25
+# A thin part kept as depth goes after all when tippecanoe's square of it (same area, at its centroid) would reach
+# more than this into the nosurvey: the pack check's NOSURVEY_TOLERANCE_UNITS (PR 134 review, a curved strip
+# ringing a small mask pocket).
+_SQUARE_REACH_UNITS = 4.5
 _EDGE_DEG = 1e-9  # about 0.1 mm: an edge this close counts as shared (two overlays of one edge differ in float noise)
 _NONNA = [SOURCE_NAMES.index("nonna10"), SOURCE_NAMES.index("nonna100")]
 # Coarseness rank per source index (0, "none", lowest): the native cell size of the source
@@ -216,11 +220,13 @@ def _meeting(parts: np.ndarray, area: shapely.Geometry) -> np.ndarray:
     return shapely.intersects(area, parts)
 
 
-def _to_nosurvey(parts: np.ndarray, thin: np.ndarray, area: shapely.Geometry) -> np.ndarray:
+def _to_nosurvey(parts: np.ndarray, thin: np.ndarray, area: shapely.Geometry, z: int | None = None) -> np.ndarray:
     """Which parts go to nosurvey: the thin ones with at least SHARE_MIN of their perimeter along area (the
     nosurvey of the band) or along thin parts already sent, until none is added. A thin part meeting them at a
     corner only, or along a short stretch (a contour band strip that meets the mask at its tip), stays depth: sent,
-    it would be a nosurvey patch as thin as itself, which tippecanoe draws as a square over the depth beside it."""
+    it would be a nosurvey patch as thin as itself, which tippecanoe draws as a square over the depth beside it.
+    With z (the band's minzoom), a thin part kept so goes after all when its square (_square_in) would reach into
+    area, and the share rule runs on from it."""
     out = np.zeros(len(parts), bool)
     index = np.flatnonzero(thin)
     if not len(index) or area.is_empty:
@@ -229,12 +235,56 @@ def _to_nosurvey(parts: np.ndarray, thin: np.ndarray, area: shapely.Geometry) ->
     shares = _Shares(parts[index])  # segmented once; each round measures only the open parts near the new reach
     shared = np.zeros(len(index))
     reach = shapely.get_parts(area)
-    while len(reach):
-        open_ = ~out[index]
-        shared += shares.along(reach, open_)
-        new = index[open_ & (shared >= need)]
+    while True:
+        while len(reach):
+            open_ = ~out[index]
+            shared += shares.along(reach, open_)
+            new = index[open_ & (shared >= need)]
+            out[new] = True
+            reach = parts[new]
+        if z is None:
+            return out
+        left = index[~out[index]]
+        new = left[_square_in(parts[left], area, z)]
+        if not len(new):
+            return out
         out[new] = True
         reach = parts[new]
+
+
+def _units(z: int):
+    """(lon/lat to tile units of zoom z, tile units to lon/lat), for shapely.transform."""
+    n = 2**z * 4096
+
+    def to_units(c):
+        return np.column_stack([(c[:, 0] + 180.0) / 360.0 * n,
+                                (1 - np.arcsinh(np.tan(np.radians(c[:, 1]))) / math.pi) / 2 * n])
+
+    def to_lonlat(c):
+        return np.column_stack([c[:, 0] / n * 360.0 - 180.0,
+                                np.degrees(np.arctan(np.sinh(math.pi * (1 - 2 * c[:, 1] / n))))])
+
+    return to_units, to_lonlat
+
+
+def _square_in(parts: np.ndarray, area: shapely.Geometry, z: int) -> np.ndarray:
+    """Whether the square tippecanoe draws for each part when it collapses (its area, at its centroid, in the tile
+    units of zoom z) reaches more than _SQUARE_REACH_UNITS into area. Area is cut near each square before it is
+    shrunk, so the test costs the squares, not the mask."""
+    out = np.zeros(len(parts), bool)
+    if not len(parts):
+        return out
+    to_units, to_lonlat = _units(z)
+    units = shapely.transform(parts, to_units)
+    x, y = shapely.get_x(shapely.centroid(units)), shapely.get_y(shapely.centroid(units))
+    half = np.sqrt(shapely.area(units)) / 2
+    squares = shapely.box(x - half, y - half, x + half, y + half)
+    hit = np.flatnonzero(_meeting(shapely.transform(squares, to_lonlat), area))
+    if len(hit):
+        m = half[hit] + _SQUARE_REACH_UNITS + 1  # the area within this of a square's center is all that counts
+        near = shapely.transform(shapely.box(x[hit] - m, y[hit] - m, x[hit] + m, y[hit] + m), to_lonlat)
+        local = shapely.transform(shapely.intersection(area, near), to_units)
+        out[hit] = shapely.intersects(shapely.buffer(local, -_SQUARE_REACH_UNITS), squares[hit])
     return out
 
 
@@ -284,7 +334,7 @@ def _select(every: np.ndarray, nosurvey: shapely.Geometry, z: int, reach: float)
         pieces, parent, cored = np.concatenate([pieces, more]), np.concatenate([parent, at]), cored | has
         keep = ~thin0[parent] | cored[parent]  # a thin part with no core goes (or stays) whole, not in pieces
         cand = np.concatenate([every, pieces[keep]])
-        drop = _to_nosurvey(cand, np.concatenate([thin0 & ~cored, np.ones(int(keep.sum()), bool)]), nosurvey)
+        drop = _to_nosurvey(cand, np.concatenate([thin0 & ~cored, np.ones(int(keep.sum()), bool)]), nosurvey, z)
         # a part not opened yet that meets what goes: open it too, so a thin part's core stays depth and a wide
         # part's fingers into what goes go with it
         todo = ~opened & _meeting(every, shapely.union_all(cand[drop])) if drop.any() else opened & False

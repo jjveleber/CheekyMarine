@@ -869,3 +869,23 @@ def test_share_rounds_cost_the_new_reach_not_every_open_part():
     t_old = time.perf_counter() - t
     assert new.tolist() == old.tolist() == [True] * 400 + [False] * 2000
     assert t_new < t_old / 3, (t_new, t_old)
+
+
+def test_thin_strip_whose_square_falls_in_a_pocket_goes():
+    """PR 134 review (Minor): a curved thin strip ringing a small mask pocket meets it at one point only (under the
+    0.25 share), but tippecanoe would draw it as its same-area square at its centroid, deep inside the pocket. The
+    strip goes to nosurvey when that square (in tile units at the band's minzoom) reaches more than the check's
+    NOSURVEY_TOLERANCE_UNITS into the nosurvey. Units of zoom 10 at the equator."""
+    from chartpack.enc.derived import _SQUARE_REACH_UNITS, _select
+    from chartpack.pack.check import NOSURVEY_TOLERANCE_UNITS
+
+    assert _SQUARE_REACH_UNITS == NOSURVEY_TOLERANCE_UNITS
+    u = 360 / (2**10 * 4096)
+    pocket = shapely.Point(0, 0).buffer(10 * u, 64)
+    t = np.linspace(0.3, 6.0, 400)
+    outer = np.column_stack([0.5 * u + 11.3 * u * np.cos(t), 11.3 * u * np.sin(t)])
+    inner = np.column_stack([0.5 * u + 10.5 * u * np.cos(t), 10.5 * u * np.sin(t)])[::-1]
+    strip = shapely.Polygon(np.vstack([outer, inner]))
+    assert strip.is_valid and _units_width(strip, 10) < 2 and strip.distance(pocket) < 1e-12
+    cand, drop, _, _, gone, _ = _select(np.array([strip], object), pocket, 10, 8 * u)
+    assert drop[0]
