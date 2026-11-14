@@ -147,26 +147,38 @@ def _snap_band(core, feats: list[Feature], lo: int, hi: int, times: dict) -> lis
             depth.append((props, geom))
         out += [Feature(layer, mapping(shapely.transform(p, to_lonlat)), {**props, "tippecanoe": tip})
                 for p in shapely.get_parts(geom) if shapely.get_type_id(p) == 3]
-    out += _contours(depth, tip, to_lonlat)
+    levels = sorted({f.props[k] for f in feats if f.layer == "depare" for k in ("DRVAL1", "DRVAL2")}, key=float)
+    out += _contours(depth, levels, tip, to_lonlat)
     times["emit"] += time.perf_counter() - t
     return out
 
 
-def _contours(depth: list[tuple[dict, shapely.Geometry]], tip: dict, to_lonlat) -> list[Feature]:
-    """The depcnt of a band: on each level L, the edges shared by a depare with DRVAL2 L and one with DRVAL1 L
-    (exact: both carry the same snapped vertices), src the coarser of the two."""
+def _contours(depth: list[tuple[dict, shapely.Geometry]], levels: list[str], tip: dict, to_lonlat) -> list[Feature]:
+    """The depcnt of a band: on every edge shared by a shallower and a deeper depare (exact: both carry the same
+    snapped vertices), one line per level L of levels with shallow DRVAL2 <= L <= deep DRVAL1, src the coarser
+    of the two. levels: the DRVAL bounds of the band's depare before the snap, so a band the snap closed (under a
+    unit wide, its neighbors now meet) still gives its levels there (Ruling 59); the usual edge, DRVAL2 equal to
+    DRVAL1, gives one line."""
     out = []
-    for shallow, a in depth:
-        for deep, b in depth:
-            if shallow["DRVAL2"] != deep["DRVAL1"]:
-                continue
-            lines = shapely.intersection(shapely.boundary(a), shapely.boundary(b))
-            lines = [g for g in shapely.get_parts(lines) if shapely.get_dimensions(g) == 1]
-            if not lines:
-                continue
-            props = {"VALDCO": shallow["DRVAL2"], "src": _coarser(shallow["src"], deep["src"]), "tippecanoe": tip}
-            out += [Feature("depcnt", mapping(shapely.transform(g, to_lonlat)), props)
-                    for g in shapely.get_parts(shapely.line_merge(shapely.union_all(lines)))]
+    if len(depth) < 2:
+        return out
+    edges = [shapely.boundary(g) for _, g in depth]
+    pairs = shapely.STRtree(edges).query(edges, predicate="intersects")
+    for i, j in zip(*pairs):
+        (shallow, a), (deep, b) = depth[i], depth[j]
+        lo, hi = float(shallow["DRVAL2"]), float(deep["DRVAL1"])
+        here = [v for v in levels if lo <= float(v) <= hi]
+        if i == j or not here:
+            continue
+        lines = shapely.intersection(edges[i], edges[j])
+        lines = [g for g in shapely.get_parts(lines) if shapely.get_dimensions(g) == 1]
+        if not lines:
+            continue
+        lines = shapely.get_parts(shapely.line_merge(shapely.union_all(lines)))
+        src = _coarser(shallow["src"], deep["src"])
+        out += [Feature("depcnt", mapping(shapely.transform(g, to_lonlat)), {"VALDCO": v, "src": src,
+                                                                           "tippecanoe": tip})
+                for v in here for g in lines]
     return out
 
 

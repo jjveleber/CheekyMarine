@@ -279,3 +279,27 @@ def test_an_invalid_original_is_labeled_without_error():
     assert shapely.make_valid(bad).contains(shapely.Point(x, y))
     face = box(x - 2, y - 0.2, x + 2, y + 0.2)  # thin: labeled by its overlap
     assert _labels(np.array([face], object), np.array([bad], object)).tolist() == [0]
+
+
+@pytest.mark.parametrize("collapsed, levels", [
+    ([("2", "5")], ["2", "5"]),  # the reviewer's probe: a 0.3-unit 2-5 band between 0-2 and 5-10
+    ([("2", "5"), ("5", "10")], ["2", "5", "10"]),  # two collapsed bands in a row, between 0-2 and 10-18.2
+])
+def test_a_band_collapsed_in_the_snap_keeps_its_contour_levels(collapsed, levels):
+    """Ruling 59: where the snap closes one or more depth bands under a unit wide, their neighbors meet directly;
+    that edge gets one depcnt per level of the original bands between them (shallow DRVAL2 <= L <= deep
+    DRVAL1), src the coarser of the two faces."""
+    zooms = (10, 11)
+    x = 2000.6
+    feats = [_depare(_ll(box(0, 0, x, 4096)), "0", "2", zooms)]
+    for a, b in collapsed:
+        feats.append(_depare(_ll(box(x, 0, x + 0.3, 4096)), a, b, zooms, "nonna100"))
+        x += 0.3
+    feats.append(_depare(_ll(box(x, 0, 4096, 4096)), collapsed[-1][1], "18.2" if len(collapsed) > 1 else "10",
+                         zooms))
+    out = _snap_one(feats, 10)
+    assert {f.props["DRVAL1"] for f in out if f.layer == "depare"} == {"0", collapsed[-1][1]}
+    lines = [f for f in out if f.layer == "depcnt"]
+    assert sorted(f.props["VALDCO"] for f in lines) == sorted(levels)
+    for f in lines:
+        assert _u(shape(f.geometry)).length > 4000 and f.props["src"] == "nonna10"
