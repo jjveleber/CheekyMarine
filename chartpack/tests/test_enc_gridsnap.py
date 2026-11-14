@@ -262,3 +262,20 @@ def test_thin_depth_meeting_nosurvey_at_a_corner_only_stays():
     feats = _snap_one([_f("nosurvey", _ll(box(1000, 1000, 1010, 1010)), zooms),
                        _depare(_ll(box(1010, 1010, 1011, 1060)), "0", "0.9", zooms)], 10)
     assert [f.props["DRVAL1"] for f in feats if f.layer == "depare"] == ["0"]
+
+
+def test_an_invalid_original_is_labeled_without_error():
+    """A derived polygon that is invalid in tile units (from test_build_enc_derived_region_end_to_end: the nosurvey
+    triangle cut by apply_rules, self-crossing at 2684671.54, 5839752.37 in zoom-14 units) made the overlap
+    fallback raise TopologyException: labels use the originals made valid."""
+    from chartpack.enc.gridsnap import _labels
+
+    bad = shapely.from_wkt("POLYGON ((2684721.25499883 5839655.226940997, 2684667.6817537528 5839759.913786557, "
+                           "2685752.6613333332 5837639.174093384, 2686172.091733333 5840002.708141658, "
+                           "2684401.1633777777 5840280.66895269, 2684587.576888889 5839916.440077268, "
+                           "2684721.25499883 5839655.226940997))")
+    assert not bad.is_valid
+    x, y = 2684680.0, 5839739.0  # beside the crossing, inside the valid part
+    assert shapely.make_valid(bad).contains(shapely.Point(x, y))
+    face = box(x - 2, y - 0.2, x + 2, y + 0.2)  # thin: labeled by its overlap
+    assert _labels(np.array([face], object), np.array([bad], object)).tolist() == [0]

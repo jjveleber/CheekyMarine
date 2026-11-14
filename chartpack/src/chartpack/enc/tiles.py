@@ -10,7 +10,9 @@ from pathlib import Path
 import shapely
 from shapely.geometry import mapping, shape
 
-from chartpack.enc.bc import apply_rules
+from chartpack.bathy.contours import BANDS
+from chartpack.enc.bc import DERIVED_SRC, apply_rules
+from chartpack.enc.gridsnap import snap_derived
 from chartpack.enc.quilt import _parts, quilt
 from chartpack.enc.reader import CellMeta, Feature
 from chartpack.enc.schema import DERIVED_LAYERS, LAYERS, OPTIONAL_LAYERS, SAFETY_LAYERS, SCHEMA_VERSION
@@ -38,7 +40,17 @@ _SAFETY_ONLY = ["--detect-shared-borders"]
 # The layers tiled with _SAFETY_ONLY: the no-survey areas share their edges with the depth areas, so they are
 # simplified together.
 _SAFETY_GROUP = SAFETY_LAYERS + ("nosurvey",)
+# The snapped derived areas and contours (enc/gridsnap.py) are tiled on their own with no simplification: their
+# vertices are on the tile grid of their band's minzoom, so tippecanoe draws them exactly at every zoom of the band.
+# tile-join merges them with the layers of the same name from the other runs.
+_DERIVED_ONLY = ["-ps"]
+_DERIVED_GROUP = ("depare", "depcnt", "lndare", "nosurvey")
 _SEABED_KEYS = ("src", "class", "NATSUR", "NATQUA", "CATWED", "folk", "substrate")
+
+
+def _is_derived(feature: Feature) -> bool:
+    """A derived feature (enc/derived.py): nosurvey, or a src of the derived sources."""
+    return feature.layer == "nosurvey" or feature.props.get("src") in DERIVED_SRC
 
 
 def run(cmd: list[str]) -> None:
@@ -87,6 +99,7 @@ def build_enc_mbtiles(
     cells: list[tuple[CellMeta, list[Feature]]], out: Path, *, region: Region, work: Path,
     seabed: Sequence[Feature] = (), zooms: tuple[int, int], area: shapely.Geometry | None = None,
     canada: shapely.Geometry | None = None, derived: Sequence[Feature] = (), depth_sources: Sequence[dict] = (),
+    bands=BANDS,
 ) -> Path:
     """`seabed`: USGS survey features (seabed/usseabed.py, seabed/cmecs.py) that already carry their
     tippecanoe zooms; they join the seabed layer as they are, not quilted (spec 6.10).
@@ -98,6 +111,9 @@ def build_enc_mbtiles(
     are cut at it and `derived` (enc/derived.py features, made for the charts side) is added, by apply_rules.
     `depth_sources`: the derived inputs ({"source", "asset", "sha256"}); those whose source is a src of the
     built features (or "nosurvey", when the nosurvey layer holds any) go to cheekymarine:depth_sources.
+    `bands`: the derived features' zoom bands (BANDS, or OVERVIEW_BANDS for the overview): after apply_rules they
+    are snapped per block core and band (snap_derived), and their depare, depcnt, lndare and nosurvey are tiled in
+    a run of their own without simplification.
     A charts kind other than enc (DERIVED_LAYERS) needs its derived layers only, not every schema layer."""
     out, work = Path(out), Path(work)
     work.mkdir(parents=True, exist_ok=True)
@@ -108,21 +124,30 @@ def build_enc_mbtiles(
         shapely.prepare(area)
         features = _crop(features, area)
     if canada is not None:
-        features, seabed = apply_rules(features + list(seabed), list(derived), canada), ()
+        features, seabed = snap_derived(apply_rules(features + list(seabed), list(derived), canada), bands), ()
+    snapped: dict[str, list[Feature]] = {name: [] for name in _DERIVED_GROUP}
     for feature in features:
-        by_layer[feature.layer].append(feature)
+        if feature.layer in _DERIVED_GROUP and _is_derived(feature):
+            snapped[feature.layer].append(feature)
+        else:
+            by_layer[feature.layer].append(feature)
     by_layer["seabed"].extend(seabed)
 
-    groups: dict[str, list[tuple[str, Path]]] = {"safety": [], "thinned": []}
+    groups: dict[str, list[tuple[str, Path]]] = {"safety": [], "thinned": [], "derived": []}
     for spec in LAYERS:
-        if not by_layer[spec.name]:
-            continue  # reported by name after the build, below
-        path = work / f"{spec.name}.geojsonseq"
-        _write_geojsonseq(by_layer[spec.name], path)
-        groups["safety" if spec.name in _SAFETY_GROUP else "thinned"].append((spec.name, path))
+        if by_layer[spec.name]:  # none in any group: reported by name after the build, below
+            path = work / f"{spec.name}.geojsonseq"
+            _write_geojsonseq(by_layer[spec.name], path)
+            groups["safety" if spec.name in _SAFETY_GROUP else "thinned"].append((spec.name, path))
+        if snapped.get(spec.name):
+            path = work / f"derived-{spec.name}.geojsonseq"
+            _write_geojsonseq(snapped[spec.name], path)
+            groups["derived"].append((spec.name, path))
+    for name, feats in snapped.items():
+        by_layer[name].extend(feats)  # for the metadata below
 
     parts = []
-    for group, extra in (("safety", _SAFETY_ONLY), ("thinned", [])):
+    for group, extra in (("safety", _SAFETY_ONLY), ("thinned", []), ("derived", _DERIVED_ONLY)):
         if groups[group]:
             part = work / f"{group}.mbtiles"
             _tippecanoe(part, groups[group], extra, zooms)

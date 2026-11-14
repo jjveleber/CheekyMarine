@@ -33,7 +33,7 @@ from chartpack.bathy.blocks import (
     iter_blocks,
     overview_bounds,
 )
-from chartpack.bathy.contours import OVERVIEW_BANDS
+from chartpack.bathy.contours import BANDS, OVERVIEW_BANDS
 from chartpack.bathy.crm import crm_path, crm_tile_requests, crm_wcs_url, fetch_crm
 from chartpack.bathy.crm import crm_request as crm_request_bounds  # crm_request names the metadata string below
 from chartpack.bathy.cudem import URLLIST, Grid, parse_urllist, tiles_for_bbox
@@ -504,7 +504,7 @@ def _build_enc(args: argparse.Namespace) -> int:
     enc = build_enc_mbtiles(cells, args.work / "enc.mbtiles", region=region, work=args.work / "tippecanoe",
                             seabed=_usgs_seabed(region, args.cache, None if owned is None else area), zooms=zooms,
                             area=area, canada=canada if meets else None, derived=derived,
-                            depth_sources=depth_sources)
+                            depth_sources=depth_sources, bands=OVERVIEW_BANDS if region.overview else BANDS)
     keep_tiles(enc, owned, minzoom=zooms[0], maxzoom=zooms[1], content=content)
     print(_finish(assemble_charts_pack(region, enc, args.out, content=content, canada=canada), region))
     return 0

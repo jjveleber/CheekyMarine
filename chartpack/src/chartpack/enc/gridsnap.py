@@ -21,7 +21,6 @@ import numpy as np
 import shapely
 from shapely.geometry import box, mapping, shape
 
-from chartpack.bathy.blocks import LABELS
 from chartpack.enc.reader import Feature
 
 SIMPLIFY_UNITS = 1.0  # coverage_simplify tolerance, in minzoom units (tippecanoe's own simplification is about 1)
@@ -46,6 +45,8 @@ def _units(z: int):
 
 
 def _coarser(a: str, b: str) -> str:
+    from chartpack.bathy.blocks import LABELS  # here: bathy.blocks imports enc.tiles, which imports this module
+
     return a if LABELS[a]["resolution_m"] >= LABELS[b]["resolution_m"] else b
 
 
@@ -68,6 +69,10 @@ def _labels(faces: np.ndarray, polys: np.ndarray) -> np.ndarray:
     label = np.full(len(faces), -1)
     if not len(faces):
         return label
+    bad = ~shapely.is_valid(polys)  # an overlay output can cross itself once in tile units: test it made valid
+    if bad.any():
+        polys = polys.copy()
+        polys[bad] = shapely.make_valid(polys[bad])
     tree = shapely.STRtree(polys)
     points = shapely.point_on_surface(faces)
     deep = shapely.distance(points, shapely.boundary(faces)) >= _DEEP_UNITS
