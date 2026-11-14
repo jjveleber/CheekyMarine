@@ -700,3 +700,16 @@ def test_depth_just_inside_the_tile_edge_deep_in_nosurvey_fails(tmp_path, test_r
                          "nosurvey": [(_square(-200, -200, 4300, 4300), {})]}}
     root = _hand_pack(tmp_path, test_region, "derived-inshore", tiles)
     assert check_pack(root) == [f"enc.mbtiles: depare depth inside a nosurvey area in tile {Z}/{X}/{Y}"]
+
+
+def test_shrunk_mask_in_the_tile_is_polygons_only():
+    """A mask whose shrunk edge lands on the tile edge: cut to the tile it is polygons only, not a collection with
+    the edge line (a prepared GeometryCollection made the overview tile 9/74/173 take minutes, not seconds)."""
+    from shapely.geometry import box
+
+    from chartpack.pack.check import _shrunk_in_tile
+
+    mask = shapely.union_all([box(4092, -100, 4300, 2000), box(-100, 2100, 4300, 4300)])
+    shrunk = _shrunk_in_tile(mask)
+    assert shrunk.geom_type in ("Polygon", "MultiPolygon")
+    assert shrunk.equals(box(0, 2104, 4096, 4096))

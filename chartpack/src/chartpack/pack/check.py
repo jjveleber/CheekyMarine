@@ -187,14 +187,20 @@ def _check_no_depth_in_nosurvey(m: MBTiles) -> list[str]:
             layers = decode_pbf(data)
             if not layers.get("nosurvey"):
                 continue
-            mask = shapely.union_all([make_valid(shape(f["geometry"])) for f in layers["nosurvey"]]).buffer(
-                -CANADA_TOLERANCE_UNITS).intersection(_TILE_BOX)  # shrunk, then cut: the edge strip is judged too
+            mask = _shrunk_in_tile(shapely.union_all([make_valid(shape(f["geometry"])) for f in layers["nosurvey"]]))
             shapely.prepare(mask)
             for layer in ("depare", "depcnt", "soundg"):
                 errors += [f"enc.mbtiles: {layer} depth inside a nosurvey area in tile {z}/{x}/{y}"
                            for f in layers.get(layer, []) if "src" in f["properties"]
                            and mask.intersects(_in_tile(f))]
     return errors
+
+
+def _shrunk_in_tile(area: shapely.Geometry) -> shapely.Geometry:
+    """area (tile units) shrunk by CANADA_TOLERANCE_UNITS, then cut to _TILE_BOX (in that order, so the strip along
+    the tile edge is judged too), polygons only: a shrunk edge on the tile edge leaves a line in the cut, and a
+    prepared GeometryCollection is slow to test against."""
+    return shapely.MultiPolygon(_polygons(area.buffer(-CANADA_TOLERANCE_UNITS).intersection(_TILE_BOX)))
 
 
 def _in_tile(feature: dict) -> shapely.Geometry:
@@ -225,8 +231,7 @@ def _canada_in_tiles(m: MBTiles, canada: shapely.Geometry):
             near = box(w, s, e, n)
             if not canada.intersects(near):
                 continue
-            shrunk = _tile_units(z, x, y, canada.intersection(near)).buffer(-CANADA_TOLERANCE_UNITS).intersection(
-                _TILE_BOX)
+            shrunk = _shrunk_in_tile(_tile_units(z, x, y, canada.intersection(near)))
             if not shrunk.is_empty:
                 shapely.prepare(shrunk)
                 yield z, x, y, decode_pbf(data), shrunk
