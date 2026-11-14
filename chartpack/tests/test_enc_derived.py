@@ -366,7 +366,9 @@ def test_depth_nosurvey_and_land_tile_the_core_per_band():
     for lo, hi, _ in BANDS:
         assert all(f.props["tippecanoe"] in ({"minzoom": lo, "maxzoom": hi}, {"minzoom": 10, "maxzoom": 16})
                    for f in _shown(feats, "nosurvey", lo))
-        parts = [shape(f.geometry) for f in _layer(feats, "depare", lo) + _shown(feats, "nosurvey", lo)] + lnd
+        # a band's patches overlap the nosurvey drawn over every zoom (both nosurvey): one union for the layer
+        masked = shapely.union_all([shape(f.geometry) for f in _shown(feats, "nosurvey", lo)])
+        parts = [shape(f.geometry) for f in _layer(feats, "depare", lo)] + [masked] + lnd
         union = shapely.union_all(parts)
         assert sum(p.area for p in parts) - union.area < tiny, lo
         assert core.symmetric_difference(union).area < tiny, lo
@@ -544,12 +546,13 @@ def test_long_thin_band_touching_the_mask_at_its_tip_stays_depth():
         assert _band_area(with_mask, lo, "1.8") > 0.9 * _band_area(without, lo, "1.8"), lo
 
 
-@pytest.mark.parametrize("case", ["step", "sliver", "patch", "hole"])
+@pytest.mark.parametrize("case", ["step", "sliver", "patch", "hole", "finger"])
 def test_every_band_nosurvey_part_is_wide_enough_to_draw(case):
     """Every nosurvey part emitted for one band's zooms is at least THIN_UNITS wide at that band's minzoom, so
     tippecanoe never draws it as a square over depth."""
     feats = {"step": lambda: _step_case()[0], "sliver": lambda: _sliver_features(),
-             "patch": lambda: _patch_case()[0], "hole": lambda: _hole_case()[0]}[case]()
+             "patch": lambda: _patch_case()[0], "hole": lambda: _hole_case()[0],
+             "finger": lambda: _finger_case()[0]}[case]()
     for lo, hi, _ in BANDS:
         parts = [shape(f.geometry) for f in _layer(feats, "nosurvey")
                  if f.props["tippecanoe"] == {"minzoom": lo, "maxzoom": hi}]
@@ -615,3 +618,36 @@ def test_thin_part_whose_patch_is_still_thin_stays_depth():
     for lo, sent in ((10, False), (12, True)):
         depth = shapely.union_all([shape(f.geometry) for f in _layer(feats, "depare", lo)])
         assert (depth.intersection(strip).area < 1e-6 * strip.area) == sent, lo
+
+
+def _finger_case():
+    """At FINE_RES_DEG, 20 m water; a no-survey box east of column 80 with a notch 1.5 m (Web Mercator) wide and
+    60 m long: surveyed water poking into the mask as a finger of the wide depth area west of it. The finger is
+    under 2 units wide at zooms 10 (19 m) and 12 (4.8 m), over it at 14 (1.2 m), as the 2-3.6 finger of
+    haida-gwaii-south 13/1098/2676 (dry run 43547768743). Returns (features, the finger)."""
+    from chartpack.bathy.blocks import FINE_RES_DEG
+
+    d, m = FINE_RES_DEG, 1 / 111319.49
+    transform, core = (X0, d, 0.0, Y0, 0.0, -d), (X0, Y0 - N * d, X0 + N * d, Y0)
+    edge, mid = X0 + 80 * d, Y0 - 80 * d
+    finger = box(edge, mid - 0.75 * m, edge + 60 * m, mid + 0.75 * m)
+    mask = box(edge, core[1], core[2], core[3]).difference(finger)
+    return _derive(np.full((N, N), 20.0), transform=transform, core=core, nosurvey=mask), finger
+
+
+def test_thin_finger_of_a_wide_depth_area_goes_to_nosurvey():
+    """A finger of a depth area that is wide as a whole, thinner than 2 units at a band's minzoom and lying along
+    the mask, is nosurvey at that band (2 A / P of the whole area does not see it, and tippecanoe draws the finger
+    as a spike inside the nosurvey); depth where it is wide enough; the rest of the area stays depth."""
+    from chartpack.bathy.blocks import FINE_RES_DEG
+
+    feats, finger = _finger_case()
+    finger_core = (X0, Y0 - N * FINE_RES_DEG, X0 + N * FINE_RES_DEG, Y0)
+    for lo, _, _ in BANDS:
+        depth = shapely.union_all([shape(f.geometry) for f in _layer(feats, "depare", lo)])
+        masked = shapely.union_all([shape(f.geometry) for f in _shown(feats, "nosurvey", lo)])
+        thin = _units_width(finger, lo) < 2
+        assert (depth.intersection(finger).area < 0.05 * finger.area) == thin, lo
+        if thin:
+            assert masked.intersection(finger).area > 0.95 * finger.area, lo
+        assert depth.area > 0.4 * box(*finger_core).area, lo  # the area west of the mask stays depth

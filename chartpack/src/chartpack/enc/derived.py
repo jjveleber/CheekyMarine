@@ -209,6 +209,33 @@ def _to_nosurvey(parts: np.ndarray, thin: np.ndarray, area: shapely.Geometry) ->
     return out
 
 
+def _fingers(parts: np.ndarray, which: np.ndarray, z: int) -> tuple[np.ndarray, np.ndarray]:
+    """The fingers of parts[which]: the pieces an opening by THIN_UNITS (in the tile units of zoom z) takes off,
+    each under THIN_UNITS wide by construction, and of at least 1 unit2 (not the crumbs the opening cuts off a
+    corner). Returns (pieces, the index of each piece's part). The opening is taken in tile units and cut back
+    out of the lon/lat part, so the pieces and what is left share their edges exactly."""
+    index = np.flatnonzero(which)
+    if not len(index):
+        return np.array([], object), np.array([], int)
+    n = 2**z * 4096
+
+    def to_units(c):
+        return np.column_stack([(c[:, 0] + 180.0) / 360.0 * n,
+                                (1 - np.arcsinh(np.tan(np.radians(c[:, 1]))) / math.pi) / 2 * n])
+
+    def to_lonlat(c):
+        return np.column_stack([c[:, 0] / n * 360.0 - 180.0,
+                                np.degrees(np.arctan(np.sinh(math.pi * (1 - 2 * c[:, 1] / n))))])
+
+    half = THIN_UNITS / 2
+    opened = shapely.buffer(shapely.buffer(shapely.transform(parts[index], to_units), -half, quad_segs=2), half,
+                            quad_segs=2)
+    pieces, at = shapely.get_parts(shapely.difference(parts[index], shapely.transform(opened, to_lonlat)),
+                                   return_index=True)
+    keep = (shapely.get_type_id(pieces) == 3) & (shapely.area(shapely.transform(pieces, to_units)) >= 1.0)
+    return pieces[keep], index[at[keep]]
+
+
 def _patches(gone: shapely.Geometry, outside: shapely.Geometry, reach: float) -> np.ndarray:
     """A band's nosurvey patch: its thin parts gone with the outside within reach (degrees) of them, as the parts
     holding some of gone (a slice of a mask piece across depth within reach is left out)."""
@@ -267,23 +294,31 @@ def _depth_features(grid, src, transform, *, levels_m, drying_m, tiles, zooms, n
             polygons = shapely.from_ragged_array(GeometryType.POLYGON, points[0], (offsets[0], outer[0]))
             filled.append((_cut(polygons, tiles, 2), (lo, hi)))
     every = np.concatenate([parts for parts, _ in filled]) if filled else np.array([], object)
-    drop = _to_nosurvey(every, _thin(every, zooms[0]), nosurvey)
+    thin = _thin(every, zooms[0])
+    # candidates: the thin parts, then the fingers of the wide parts that meet the nosurvey (_fingers)
+    pieces, parent = _fingers(every, ~thin & shapely.intersects(every, nosurvey), zooms[0])
+    cand = np.concatenate([every, pieces])
+    drop = _to_nosurvey(cand, np.concatenate([thin, np.ones(len(pieces), bool)]), nosurvey)
     while True:
-        gone = shapely.union_all(every[drop]) if drop.any() else shapely.Polygon()
+        gone = shapely.union_all(cand[drop]) if drop.any() else shapely.Polygon()
         patches = _patches(gone, nosurvey, reach)
         bad = patches[_thin(patches, zooms[0])] if len(patches) else patches
         if not len(bad):
             break
-        back = drop & (shapely.area(shapely.intersection(every, shapely.union_all(bad))) > 0)
+        back = drop & (shapely.area(shapely.intersection(cand, shapely.union_all(bad))) > 0)
         if not back.any():
             break
         drop &= ~back  # a patch too thin to draw: its parts stay depth
     shapely.prepare(gone)
+    shaped = every.copy()  # a wide part less its fingers that go
+    for i in np.unique(parent[drop[len(every):]]):
+        shaped[i] = shapely.difference(every[i], shapely.union_all(pieces[(parent == i) & drop[len(every):]]))
     out, start = [], 0
     for parts, (lo, hi) in filled:
         keep = ~drop[start:start + len(parts)]
+        kept = [p for g in shaped[start:start + len(parts)][keep] for p in _parts(g, 2)]
         start += len(parts)
-        out += named(parts[keep], "depare", {"DRVAL1": _fmt(lo), "DRVAL2": _fmt(hi)})
+        out += named(np.array(kept, object), "depare", {"DRVAL1": _fmt(lo), "DRVAL2": _fmt(hi)})
     for level in levels_m:
         if low <= level <= high:
             points, offsets = gen.lines(level)
