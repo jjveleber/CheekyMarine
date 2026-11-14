@@ -86,14 +86,21 @@ def _assert_shoal_kept(feats, square, depth=3.0):
     """At every band: every depare meeting the shoal square's interior has DRVAL1 <= depth and one covers the
     square; the square lies wholly on the shallow side of every depcnt deeper than depth (no such line meets it).
     Snapped features (enc/gridsnap.py) move by up to 1.5 units of the band's minzoom, so the square is shrunk by
-    that much (owner, Q2: the snap goes both ways); what it gives up is nosurvey, never deeper depth."""
+    that much in those units (owner, Q2: the snap goes both ways); what the depth gives up of the square is
+    nosurvey, never deeper depth."""
+    from chartpack.enc.gridsnap import _units
+
     for lo, _, _ in BANDS:
-        inner = square.buffer(-1.5 * 360 / (4096 * 2**lo))
+        to_units, to_lonlat = _units(lo)
+        inner = shapely.transform(shapely.transform(square, to_units).buffer(-1.5), to_lonlat)
         meeting = [f for f in _layer(feats, "depare", lo)
                    if shape(f.geometry).intersection(square).area > 1e-9 * square.area]
         assert meeting and all(float(f.props["DRVAL1"]) <= depth for f in meeting), (lo, [f.props for f in meeting])
         assert inner.is_empty or any(shape(f.geometry).intersection(inner).area > (1 - 1e-9) * inner.area
                                      for f in meeting), lo
+        given = square.difference(shapely.union_all([shape(f.geometry) for f in meeting]))
+        masked = shapely.union_all([shape(f.geometry) for f in _shown(feats, "nosurvey", lo)])
+        assert given.difference(masked).area < 1e-6 * square.area, lo
         deeper = [f for f in _layer(feats, "depcnt", lo) if float(f.props["VALDCO"]) > depth]
         assert not any(shape(f.geometry).intersects(inner) for f in deeper), lo
 
