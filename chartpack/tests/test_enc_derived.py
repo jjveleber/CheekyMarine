@@ -995,3 +995,26 @@ def test_subdivide_survives_a_sliver_and_keeps_the_area(wkt, depth, most, monkey
     assert 0 < len(pieces) <= most
     assert shapely.is_valid(pieces).all()
     assert shapely.union_all(pieces).symmetric_difference(geom).area < 1e-12 * geom.area
+
+
+# ---- plan8-edgefix (Ruling 55)
+
+def _ubox(z):
+    u = 360 / (2**z * 4096)
+    return u, lambda x0, y0, x1, y1: box(x0 * u, y0 * u, x1 * u, y1 * u)
+
+
+def test_a_hairline_finger_is_a_candidate_not_a_crumb():
+    """Dry run 4 north, 10/134/328: a finger 0.1 units wide and 8 long (0.8 unit2) off a wide part, into the mask,
+    is longer than 2 units, so it is a finger, not a corner crumb (crumbs are under 1 unit2 and about a unit
+    across); it goes with the mask while the wide part stays depth. Units of zoom 10 at the equator."""
+    from chartpack.enc.derived import _fingers, _select
+
+    u, ubox = _ubox(10)
+    finger = ubox(20, 9.95, 28, 10.05)
+    part = shapely.union_all([ubox(0, 0, 20, 20), finger])
+    pieces, parent, cored = _fingers(np.array([part], object), np.array([True]), 10)
+    assert cored[0] and any(p.intersection(finger).area > 0.9 * finger.area for p in pieces)
+    mask = ubox(20, 0, 40, 20).difference(finger)
+    cand, drop, _, _, gone, _ = _select(np.array([part], object), mask, 10, 8 * u)
+    assert not drop[0] and gone.intersection(finger).area > 0.9 * finger.area

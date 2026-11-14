@@ -335,8 +335,8 @@ def _square_in(parts: np.ndarray, area: shapely.Geometry, z: int, cache: dict | 
 
 def _fingers(parts: np.ndarray, which: np.ndarray, z: int) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """The fingers of parts[which]: the pieces an opening by THIN_UNITS (in the tile units of zoom z) takes off,
-    each under THIN_UNITS wide by construction, and of at least 1 unit2 (not the crumbs the opening cuts off a
-    corner). Returns (pieces, the index of each piece's part, whether the opening leaves a core of each part:
+    each under THIN_UNITS wide by construction, and of at least 1 unit2 or more than THIN_UNITS across (not the
+    crumbs the opening cuts off a corner; a hairline finger is long but of little area, dry run 4 north). Returns (pieces, the index of each piece's part, whether the opening leaves a core of each part:
     False for the parts not in which). The opening is taken in tile units and cut back
     out of the lon/lat part, so the pieces and what is left share their edges exactly."""
     index = np.flatnonzero(which)
@@ -357,7 +357,10 @@ def _fingers(parts: np.ndarray, which: np.ndarray, z: int) -> tuple[np.ndarray, 
                             quad_segs=2)
     pieces, at = shapely.get_parts(shapely.difference(parts[index], shapely.transform(opened, to_lonlat)),
                                    return_index=True)
-    keep = (shapely.get_type_id(pieces) == 3) & (shapely.area(shapely.transform(pieces, to_units)) >= 1.0)
+    units = shapely.transform(pieces, to_units)
+    w, s, e, n = shapely.bounds(units).T if len(pieces) else (np.zeros(0),) * 4
+    # a crumb the opening cuts off a corner is under 1 unit2 and about a unit across; a finger is longer
+    keep = (shapely.get_type_id(pieces) == 3) & ((shapely.area(units) >= 1.0) | (np.hypot(e - w, n - s) > THIN_UNITS))
     cored = np.zeros(len(parts), bool)
     cored[index] = ~shapely.is_empty(opened)
     return pieces[keep], index[at[keep]], cored
