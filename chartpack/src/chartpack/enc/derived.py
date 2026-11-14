@@ -222,7 +222,7 @@ def _to_nosurvey(parts: np.ndarray, thin: np.ndarray, area: shapely.Geometry) ->
     return out
 
 
-def _fingers(parts: np.ndarray, which: np.ndarray, z: int) -> tuple[np.ndarray, np.ndarray]:
+def _fingers(parts: np.ndarray, which: np.ndarray, z: int) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """The fingers of parts[which]: the pieces an opening by THIN_UNITS (in the tile units of zoom z) takes off,
     each under THIN_UNITS wide by construction, and of at least 1 unit2 (not the crumbs the opening cuts off a
     corner). Returns (pieces, the index of each piece's part, whether the opening leaves a core of each part:
@@ -450,9 +450,12 @@ def derived_features(depth_m: np.ndarray, src: np.ndarray, transform, *, core, l
     - lndare and coalne from land, src "fwa", cut to core, over every zoom of bands;
     - nosurvey, at each zoom range of bands the core less land less that band's depare (the water with no depth
       at any band once over every zoom, plus a patch per band round that band's thin parts), so depth and nosurvey
-      meet on one line and every water place not drawn as depth is nosurvey (the stored mask, the water with no value, and
-      the depare parts too thin to draw at the band's minzoom, _thin, that meet it, _to_nosurvey, which are dropped
-      with the depcnt and soundg on them).
+      meet on one line and every water place not drawn as depth is nosurvey: the stored mask, the water with no
+      value, and the depth too thin to draw at the band's minzoom that lies along it (_select): parts thin by
+      2 A / P with no 2-unit core, and the pieces an opening by 2 units takes off the parts that meet the
+      nosurvey or what goes to it (fingers, ragged edges; their cores stay depth), each sent only when a quarter
+      of its perimeter lies along the nosurvey or along what goes (_to_nosurvey), and given back to depth when
+      its patch would still be under 2 units wide (the guard). The depcnt and soundg on what goes are dropped.
 
     Every depth geometry is cut to core and to the valid input cells, less nosurvey and land. bands gives the zoom
     ranges and cell sizes (BANDS for a region pack, OVERVIEW_BANDS for the overview, which passes soundings=False:
