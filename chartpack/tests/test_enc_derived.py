@@ -796,3 +796,24 @@ def test_a_core_found_in_round_one_survives_a_later_round():
         core = shapely.intersection(part, ubox(part.bounds[0] / u + 1.1, part.bounds[1] / u, part.bounds[0] / u + 1.9,
                                                part.bounds[3] / u))
         assert gone.intersection(core).area == 0
+
+
+def test_wide_part_reached_through_a_sent_sliver_loses_its_finger():
+    """PR 134 review: a wide part meeting the nosurvey only through a thin sliver sent to it is opened too, so its
+    finger between the sliver's two arms goes with them (else it stays depth between two nosurvey arms and draws
+    as a spike past the patch). Units of zoom 12 at the equator; the mask is y < 0."""
+    from chartpack.enc.derived import _select
+
+    u = 360 / (2**12 * 4096)
+
+    def ubox(x0, y0, x1, y1):
+        return box(x0 * u, y0 * u, x1 * u, y1 * u)
+
+    mask = ubox(-50, -10, 50, 0)
+    sliver = shapely.union_all([ubox(-50, 0, 50, 1).difference(ubox(-0.2, 0.3, 0.2, 1)),
+                                ubox(-1.2, 1, -0.2, 20), ubox(0.2, 1, 1.2, 20)])
+    wide = ubox(-50, 0, 50, 60).difference(sliver)
+    finger = ubox(-0.2, 0.3, 0.2, 20)
+    cand, drop, pieces, parent, gone, _ = _select(np.array([sliver, wide], object), mask, 12, 8 * u)
+    assert drop[0] and not drop[1]
+    assert gone.intersection(finger).area > 0.9 * finger.area

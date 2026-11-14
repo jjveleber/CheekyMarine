@@ -254,8 +254,8 @@ def _fingers(parts: np.ndarray, which: np.ndarray, z: int) -> tuple[np.ndarray, 
 
 def _select(every: np.ndarray, nosurvey: shapely.Geometry, z: int, reach: float) -> tuple:
     """Which of one band's depare parts every (and of their pieces) go to nosurvey. Candidates: the thin parts
-    (_thin at z), and the pieces an opening takes off the parts that meet the nosurvey, or meet the parts sent to
-    it (_fingers): the fingers of a wide part, and the ragged edge of a part thin by 2 A / P only, whose core stays
+    (_thin at z), and the pieces an opening takes off the parts, wide or thin, that meet the nosurvey or meet the
+    parts sent to it (_fingers): the fingers of a wide part, and the ragged edge of a part thin by 2 A / P only, whose core stays
     depth. _to_nosurvey picks among them; then any patch (_patches with reach, degrees) still under THIN_UNITS at
     z gives its candidates back to depth. Returns (candidates: every then the pieces, which go, the pieces, the
     index of each piece's part, what goes as one geometry, the patches)."""
@@ -269,8 +269,9 @@ def _select(every: np.ndarray, nosurvey: shapely.Geometry, z: int, reach: float)
         keep = ~thin0[parent] | cored[parent]  # a thin part with no core goes (or stays) whole, not in pieces
         cand = np.concatenate([every, pieces[keep]])
         drop = _to_nosurvey(cand, np.concatenate([thin0 & ~cored, np.ones(int(keep.sum()), bool)]), nosurvey)
-        # a thin part not opened yet that meets what goes: open it too, so its core stays depth
-        todo = thin0 & ~opened & _meeting(every, shapely.union_all(cand[drop])) if drop.any() else opened & False
+        # a part not opened yet that meets what goes: open it too, so a thin part's core stays depth and a wide
+        # part's fingers into what goes go with it
+        todo = ~opened & _meeting(every, shapely.union_all(cand[drop])) if drop.any() else opened & False
         if not todo.any():
             break
         opened |= todo
