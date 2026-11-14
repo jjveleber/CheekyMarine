@@ -958,3 +958,40 @@ def test_share_rule_runs_on_from_a_part_the_square_rule_sent():
     assert beside.distance(pocket) > 0.5 * u
     cand, drop, _, _, _, _ = _select(np.array([ring, beside], object), pocket, 10, 8 * u)
     assert drop.tolist() == [True, True]
+
+
+def _within(seconds, f):
+    """f() or a test failure after seconds (SIGALRM, as pytest runs tests in the main thread): a loop that never
+    ends fails instead of hanging the suite (the repo has no pytest-timeout)."""
+    import signal
+
+    def stop(*_):
+        raise TimeoutError(f"still running after {seconds} s")
+
+    old = signal.signal(signal.SIGALRM, stop)
+    signal.alarm(seconds)
+    try:
+        return f()
+    finally:
+        signal.alarm(0)
+        signal.signal(signal.SIGALRM, old)
+
+
+@pytest.mark.parametrize("wkt, depth, most", [(_SLIVER, None, 1), (_CELLS_WITH_HOLE, None, 450), (_CELLS_WITH_HOLE, 2, 5)])
+def test_subdivide_survives_a_sliver_and_keeps_the_area(wkt, depth, most, monkeypatch):
+    """_subdivide cuts with an overlay, not GEOS's fast rectangle clip: halving the haida-gwaii sliver of PR 130
+    made clip_by_rect raise "Invalid number of points in LinearRing found 3" (dry run of haida-gwaii-south at
+    18a474f). A piece size of 3 vertices forces the cuts; the pieces are valid and cover the input exactly. The
+    loop guards are pinned (PR 135 review): the split ends within 10 s, a cut that leaves no smaller piece keeps
+    its input (408 pieces for the cells today, capped at 450), and with _CUT_DEPTH at 2 the cells give at most
+    5."""
+    from chartpack.enc import derived
+
+    monkeypatch.setattr(derived, "_PIECE_VERTICES", 3)
+    if depth is not None:
+        monkeypatch.setattr(derived, "_CUT_DEPTH", depth)
+    geom = shapely.from_wkt(wkt)
+    pieces = _within(10, lambda: derived._subdivide(geom).geometries)
+    assert 0 < len(pieces) <= most
+    assert shapely.is_valid(pieces).all()
+    assert shapely.union_all(pieces).symmetric_difference(geom).area < 1e-12 * geom.area
