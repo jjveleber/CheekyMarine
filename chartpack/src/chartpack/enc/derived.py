@@ -252,6 +252,42 @@ def _fingers(parts: np.ndarray, which: np.ndarray, z: int) -> tuple[np.ndarray, 
     return pieces[keep], index[at[keep]], cored
 
 
+def _select(every: np.ndarray, nosurvey: shapely.Geometry, z: int, reach: float) -> tuple:
+    """Which of one band's depare parts every (and of their pieces) go to nosurvey. Candidates: the thin parts
+    (_thin at z), and the pieces an opening takes off the parts that meet the nosurvey, or meet the parts sent to
+    it (_fingers): the fingers of a wide part, and the ragged edge of a part thin by 2 A / P only, whose core stays
+    depth. _to_nosurvey picks among them; then any patch (_patches with reach, degrees) still under THIN_UNITS at
+    z gives its candidates back to depth. Returns (candidates: every then the pieces, which go, the pieces, the
+    index of each piece's part, what goes as one geometry, the patches)."""
+    thin0 = _thin(every, z)
+    opened = _meeting(every, nosurvey)
+    todo = opened.copy()
+    pieces, parent, cored = np.array([], object), np.array([], int), np.zeros(len(every), bool)
+    while True:
+        more, at, has = _fingers(every, todo, z)
+        pieces, parent, cored = np.concatenate([pieces, more]), np.concatenate([parent, at]), cored | has
+        keep = ~thin0[parent] | cored[parent]  # a thin part with no core goes (or stays) whole, not in pieces
+        cand = np.concatenate([every, pieces[keep]])
+        drop = _to_nosurvey(cand, np.concatenate([thin0 & ~cored, np.ones(int(keep.sum()), bool)]), nosurvey)
+        # a thin part not opened yet that meets what goes: open it too, so its core stays depth
+        todo = thin0 & ~opened & _meeting(every, shapely.union_all(cand[drop])) if drop.any() else opened & False
+        if not todo.any():
+            break
+        opened |= todo
+    pieces, parent = pieces[keep], parent[keep]
+    while True:
+        gone = shapely.union_all(cand[drop]) if drop.any() else shapely.Polygon()
+        patches = _patches(gone, nosurvey, reach)
+        bad = patches[_thin(patches, z)] if len(patches) else patches
+        if not len(bad):
+            break
+        back = drop & (shapely.area(shapely.intersection(cand, shapely.union_all(bad))) > 0)
+        if not back.any():
+            break
+        drop &= ~back  # a patch too thin to draw: its parts stay depth
+    return cand, drop, pieces, parent, gone, patches
+
+
 def _patches(gone: shapely.Geometry, outside: shapely.Geometry, reach: float) -> np.ndarray:
     """A band's nosurvey patch: its thin parts gone with the outside within reach (degrees) of them, as the parts
     holding some of gone (a slice of a mask piece across depth within reach is left out)."""
@@ -310,25 +346,7 @@ def _depth_features(grid, src, transform, *, levels_m, drying_m, tiles, zooms, n
             polygons = shapely.from_ragged_array(GeometryType.POLYGON, points[0], (offsets[0], outer[0]))
             filled.append((_cut(polygons, tiles, 2), (lo, hi)))
     every = np.concatenate([parts for parts, _ in filled]) if filled else np.array([], object)
-    thin = _thin(every, zooms[0])
-    # candidates: the thin parts, and the pieces an opening takes off the parts that meet the nosurvey (_fingers):
-    # the fingers of a wide part, and the ragged edge of a part thin by 2 A / P only, whose core stays depth
-    pieces, parent, cored = _fingers(every, _meeting(every, nosurvey), zooms[0])
-    keep = ~thin[parent] | cored[parent]  # a thin part with no core goes (or stays) whole, not in pieces
-    pieces, parent = pieces[keep], parent[keep]
-    thin &= ~cored
-    cand = np.concatenate([every, pieces])
-    drop = _to_nosurvey(cand, np.concatenate([thin, np.ones(len(pieces), bool)]), nosurvey)
-    while True:
-        gone = shapely.union_all(cand[drop]) if drop.any() else shapely.Polygon()
-        patches = _patches(gone, nosurvey, reach)
-        bad = patches[_thin(patches, zooms[0])] if len(patches) else patches
-        if not len(bad):
-            break
-        back = drop & (shapely.area(shapely.intersection(cand, shapely.union_all(bad))) > 0)
-        if not back.any():
-            break
-        drop &= ~back  # a patch too thin to draw: its parts stay depth
+    cand, drop, pieces, parent, gone, patches = _select(every, nosurvey, zooms[0], reach)
     shapely.prepare(gone)
     shaped = every.copy()  # a wide part less its fingers that go
     for i in np.unique(parent[drop[len(every):]]):

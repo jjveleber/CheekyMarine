@@ -724,3 +724,26 @@ def test_share_rule_sends_at_a_quarter_of_the_perimeter():
     area = shapely.union_all([box(0, 0, 10, 4.4), box(0, 20, 10, 26.6)])
     parts = np.array([box(10, 0, 11, 10), box(10, 20, 11, 30)], object)
     assert _to_nosurvey(parts, np.ones(2, bool), area).tolist() == [False, True]
+
+
+def test_ragged_part_reached_through_a_sent_part_keeps_its_core():
+    """Review M3: a part thin by 2 A / P only (a 3-unit band with teeth) that reaches the nosurvey only through a
+    thin strip already sent is opened too: its core stays depth instead of going whole with the strip. Units of
+    zoom 10 at the equator."""
+    from chartpack.enc.derived import _select
+
+    u = 360 / (2**10 * 4096)
+
+    def ubox(x0, y0, x1, y1):
+        return box(x0 * u, y0 * u, x1 * u, y1 * u)
+
+    area = ubox(0, 0, 10, 40)
+    strip = ubox(10, 0, 10.5, 40)
+    band = ubox(10.5, 0, 13.5, 40)
+    ragged = shapely.union_all([band] + [ubox(13.5, y, 16.5, y + 0.4) for y in range(2, 40, 4)])
+    assert _units_width(ragged, 10) < 2
+    every = np.array([strip, ragged], object)
+    cand, drop, pieces, parent, _, _ = _select(every, area, 10, 8 * u)
+    assert drop[0] and not drop[1]  # the strip goes, the ragged part is not sent whole
+    gone = shapely.union_all(cand[drop])
+    assert gone.intersection(band.buffer(-1.1 * u)).area == 0  # its core stays depth
