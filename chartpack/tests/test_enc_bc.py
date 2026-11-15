@@ -267,13 +267,70 @@ def test_real_slivers_along_the_polygon_are_dropped(fixtures_dir, regions_dir):
 
 
 @pytest.mark.parametrize("layer", ["depare", "lndare", "coalne", "hazard"])
-def test_safety_slivers_are_not_dropped(fixtures_dir, regions_dir, layer):
-    """The same CATZOC 6 sliver as a safety layer's area (or its outline as a line): cut, never dropped."""
+def test_safety_slivers_wider_than_a_meter_are_kept(fixtures_dir, regions_dir, layer):
+    """The same CATZOC 6 sliver as a safety layer's area (or its outline as a line), cut: its parts lie up to
+    6 m from the polygon, more than SAFETY_BORDER_M, so it is kept (plan8-bordersliver drops only the parts
+    wholly within SAFETY_BORDER_M)."""
     canada = load_canada(regions_dir)
     sliver = next(f for f in _sliver_fixture(fixtures_dir) if f.props.get("CATZOC") == 6)
     geom = shape(sliver.geometry)
     feat = Feature(layer, mapping(geom.exterior if layer == "coalne" else geom), {"cell": "US3WA1EF", "band": 3})
     assert apply_rules([feat], [], canada)
+
+
+# ---- plan8-bordersliver: needles of NOAA safety layers along the polygon
+
+def test_real_depare_needles_along_the_polygon_are_dropped(fixtures_dir, regions_dir):
+    """US4WA1IE edition 1.0 DEPARE 164.5 to 182.8 near -123.93, 48.28 (border-sliver.json, see the README): the
+    cell's border vertices lie up to 0.13 m from the polygon's, so the cut leaves needle parts all within a
+    meter of its edge. None survives, and the check's Canada rule has nothing to flag (test_pack_check)."""
+    from chartpack.enc.bc import SAFETY_BORDER_M, to_m
+
+    canada = load_canada(regions_dir)
+    feat = _border_sliver(fixtures_dir)
+    uncut = shape(feat.geometry).difference(canada)
+    assert not uncut.is_empty and to_m(uncut).area < 100  # the zigzag: what the cut leaves is only needles
+    assert apply_rules([feat], [], canada) == []
+    assert SAFETY_BORDER_M == 1.0
+
+
+def _border_sliver(fixtures_dir):
+    row = json.loads((fixtures_dir / "border-sliver.json").read_text())[0]
+    return Feature(row["layer"], mapping(shapely.from_wkt(row["wkt"])), row["props"])
+
+
+@pytest.mark.parametrize("layer", ["depare", "lndare", "hazard", "coalne"])
+def test_safety_part_two_meters_from_the_edge_is_kept_whole(layer):
+    """A NOAA safety part reaching 2 m from the polygon's east edge (-122.0) is kept whole, narrow end and all."""
+    wide = 2.0 * _M_LON
+    geom = Polygon([(-122.5, 49.4), (-122.0, 49.4), (-122.0 + wide, 49.5), (-122.0, 49.6), (-122.5, 49.6)])
+    line = LineString([(-122.5, 49.5), (-122.0 + wide, 49.5)])
+    feat = _f(layer, line if layer == "coalne" else geom, 4, DRVAL1="0")
+    out = apply_rules([feat], [], CANADA)
+    assert len(out) == 1
+    assert shapely.union_all(_geoms(out, layer)).equals(
+        (line if layer == "coalne" else geom).difference(CANADA))
+    assert shapely.union_all(_geoms(out, layer)).bounds[2] == pytest.approx(-122.0 + wide)
+
+
+@pytest.mark.parametrize("layer", ["depare", "coalne"])
+def test_safety_part_within_a_meter_is_dropped(layer):
+    """The same shape reaching only 0.5 m past the edge is dropped (a zero-width contour part too)."""
+    wide = 0.5 * _M_LON
+    geom = Polygon([(-122.5, 49.4), (-122.0, 49.4), (-122.0 + wide, 49.5), (-122.0, 49.6), (-122.5, 49.6)])
+    line = LineString([(-122.5, 49.5), (-122.0 + wide, 49.5)])
+    feat = _f(layer, line if layer == "coalne" else geom, 4)
+    assert apply_rules([feat], [], CANADA) == []
+
+
+def test_derived_feature_near_the_edge_is_untouched():
+    """Derived features (the second argument) are not thinned: a derived depare reaching 0.5 m past the polygon
+    edge, a needle by the rule, is cut as before (the part outside the polygon is kept) and not dropped."""
+    wide = 0.5 * _M_LON
+    geom = Polygon([(-122.5, 49.4), (-122.0, 49.4), (-122.0 + wide, 49.5), (-122.0, 49.6), (-122.5, 49.6)])
+    inside = _f("depare", geom, src="nonna100", DRVAL1="0")
+    out = apply_rules([], [inside], CANADA)
+    assert out == [inside]
 
 
 def test_wide_part_along_the_polygon_is_kept():

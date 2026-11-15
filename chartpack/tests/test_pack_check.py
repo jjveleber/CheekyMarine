@@ -612,6 +612,34 @@ def test_cut_along_long_diagonal_polygon_edge_passes_check(tmp_path, test_region
     assert check_pack(root, canada=canada) == []
 
 
+@pytest.mark.parametrize("z", [15, 16])
+def test_real_border_needles_pass_check(tmp_path, test_region, regions_dir, fixtures_dir, z):
+    """The US4WA1IE DEPARE 164.5 to 182.8 of border-sliver.json cut by apply_rules, drawn as tippecanoe draws a
+    part thinner than a unit (a one-unit square centered on it), passes the check's Canada rule: the needles are
+    dropped (plan8-bordersliver), so nothing is drawn but the water of the tile."""
+    import math
+
+    from shapely.geometry import box, mapping, shape
+
+    from chartpack.enc.bc import apply_rules, load_canada
+    from chartpack.enc.reader import Feature
+    from chartpack.pack.check import _tile_units
+
+    canada = load_canada(regions_dir)
+    row = json.loads((fixtures_dir / "border-sliver.json").read_text())[0]
+    out = apply_rules([Feature(row["layer"], mapping(shapely.from_wkt(row["wkt"])), row["props"])], [], canada)
+    lon, lat = -123.923, 48.281
+    n = 2**z
+    x, y = int((lon + 180) / 360 * n), int((1 - math.asinh(math.tan(math.radians(lat))) / math.pi) / 2 * n)
+    squares = []
+    for f in out:
+        c = _tile_units(z, x, y, shape(f.geometry)).centroid
+        squares.append(box(c.x - 0.5, c.y - 0.5, c.x + 0.5, c.y + 0.5))
+    tiles = {(z, x, y): {**WATER, "depare": WATER["depare"] + [(mapping(q), {}) for q in squares]}}
+    root = _hand_pack(tmp_path, test_region, "derived-inshore", tiles, minzoom=z, maxzoom=z)
+    assert out == [] and check_pack(root, canada=canada) == []
+
+
 @pytest.mark.parametrize("inside, errors", [(2.5, 0), (5.0, 1)])
 def test_depth_edge_moved_into_nosurvey_by_tiling(tmp_path, test_region, inside, errors):
     """A derived depare cut at the nosurvey edge (x = 2048) and moved into it by tippecanoe, up to 2.5 units on a
