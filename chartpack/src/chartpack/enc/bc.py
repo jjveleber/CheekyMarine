@@ -39,7 +39,8 @@ DERIVED_SRC = ("nonna10", "nonna100", "crm", "etopo", "fwa")
 _NOAA_COVER = ("depare", "lndare")  # the kept NOAA areas that win over derived depth outside the polygon (rule 3)
 # The layers whose cut parts lying wholly within BORDER_TOLERANCE_M of the polygon are dropped (Ruling 41): the
 # cells' own edges may lie that far outside it, and tippecanoe draws such a sliver as a square straddling the edge.
-# They carry no depth, land or hazard; the safety layers are cut, never thinned.
+# They carry no depth, land or hazard. The safety layers are cut, and a cut part wholly within SAFETY_BORDER_M
+# (below) of the polygon is dropped; no other part of them is thinned.
 _SLIVER_LAYERS = ("area", "line", "meta", "seabed")
 # The cut part of any other (NOAA safety) layer lying wholly within this of the polygon is dropped too (plan8-
 # bordersliver, owner 2026-11-15): a cell that places its own border vertices up to 0.13 m from the polygon's

@@ -105,10 +105,10 @@ each leave a part 1 to 6 m wide outside the polygon; M_QUAL CATZOC 3 lies outsid
 
 ## Border slivers
 
-`border-sliver.json` holds one real NOAA feature behind the strait charts dry run failure of plan 8 (run
-43654496823, plan8-bordersliver): the `US4WA1IE` edition 1.0 DEPARE (DRVAL1 164.5, DRVAL2 182.8, band 4) cut to the
+`border-sliver.json` holds two real NOAA features behind the strait charts dry run failure of plan 8 (run
+43654496823, plan8-bordersliver): the `US4WA1IE` edition 1.0 DEPAREs (DRVAL1 164.5, DRVAL2 182.8, band 4: row 0 along the polygon, row 1 the US-side depth area next to it) each cut to the
 box -123.945, 48.278, -123.915, 48.288, as `{cell, edition, layer, props, wkt}`. Read with
 `chartpack.enc.reader.read_cell` from the cell zip the dry run used (US4WA1IE-1.0.zip, 76031 bytes, 2026-11-14),
-the feature intersected with the box. That cell places its own border vertices up to 0.13 m from
+each feature intersected with the box. That cell places its own border vertices up to 0.13 m from
 `regions/clip/canada-chs.geojson`'s, so `apply_rules` cuts it into needle parts within 1 m of the polygon.
-`test_real_depare_needles_along_the_polygon_are_dropped` and `test_real_border_needles_pass_check` read it.
+`test_real_depare_needles_along_the_polygon_are_dropped` (the needles of row 0 are dropped, row 1 kept) and `test_real_border_needles_pass_check` read it.

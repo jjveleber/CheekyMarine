@@ -281,22 +281,27 @@ def test_safety_slivers_wider_than_a_meter_are_kept(fixtures_dir, regions_dir, l
 # ---- plan8-bordersliver: needles of NOAA safety layers along the polygon
 
 def test_real_depare_needles_along_the_polygon_are_dropped(fixtures_dir, regions_dir):
-    """US4WA1IE edition 1.0 DEPARE 164.5 to 182.8 near -123.93, 48.28 (border-sliver.json, see the README): the
-    cell's border vertices lie up to 0.13 m from the polygon's, so the cut leaves needle parts all within a
-    meter of its edge. None survives, and the check's Canada rule has nothing to flag (test_pack_check)."""
+    """US4WA1IE edition 1.0 DEPARE 164.5 to 182.8 near -123.93, 48.28 (border-sliver.json, see the README): row 0
+    is the cell's depare along the polygon, whose border vertices lie up to 0.13 m from the polygon's, so the cut
+    leaves needle parts all within a meter of its edge; row 1 is the US-side depth area next to them. The needles
+    are dropped, the depth area comes back whole (its part outside the polygon), and nothing else."""
     from chartpack.enc.bc import SAFETY_BORDER_M, to_m
 
     canada = load_canada(regions_dir)
-    feat = _border_sliver(fixtures_dir)
-    uncut = shape(feat.geometry).difference(canada)
+    feats = _border_slivers(fixtures_dir)
+    uncut = shape(feats[0].geometry).difference(canada)
     assert not uncut.is_empty and to_m(uncut).area < 100  # the zigzag: what the cut leaves is only needles
-    assert apply_rules([feat], [], canada) == []
+    out = apply_rules(feats, [], canada)
+    assert len(out) == 1
+    kept = shape(out[0].geometry)  # the whole 1.0 km2 part, up to the cut's own rounding (1e-7 m2)
+    assert to_m(kept.symmetric_difference(shape(feats[1].geometry).difference(canada))).area < 1e-3
+    assert to_m(kept).area == pytest.approx(1_001_337, abs=1)
     assert SAFETY_BORDER_M == 1.0
 
 
-def _border_sliver(fixtures_dir):
-    row = json.loads((fixtures_dir / "border-sliver.json").read_text())[0]
-    return Feature(row["layer"], mapping(shapely.from_wkt(row["wkt"])), row["props"])
+def _border_slivers(fixtures_dir):
+    rows = json.loads((fixtures_dir / "border-sliver.json").read_text())
+    return [Feature(r["layer"], mapping(shapely.from_wkt(r["wkt"])), r["props"]) for r in rows]
 
 
 @pytest.mark.parametrize("layer", ["depare", "lndare", "hazard", "coalne"])
