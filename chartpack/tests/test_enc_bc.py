@@ -408,7 +408,9 @@ def test_real_needles_hanging_off_kept_parts_are_trimmed(fixtures_dir, regions_d
         assert to_m(whole.intersection(strip)).area > 1  # the needle the cut leaves (2.0 and 5.5 m2)
         assert to_m(kept.intersection(strip)).area < 1e-3
         assert to_m(kept.difference(whole)).area < 1e-6
-        assert to_m(whole).area - to_m(kept).area < 10
+        # Only the needle and narrow strips along the polygon go: the DEPARE loses 2.2 m2, the RESARE 73 m2 (the
+        # needle and a 0.2 m wide strip along the polygon's south edge here, within the 20 m of its layer).
+        assert to_m(whole).area - to_m(kept).area < 100
 
 
 @pytest.mark.parametrize("layer", ["depare", "coalne"])
