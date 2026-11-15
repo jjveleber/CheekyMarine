@@ -299,6 +299,18 @@ def test_real_depare_needles_along_the_polygon_are_dropped(fixtures_dir, regions
     assert SAFETY_BORDER_M == 1.0
 
 
+def test_thin_triangle_that_projects_to_a_self_intersection_is_dropped(fixtures_dir, regions_dir):
+    """US3WA1EF 1.5 DEPARE 36.5 to 54.8 as the north-sound quilt leaves it near -123.14, 48.39 (thin-triangle.json,
+    see the README): a valid lon/lat polygon of 5 vertices, a thin triangle 2.7 km long along the Canada
+    polygon. The cut leaves a needle of it outside the polygon that is self-intersecting once densified and
+    projected to meters. The needle is dropped, and apply_rules no longer fails with a GEOS TopologyException."""
+    canada = load_canada(regions_dir)
+    row = json.loads((fixtures_dir / "thin-triangle.json").read_text())[0]
+    geom = shapely.from_wkt(row["wkt"])
+    assert geom.is_valid
+    assert apply_rules([Feature(row["layer"], mapping(geom), row["props"])], [], canada) == []
+
+
 def _border_slivers(fixtures_dir):
     rows = json.loads((fixtures_dir / "border-sliver.json").read_text())
     return [Feature(r["layer"], mapping(shapely.from_wkt(r["wkt"])), r["props"]) for r in rows]
