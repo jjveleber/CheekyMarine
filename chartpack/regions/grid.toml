@@ -5,7 +5,7 @@
 zoom = 10
 order = [
     "sound-south", "sound-central", "north-sound", "strait", "wa-coast",
-    "bc-south-georgia", "bc-vi-west-south", "bc-north-georgia", "bc-johnstone", "bc-vi-west-north", "bc-central",
-    "bc-north", "haida-gwaii-north", "haida-gwaii-south",
+    "bc-south-georgia", "bc-vi-west-south", "bc-north-georgia", "bc-johnstone", "bc-vi-west-north",
+    "bc-central-north", "bc-central-south", "bc-north", "haida-gwaii-north", "haida-gwaii-south",
     "bc-offshore-south", "bc-offshore-north",
 ]
