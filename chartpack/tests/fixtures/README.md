@@ -122,3 +122,5 @@ cells, then the crop to the owned tiles, 2026-11-14), cut to the box -123.152, 4
 `{cell, edition, layer, props, wkt}`. Read with `chartpack.enc.reader.read_cell` from `US3WA1EF-1.5.zip` and the
 other north-sound cells. It is a valid 5-vertex lon/lat polygon, a thin triangle 2.7 km long along the Canada
 polygon, whose cut part outside it is self-intersecting once densified and projected to meters. `test_thin_triangle_that_projects_to_a_self_intersection_is_dropped` reads it.
+The box cut moves the self-intersection: the fixture fails in `_outside_m` on main f5e62ab at 1212258.94 380095.43,
+about 25 m from the run's point (1212246.10 380073.55), the same thin triangle.

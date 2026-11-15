@@ -330,6 +330,19 @@ def test_invalid_projected_part_reaching_past_the_margin_is_not_a_sliver(fixture
     assert not _sliver(both, canada, 1.0)
 
 
+def test_valid_keeps_a_valid_part_and_both_lobes_of_a_bowtie():
+    """_valid (shared by _outside_m and load_canada's comparison) returns a valid part as it is and keeps both lobes
+    of an invalid one. The existing test_border_disagreement_fails covers load_canada's guard still raising."""
+    from chartpack.enc.bc import _valid
+
+    square = box(0, 0, 10, 10)
+    assert _valid(square) is square
+    bowtie = Polygon([(0, 0), (10, 10), (10, 0), (0, 10)])
+    assert not bowtie.is_valid
+    fixed = _valid(bowtie)
+    assert fixed.is_valid and fixed.area == pytest.approx(50)
+
+
 def _border_slivers(fixtures_dir):
     rows = json.loads((fixtures_dir / "border-sliver.json").read_text())
     return [Feature(r["layer"], mapping(shapely.from_wkt(r["wkt"])), r["props"]) for r in rows]

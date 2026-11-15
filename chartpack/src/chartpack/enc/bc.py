@@ -101,7 +101,7 @@ def load_canada(regions_dir: Path) -> shapely.Geometry:
     w, s, e, n = wa.bounds
     inner = box(w + _EDGE_INSET_DEG, s + _EDGE_INSET_DEG, e - _EDGE_INSET_DEG, n - _EDGE_INSET_DEG)
     compared = inner.difference(box(*JDF_STRIP_BOX))
-    wide = to_m(canada.symmetric_difference(wa).intersection(compared)).buffer(-BORDER_TOLERANCE_M / 2)
+    wide = _valid(to_m(canada.symmetric_difference(wa).intersection(compared))).buffer(-BORDER_TOLERANCE_M / 2)
     if not wide.is_empty:
         x, y = from_m(wide.representative_point()).coords[0]
         raise BcError(f"canada-chs.geojson and canada-wa.geojson disagree by a strip wider than"
@@ -109,17 +109,21 @@ def load_canada(regions_dir: Path) -> shapely.Geometry:
     return canada
 
 
+def _valid(part_m: shapely.Geometry) -> shapely.Geometry:
+    """part_m (meters) as it is when valid. A thin valid lon/lat part can self-intersect once densified and projected
+    (a needle along the polygon, 2026-11-14): it is made valid, keeping only the parts of its own dimension."""
+    if part_m.is_valid:
+        return part_m
+    dim = shapely.get_dimensions(part_m)
+    return shapely.union_all([p for p in shapely.get_parts(shapely.make_valid(part_m))
+                              if shapely.get_dimensions(p) == dim])
+
+
 def _outside_m(area: shapely.Geometry, grown_m: shapely.Geometry) -> shapely.Geometry:
     """The part of area (lon/lat) outside grown_m (meters), in meters. The area is densified like the polygon
-    (SEGMENT_DEG), so a long shared edge projects to the same line on both sides. A thin valid part can
-    self-intersect once densified and projected (a needle along the polygon, 2026-11-14): it is made valid first,
-    keeping only the parts of its own dimension; a valid part is used as it is."""
-    part = to_m(shapely.segmentize(area, SEGMENT_DEG))
-    if not part.is_valid:
-        dim = shapely.get_dimensions(part)
-        part = shapely.make_valid(part)
-        part = shapely.union_all([p for p in shapely.get_parts(part) if shapely.get_dimensions(p) == dim])
-    return part.difference(grown_m)
+    (SEGMENT_DEG), so a long shared edge projects to the same line on both sides, and made valid (_valid) when
+    the projection broke it."""
+    return _valid(to_m(shapely.segmentize(area, SEGMENT_DEG))).difference(grown_m)
 
 
 def check_notices(cells: list[tuple[str, list[tuple[shapely.Geometry, str | None]]]], canada: shapely.Geometry) -> None:
