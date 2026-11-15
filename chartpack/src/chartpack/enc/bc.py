@@ -111,8 +111,15 @@ def load_canada(regions_dir: Path) -> shapely.Geometry:
 
 def _outside_m(area: shapely.Geometry, grown_m: shapely.Geometry) -> shapely.Geometry:
     """The part of area (lon/lat) outside grown_m (meters), in meters. The area is densified like the polygon
-    (SEGMENT_DEG), so a long shared edge projects to the same line on both sides."""
-    return to_m(shapely.segmentize(area, SEGMENT_DEG)).difference(grown_m)
+    (SEGMENT_DEG), so a long shared edge projects to the same line on both sides. A thin valid part can
+    self-intersect once densified and projected (a needle along the polygon, 2026-11-14): it is made valid first,
+    keeping only the parts of its own dimension; a valid part is used as it is."""
+    part = to_m(shapely.segmentize(area, SEGMENT_DEG))
+    if not part.is_valid:
+        dim = shapely.get_dimensions(part)
+        part = shapely.make_valid(part)
+        part = shapely.union_all([p for p in shapely.get_parts(part) if shapely.get_dimensions(p) == dim])
+    return part.difference(grown_m)
 
 
 def check_notices(cells: list[tuple[str, list[tuple[shapely.Geometry, str | None]]]], canada: shapely.Geometry) -> None:
