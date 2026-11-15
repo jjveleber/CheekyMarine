@@ -311,6 +311,25 @@ def test_thin_triangle_that_projects_to_a_self_intersection_is_dropped(fixtures_
     assert apply_rules([Feature(row["layer"], mapping(geom), row["props"])], [], canada) == []
 
 
+def test_invalid_projected_part_reaching_past_the_margin_is_not_a_sliver(fixtures_dir, regions_dir):
+    """The needle of thin-triangle.json plus a real 0.0003 degree square 44 m off the polygon: invalid once
+    projected, so make_valid runs, and it must keep the square (the part is not wholly within 1 m). A make_valid
+    step that dropped every invalid part would read it as a sliver and drop real NOAA content (PR 142 review)."""
+    from chartpack.enc.bc import _sliver, to_m
+
+    canada = load_canada(regions_dir)
+    geom = shapely.from_wkt(json.loads((fixtures_dir / "thin-triangle.json").read_text())[0]["wkt"])
+    w, s, e, n = geom.bounds
+    needle = geom.difference(canada.intersection(box(w - 1e-6, s - 1e-6, e + 1e-6, n + 1e-6)))
+    x, y = needle.representative_point().coords[0]
+    square = box(x + 0.001, y, x + 0.0013, y + 0.0003)
+    assert not canada.intersects(square) and to_m(square).distance(to_m(canada)) > 40
+    both = shapely.MultiPolygon([needle, square])
+    assert not to_m(shapely.segmentize(both, 0.01)).is_valid
+    assert _sliver(needle, canada, 1.0)
+    assert not _sliver(both, canada, 1.0)
+
+
 def _border_slivers(fixtures_dir):
     rows = json.loads((fixtures_dir / "border-sliver.json").read_text())
     return [Feature(r["layer"], mapping(shapely.from_wkt(r["wkt"])), r["props"]) for r in rows]
