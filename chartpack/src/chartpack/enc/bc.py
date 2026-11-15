@@ -50,6 +50,11 @@ SAFETY_BORDER_M = 1.0
 _NEAR_DEG = 0.001  # the polygon is taken this far around a cut part (more than BORDER_TOLERANCE_M) for that test
 _HALO_M = 1e-4  # 0.1 mm: _trim grows its opening by this past the part's straight edges
 _HALO_DEG = 1e-9  # about 0.1 mm, far above the float noise of a split edge (about 1e-13 degree)
+# _trim densifies a part to this before it projects it: the narrow pieces it finds in meters are cut back in lon/lat,
+# so their edges must stay on the part's own lon/lat edges. A chord's offset grows with the square of its length:
+# 14 mm on an 822 m border edge with SEGMENT_DEG vertices (bc-north-far, US3AK1DY), under 0.003 mm at this step
+# (11 m or less), well inside _HALO_DEG.
+_TRIM_SEGMENT_DEG = 1e-4
 
 # BC Albers (equal area), for areas and distances in meters.
 _TO_M = pyproj.Transformer.from_crs("EPSG:4326", "EPSG:3005", always_xy=True)
@@ -196,7 +201,7 @@ def _trim(feature: Feature, canada: shapely.Geometry, within_m: float) -> list[F
     geom = shape(feature.geometry)
     if geom.geom_type != "Polygon":
         return [feature]
-    part = _valid(to_m(shapely.segmentize(geom, SEGMENT_DEG)))
+    part = _valid(to_m(shapely.segmentize(geom, _TRIM_SEGMENT_DEG)))
     r = SAFETY_BORDER_M / 2
     # The opening, grown by the halo so that it reaches past the part's straight edges: no float-noise slivers
     # along them join the narrow pieces up.
