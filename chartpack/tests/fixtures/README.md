@@ -137,3 +137,14 @@ The quilt clips them to outside `US4WA1KH`, whose coverage edge lies 0 to 7 mm f
 `regions/clip/canada-chs.geojson`'s, so the cut leaves a needle along the polygon (-123.00849, 48.767 to 48.7744)
 attached to each part's US area. Of the nine US3WA1EF DEPARE and RESARE features meeting the box, these are the two
 whose cut part reaches the needle strip. `test_real_needles_hanging_off_kept_parts_are_trimmed` reads it.
+
+## Border lens
+
+`border-lens.json` holds one real NOAA feature behind the bc-north-far charts check failure after PR 144 (CI run
+43745956530 and locally, `depare feature inside the Canada polygon in tile 16/8985/20820`): the `US3AK1DY` edition
+1.5 DEPARE (DRVAL1 91.4, DRVAL2 731.5, band 3) of the zoom 13 to 16 copy, as the quilt of the 11 bc-north-far cells
+leaves it, cut to the box -130.6405, 54.7085, -130.6335, 54.7165, as `{cell, edition, layer, props, wkt}`. Read with
+`chartpack.enc.reader.read_cell` from `US3AK1DY-1.5.zip` (880453 bytes) and the other bc-north-far cells. Its cut
+part outside `regions/clip/canada-chs.geojson` is a thin triangle with an 822 m edge on the polygon, whose tips
+`_trim` drops. `test_trimmed_border_triangle_leaves_no_lens_along_a_long_edge` reads it.
+
