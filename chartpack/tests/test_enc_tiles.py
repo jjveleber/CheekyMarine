@@ -337,7 +337,7 @@ def test_zoom_range_reaches_tippecanoe(tmp_path, fixtures_dir, regions_dir, monk
         assert c[c.index("-Z") + 1] == str(zooms[0]) and c[c.index("-z") + 1] == str(zooms[1])
 
 
-def test_valdco_limited_to_the_given_levels(tmp_path, fixtures_dir, regions_dir):
+def test_valdco_limited_to_the_given_levels(tmp_path, fixtures_dir, regions_dir, capsys):
     """A BC pack passes the levels of regions/bc-valdco.toml: a cell's other VALDCO values (an Alaskan cell's 3, 15,
     150, 400 m in bc-offshore-north) stay out of cheekymarine:valdco, though their lines are still drawn (owner,
     2026-11-15). No levels (a US pack) keeps every value."""
@@ -354,5 +354,8 @@ def test_valdco_limited_to_the_given_levels(tmp_path, fixtures_dir, regions_dir)
             return json.loads(m.metadata()["cheekymarine:valdco"])
 
     assert build("all") == all_values
+    assert "valdco: dropped" not in capsys.readouterr().err
     got = build("limited", valdco_levels=[float(keep), 9999.0])
+    expected = ", ".join(f"{v} (US4WA1HK)" for v in sorted(drop, key=float))
+    assert f"valdco: dropped {expected} not in bc-valdco.toml\n" in capsys.readouterr().err
     assert got == [keep] and not set(drop) & set(got)
