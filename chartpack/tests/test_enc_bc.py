@@ -299,6 +299,50 @@ def test_real_depare_needles_along_the_polygon_are_dropped(fixtures_dir, regions
     assert SAFETY_BORDER_M == 1.0
 
 
+def test_thin_triangle_that_projects_to_a_self_intersection_is_dropped(fixtures_dir, regions_dir):
+    """US3WA1EF 1.5 DEPARE 36.5 to 54.8 as the north-sound quilt leaves it near -123.14, 48.39 (thin-triangle.json,
+    see the README): a valid lon/lat polygon of 5 vertices, a thin triangle 2.7 km long along the Canada
+    polygon. The cut leaves a needle of it outside the polygon that is self-intersecting once densified and
+    projected to meters. The needle is dropped, and apply_rules no longer fails with a GEOS TopologyException."""
+    canada = load_canada(regions_dir)
+    row = json.loads((fixtures_dir / "thin-triangle.json").read_text())[0]
+    geom = shapely.from_wkt(row["wkt"])
+    assert geom.is_valid
+    assert apply_rules([Feature(row["layer"], mapping(geom), row["props"])], [], canada) == []
+
+
+def test_invalid_projected_part_reaching_past_the_margin_is_not_a_sliver(fixtures_dir, regions_dir):
+    """The needle of thin-triangle.json plus a real 0.0003 degree square 44 m off the polygon: invalid once
+    projected, so make_valid runs, and it must keep the square (the part is not wholly within 1 m). A make_valid
+    step that dropped every invalid part would read it as a sliver and drop real NOAA content (PR 142 review)."""
+    from chartpack.enc.bc import _sliver, to_m
+
+    canada = load_canada(regions_dir)
+    geom = shapely.from_wkt(json.loads((fixtures_dir / "thin-triangle.json").read_text())[0]["wkt"])
+    w, s, e, n = geom.bounds
+    needle = geom.difference(canada.intersection(box(w - 1e-6, s - 1e-6, e + 1e-6, n + 1e-6)))
+    x, y = needle.representative_point().coords[0]
+    square = box(x + 0.001, y, x + 0.0013, y + 0.0003)
+    assert not canada.intersects(square) and to_m(square).distance(to_m(canada)) > 40
+    both = shapely.MultiPolygon([needle, square])
+    assert not to_m(shapely.segmentize(both, 0.01)).is_valid
+    assert _sliver(needle, canada, 1.0)
+    assert not _sliver(both, canada, 1.0)
+
+
+def test_valid_keeps_a_valid_part_and_both_lobes_of_a_bowtie():
+    """_valid (shared by _outside_m and load_canada's comparison) returns a valid part as it is and keeps both lobes
+    of an invalid one. The existing test_border_disagreement_fails covers load_canada's guard still raising."""
+    from chartpack.enc.bc import _valid
+
+    square = box(0, 0, 10, 10)
+    assert _valid(square) is square
+    bowtie = Polygon([(0, 0), (10, 10), (10, 0), (0, 10)])
+    assert not bowtie.is_valid
+    fixed = _valid(bowtie)
+    assert fixed.is_valid and fixed.area == pytest.approx(50)
+
+
 def _border_slivers(fixtures_dir):
     rows = json.loads((fixtures_dir / "border-sliver.json").read_text())
     return [Feature(r["layer"], mapping(shapely.from_wkt(r["wkt"])), r["props"]) for r in rows]
