@@ -515,10 +515,15 @@ def _build_enc(args: argparse.Namespace) -> int:
         derived, depth_sources = _overview_derived(args, region, content, canada)
     else:
         derived, depth_sources = _derived_charts(args, region, owned, canada) if meets and owned else ([], [])
+    bc_levels = None
+    if meets:  # a BC pack: only the levels of bc-valdco.toml enter cheekymarine:valdco
+        with (args.region.parent / "bc-valdco.toml").open("rb") as f:
+            bc_levels = tomllib.load(f)["levels_m"]
     enc = build_enc_mbtiles(cells, args.work / "enc.mbtiles", region=region, work=args.work / "tippecanoe",
                             seabed=_usgs_seabed(region, args.cache, None if owned is None else area), zooms=zooms,
                             area=area, canada=canada if meets else None, derived=derived,
-                            depth_sources=depth_sources, bands=OVERVIEW_BANDS if region.overview else BANDS)
+                            depth_sources=depth_sources, bands=OVERVIEW_BANDS if region.overview else BANDS,
+                            valdco_levels=bc_levels)
     keep_tiles(enc, owned, minzoom=zooms[0], maxzoom=zooms[1], content=content)
     print(_finish(assemble_charts_pack(region, enc, args.out, content=content, canada=canada), region))
     return 0

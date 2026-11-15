@@ -335,3 +335,24 @@ def test_zoom_range_reaches_tippecanoe(tmp_path, fixtures_dir, regions_dir, monk
     assert tippecanoe
     for c in tippecanoe:
         assert c[c.index("-Z") + 1] == str(zooms[0]) and c[c.index("-z") + 1] == str(zooms[1])
+
+
+def test_valdco_limited_to_the_given_levels(tmp_path, fixtures_dir, regions_dir):
+    """A BC pack passes the levels of regions/bc-valdco.toml: a cell's other VALDCO values (an Alaskan cell's 3, 15,
+    150, 400 m in bc-offshore-north) stay out of cheekymarine:valdco, though their lines are still drawn (owner,
+    2026-11-15). No levels (a US pack) keeps every value."""
+    region = load_region(regions_dir / "test-cell.toml")
+    cell = read_cell(fixtures_dir / "US4WA1HK.zip")
+    all_values = sorted({f.props["VALDCO"] for f in cell[1] if f.layer == "depcnt" and "VALDCO" in f.props}, key=float)
+    assert len(all_values) > 1
+    keep, drop = all_values[0], all_values[1:]
+
+    def build(name, **kw):
+        out = build_enc_mbtiles([read_cell(fixtures_dir / "US4WA1HK.zip")], tmp_path / f"{name}.mbtiles",
+                                region=region, work=tmp_path / name, zooms=(10, 16), **kw)
+        with MBTiles.open(out) as m:
+            return json.loads(m.metadata()["cheekymarine:valdco"])
+
+    assert build("all") == all_values
+    got = build("limited", valdco_levels=[float(keep), 9999.0])
+    assert got == [keep] and not set(drop) & set(got)
