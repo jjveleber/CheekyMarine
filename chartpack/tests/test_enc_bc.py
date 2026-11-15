@@ -371,7 +371,7 @@ def test_safety_part_two_meters_from_the_edge_loses_only_its_needle_ends(layer):
     assert to_m(kept.difference(whole)).area < 1e-6
     assert kept.bounds[2] == pytest.approx(-122.0 + wide)
     assert 49.42 < kept.bounds[1] < kept.bounds[3] < 49.58  # both ends gone
-    assert 0.85 < to_m(kept).area / to_m(whole).area < 0.95  # each end narrower than 0.65 m east-west: 3.6 km
+    assert 0.7 < to_m(kept).area / to_m(whole).area < 0.8  # each end narrower than 1 m: 5.6 km, 2.8e3 m2
 
 
 @pytest.mark.parametrize("layer", ["depare", "area"])  # the 1 m and the 20 m rule
@@ -388,6 +388,61 @@ def test_needle_hanging_off_a_wide_part_along_the_edge_is_dropped(layer):
     kept = shape(out[0].geometry)
     assert to_m(kept.symmetric_difference(body)).area < 0.05
     assert kept.bounds[3] == pytest.approx(49.45, abs=1e-8)
+
+
+# PR 144 review: the trim opens in meters, keeps a wide piece it splits off, and leaves derived depth cut where
+# NOAA charted the trimmed strip.
+_M_LAT = 1 / 111_320  # degrees of latitude per meter
+
+
+def _body_and_needle(width_m):
+    """A wide part on the polygon's east edge (-122.0) with a needle width_m wide and 300 m long on the edge."""
+    body = box(-122.0, 49.4, -121.5, 49.45)
+    return body, box(-122.0, 49.45, -122.0 + width_m * _M_LON, 49.4527)
+
+
+def test_north_south_needle_narrower_than_a_meter_is_trimmed():
+    """A 0.7 m wide needle running north-south: the opening is 1 m in every direction, not cos(lat) of it east-west
+    (degrees would keep it: 0.5 m north-south is 0.33 m east-west at 49.5 N)."""
+    from chartpack.enc.bc import to_m
+
+    body, needle = _body_and_needle(0.7)
+    out = apply_rules([_f("depare", shapely.union_all([body, needle]), 3)], [], CANADA)
+    assert len(out) == 1
+    assert to_m(shape(out[0].geometry).symmetric_difference(body)).area < 0.1
+
+
+@pytest.mark.parametrize("layer", ["depare", "area"])
+def test_wide_lobe_the_trim_splits_off_is_kept(layer):
+    """A 15 m by 15 m lobe on the edge, joined to a wide part by a neck 0.3 m wide and 111 m long along the edge:
+    the neck is trimmed, and the lobe, wider than 1 m, is kept, though it lies wholly within the 20 m of the area
+    layer (only a narrow piece the trim splits off is dropped)."""
+    from chartpack.enc.bc import to_m
+
+    body = box(-122.0, 49.4, -121.5, 49.45)
+    neck = box(-122.0, 49.45, -122.0 + 0.3 * _M_LON, 49.451)
+    lobe = box(-122.0, 49.451, -122.0 + 15 * _M_LON, 49.451 + 15 * _M_LAT)
+    out = apply_rules([_f(layer, shapely.union_all([body, neck, lobe]), 3)], [], CANADA)
+    kept = shapely.union_all([shape(f.geometry) for f in out])
+    assert len(out) == 2
+    assert to_m(kept.symmetric_difference(body.union(lobe))).area < 0.1
+    assert to_m(kept.intersection(box(-122.0, 49.4502, -121.9999, 49.4508))).area == 0  # the neck's middle
+
+
+def test_derived_depth_stays_cut_where_a_trimmed_noaa_strip_was():
+    """Derived depth is cut where NOAA charted before the trim: a NOAA DEPARE 0 to 2 m with a 0.3 m needle on the
+    edge and a derived 20 to 50 m DEPARE under it. The needle is trimmed, and the derived depth does not fill it
+    (never deeper than surveyed: a sub-meter hole instead)."""
+    from chartpack.enc.bc import to_m
+
+    body, needle = _body_and_needle(0.3)
+    cut = [_f("depare", shapely.union_all([body, needle]), 3, DRVAL1="0", DRVAL2="2")]
+    derived = [_f("depare", box(-122.1, 49.4, -121.9, 49.46), src="nonna10", DRVAL1="20", DRVAL2="50")]
+    out = apply_rules(cut, derived, CANADA)
+    noaa = shapely.union_all(_geoms(out, "depare", cell="US3AAAAA"))
+    assert to_m(noaa.intersection(needle)).area < 0.01  # the needle is trimmed
+    deep = shapely.union_all(_geoms(out, "depare", src="nonna10"))
+    assert to_m(deep.intersection(needle)).area < 1e-6
 
 
 def test_real_needles_hanging_off_kept_parts_are_trimmed(fixtures_dir, regions_dir):
