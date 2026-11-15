@@ -445,6 +445,28 @@ def test_derived_depth_stays_cut_where_a_trimmed_noaa_strip_was():
     assert to_m(deep.intersection(needle)).area < 1e-6
 
 
+def test_trimmed_border_triangle_leaves_no_lens_along_a_long_edge(fixtures_dir, regions_dir):
+    """US3AK1DY 1.5 DEPARE 91.4 to 731.5 as the bc-north-far quilt leaves it near -130.637, 54.712 (border-lens.json,
+    see the README): its cut part is a thin triangle with an 822 m edge on the polygon. _trim drops its two tips;
+    projected with only SEGMENT_DEG vertices, that edge is a chord up to 14 mm off the lon/lat line, so the cut
+    left a lens along it out to both tips, drawn as a square across the border in 16/8985/20820. Measured with a
+    fine projection, nothing is kept beyond the part's 1 m opening."""
+    from chartpack.enc.bc import SAFETY_BORDER_M, from_m, to_m
+
+    canada = load_canada(regions_dir)
+    row = json.loads((fixtures_dir / "border-lens.json").read_text())[0]
+    geom = shapely.from_wkt(row["wkt"])
+    whole = geom.difference(canada)
+    fine = to_m(shapely.segmentize(whole, 1e-6))
+    r = SAFETY_BORDER_M / 2
+    opening = fine.buffer(-r).buffer(r + 1e-3)
+    out = apply_rules([Feature(row["layer"], mapping(geom), row["props"])], [], canada)
+    kept = shapely.union_all([shape(f.geometry) for f in out])
+    assert to_m(shapely.segmentize(kept, 1e-6)).difference(opening).area < 1e-3  # the lens was about 4 m2
+    w, s, e, n = from_m(opening.intersection(to_m(shapely.segmentize(box(*kept.bounds), 1e-6)))).bounds
+    assert kept.bounds[0] > w - 1e-6 and kept.bounds[2] < e + 1e-6  # nothing near the dropped tips
+
+
 def test_real_needles_hanging_off_kept_parts_are_trimmed(fixtures_dir, regions_dir):
     """US3WA1EF 1.5 DEPARE 91.4 to 182.8 and RESARE as the north-sound quilt leaves them at Boundary Pass
     (boundary-pass-needle.json, see the README): clipped to outside US4WA1KH, whose coverage edge lies 0 to 7 mm
