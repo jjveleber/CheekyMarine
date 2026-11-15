@@ -175,8 +175,8 @@ def build_enc_mbtiles(
         valdco = sorted({f.props["VALDCO"] for f in by_layer["depcnt"] if "VALDCO" in f.props
                          and (valdco_levels is None or float(f.props["VALDCO"]) in valdco_levels)}, key=float)
         if valdco_levels is not None:
-            dropped = sorted({(float(f.props["VALDCO"]), f.props["VALDCO"], meta.name) for meta, feats in cells
-                              for f in feats if f.layer == "depcnt" and "VALDCO" in f.props
+            dropped = sorted({(float(f.props["VALDCO"]), f.props["VALDCO"], f.props.get("cell", "?"))
+                              for f in by_layer["depcnt"] if "VALDCO" in f.props
                               and float(f.props["VALDCO"]) not in valdco_levels})
             if dropped:
                 print("valdco: dropped " + ", ".join(f"{v} ({name})" for _, v, name in dropped)
