@@ -1,0 +1,28 @@
+# Queen Charlotte Strait north, Cape Caution, Rivers and Smith inlets, Bella Bella, Dean and Burke channels, north of
+# the zoom-10 row edge at 51.835777520452474 N (plan 8 spec 4). bc-central is split in two there for the fit guard
+# (plan 8 Task 16 Step 2). Charts are derived from NONNA and the BC Freshwater Atlas inside the Canada polygon.
+name = "bc-central-north"
+charts_version = "1.0.0"
+bathy_version = "1.0.0"
+bbox = [-129.2, 51.835777520452474, -126.5, 52.75]
+
+[charts]
+kind = "derived-inshore"
+
+# Every Active cell of bands 1 to 3 whose catalog polygon meets the owned tiles (zoom-10 tiles, grid.toml), from
+# `chartpack cells` and the catalog of 2026-11-12. Their features are cut at the Canada polygon.
+[enc]
+band1 = ["US1GLBDD"]
+
+[bathy]
+sources = ["nonna10", "nonna100", "etopo"]
+dem_maxzoom = 14
+
+[datum]
+file = "datum/wa-stations.toml"  # CRM south of 49 N; NONNA is on chart datum and ETOPO takes a fixed shift
+
+[[render.views]]
+name = "bella-bella"
+lon = -128.15
+lat = 52.16
+zooms = [9, 11, 13, 15]

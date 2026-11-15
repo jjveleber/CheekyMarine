@@ -93,6 +93,10 @@ From the approved map. Boxes are W, S, E, N. Exact edges move to the zoom-10 own
 
 `haida-gwaii` is split in two at 53.3309 N (the zoom-10 row edge), `haida-gwaii-north` and `haida-gwaii-south`, for the fit guard (plan 8 Task 16 Step 2, owner's choice 2026-11-13).
 
+`bc-central` is split in two at 51.8358 N (the zoom-10 row edge), `bc-central-north` and `bc-central-south`, for the fit guard (plan 8 Task 16 Step 2, dry runs of 2026-11-14: bathy pack 1.64 GB, charts max RSS over the guard).
+
+`bc-north` is split in two at 53.1204 N (the zoom-10 row edge), `bc-north-north` and `bc-north-south`, for the fit guard (plan 8 Task 16 Step 2, dry runs of 2026-11-14: bathy pack 2.33 GB, charts max RSS 14.6 GiB over the 12 GiB guard).
+
 The offshore polygons are in the appendix (copied from the map's data).
 
 Ownership rules, added to plan 7 spec 5.2:

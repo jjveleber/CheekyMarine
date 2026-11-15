@@ -20,7 +20,8 @@ from chartpack.region import RegionError, load_region
 
 WAVE1 = ["sound-south", "sound-central", "north-sound", "strait", "wa-coast", "overview"]
 BC_INSHORE = ["bc-south-georgia", "bc-vi-west-south", "bc-north-georgia", "bc-johnstone", "bc-vi-west-north",
-              "bc-central", "bc-north", "haida-gwaii-north", "haida-gwaii-south"]
+              "bc-central-north", "bc-central-south", "bc-north-north", "bc-north-south", "haida-gwaii-north",
+              "haida-gwaii-south"]
 BC_OFFSHORE = ["bc-offshore-south", "bc-offshore-north"]
 GRID = WAVE1[:-1] + BC_INSHORE + BC_OFFSHORE  # plan 8 Task 15: the wave 1 order unchanged, then inshore, offshore
 REBUILT = ["north-sound", "strait", "wa-coast", "overview"]  # 1.1.0: with Canadian-side data (plan 8 spec 4)
@@ -29,7 +30,7 @@ BANDS = {"sound-south": (3, 4, 5), "sound-central": (3, 4, 5), "north-sound": (3
          "strait": (1, 2, 3, 4, 5), "wa-coast": (1, 2, 3, 4, 5), "overview": (1, 2, 3),
          **{name: (1, 2, 3) for name in BC_INSHORE + BC_OFFSHORE},  # BC: the bands the catalog gives, of 1 to 3
          # and every band where the owned tiles hold US (Alaskan) water, so it keeps NOAA's finest detail
-         "bc-north": (1, 2, 3, 4, 5), "bc-offshore-north": (1, 2, 3, 4, 5)}
+         "bc-north-north": (1, 2, 3, 4, 5), "bc-offshore-north": (1, 2, 3, 4, 5)}
 INSHORE_ZOOMS, OFFSHORE_ZOOMS = (9, 11, 13, 15), (7, 9, 11)
 VIEWS = {
     "sound-south": {"tacoma-narrows"},
@@ -45,8 +46,10 @@ VIEWS = {
     "bc-johnstone": {"knight-inlet-head"},
     "bc-vi-west-south": {"barkley-sound", "tofino-shelf", "crm-edge-49n"},
     "bc-vi-west-north": {"nootka-sound"},
-    "bc-central": {"bella-bella"},
-    "bc-north": {"prince-rupert", "dixon-entrance"},
+    "bc-central-north": {"bella-bella"},
+    "bc-central-south": set(),
+    "bc-north-north": {"prince-rupert", "dixon-entrance"},
+    "bc-north-south": set(),
     "haida-gwaii-north": {"masset"},
     "haida-gwaii-south": set(),
     "bc-offshore-south": {"offshore-south"},
@@ -118,8 +121,9 @@ def _owned_all(regions_dir):
 # changed order changes a count.
 TILE_COUNTS = {"sound-south": 12, "sound-central": 12, "north-sound": 16, "strait": 13, "wa-coast": 92,
                "bc-south-georgia": 18, "bc-vi-west-south": 41, "bc-north-georgia": 28, "bc-johnstone": 39,
-               "bc-vi-west-north": 33, "bc-central": 79, "bc-north": 122, "haida-gwaii-north": 30,
-               "haida-gwaii-south": 56, "bc-offshore-south": 98, "bc-offshore-north": 150}
+               "bc-vi-west-north": 33, "bc-central-north": 45, "bc-central-south": 34, "bc-north-north": 99,
+               "bc-north-south": 23, "haida-gwaii-north": 30, "haida-gwaii-south": 56, "bc-offshore-south": 98,
+               "bc-offshore-north": 150}
 UNOWNED_TILES = "bc-unowned-tiles.json"  # the reviewed gaps next to the owned tiles (tests/fixtures/README.md)
 UNOWNED_COAST_ALLOWED: set[tuple[int, int]] = set()  # unowned tiles known to hold coastline, owner-approved
 
@@ -166,9 +170,39 @@ def test_haida_gwaii_halves_own_the_parent_tiles(regions_dir):
     assert {y for _, y in north} == set(range(327, 332)) and {y for _, y in south} == set(range(332, 340))
 
 
+# The zoom-10 tiles bc-central owned at b596462 (columns 144 to 152 for rows 334 to 341, 144 to 148 for row 342, 144
+# and 145 for row 343), before its split for the fit guard (plan 8 Task 16 Step 2).
+BC_CENTRAL_TILES = ({(x, y) for x in range(144, 153) for y in range(334, 342)}
+                    | {(x, 342) for x in range(144, 149)} | {(144, 343), (145, 343)})
+
+
+def test_bc_central_halves_own_the_parent_tiles(regions_dir):
+    """bc-central is split at the zoom-10 row edge 51.8358 N: the two halves own exactly the parent's tiles, the
+    north half rows 334 to 338, the south half rows 339 to 343."""
+    _, owned = _owned_all(regions_dir)
+    north, south = owned["bc-central-north"], owned["bc-central-south"]
+    assert len(BC_CENTRAL_TILES) == 79 and not north & south and north | south == BC_CENTRAL_TILES
+    assert {y for _, y in north} == set(range(334, 339)) and {y for _, y in south} == set(range(339, 344))
+
+
+# The zoom-10 tiles bc-north owned at b596462 (columns 138 to 148 for rows 324 to 333, 138 to 143 for rows 334 and
+# 335), before its split for the fit guard (plan 8 Task 16 Step 2).
+BC_NORTH_TILES = ({(x, y) for x in range(138, 149) for y in range(324, 334)}
+                  | {(x, y) for x in range(138, 144) for y in (334, 335)})
+
+
+def test_bc_north_halves_own_the_parent_tiles(regions_dir):
+    """bc-north is split at the zoom-10 row edge 53.1204 N: the two halves own exactly the parent's tiles, the
+    north half rows 324 to 332, the south half rows 333 to 335."""
+    _, owned = _owned_all(regions_dir)
+    north, south = owned["bc-north-north"], owned["bc-north-south"]
+    assert len(BC_NORTH_TILES) == 122 and not north & south and north | south == BC_NORTH_TILES
+    assert {y for _, y in north} == set(range(324, 333)) and {y for _, y in south} == set(range(333, 336))
+
+
 # Unowned tiles next to owned ones that hold coastline (Task 15 Step 4): Portland Canal and Observatory Inlet north of
-# bc-north, (141, 323) at -130.4297 to -130.0781 W and (142, 323) at -130.0781 to -129.7266 W, both 54.9776 to
-# 55.1789 N. The owner decides: grow bc-north, or approve them in UNOWNED_COAST_ALLOWED.
+# bc-north-north, (141, 323) at -130.4297 to -130.0781 W and (142, 323) at -130.0781 to -129.7266 W, both 54.9776 to
+# 55.1789 N. The owner decides: grow bc-north-north, or approve them in UNOWNED_COAST_ALLOWED.
 UNOWNED_COAST = {(141, 323), (142, 323)}
 
 
