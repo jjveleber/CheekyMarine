@@ -124,3 +124,16 @@ other north-sound cells. It is a valid 5-vertex lon/lat polygon, a thin triangle
 polygon, whose cut part outside it is self-intersecting once densified and projected to meters. `test_thin_triangle_that_projects_to_a_self_intersection_is_dropped` reads it.
 The box cut moves the self-intersection: the fixture fails in `_outside_m` on main f5e62ab at 1212258.94 380095.43,
 about 25 m from the run's point (1212246.10 380073.55), the same thin triangle.
+
+## Boundary Pass needle
+
+`boundary-pass-needle.json` holds two real NOAA features behind the north-sound charts check failure of plan 8
+(local build, 2026-11-15, pointroberts-inv.md: 8 squares in tiles 15/5187/11285, 16/10374/22569 and
+16/10374/22570): the `US3WA1EF` edition 1.5 DEPARE (DRVAL1 91.4, DRVAL2 182.8, band 3) and RESARE (RESTRN 8) of the
+zoom 13 to 16 copy, as the quilt leaves them (`quilt` of the north-sound cells, then the crop to the owned tiles),
+each cut to the box -123.0125, 48.765, -123.004, 48.776, as `{cell, edition, layer, props, wkt}`. Read with
+`chartpack.enc.reader.read_cell` from `US3WA1EF-1.5.zip` and the other north-sound cells (the cache of that build).
+The quilt clips them to outside `US4WA1KH`, whose coverage edge lies 0 to 7 mm from
+`regions/clip/canada-chs.geojson`'s, so the cut leaves a needle along the polygon (-123.00849, 48.767 to 48.7744)
+attached to each part's US area. Of the nine US3WA1EF DEPARE and RESARE features meeting the box, these are the two
+whose cut part reaches the needle strip. `test_real_needles_hanging_off_kept_parts_are_trimmed` reads it.

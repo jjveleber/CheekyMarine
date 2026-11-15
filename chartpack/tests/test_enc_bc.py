@@ -293,8 +293,8 @@ def test_real_depare_needles_along_the_polygon_are_dropped(fixtures_dir, regions
     assert not uncut.is_empty and to_m(uncut).area < 100  # the zigzag: what the cut leaves is only needles
     out = apply_rules(feats, [], canada)
     assert len(out) == 1
-    kept = shape(out[0].geometry)  # the whole 1.0 km2 part, up to the cut's own rounding (1e-7 m2)
-    assert to_m(kept.symmetric_difference(shape(feats[1].geometry).difference(canada))).area < 1e-3
+    kept = shape(out[0].geometry)  # the whole 1.0 km2 part less its own needles along the polygon (0.045 m2)
+    assert to_m(kept.symmetric_difference(shape(feats[1].geometry).difference(canada))).area < 0.05
     assert to_m(kept).area == pytest.approx(1_001_337, abs=1)
     assert SAFETY_BORDER_M == 1.0
 
@@ -348,18 +348,124 @@ def _border_slivers(fixtures_dir):
     return [Feature(r["layer"], mapping(shapely.from_wkt(r["wkt"])), r["props"]) for r in rows]
 
 
-@pytest.mark.parametrize("layer", ["depare", "lndare", "hazard", "coalne"])
-def test_safety_part_two_meters_from_the_edge_is_kept_whole(layer):
-    """A NOAA safety part reaching 2 m from the polygon's east edge (-122.0) is kept whole, narrow end and all."""
+def test_safety_line_two_meters_from_the_edge_is_kept_whole():
+    """A NOAA safety line reaching 2 m past the polygon's east edge (-122.0) is kept whole: lines are not trimmed."""
+    line = LineString([(-122.5, 49.5), (-122.0 + 2.0 * _M_LON, 49.5)])
+    out = apply_rules([_f("coalne", line, 4)], [], CANADA)
+    assert len(out) == 1 and shape(out[0].geometry).equals(line.difference(CANADA))
+
+
+@pytest.mark.parametrize("layer", ["depare", "lndare", "hazard"])
+def test_safety_part_two_meters_from_the_edge_loses_only_its_needle_ends(layer):
+    """A NOAA safety part reaching 2 m from the polygon's east edge (-122.0), a sliver 22 km long, keeps its middle
+    and its 2 m point and loses its two ends, narrower than SAFETY_BORDER_M along the edge (owner 2026-11-15,
+    pointroberts-inv.md): in a zoom 16 tile holding only such an end, tippecanoe draws it as a square straddling
+    the edge."""
+    from chartpack.enc.bc import to_m
+
     wide = 2.0 * _M_LON
     geom = Polygon([(-122.5, 49.4), (-122.0, 49.4), (-122.0 + wide, 49.5), (-122.0, 49.6), (-122.5, 49.6)])
-    line = LineString([(-122.5, 49.5), (-122.0 + wide, 49.5)])
-    feat = _f(layer, line if layer == "coalne" else geom, 4, DRVAL1="0")
-    out = apply_rules([feat], [], CANADA)
+    out = apply_rules([_f(layer, geom, 4, DRVAL1="0")], [], CANADA)
     assert len(out) == 1
-    assert shapely.union_all(_geoms(out, layer)).equals(
-        (line if layer == "coalne" else geom).difference(CANADA))
-    assert shapely.union_all(_geoms(out, layer)).bounds[2] == pytest.approx(-122.0 + wide)
+    kept, whole = shape(out[0].geometry), geom.difference(CANADA)
+    assert to_m(kept.difference(whole)).area < 1e-6
+    assert kept.bounds[2] == pytest.approx(-122.0 + wide)
+    assert 49.42 < kept.bounds[1] < kept.bounds[3] < 49.58  # both ends gone
+    assert 0.7 < to_m(kept).area / to_m(whole).area < 0.8  # each end narrower than 1 m: 5.6 km, 2.8e3 m2
+
+
+@pytest.mark.parametrize("layer", ["depare", "area"])  # the 1 m and the 20 m rule
+def test_needle_hanging_off_a_wide_part_along_the_edge_is_dropped(layer):
+    """A wide part along the polygon's east edge with a needle 7 mm wide and 300 m long on the edge: _sliver keeps
+    the part whole, and the needle alone in a tile is drawn as a square into Canada. The needle goes, the wide
+    part stays (less the corner by the needle's root, 0.054 m2, which goes with the needle)."""
+    from chartpack.enc.bc import to_m
+
+    body = box(-122.0, 49.4, -121.5, 49.45)
+    needle = box(-122.0, 49.45, -122.0 + 0.007 * _M_LON, 49.4527)
+    out = apply_rules([_f(layer, shapely.union_all([body, needle]), 3)], [], CANADA)
+    assert len(out) == 1
+    kept = shape(out[0].geometry)
+    assert to_m(kept.symmetric_difference(body)).area < 0.1
+    assert kept.bounds[3] == pytest.approx(49.45, abs=1e-8)
+
+
+# PR 144 review: the trim opens in meters, keeps a wide piece it splits off, and leaves derived depth cut where
+# NOAA charted the trimmed strip.
+_M_LAT = 1 / 111_320  # degrees of latitude per meter
+
+
+def _body_and_needle(width_m):
+    """A wide part on the polygon's east edge (-122.0) with a needle width_m wide and 300 m long on the edge."""
+    body = box(-122.0, 49.4, -121.5, 49.45)
+    return body, box(-122.0, 49.45, -122.0 + width_m * _M_LON, 49.4527)
+
+
+def test_north_south_needle_narrower_than_a_meter_is_trimmed():
+    """A 0.7 m wide needle running north-south: the opening is 1 m in every direction, not cos(lat) of it east-west
+    (degrees would keep it: 0.5 m north-south is 0.33 m east-west at 49.5 N)."""
+    from chartpack.enc.bc import to_m
+
+    body, needle = _body_and_needle(0.7)
+    out = apply_rules([_f("depare", shapely.union_all([body, needle]), 3)], [], CANADA)
+    assert len(out) == 1
+    assert to_m(shape(out[0].geometry).symmetric_difference(body)).area < 0.1
+
+
+@pytest.mark.parametrize("layer", ["depare", "area"])
+def test_wide_lobe_the_trim_splits_off_is_kept(layer):
+    """A 15 m by 15 m lobe on the edge, joined to a wide part by a neck 0.3 m wide and 111 m long along the edge:
+    the neck is trimmed, and the lobe, wider than 1 m, is kept, though it lies wholly within the 20 m of the area
+    layer (only a narrow piece the trim splits off is dropped)."""
+    from chartpack.enc.bc import to_m
+
+    body = box(-122.0, 49.4, -121.5, 49.45)
+    neck = box(-122.0, 49.45, -122.0 + 0.3 * _M_LON, 49.451)
+    lobe = box(-122.0, 49.451, -122.0 + 15 * _M_LON, 49.451 + 15 * _M_LAT)
+    out = apply_rules([_f(layer, shapely.union_all([body, neck, lobe]), 3)], [], CANADA)
+    kept = shapely.union_all([shape(f.geometry) for f in out])
+    assert len(out) == 2
+    assert to_m(kept.symmetric_difference(body.union(lobe))).area < 0.2  # the two corners by the neck, 0.054 m2 each
+    assert to_m(kept.intersection(box(-122.0, 49.4502, -121.9999, 49.4508))).area == 0  # the neck's middle
+
+
+def test_derived_depth_stays_cut_where_a_trimmed_noaa_strip_was():
+    """Derived depth is cut where NOAA charted before the trim: a NOAA DEPARE 0 to 2 m with a 0.3 m needle on the
+    edge and a derived 20 to 50 m DEPARE under it. The needle is trimmed, and the derived depth does not fill it
+    (never deeper than surveyed: a sub-meter hole instead)."""
+    from chartpack.enc.bc import to_m
+
+    body, needle = _body_and_needle(0.3)
+    cut = [_f("depare", shapely.union_all([body, needle]), 3, DRVAL1="0", DRVAL2="2")]
+    derived = [_f("depare", box(-122.1, 49.4, -121.9, 49.46), src="nonna10", DRVAL1="20", DRVAL2="50")]
+    out = apply_rules(cut, derived, CANADA)
+    noaa = shapely.union_all(_geoms(out, "depare", cell="US3AAAAA"))
+    assert to_m(noaa.intersection(needle)).area < 0.01  # the needle is trimmed
+    deep = shapely.union_all(_geoms(out, "depare", src="nonna10"))
+    assert to_m(deep.intersection(needle)).area < 1e-6
+
+
+def test_real_needles_hanging_off_kept_parts_are_trimmed(fixtures_dir, regions_dir):
+    """US3WA1EF 1.5 DEPARE 91.4 to 182.8 and RESARE as the north-sound quilt leaves them at Boundary Pass
+    (boundary-pass-needle.json, see the README): clipped to outside US4WA1KH, whose coverage edge lies 0 to 7 mm
+    from the polygon's, each keeps a needle along the polygon (-123.00849, 48.767 to 48.7744) attached to its US
+    area, so _sliver keeps it whole; the north-sound charts check flagged its squares in 16/10374/22569 and
+    22570. The needle is trimmed; the rest of the part stays."""
+    from chartpack.enc.bc import to_m
+
+    canada = load_canada(regions_dir)
+    strip = box(-123.00850, 48.7671, -123.00847, 48.77444)
+    for row in json.loads((fixtures_dir / "boundary-pass-needle.json").read_text()):
+        geom = shapely.from_wkt(row["wkt"])
+        out = apply_rules([Feature(row["layer"], mapping(geom), row["props"])], [], canada)
+        assert len(out) == 1, row["props"]
+        kept, whole = shape(out[0].geometry), geom.difference(canada)
+        assert to_m(whole.intersection(strip)).area > 1  # the needle the cut leaves (2.0 and 5.5 m2)
+        assert to_m(kept.intersection(strip)).area < 1e-3
+        assert to_m(kept.difference(whole)).area < 1e-6
+        # Only the needle and narrow strips along the polygon go: the DEPARE loses 2.2 m2, the RESARE 73 m2 (the
+        # needle and a 0.2 m wide strip along the polygon's south edge here, within the 20 m of its layer).
+        assert to_m(whole).area - to_m(kept).area < 100
 
 
 @pytest.mark.parametrize("layer", ["depare", "coalne"])
