@@ -3,6 +3,7 @@
 import json
 import shutil
 import subprocess
+import sys
 from collections.abc import Sequence
 from datetime import datetime, timezone
 from pathlib import Path
@@ -99,7 +100,7 @@ def build_enc_mbtiles(
     cells: list[tuple[CellMeta, list[Feature]]], out: Path, *, region: Region, work: Path,
     seabed: Sequence[Feature] = (), zooms: tuple[int, int], area: shapely.Geometry | None = None,
     canada: shapely.Geometry | None = None, derived: Sequence[Feature] = (), depth_sources: Sequence[dict] = (),
-    bands=BANDS,
+    bands=BANDS, valdco_levels: Sequence[float] | None = None,
 ) -> Path:
     """`seabed`: USGS survey features (seabed/usseabed.py, seabed/cmecs.py) that already carry their
     tippecanoe zooms; they join the seabed layer as they are, not quilted (spec 6.10).
@@ -115,6 +116,9 @@ def build_enc_mbtiles(
     are snapped per block core and band (snap_derived), and their depare, depcnt, lndare and nosurvey are tiled in
     a run of their own without simplification. A derived list is consumed (emptied) so its unsnapped features are
     not held beside the snapped ones at the memory peak.
+    `valdco_levels`: a BC pack's levels (regions/bc-valdco.toml): only these values enter cheekymarine:valdco, so a
+    cell's other contours (an Alaskan cell's) are drawn but never picked as the safety contour (owner, 2026-11-15).
+    None (a US pack) keeps every value.
     A charts kind other than enc (DERIVED_LAYERS) needs its derived layers only, not every schema layer."""
     out, work = Path(out), Path(work)
     work.mkdir(parents=True, exist_ok=True)
@@ -168,7 +172,15 @@ def build_enc_mbtiles(
             {"cell": meta.name, "edtn": meta.edtn, "updn": meta.updn, "isdt": meta.isdt}
             for meta, _ in sorted(cells, key=lambda c: c[0].name)
         ]
-        valdco = sorted({f.props["VALDCO"] for f in by_layer["depcnt"] if "VALDCO" in f.props}, key=float)
+        valdco = sorted({f.props["VALDCO"] for f in by_layer["depcnt"] if "VALDCO" in f.props
+                         and (valdco_levels is None or float(f.props["VALDCO"]) in valdco_levels)}, key=float)
+        if valdco_levels is not None:
+            dropped = sorted({(float(f.props["VALDCO"]), f.props["VALDCO"], f.props.get("cell", "?"))
+                              for f in by_layer["depcnt"] if "VALDCO" in f.props
+                              and float(f.props["VALDCO"]) not in valdco_levels})
+            if dropped:
+                print("valdco: dropped " + ", ".join(f"{v} ({name})" for _, v, name in dropped)
+                      + " not in bc-valdco.toml", file=sys.stderr)
         # the distinct seabed codes in the tiles, for legend.json (seabed/legend.py)
         seabed = sorted({json.dumps({k: f.props[k] for k in _SEABED_KEYS if k in f.props}, sort_keys=True)
                          for f in by_layer["seabed"]})

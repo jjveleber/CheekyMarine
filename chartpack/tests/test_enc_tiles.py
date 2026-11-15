@@ -335,3 +335,52 @@ def test_zoom_range_reaches_tippecanoe(tmp_path, fixtures_dir, regions_dir, monk
     assert tippecanoe
     for c in tippecanoe:
         assert c[c.index("-Z") + 1] == str(zooms[0]) and c[c.index("-z") + 1] == str(zooms[1])
+
+
+def test_valdco_limited_to_the_given_levels(tmp_path, fixtures_dir, regions_dir, capsys):
+    """A BC pack passes the levels of regions/bc-valdco.toml: a cell's other VALDCO values (an Alaskan cell's 3, 15,
+    150, 400 m in bc-offshore-north) stay out of cheekymarine:valdco, though their lines are still drawn (owner,
+    2026-11-15). No levels (a US pack) keeps every value."""
+    region = load_region(regions_dir / "test-cell.toml")
+    cell = read_cell(fixtures_dir / "US4WA1HK.zip")
+    all_values = sorted({f.props["VALDCO"] for f in cell[1] if f.layer == "depcnt" and "VALDCO" in f.props}, key=float)
+    assert len(all_values) > 1
+    keep, drop = all_values[0], all_values[1:]
+
+    def build(name, **kw):
+        out = build_enc_mbtiles([read_cell(fixtures_dir / "US4WA1HK.zip")], tmp_path / f"{name}.mbtiles",
+                                region=region, work=tmp_path / name, zooms=(10, 16), **kw)
+        with MBTiles.open(out) as m:
+            return json.loads(m.metadata()["cheekymarine:valdco"])
+
+    assert build("all") == all_values
+    assert "valdco: dropped" not in capsys.readouterr().err
+    got = build("limited", valdco_levels=[float(keep), 9999.0])
+    expected = ", ".join(f"{v} (US4WA1HK)" for v in sorted(drop, key=float))
+    assert f"valdco: dropped {expected} not in bc-valdco.toml\n" in capsys.readouterr().err
+    assert got == [keep] and not set(drop) & set(got)
+
+
+def test_dropped_valdco_log_omits_values_outside_the_pack_area(tmp_path, fixtures_dir, regions_dir, capsys):
+    """The log names only dropped values that are in the pack's features: a value found only outside `area` (the
+    cropped cell, e.g. an Alaskan cell's deep contours far off the tiles) is not logged."""
+    region = load_region(regions_dir / "test-cell.toml")
+    cell = read_cell(fixtures_dir / "US4WA1HK.zip")
+    lines = [f for f in cell[1] if f.layer == "depcnt" and "VALDCO" in f.props]
+    w, s_, e, n = (-122.4, 47.7, -122.1, 48.0)  # the cell's bounds in test-cell.toml
+    by_value = {v: [shape(f.geometry) for f in lines if f.props["VALDCO"] == v] for v in {f.props["VALDCO"] for f in lines}}
+    # a south part of the cell that leaves out at least one value's lines, as far north as keeps every layer
+    inside = only_outside = None
+    for cut in (47.8, 47.85, 47.9, 47.95):
+        area = shapely.box(w, s_, e, cut)
+        out = {v for v, geoms in by_value.items() if not any(g.intersects(area) for g in geoms)}
+        if out and len(out) < len(by_value):
+            inside, only_outside = area, out
+            break
+    assert only_outside
+    build_enc_mbtiles([cell], tmp_path / "o.mbtiles", region=region, work=tmp_path / "w", zooms=(10, 16),
+                      area=inside, valdco_levels=[9999.0])
+    log = capsys.readouterr().err
+    assert "valdco: dropped" in log
+    for value in only_outside:
+        assert f"{value} (" not in log

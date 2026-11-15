@@ -1832,3 +1832,41 @@ def test_overview_build_never_reads_an_offshore_owners_land(tmp_path, regions_di
     with pytest.raises(_Decided):
         cli._overview_derived(args, load_region(overview), content, canada)
     assert [r.name for r in asked] == ["bc-south-georgia"]
+
+
+@pytest.mark.parametrize("meets", [True, False])
+def test_build_enc_passes_the_bc_valdco_levels_only_to_a_pack_meeting_canada(
+        tmp_path, fixtures_dir, regions_dir, monkeypatch, meets):
+    """A pack whose tiles meet the Canada polygon limits cheekymarine:valdco to bc-valdco.toml levels_m; any other
+    pack passes None and keeps every value (owner, 2026-11-15)."""
+    import shutil
+    import tomllib
+
+    import shapely
+
+    from chartpack import cli
+    from chartpack.grid import content_tiles, tiles_area
+    from chartpack.region import load_region
+
+    (tmp_path / "cache" / "enc").mkdir(parents=True)
+    shutil.copy(fixtures_dir / "US4WA1HK.zip", tmp_path / "cache" / "enc" / "US4WA1HK-1.3.zip")
+    region = _grid_region(tmp_path, regions_dir)
+    shutil.copy(regions_dir / "bc-valdco.toml", region.parent)
+    area = tiles_area(content_tiles(load_region(region), region.parent))
+    canada = shapely.box(*area.bounds) if meets else shapely.box(0, 0, 1, 1)
+    monkeypatch.setattr(cli, "load_canada", lambda regions: canada)
+    monkeypatch.setattr(cli, "check_notices", lambda *a, **k: None)
+    monkeypatch.setattr(cli, "check_canadian_areas", lambda *a, **k: None)
+    monkeypatch.setattr(cli, "_derived_charts", lambda *a, **k: ([], []))
+    seen = []
+
+    def fake_build(*a, **kw):
+        seen.append(kw["valdco_levels"])
+        raise RuntimeError("stop")
+
+    monkeypatch.setattr(cli, "build_enc_mbtiles", fake_build)
+    with pytest.raises(RuntimeError, match="stop"):
+        main(["build-enc", str(region), str(tmp_path / "out"), "--cache", str(tmp_path / "cache"),
+              "--work", str(tmp_path / "work")])
+    expected = tomllib.loads((regions_dir / "bc-valdco.toml").read_text())["levels_m"] if meets else None
+    assert seen == [expected]
