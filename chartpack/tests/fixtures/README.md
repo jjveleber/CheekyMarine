@@ -112,3 +112,15 @@ box -123.945, 48.278, -123.915, 48.288, as `{cell, edition, layer, props, wkt}`.
 each feature intersected with the box. That cell places its own border vertices up to 0.13 m from
 `regions/clip/canada-chs.geojson`'s, so `apply_rules` cuts it into needle parts within 1 m of the polygon.
 `test_real_depare_needles_along_the_polygon_are_dropped` (the needles of row 0 are dropped, row 1 kept) and `test_real_border_needles_pass_check` read it.
+
+## Thin triangle
+
+`thin-triangle.json` holds one real NOAA feature behind the north-sound charts dry run crash of plan 8 (run
+43674894051, main b596462: `TopologyException: side location conflict at 1212246.10 380073.55` in `_outside_m`): the
+`US3WA1EF` edition 1.5 DEPARE (DRVAL1 36.5, DRVAL2 54.8, band 3) as the quilt leaves it (`quilt` of the north-sound
+cells, then the crop to the owned tiles, 2026-11-14), cut to the box -123.152, 48.384, -123.131, 48.406, as
+`{cell, edition, layer, props, wkt}`. Read with `chartpack.enc.reader.read_cell` from `US3WA1EF-1.5.zip` and the
+other north-sound cells. It is a valid 5-vertex lon/lat polygon, a thin triangle 2.7 km long along the Canada
+polygon, whose cut part outside it is self-intersecting once densified and projected to meters. `test_thin_triangle_that_projects_to_a_self_intersection_is_dropped` reads it.
+The box cut moves the self-intersection: the fixture fails in `_outside_m` on main f5e62ab at 1212258.94 380095.43,
+about 25 m from the run's point (1212246.10 380073.55), the same thin triangle.
