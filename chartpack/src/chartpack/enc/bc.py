@@ -48,8 +48,7 @@ _SLIVER_LAYERS = ("area", "line", "meta", "seabed")
 # leaves needles along it that tippecanoe draws as squares reaching 5 to 13 tile units into Canada.
 SAFETY_BORDER_M = 1.0
 _NEAR_DEG = 0.001  # the polygon is taken this far around a cut part (more than BORDER_TOLERANCE_M) for that test
-# Half of SAFETY_BORDER_M in degrees of latitude: _trim's opening radius (east-west it is cos(lat) of that).
-_NARROW_DEG = SAFETY_BORDER_M / 2 / 111_320
+_HALO_M = 1e-4  # 0.1 mm: _trim grows its opening by this past the part's straight edges
 _HALO_DEG = 1e-9  # about 0.1 mm, far above the float noise of a split edge (about 1e-13 degree)
 
 # BC Albers (equal area), for areas and distances in meters.
@@ -187,33 +186,40 @@ def _sliver(part: shapely.Geometry, canada: shapely.Geometry, within_m: float = 
 
 
 def _trim(feature: Feature, canada: shapely.Geometry, within_m: float) -> list[Feature]:
-    """A cut polygon part less its pieces narrower and longer than SAFETY_BORDER_M (narrower: _NARROW_DEG) that lie
-    wholly within within_m of canada (owner 2026-11-15, pointroberts-inv.md): a finer cell's coverage edge placed
-    millimeters from the polygon (US4WA1KH at Boundary Pass) leaves a needle between the two hanging off a larger
-    part, which _sliver keeps whole; in a tile holding only the needle, tippecanoe draws it as a square straddling
-    the edge. Cut in lon/lat, so the part's other edges are kept exactly; a piece the cut splits off is dropped as
-    _sliver drops a part. The feature as it is when it has no such piece."""
+    """A cut polygon part less its pieces narrower and longer than SAFETY_BORDER_M that lie wholly within within_m of
+    canada (owner 2026-11-15, pointroberts-inv.md): a finer cell's coverage edge placed millimeters from the polygon
+    (US4WA1KH at Boundary Pass) leaves a needle between the two hanging off a larger part, which _sliver keeps
+    whole; in a tile holding only the needle, tippecanoe draws it as a square straddling the edge. The pieces are
+    found by an opening in meters (1 m in every direction) and cut away in lon/lat, so the part's other edges are
+    kept exactly. A piece the cut splits off is dropped only when it is narrow too and lies within within_m (PR 144
+    review: a wide lobe beyond a trimmed neck stays). The feature as it is when it has no such piece."""
     geom = shape(feature.geometry)
     if geom.geom_type != "Polygon":
         return [feature]
+    part = _valid(to_m(shapely.segmentize(geom, SEGMENT_DEG)))
+    r = SAFETY_BORDER_M / 2
     # The opening, grown by the halo so that it reaches past the part's straight edges: no float-noise slivers
     # along them join the narrow pieces up.
-    wide = geom.buffer(-_NARROW_DEG).buffer(_NARROW_DEG + _HALO_DEG)
-    narrow = [p for p in shapely.get_parts(geom.difference(wide)) if shapely.get_dimensions(p) == 2]
+    wide = part.buffer(-r).buffer(r + _HALO_M)
+    narrow = [p for p in shapely.get_parts(part.difference(wide)) if shapely.get_dimensions(p) == 2]
     if not narrow:
         return [feature]
     w, s, e, n = geom.bounds
     grown = to_m(canada.intersection(box(w - _NEAR_DEG, s - _NEAR_DEG, e + _NEAR_DEG, n + _NEAR_DEG))).buffer(within_m)
-    shapely.prepare(grown)
-    r_m = SAFETY_BORDER_M / 2
     # Longer than SAFETY_BORDER_M too: the cut's own corners (pieces about r across) keep their exact edges.
-    drop = [p for p in narrow if grown.covers(m := to_m(p)) and shapely.minimum_bounding_radius(m) > r_m]
+    drop = [q for p in narrow if shapely.minimum_bounding_radius(p) > r
+            and _outside_m(q := from_m(p), grown).is_empty]
     if not drop:
         return [feature]
     # The halo takes the zero-width spikes that a dropped piece's edge, split where the opening meets it, leaves
     # beside the part's own edge.
     kept = _keep(feature, geom.difference(shapely.union_all(drop).buffer(_HALO_DEG)))
-    return [p for p in kept if not _sliver(shape(p.geometry), canada, within_m)]
+    return [p for p in kept if not (_narrow(shape(p.geometry), r) and _sliver(shape(p.geometry), canada, within_m))]
+
+
+def _narrow(area: shapely.Geometry, r: float) -> bool:
+    """Whether area (lon/lat) is nowhere wider than 2 r meters: its inward buffer by r, in meters, is empty."""
+    return _valid(to_m(shapely.segmentize(area, SEGMENT_DEG))).buffer(-r).is_empty
 
 
 def apply_rules(cut: list[Feature], derived: list[Feature], canada: shapely.Geometry) -> list[Feature]:
@@ -227,6 +233,7 @@ def apply_rules(cut: list[Feature], derived: list[Feature], canada: shapely.Geom
     that needs no cut is returned as it is."""
     shapely.prepare(canada)
     out = []
+    cover = []  # the kept NOAA depare and lndare before _trim: derived depth stays cut where NOAA charted
     for feature in cut:
         geom = shape(feature.geometry)
         if geom.geom_type == "Point":  # dropped inside; one on the boundary is not inside (the pack check agrees)
@@ -234,13 +241,15 @@ def apply_rules(cut: list[Feature], derived: list[Feature], canada: shapely.Geom
                 out.append(feature)
         elif not shapely.intersects(canada, geom):
             out.append(feature)
+            cover += [geom] if feature.layer in _NOAA_COVER else []
         elif not shapely.covers(canada, geom):
             w, s, e, n = geom.bounds  # canada near the feature only: a straight line's bounds have no area
             parts = _keep(feature, geom.difference(canada.intersection(box(w - 1e-6, s - 1e-6, e + 1e-6, n + 1e-6))))
             within_m = BORDER_TOLERANCE_M if feature.layer in _SLIVER_LAYERS else SAFETY_BORDER_M
             parts = [p for p in parts if not _sliver(shape(p.geometry), canada, within_m)]
             out += [q for p in parts for q in _trim(p, canada, within_m)]
-    tree = shapely.STRtree([shape(f.geometry) for f in out if f.layer in _NOAA_COVER])
+            cover += [shape(p.geometry) for p in parts if feature.layer in _NOAA_COVER]
+    tree = shapely.STRtree(cover)
     for feature in derived:
         geom = shape(feature.geometry)
         if shapely.covers(canada, geom):

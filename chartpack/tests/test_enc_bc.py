@@ -378,7 +378,7 @@ def test_safety_part_two_meters_from_the_edge_loses_only_its_needle_ends(layer):
 def test_needle_hanging_off_a_wide_part_along_the_edge_is_dropped(layer):
     """A wide part along the polygon's east edge with a needle 7 mm wide and 300 m long on the edge: _sliver keeps
     the part whole, and the needle alone in a tile is drawn as a square into Canada. The needle goes, the wide
-    part stays (less the corner by the needle's root, 0.035 m2, which goes with the needle)."""
+    part stays (less the corner by the needle's root, 0.054 m2, which goes with the needle)."""
     from chartpack.enc.bc import to_m
 
     body = box(-122.0, 49.4, -121.5, 49.45)
@@ -386,7 +386,7 @@ def test_needle_hanging_off_a_wide_part_along_the_edge_is_dropped(layer):
     out = apply_rules([_f(layer, shapely.union_all([body, needle]), 3)], [], CANADA)
     assert len(out) == 1
     kept = shape(out[0].geometry)
-    assert to_m(kept.symmetric_difference(body)).area < 0.05
+    assert to_m(kept.symmetric_difference(body)).area < 0.1
     assert kept.bounds[3] == pytest.approx(49.45, abs=1e-8)
 
 
@@ -425,7 +425,7 @@ def test_wide_lobe_the_trim_splits_off_is_kept(layer):
     out = apply_rules([_f(layer, shapely.union_all([body, neck, lobe]), 3)], [], CANADA)
     kept = shapely.union_all([shape(f.geometry) for f in out])
     assert len(out) == 2
-    assert to_m(kept.symmetric_difference(body.union(lobe))).area < 0.1
+    assert to_m(kept.symmetric_difference(body.union(lobe))).area < 0.2  # the two corners by the neck, 0.054 m2 each
     assert to_m(kept.intersection(box(-122.0, 49.4502, -121.9999, 49.4508))).area == 0  # the neck's middle
 
 
