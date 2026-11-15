@@ -53,7 +53,7 @@ _HALO_DEG = 1e-9  # about 0.1 mm, far above the float noise of a split edge (abo
 # _trim densifies a part to this before it projects it: the narrow pieces it finds in meters are cut back in lon/lat,
 # so their edges must stay on the part's own lon/lat edges. A chord's offset grows with the square of its length:
 # 14 mm on an 822 m border edge with SEGMENT_DEG vertices (bc-north-far, US3AK1DY), about 0.004 mm at most at this
-# step (11 m or less), well inside _HALO_DEG (about 0.06 mm east-west at 56 N, 0.11 mm north-south).
+# step (13 m or less), well inside _HALO_DEG (about 0.06 mm east-west at 56 N, 0.11 mm north-south).
 _TRIM_SEGMENT_DEG = 1e-4
 
 # BC Albers (equal area), for areas and distances in meters.
