@@ -1,12 +1,10 @@
-# Princess Royal, Douglas Channel and Kitimat, Grenville Channel, Prince Rupert, Portland Inlet, north of the zoom-10
-# row edge at 53.120405283106564 N (plan 8 spec 4). bc-north is split in two there for the fit guard (plan 8 Task 16
-# Step 2). Charts are derived from NONNA and the BC Freshwater Atlas inside the Canada polygon.
-# Fit margin is thin: a fixed-plus-linear fit of the parents' charts RSS puts this half near 96 % of the 12 GiB
-# guard, so its charts dry run goes first after its derive (PR 140 review).
-name = "bc-north-north"
+# Prince Rupert, Chatham Sound, Kitimat, Portland Inlet and the Canadian side of Dixon Entrance, north of the zoom-10
+# row edge at 53.9560855309879 N (plan 8 spec 4). bc-north-north is split in two there for the fit guard (plan 8
+# Task 16 Step 2). Charts are derived from NONNA and the BC Freshwater Atlas inside the Canada polygon.
+name = "bc-north-far"
 charts_version = "1.0.0"
 bathy_version = "1.0.0"
-bbox = [-131.2, 53.120405283106564, -127.8, 54.8]
+bbox = [-131.2, 53.9560855309879, -127.8, 54.8]
 
 [charts]
 kind = "derived-inshore"
