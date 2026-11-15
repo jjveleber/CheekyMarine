@@ -95,7 +95,7 @@ From the approved map. Boxes are W, S, E, N. Exact edges move to the zoom-10 own
 
 `bc-central` is split in two at 51.8358 N (the zoom-10 row edge), `bc-central-north` and `bc-central-south`, for the fit guard (plan 8 Task 16 Step 2, dry runs of 2026-11-14: bathy pack 1.64 GB, charts max RSS over the guard).
 
-`bc-north` is split in two at 53.1204 N (the zoom-10 row edge), `bc-north-north` and `bc-north-south`, for the fit guard (plan 8 Task 16 Step 2, dry run of 2026-11-14: bathy pack 2.33 GB).
+`bc-north` is split in two at 53.1204 N (the zoom-10 row edge), `bc-north-north` and `bc-north-south`, for the fit guard (plan 8 Task 16 Step 2, dry runs of 2026-11-14: bathy pack 2.33 GB, charts max RSS 15.3 GB over the guard).
 
 The offshore polygons are in the appendix (copied from the map's data).
 
