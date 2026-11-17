@@ -61,7 +61,7 @@ jobs:
             echo
             cat chartpack/src/chartpack/notices/chs.txt
             echo
-            echo "Contains information licensed under the Open Government Licence – British Columbia."
+            cat chartpack/src/chartpack/notices/ogl-bc.txt
           } > release/NOTES.md
           cat release/NOTES.md
 
