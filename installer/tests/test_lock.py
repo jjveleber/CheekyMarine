@@ -12,7 +12,10 @@ TOOL = INSTALLER / "lock-tool.sh"
 LOCK = INSTALLER / "cheekymarine.lock"
 SCRIPT = INSTALLER / "cheekymarine.sh"
 
-REGIONS = ["sound-south", "sound-central", "north-sound", "strait", "wa-coast", "overview"]
+REGIONS = ["sound-south", "sound-central", "north-sound", "strait", "wa-coast", "overview",
+           "bc-central-north", "bc-central-south", "bc-johnstone", "bc-north-far", "bc-north-georgia",
+           "bc-north-mid", "bc-north-south", "bc-offshore-north", "bc-offshore-south", "bc-south-georgia",
+           "bc-vi-west-north", "bc-vi-west-south", "haida-gwaii-north", "haida-gwaii-south"]
 PACKS = ["charts-" + _r for _r in REGIONS] + ["bathy-" + _r for _r in REGIONS]
 PARTS = ["n2kd"] + ["pack." + _i for _i in PACKS] + ["plotter"]
 KEYS = ["schema", "set"]
@@ -104,7 +107,7 @@ class TestLock(LockCase):
     def test_lock_keys_are_complete(self):
         d, order = parse(LOCK)
         self.assertEqual(order, KEYS)
-        self.assertEqual(len(order), 72)
+        self.assertEqual(len(order), 212)
         self.assertEqual(d["schema"], "2")
 
     def test_check_fails_when_pack_schema_outside_plotter_range(self):
@@ -150,9 +153,10 @@ class TestLock(LockCase):
         return g.stdout.split()
 
     def test_schema2_lists_packs(self):
-        self.add_pack("charts-bc-south", 2, after="pack.charts-overview.schema")
-        self.add_pack("bathy-bc-south", 2)
-        self.assertEqual(self.lock_packs(self.lock), PACKS[:6] + ["charts-bc-south"] + PACKS[6:] + ["bathy-bc-south"])
+        self.add_pack("charts-bc-south", 2, after="pack.charts-haida-gwaii-south.schema")
+        self.add_pack("bathy-bc-south", 2, after="pack.bathy-haida-gwaii-south.schema")
+        n = len(REGIONS)
+        self.assertEqual(self.lock_packs(self.lock), PACKS[:n] + ["charts-bc-south"] + PACKS[n:] + ["bathy-bc-south"])
         self.assertEqual(self.tool("check", str(self.lock)).returncode, 0)
 
     def test_check_rejects_pack_schema_out_of_range(self):
